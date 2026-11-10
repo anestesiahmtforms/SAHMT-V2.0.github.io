@@ -137,6 +137,11 @@ const commandRules=`
         request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && allowed(request.resource.data);
     }
 `;
-const output=base.slice(0,position)+'\n// BEGIN QMENTUM_FA\n'+scopeQmentumFragment(fragment)+analysisRules+uniqueParticipation+commandRules+'\n// END QMENTUM_FA\n'+base.slice(position);
+let qmentumRules=scopeQmentumFragment(fragment)+analysisRules+uniqueParticipation+commandRules;
+if(base.includes('function fcRecordsFolderOpen_(')){
+  qmentumRules=qmentumRules.replace(/(allow [a-z, ]+: if )(?!false\s*;)([^;]+);/g,
+    (_,prefix,condition)=>prefix+"fcRecordsFolderOpen_('registros/qmentum') && ("+condition+");");
+}
+const output=base.slice(0,position)+'\n// BEGIN QMENTUM_FA\n'+qmentumRules+'\n// END QMENTUM_FA\n'+base.slice(position);
 await writeFile(args.length?args[3]:new URL('../firestore.qmentum.rules',import.meta.url),output);
 console.log('QMENTUM_RULES_PREPARED_LOCAL');

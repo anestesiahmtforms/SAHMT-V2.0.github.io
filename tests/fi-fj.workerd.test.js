@@ -18,7 +18,7 @@ test('actual Worker runtime derives an FJ session from FA and authenticates idem
   const profile = {uid: actor.uid, email: actor.email, active: true, access: true, permissions: {scheduleRead: true}};
   const documents = new Map([[prefix + '/scheduleDays/2026-11-06', encodeFields({date: '2026-11-06', version: 1,
     positions: [{position: 1, sigla: 'AA'}], highlights: {siglas: ['AA'], releaseTimes: {AA: 1800000000000}, events: []}})]]);
-  let commits = 0, sourceReads = 0; const requests = [];
+  let commits = 0, sourceReads = 0; const requests = [],documentReads=[];
   const bundle = await build({entryPoints: ['worker-operational-domain/worker.js'], bundle: true, write: false, format: 'esm', platform: 'browser', target: 'es2022', external: ['node:*']});
   const mf = new Miniflare(convertV4MiniflareOptions({name: 'fj-module-test', modules: true, script: bundle.outputFiles[0].text,
     compatibilityDate: '2026-10-13', compatibilityFlags: ['nodejs_compat'], bindings: {
@@ -43,7 +43,7 @@ test('actual Worker runtime derives an FJ session from FA and authenticates idem
       const payload = await request.json();
       if (name.endsWith(':beginTransaction')) return Response.json({transaction: 'synthetic-transaction'});
       if (name.endsWith(':rollback')) return Response.json({});
-      if (name.endsWith(':batchGet')) return Response.json(payload.documents.map(id => documents.has(id) ? {found: {name: id, fields: documents.get(id)}} : {missing: id}));
+      if (name.endsWith(':batchGet')) {documentReads.push(...payload.documents);return Response.json(payload.documents.map(id => documents.has(id) ? {found: {name: id, fields: documents.get(id)}} : {missing: id}));}
       if (name.endsWith(':commit')) {
         commits++;
         for (const write of payload.writes) {
@@ -80,5 +80,13 @@ test('actual Worker runtime derives an FJ session from FA and authenticates idem
     const schedule = decodeFields(documents.get(prefix + '/scheduleDays/2026-11-06'));
     assert.deepEqual(schedule.highlights.siglas, ['AA']); assert.deepEqual(schedule.highlights.releaseTimes, {AA: 1800000000000});
     assert.deepEqual(schedule.highlights.events, ['EVENTO:AA:BB:event']);
+    documents.set(prefix+'/runtimePolicy/folders',encodeFields({schemaVersion:1,revision:1,disabled:['operacao/escala']}));
+    documentReads.length=0;
+    const paused=await mf.dispatchFetch('https://module.test/internal/v1/event-projection',{method:'POST',body,headers:projectionHeaders(body,secret)});
+    assert.equal(paused.status,403);assert.equal((await paused.json()).code,'DOMAIN_FOLDER_DISABLED');
+    assert.deepEqual(documentReads,[prefix+'/runtimePolicy/folders']);assert.equal(commits,1);
+    documents.set(prefix+'/runtimePolicy/folders',encodeFields({schemaVersion:1,revision:0,disabled:[]}));documentReads.length=0;
+    const malformed=await mf.dispatchFetch('https://module.test/internal/v1/event-projection',{method:'POST',body,headers:projectionHeaders(body,secret)});
+    assert.equal(malformed.status,503);assert.equal((await malformed.json()).code,'DOMAIN_FOLDER_POLICY_INVALID');assert.deepEqual(documentReads,[prefix+'/runtimePolicy/folders']);
   } finally {await mf.dispose();}
 });

@@ -27,3 +27,10 @@ test('organization preserves item identity, legacy ROP category names and unknow
  assert.deepEqual(trainingFolderLevel(rows,['Protocolos']).trainings.map(t=>t.id),['unclassified']);
  assert.deepEqual(rows,before);
 });
+
+test('nested paths and metadata-only folders preserve every level without loading items',()=>{
+ const deep={...item('deep','ROPs','Recovery'),folderPath:['ROPs','Recovery','Adults','Airway']};
+ assert.deepEqual(trainingFolderLevel([deep],['ROPs','Recovery']).folders.map(f=>f.path),[['ROPs','Recovery','Adults']]);
+ assert.deepEqual(trainingFolderLevel([deep],deep.folderPath).trainings,[deep]);
+ assert.deepEqual(trainingFolderLevel([],['ROPs','Recovery'],[deep.folderPath]).folders.map(f=>f.path),[['ROPs','Recovery','Adults']]);
+});

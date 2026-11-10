@@ -1,9 +1,15 @@
 const begin='    // BEGIN_FC_PERFORMANCE_V1',end='    // END_FC_PERFORMANCE_V1';
 const block=`
 ${begin}
+    function fcPerformanceFolderOpen_() {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['desempenho', 'desempenho/fc', 'registros', 'registros/ocorrencias', 'registros/qmentum']);
+    }
     function fcPerformanceMember_() {
       return activeUser() && request.auth.token.aud == 'indicadores---sahmt' &&
-        request.auth.token.iss == 'https://securetoken.google.com/indicadores---sahmt';
+        request.auth.token.iss == 'https://securetoken.google.com/indicadores---sahmt' && fcPerformanceFolderOpen_();
     }
     function fcPerformanceOwnRecord_() {
       return fcPerformanceMember_() && resource.data.uid == request.auth.uid && resource.data.category == 'PERFORMANCE';

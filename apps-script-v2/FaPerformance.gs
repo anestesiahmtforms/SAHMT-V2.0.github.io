@@ -6,12 +6,22 @@ function faPerformanceEncode_(v){if(v===null)return {nullValue:null};if(typeof v
 function faPerformanceEncodeFields_(o){return Object.fromEntries(Object.keys(o).map(k=>[k,faPerformanceEncode_(o[k])]));}
 function faPerformanceHttp_(suffix,body){
  faPerformanceIdentity_();
- if(!/^\/(?:faPerformanceRuntime\/(?:current|lease)|faPerformanceReference\/team)$/.test(suffix)&&![':runQuery',':commit'].includes(suffix))throw Error('FA_HTTP_SCOPE_DENIED');
+ if(suffix!=='/runtimePolicy/folders'&&!/^\/(?:faPerformanceRuntime\/(?:current|lease)|faPerformanceReference\/team)$/.test(suffix)&&![':runQuery',':commit'].includes(suffix))throw Error('FA_HTTP_SCOPE_DENIED');
  const response=sahmtUrlFetchRun_(function(){return UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FA_PERFORMANCE.project+'/databases/(default)/documents'+suffix,{method:body===undefined?'get':'post',contentType:'application/json',headers:{Authorization:'Bearer '+ScriptApp.getOAuthToken()},muteHttpExceptions:true,...(body===undefined?{}:{payload:JSON.stringify(body)})});});
  const status=response.getResponseCode();if(status===404&&body===undefined)return null;
  if(status!==200)throw Error('FA_FIRESTORE_HTTP_'+status);return JSON.parse(response.getContentText());
 }
+function faPerformanceRequireFolders_(){
+ const raw=faPerformanceHttp_('/runtimePolicy/folders');
+ if(!raw)return;
+ const policy=faPerformanceFields_(raw.fields||{});
+ if(policy.schemaVersion!==1||!Number.isSafeInteger(policy.revision)||policy.revision<1||
+     !Array.isArray(policy.disabled)||policy.disabled.some(id=>typeof id!=='string'||!id))throw Error('FA_FOLDER_POLICY_INVALID');
+ const folders=['desempenho/fa','operacao/checklist','operacao/eventos','operacao/pessoas'];
+ if(policy.disabled.some(id=>folders.some(folder=>folder===id||folder.indexOf(id+'/')===0)))throw Error('FA_FOLDER_DISABLED');
+}
 function faPerformanceRead_(collection,maximum,snapshot){
+ faPerformanceRequireFolders_();
  const projection={users:['uid','sigla','email','displayName','active','access'],contacts:['sigla','email','active'],events:['eventType','delayMultiple','date','memberSigla','active','status','createdAt'],checklistSignatures:['date','responsibleUid','signerUid','signedAt','acknowledgedAt','declaration','snapshot','revision'],checklistSignatureRequests:['day','signerUid','requestedAt','validatedAt','status','finalSignatureId'],faPerformanceAwards:null};
  if(!Object.prototype.hasOwnProperty.call(projection,collection))throw Error('FA_READ_SCOPE_DENIED');
  const query={from:[{collectionId:collection}],limit:maximum+1};

@@ -1,3 +1,7 @@
+import {assertFbPerformanceReadable} from '../server/fb-performance-folder-policy.js';
+import {createFirestoreStore as createFbFirestoreStore} from '../worker-training/firestore.js';
+import {consolidatedPerformanceFolders} from '../src/operational-folders.js';
+import {assertFirestoreFoldersReadable} from '../server/firestore-folder-policy.js';
 import {createSourceReadBudget} from './read-budget.js';
 import {verifySchedule} from './schedule-envelope.js';
 import {createSahmtPerformanceSources} from './sahmt-performance-sources.js';
@@ -11,8 +15,55 @@ function runtime(env){
   let fePerformanceRead;
   try{fePerformanceRead=createFePerformanceReader({endpoint:env.FE_PERFORMANCE_READ_URL,secret:env.FE_PERFORMANCE_READ_SECRET});}catch{}
   const getAccessToken=indicatorServiceToken({credentials}),store=createFirestoreStore({getAccessToken}),readBudget=createSourceReadBudget({store});
-  const performanceSources=createSahmtPerformanceSources({getAccessToken,readBudget,fePerformanceRead});
-  runtimes.set(env,createIndicatorService({store,performanceSources,sahmtEnabled:env.SAHMT_PERFORMANCE_ENABLED==='true'}));
+  async function check(folders, includeDescendants = []) {
+   if(!folders.length)return;
+   try {
+    await assertFirestoreFoldersReadable({
+     root:'https://firestore.googleapis.com/v1/projects/'+FD_PROJECT+'/databases/(default)/documents',
+     token:await getAccessToken(),
+     folders,includeDescendants
+    });
+   } catch(error) {
+    const disabled=error.code==='FOLDER_DISABLED';
+    const code=disabled?'INDICATOR_FOLDER_DISABLED':'INDICATOR_FOLDER_POLICY_UNAVAILABLE';
+    throw Object.assign(Error(code),{code,status:disabled?403:503});
+   }
+  }
+  const fbStore=createFbFirestoreStore({getAccessToken});
+  async function checkFb(checkPolicy = assertFbPerformanceReadable) {
+   try {
+    await checkPolicy(fbStore);
+   } catch(error) {
+    const disabled=error.code==='FOLDER_DISABLED';
+    const code=disabled?'INDICATOR_FOLDER_DISABLED':'INDICATOR_FOLDER_POLICY_UNAVAILABLE';
+    throw Object.assign(Error(code),{code,status:disabled?403:503});
+   }
+  }
+  const performanceSources=createSahmtPerformanceSources({
+   getAccessToken,readBudget,fePerformanceRead,
+   async checkAvailability(source){
+    await check(consolidatedPerformanceFolders);
+    if(source==='FB')await checkFb();
+   }
+  });
+  const service=createIndicatorService({store,performanceSources,sahmtEnabled:env.SAHMT_PERFORMANCE_ENABLED==='true'});
+  runtimes.set(env,{
+   async execute(action,input,identity) {
+    await check(consolidatedPerformanceFolders);
+    await checkFb();
+    const result=await service.execute(action,input,identity);
+    await check(consolidatedPerformanceFolders);
+    await checkFb();
+    return result;
+   },
+   async executeScheduled(body) {
+    if(body.action==='PERFORMANCE'){
+     await check(consolidatedPerformanceFolders);
+     await checkFb();
+    }
+    return service.executeScheduled(body);
+   }
+  });
  }
  return runtimes.get(env);
 }

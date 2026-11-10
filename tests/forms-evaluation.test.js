@@ -26,6 +26,7 @@ function harness(){
     ScriptApp:{getOAuthToken:()=> 'fake-no-live-token',getProjectTriggers:()=>[],newTrigger:()=>{throw Error('No real triggers in tests');}},
     FormApp:{openById:id=>{if(!forms.has(id))throw Error('Missing mocked form');return forms.get(id);},openByUrl:url=>{const form=Array.from(forms.values()).find(f=>f.responderUrl===url);if(!form)throw Error('Unknown public alias');return form;}}});
   vm.runInContext(source,ctx);
+  ctx.sahmtRequireFolders_=()=>{};
   const nativeQuery=ctx.evaluationQuery_,nativeGoogleRequest=ctx.formsEvaluationGoogleRequest_;
   ctx.sha256Hex_=sha;
   ctx.firestoreFilter_=(field,op,value)=>({field:{fieldPath:field},op,value});

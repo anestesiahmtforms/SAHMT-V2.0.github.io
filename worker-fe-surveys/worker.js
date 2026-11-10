@@ -1,3 +1,4 @@
+import {assertFePerformanceReadable,assertFeFolderReadable} from '../worker-fe-surveys/performance-policy.js';
 import {createFePerformanceReadHandler,FE_PERFORMANCE_READ_PATH} from './performance-read.js';
 import {createTrainingWorker} from '../worker-training/worker.js';
 import {createSurveyService} from '../worker-training/survey-service.js';
@@ -17,6 +18,7 @@ function buildSurveyService(env){
   }};
   runtimes.set(env,createSurveyService({profileStore,
    responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken}),
+   checkPerformance:tx=>assertFePerformanceReadable(getAccessToken,tx),checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,getAccessToken,tx),
    reportReaderEmail:env.REPORT_READER_EMAIL}));
  }
  return runtimes.get(env);

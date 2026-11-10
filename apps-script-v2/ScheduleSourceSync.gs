@@ -106,6 +106,7 @@ function requireScheduleSourceOperator_() {
 }
 
 function readScheduleSource_() {
+  sahmtRequireFolders_(['operacao/escala/ferias']);
   const spreadsheet = SpreadsheetApp.openById(SAHMT_V2_SCHEDULE_SOURCE.spreadsheetId);
   const file = DriveApp.getFileById(SAHMT_V2_SCHEDULE_SOURCE.spreadsheetId);
   const scheduleSheet = spreadsheet.getSheetByName(SAHMT_V2_SCHEDULE_SOURCE.scheduleTab);

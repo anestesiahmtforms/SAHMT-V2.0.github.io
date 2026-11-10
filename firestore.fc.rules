@@ -97,29 +97,36 @@ service cloud.firestore {
       allow get: if signedIn() && request.auth.uid == uid;
       allow list, create, update, delete: if false;
     }
+
+    function fcRecordsFolderOpen_(folder) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['registros', folder]);
+    }
     match /occurrenceCatalogs/current {
-      allow get: if canCatalog();
+      allow get: if fcRecordsFolderOpen_('registros/ocorrencias') && (canCatalog());
       allow list, create, update, delete: if false;
     }
     match /occurrenceReports/{reportId} {
-      allow get: if canReadReport(reportId);
-      allow list: if canRead() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if canWrite() && !exists(reportPath(reportId)) &&
-        validReport(reportId, request.resource.data) && pairedAfter(reportId);
+      allow get: if fcRecordsFolderOpen_('registros/ocorrencias') && (canReadReport(reportId));
+      allow list: if fcRecordsFolderOpen_('registros/ocorrencias') && (canRead() && request.query.limit != null && request.query.limit <= 50);
+      allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && (canWrite() && !exists(reportPath(reportId)) &&
+        validReport(reportId, request.resource.data) && pairedAfter(reportId));
       allow update, delete: if false;
     }
     match /occurrenceAudit/{reportId} {
-      allow get: if canReadPrivate(reportId);
-      allow list: if canAudit() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if canWrite() && !exists(auditPath(reportId)) &&
-        validAudit(reportId, request.resource.data) && pairedAfter(reportId);
+      allow get: if fcRecordsFolderOpen_('registros/ocorrencias') && (canReadPrivate(reportId));
+      allow list: if fcRecordsFolderOpen_('registros/ocorrencias') && (canAudit() && request.query.limit != null && request.query.limit <= 50);
+      allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && (canWrite() && !exists(auditPath(reportId)) &&
+        validAudit(reportId, request.resource.data) && pairedAfter(reportId));
       allow update, delete: if false;
     }
     match /occurrenceScoreClaims/{reportId} {
-      allow get: if canReadPrivate(reportId);
-      allow list: if canAudit() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if canWrite() && !exists(scorePath(reportId)) &&
-        validScoreClaim(reportId, request.resource.data) && pairedAfter(reportId);
+      allow get: if fcRecordsFolderOpen_('registros/ocorrencias') && (canReadPrivate(reportId));
+      allow list: if fcRecordsFolderOpen_('registros/ocorrencias') && (canAudit() && request.query.limit != null && request.query.limit <= 50);
+      allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && (canWrite() && !exists(scorePath(reportId)) &&
+        validScoreClaim(reportId, request.resource.data) && pairedAfter(reportId));
       allow update, delete: if false;
     }
     // Preserve the existing bounded indicators probe for signed-in FC users.
@@ -131,17 +138,17 @@ service cloud.firestore {
 // BEGIN QMENTUM_FA
     match /qmentumAccess/{uid} {
 function qmentumAccess_0_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
- allow get: if qmentumAccess_0_qmSigned() && request.auth.uid == uid; allow list,write: if false; }
+ allow get: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumAccess_0_qmSigned() && request.auth.uid == uid); allow list,write: if false; }
     match /qmentumConfig/current {
 function qmentumConfig_1_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
 function qmentumConfig_1_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
- allow get: if qmentumConfig_1_qmSigned() && qmentumConfig_1_qmAccess().active == true && qmentumConfig_1_qmAccess().uid == request.auth.uid;allow list,write: if false; }
+ allow get: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumConfig_1_qmSigned() && qmentumConfig_1_qmAccess().active == true && qmentumConfig_1_qmAccess().uid == request.auth.uid);allow list,write: if false; }
     match /qmentumDefinitions/{version} {
 function qmentumDefinitions_2_qmMember() { let a=qmentumDefinitions_2_qmAccess();return qmentumDefinitions_2_qmSigned() && a.uid == request.auth.uid && a.active == true && a.role in ['collector','reviewer','manager'] && qmentumDefinitions_2_qmEnabled(); }
 function qmentumDefinitions_2_qmSigned() { return database == '(default)' && activeUser() && profile().uid == request.auth.uid; }
 function qmentumDefinitions_2_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
 function qmentumDefinitions_2_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
- allow get: if qmentumDefinitions_2_qmMember();allow list,write: if false; }
+ allow get: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumDefinitions_2_qmMember());allow list,write: if false; }
     match /qmentumUnits/{unit} {
 function qmentumUnits_3_qmAccess() { return get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data; }
 function qmentumUnits_3_qmMember() { let a=qmentumUnits_3_qmAccess();return qmentumUnits_3_qmSigned() && a.uid == request.auth.uid && a.active == true && a.role in ['collector','reviewer','manager'] && qmentumUnits_3_qmEnabled(); }
@@ -149,45 +156,45 @@ function qmentumUnits_3_qmSigned() { return database == '(default)' && activeUse
 function qmentumUnits_3_qmEnabled() { return get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true; }
 function qmentumUnits_3_qmUnit(unit) { return qmentumUnits_3_qmMember() && unit in qmentumUnits_3_qmAccess().units && get(/databases/$(database)/documents/qmentumUnits/$(unit)).data.active == true; }
 
-      allow get: if qmentumUnits_3_qmMember() && unit in qmentumUnits_3_qmAccess().units;allow list,write: if false;
+      allow get: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmMember() && unit in qmentumUnits_3_qmAccess().units);allow list,write: if false;
       match /months/{period} {
 
 
-        allow get: if qmentumUnits_3_qmUnit(unit);allow list: if qmentumUnits_3_qmUnit(unit) && request.query.limit != null && request.query.limit <= 12;allow write: if false;
+        allow get: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmUnit(unit));allow list: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmUnit(unit) && request.query.limit != null && request.query.limit <= 12);allow write: if false;
         match /history/{version} {
 
- allow get: if qmentumUnits_3_qmUnit(unit);allow list: if qmentumUnits_3_qmUnit(unit) && request.query.limit != null && request.query.limit <= 30;allow write: if false; }
+ allow get: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmUnit(unit));allow list: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmUnit(unit) && request.query.limit != null && request.query.limit <= 30);allow write: if false; }
       }
       match /imports/{hash} {
 
 
-        allow get: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager'; allow list,update,delete: if false;
-        allow create: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager' && request.resource.data.keys().hasOnly(['schemaVersion','hash','unitId','year','status','backupReference','chunkCount','createdBy','createdAt','sheetNames']) &&
+        allow get: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager'); allow list,update,delete: if false;
+        allow create: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager' && request.resource.data.keys().hasOnly(['schemaVersion','hash','unitId','year','status','backupReference','chunkCount','createdBy','createdAt','sheetNames']) &&
           hash.matches('^[a-f0-9]{64}$') && request.resource.data.hash == hash && request.resource.data.schemaVersion == 1 &&
           request.resource.data.unitId == unit && request.resource.data.year is int && request.resource.data.year >= 1900 && request.resource.data.year <= 2200 &&
           request.resource.data.status == 'STAGED' && request.resource.data.createdBy == request.auth.uid && request.resource.data.createdAt == request.time &&
           request.resource.data.backupReference is string && request.resource.data.backupReference.size() <= 2000 &&
-          request.resource.data.chunkCount is int && request.resource.data.chunkCount > 0 && request.resource.data.chunkCount <= 40;
+          request.resource.data.chunkCount is int && request.resource.data.chunkCount > 0 && request.resource.data.chunkCount <= 40);
         match /cells/{index} {
 
 
-          allow get: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager'; allow list,update,delete: if false;
-          allow create: if qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager' &&
+          allow get: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager'); allow list,update,delete: if false;
+          allow create: if fcRecordsFolderOpen_('registros/qmentum') && (qmentumUnits_3_qmUnit(unit) && qmentumUnits_3_qmAccess().role == 'manager' &&
             getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/imports/$(hash)).data.createdAt == request.time &&
             request.resource.data.keys().hasOnly(['cells','hash','index']) && request.resource.data.hash == hash &&
             request.resource.data.index == int(index) && int(index) >= 0 && int(index) < getAfter(/databases/$(database)/documents/qmentumUnits/$(unit)/imports/$(hash)).data.chunkCount &&
-            request.resource.data.cells is list && request.resource.data.cells.size() <= 2000;
+            request.resource.data.cells is list && request.resource.data.cells.size() <= 2000);
         }
       }
 
     }
     match /qmentumUnits/{unit}/quarterlyAnalyses/{id} {
-      allow get,list: if activeUser() && profile().uid == request.auth.uid &&
+      allow get,list: if fcRecordsFolderOpen_('registros/qmentum') && (activeUser() && profile().uid == request.auth.uid &&
         get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true &&
         get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.active == true &&
         get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.uid == request.auth.uid &&
         unit in get(/databases/$(database)/documents/qmentumAccess/$(request.auth.uid)).data.units &&
-        (request.method == 'get' || request.query.limit != null && request.query.limit <= 40);
+        (request.method == 'get' || request.query.limit != null && request.query.limit <= 40));
       allow write: if false;
     }
     match /qmentumQuarterlyJobs/{id} { allow read,write: if false; }
@@ -200,15 +207,15 @@ function qmentumUnits_3_qmUnit(unit) { return qmentumUnits_3_qmMember() && unit 
           grant.role in ['reviewer','manager'] && unit in grant.units &&
           get(/databases/$(database)/documents/qmentumConfig/current).data.enabled == true;
       }
-      allow get: if activeUser() && (resource == null || resource.data.actorUid == request.auth.uid);
+      allow get: if fcRecordsFolderOpen_('registros/qmentum') && (activeUser() && (resource == null || resource.data.actorUid == request.auth.uid));
       allow list,update,delete: if false;
-      allow create: if request.resource.data.keys().hasOnly(['unitId','analysisId','signature','reason','actorUid','status','createdAt']) &&
+      allow create: if fcRecordsFolderOpen_('registros/qmentum') && (request.resource.data.keys().hasOnly(['unitId','analysisId','signature','reason','actorUid','status','createdAt']) &&
         qmAnalysisReviewer(request.resource.data.unitId) &&
         request.resource.data.analysisId.matches('^[a-f0-9]{64}$') && request.resource.data.signature.matches('^[a-f0-9]{64}$') &&
         id == request.resource.data.analysisId+'_'+request.auth.uid && request.resource.data.actorUid == request.auth.uid &&
         request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time &&
         request.resource.data.reason is string && request.resource.data.reason.size() >= 8 && request.resource.data.reason.size() <= 1000 &&
-        get(/databases/$(database)/documents/qmentumUnits/$(request.resource.data.unitId)/quarterlyAnalyses/$(request.resource.data.analysisId)).data.signature == request.resource.data.signature;
+        get(/databases/$(database)/documents/qmentumUnits/$(request.resource.data.unitId)/quarterlyAnalyses/$(request.resource.data.analysisId)).data.signature == request.resource.data.signature);
     }
 
     match /qmentumParticipations/{id} {
@@ -225,15 +232,15 @@ function qmentumUnits_3_qmUnit(unit) { return qmentumUnits_3_qmMember() && unit 
         let a=get(/databases/$(database)/documents/qmentumUnits/$(d.unitId)/quarterlyAnalyses/$(d.analysisId)).data;
         return a.status == 'REVIEWED' && a.reviewed == true && a.signature == d.signature;
       }
-      allow get: if activeUser() && (resource == null || qmParticipationMember(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || qmParticipationManager()));
-      allow list: if request.query.limit != null && request.query.limit <= 100 && qmParticipationMember(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || qmParticipationManager());
+      allow get: if fcRecordsFolderOpen_('registros/qmentum') && (activeUser() && (resource == null || qmParticipationMember(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || qmParticipationManager())));
+      allow list: if fcRecordsFolderOpen_('registros/qmentum') && (request.query.limit != null && request.query.limit <= 100 && qmParticipationMember(resource.data.unitId) && (resource.data.actorUid == request.auth.uid || qmParticipationManager()));
       allow update,delete: if false;
-      allow create: if request.resource.data.keys().hasOnly(['unitId','analysisId','signature','actorUid','modality','suggestion','status','createdAt']) &&
+      allow create: if fcRecordsFolderOpen_('registros/qmentum') && (request.resource.data.keys().hasOnly(['unitId','analysisId','signature','actorUid','modality','suggestion','status','createdAt']) &&
         qmParticipationMember(request.resource.data.unitId) && request.resource.data.actorUid == request.auth.uid && request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time &&
         request.resource.data.analysisId.matches('^[a-f0-9]{64}$') && request.resource.data.signature.matches('^[a-f0-9]{64}$') &&
         request.resource.data.modality in ['ACKNOWLEDGEMENT','SUGGESTION'] &&
         id == request.resource.data.analysisId+'_'+request.auth.uid+'_'+request.resource.data.modality && approvedAnalysis(request.resource.data) &&
-        request.resource.data.suggestion is string && (request.resource.data.modality == 'ACKNOWLEDGEMENT' ? request.resource.data.suggestion == '' : request.resource.data.suggestion.size() >= 8 && request.resource.data.suggestion.size() <= 2000);
+        request.resource.data.suggestion is string && (request.resource.data.modality == 'ACKNOWLEDGEMENT' ? request.resource.data.suggestion == '' : request.resource.data.suggestion.size() >= 8 && request.resource.data.suggestion.size() <= 2000));
     }
     match /qmentumParticipationReviews/{id} {
       function qmReviewMember(unit) {
@@ -249,12 +256,12 @@ function qmentumUnits_3_qmUnit(unit) { return qmentumUnits_3_qmMember() && unit 
         let p=get(/databases/$(database)/documents/qmentumParticipations/$(id)).data;
         return p.unitId == d.unitId && p.modality == 'SUGGESTION' && p.actorUid != request.auth.uid && p.status == 'AWAITING_APPROVAL';
       }
-      allow get: if activeUser() && (resource == null || qmReviewMember(resource.data.unitId) && qmReviewManager());
+      allow get: if fcRecordsFolderOpen_('registros/qmentum') && (activeUser() && (resource == null || qmReviewMember(resource.data.unitId) && qmReviewManager()));
       allow list,update,delete: if false;
-      allow create: if request.resource.data.keys().hasOnly(['participationId','unitId','actorUid','decision','reason','status','createdAt']) &&
+      allow create: if fcRecordsFolderOpen_('registros/qmentum') && (request.resource.data.keys().hasOnly(['participationId','unitId','actorUid','decision','reason','status','createdAt']) &&
         qmReviewMember(request.resource.data.unitId) && qmReviewManager() && request.resource.data.actorUid == request.auth.uid && request.resource.data.participationId == id &&
         request.resource.data.decision in ['APPROVE','REJECT'] && request.resource.data.reason is string && request.resource.data.reason.size() >= 8 && request.resource.data.reason.size() <= 1000 &&
-        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && reviewTarget(request.resource.data);
+        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && reviewTarget(request.resource.data));
     }
 
     match /qmentumWriteRequests/{id} {
@@ -265,21 +272,27 @@ function qmentumUnits_3_qmUnit(unit) { return qmentumUnits_3_qmMember() && unit 
           (d.operation == 'PUBLISH_DEFINITION' && a.role == 'manager' || d.operation == 'SAVE_MONTH' && d.payload.unitId in a.units &&
             get(/databases/$(database)/documents/qmentumUnits/$(d.payload.unitId)).data.active == true);
       }
-      allow get: if activeUser() && (resource == null || resource.data.actorUid == request.auth.uid);
+      allow get: if fcRecordsFolderOpen_('registros/qmentum') && (activeUser() && (resource == null || resource.data.actorUid == request.auth.uid));
       allow list,update,delete: if false;
-      allow create: if request.resource.data.keys().hasOnly(['actorUid','payloadHash','operation','payload','status','createdAt']) &&
+      allow create: if fcRecordsFolderOpen_('registros/qmentum') && (request.resource.data.keys().hasOnly(['actorUid','payloadHash','operation','payload','status','createdAt']) &&
         request.resource.data.actorUid == request.auth.uid && request.resource.data.payloadHash.matches('^[a-f0-9]{64}$') &&
         id == request.auth.uid+'_'+request.resource.data.payloadHash && request.resource.data.payload is map &&
-        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && allowed(request.resource.data);
+        request.resource.data.status == 'PENDING' && request.resource.data.createdAt == request.time && allowed(request.resource.data));
     }
 
 // END QMENTUM_FA
 
 
     // BEGIN_FC_PERFORMANCE_V1
+    function fcPerformanceFolderOpen_() {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['desempenho', 'desempenho/fc', 'registros', 'registros/ocorrencias', 'registros/qmentum']);
+    }
     function fcPerformanceMember_() {
       return activeUser() && request.auth.token.aud == 'indicadores---sahmt' &&
-        request.auth.token.iss == 'https://securetoken.google.com/indicadores---sahmt';
+        request.auth.token.iss == 'https://securetoken.google.com/indicadores---sahmt' && fcPerformanceFolderOpen_();
     }
     function fcPerformanceOwnRecord_() {
       return fcPerformanceMember_() && resource.data.uid == request.auth.uid && resource.data.category == 'PERFORMANCE';

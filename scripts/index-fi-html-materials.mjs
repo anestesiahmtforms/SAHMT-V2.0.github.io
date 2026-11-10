@@ -8,6 +8,7 @@ import {createFiServiceToken} from '../worker-fi-control/identity.js';
 import {createFiStore,FI_PROJECTS} from '../worker-fi-control/store.js';
 import {createFirestoreStore} from '../worker-training/firestore.js';
 import {normalize} from '../worker-fi-control/fi-ai-policy.js';
+import {createFiFolderReader} from '../worker-fi-control/folders.js';
 
 const apply=process.argv[2]==='--apply';
 if(process.argv.length>(apply?3:2))throw Error('USE_DRY_RUN_OR_APPLY');
@@ -25,6 +26,11 @@ const readSource=async(url,options)=>{
  }
 };
 const source=createFirestoreStore({projectId:FI_PROJECTS.FB,getAccessToken,fetchImpl:readSource});
+const policyStore=createFiStore({projectId:FI_PROJECTS.FA,getAccessToken,fetchImpl:readSource,allowedCollections:['runtimePolicy'],readOnly:true});
+const checkFolders=()=>createFiFolderReader({
+ readPolicy:()=>policyStore.get('runtimePolicy','folders'),
+ readTrainingPolicy:()=>source.get('htmlTrainingSettings','folders')
+}).checkHtmlLibrary();
 const target=createFiStore({projectId:FI_PROJECTS.FI,getAccessToken,allowedCollections:['fiSearchRecords']});
 const skipped=new Set(['script','style','noscript','template','form','input','textarea','button','svg']);
 function sectionText(html){
@@ -37,11 +43,13 @@ function sectionText(html){
  visit(parse5.parseFragment(html));
  return text.join(' ').replace(/\s+/g,' ').trim();
 }
+await checkFolders();
 const catalogue=await source.list('htmlTrainings',[],301);
 const published=catalogue.filter(row=>row.status==='PUBLISHED').sort((a,b)=>a.id.localeCompare(b.id));
 if(!published.length)throw Error('HTML_CATALOGUE_EMPTY');
 const entries=[];
 for(let start=0;start<published.length;start+=3){
+ await checkFolders();
  const batch=await Promise.all(published.slice(start,start+3).map(async row=>{
   const chunks=await source.list('htmlTrainingContent',[{field:'trainingId',op:'EQUAL',value:row.id},{field:'version',op:'EQUAL',value:row.version}],101);
   chunks.sort((a,b)=>a.index-b.index);
@@ -62,8 +70,10 @@ if(bytes.length>2*1024*1024||compressed.length>700000)throw Error('HTML_SEARCH_I
 const catalogVersion=rows=>rows.filter(t=>t.status==='PUBLISHED').map(t=>[t.id,t.version,t.title]).sort((a,b)=>a[0].localeCompare(b[0]));
 let changed=false;
 if(apply){
+ await checkFolders();
  const latest=await source.list('htmlTrainings',[],301);
  if(hash(catalogVersion(latest))!==hash(catalogVersion(catalogue)))throw Error('HTML_CATALOGUE_CHANGED');
+ await checkFolders();
  changed=await target.transaction(async tx=>{
   const old=await tx.get('fiSearchRecords','html-library');
   if(old?.revision===revision)return false;

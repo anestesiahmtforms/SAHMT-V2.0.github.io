@@ -1,3 +1,4 @@
+import {operationalContentAllowed} from './operational-folder-runtime.js';
 import {auth} from './firebase-auth.js';
 import {getGoogleProjectAuth,waitForIsolatedFfSession,confirmIsolatedFfAccess,currentGoogleProjectIdentity,googleProjectClientId} from './google-project-auth-runtime.js';
 import {FF,fail} from '../communication/domain.js';
@@ -13,7 +14,7 @@ export async function prepareCommunicationSession({isCurrent=()=>true}={}){
 }
 export function createCommunicationClient({isCurrent=()=>true}={}){
  let disposed=false,presenceReported=false;const controllers=new Set(),widgets=new Set(),reads=new Map();
- const current=()=>!disposed&&isCurrent()&&document.visibilityState!=='hidden';
+ const current=()=>!disposed&&isCurrent()&&document.visibilityState!=='hidden'&&operationalContentAllowed('comunicacao');
  const suspend=()=>{if(document.visibilityState==='hidden')for(const c of controllers)c.abort();};
  document.addEventListener('visibilitychange',suspend);
  async function sessions(){

@@ -11,7 +11,7 @@ if(!/^[A-Za-z0-9_-]{43}$/.test(secret))throw Error('CONTINUITY_KEY_INVALID');
 const command=process.argv[2];
 async function signed(body){
  const text=JSON.stringify(body),time=String(Date.now()),nonce=randomBytes(16).toString('hex'),signature=createHmac('sha256',secret).update(time+'\n'+nonce+'\n'+createHash('sha256').update(text).digest('hex')).digest('hex');
- const response=await fetch(endpoint,{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json','X-Continuity-Time':time,'X-Continuity-Nonce':nonce,'X-Continuity-Signature':signature},body:text,redirect:'error',signal:AbortSignal.timeout(30000)});
+ const response=await fetch(endpoint,{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json','X-Continuity-Time':time,'X-Continuity-Nonce':nonce,'X-Continuity-Signature':signature,'X-Continuity-Policy-Authorization':'Bearer '+(process.env.SAHMT_CONTINUITY_POLICY_ACCESS_TOKEN||'')},body:text,redirect:'error',signal:AbortSignal.timeout(30000)});
  const value=await response.json();if(!response.ok)throw Error(/^CONTINUITY_[A-Z_]+$/.test(value.code)?value.code:'CONTINUITY_REMOTE_UNAVAILABLE');return value;
 }
 async function workerInstall(){

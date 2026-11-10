@@ -18,6 +18,6 @@ export function stressRules(){return `
       allow update: if false;
     }
     match /stressCycles/{id} { allow read, write: if false; }
-    match /stressReports/{id} { allow read: if climateReader(); allow write: if false; }
+    match /stressReports/{id} { allow read: if surveyFolderOpen_('consultas/pesquisas/estresse') && climateReader(); allow write: if false; }
     // END_STRESS_SURVEY_V1
 `;}

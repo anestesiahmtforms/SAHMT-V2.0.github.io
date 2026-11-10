@@ -19,6 +19,7 @@ test('production worker reads own FE status with FA login only, without changing
  ]);
  const mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundled.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],bindings:{INSTITUTIONAL_SURVEYS_ENABLED:'true',FA_WEB_API_KEY:'fa-key',FB_TRAINING_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
   const url=new URL(request.url);calls.push({path:url.pathname,method:request.method});
+   if(new URL(request.url).pathname.endsWith('/runtimePolicy/folders'))return new Response(null,{status:404});
   if(url.hostname==='identitytoolkit.googleapis.com'){assert.equal(url.pathname,'/v1/accounts:lookup');assert.equal(url.searchParams.get('key'),'fa-key');assert.equal((await request.json()).idToken,token);return Response.json({users:[{localId:uid,email,emailVerified:true,validSince:String(now-1)}]});}
   if(url.hostname==='oauth2.googleapis.com')return Response.json({access_token:'service-fixture',expires_in:3600,token_type:'Bearer'});
   assert.equal(url.hostname,'firestore.googleapis.com');assert.equal(request.method,'GET');assert.ok(url.pathname.startsWith(root));

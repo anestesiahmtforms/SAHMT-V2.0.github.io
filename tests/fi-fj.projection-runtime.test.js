@@ -1,9 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {projectionHeaders, verifyProjectionRequest, applyEventProjection, drainEventProjections} from '../worker-operational-domain/projection-runtime.js';
+import {createOperationalDomainWorker} from '../worker-operational-domain/worker.js';
 const secret = 'synthetic'.repeat(8), now = 1800000000000;
 const event = {eventId: 'event', version: 2, date: '2026-11-06', active: true, scheduleSigla: 'AA', memberSigla: 'BB', actorUid: 'member'};
 const body = JSON.stringify(event);
+
+function trackReads(store){const calls=[],get=store.get.bind(store),list=store.listPending.bind(store);store.get=async(c,id)=>{calls.push(c+'/'+id);return get(c,id);};store.listPending=async()=>{calls.push('queue');return list();};return calls;}
+test('disabled FI/FJ projection folders stop before queue or source reads and preserve pending entries',async()=>{
+ for(const station of ['FI','FJ'])for(const disabled of [['operacao'],['operacao/eventos'],['operacao/escala']]){
+  const store=memoryStore();store.documents.set('runtimePolicy/folders',{schemaVersion:1,revision:1,disabled});
+  store.documents.set('eventProjectionOutbox/event-2',{status:'PENDING'});const calls=trackReads(store);
+  const result=await drainEventProjections({station,store,secret,fetchImpl:()=>assert.fail('disabled queue must not deliver')});
+  assert.equal(result.paused,true);assert.deepEqual(calls,['runtimePolicy/folders']);
+  assert.deepEqual(store.documents.get('eventProjectionOutbox/event-2'),{status:'PENDING'});
+ }
+});
+test('disabled target rejects a direct projection before receipt and schedule reads',async()=>{
+ const store=memoryStore();store.documents.set('runtimePolicy/folders',{schemaVersion:1,revision:2,disabled:['operacao/escala']});const calls=trackReads(store);
+ await assert.rejects(applyEventProjection(event,store),{code:'DOMAIN_FOLDER_DISABLED'});
+ assert.deepEqual(calls,['runtimePolicy/folders']);assert.equal(store.documents.has('eventProjections/event'),false);
+});
+test('malformed operational policy fails closed before queue reads; unrelated siblings remain usable',async()=>{
+ for(const policy of [{},{schemaVersion:1,revision:0,disabled:[]},{schemaVersion:1,revision:1,disabled:['operacao//bad']}]){
+  const store=memoryStore();store.documents.set('runtimePolicy/folders',policy);const calls=trackReads(store);
+  await assert.rejects(drainEventProjections({station:'FJ',store}),{code:'DOMAIN_FOLDER_POLICY_INVALID'});assert.deepEqual(calls,['runtimePolicy/folders']);
+ }
+ const store=memoryStore();store.documents.set('runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['operacao/pessoas','operacao/eventos-privados']});
+ assert.equal((await applyEventProjection(event,store)).status,'APPLIED');
+});
+test('scheduled worker observes policy before queues and target pause leaves source outbox untouched',async()=>{
+ const store=memoryStore();store.documents.set('runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['operacao']});const calls=trackReads(store),tasks=[];
+ const worker=createOperationalDomainWorker({createService:()=>({accessToken:async()=>'synthetic'}),createStore:()=>store});
+ await worker.scheduled({}, {MODULE_STATION:'FI',MODULE_PROJECT_ID:'sahmt-operacional-fi',MODULE_CUTOVER_ACTIVE:'true',MODULE_SERVICE_ACCOUNT_JSON:'{}',EVENT_PROJECTION_SHARED_SECRET:secret},{waitUntil:promise=>tasks.push(promise)});
+ await Promise.all(tasks);assert.deepEqual(calls,['runtimePolicy/folders']);
+ store.documents.delete('runtimePolicy/folders');store.documents.set('events/event',{...event,updatedByUid:'member'});store.documents.set('eventProjectionOutbox/event-2',{status:'PENDING'});
+ const result=await drainEventProjections({station:'FI',store,secret,fetchImpl:async()=>Response.json({code:'DOMAIN_FOLDER_DISABLED'},{status:403})});
+ assert.equal(result.paused,true);assert.deepEqual(store.documents.get('eventProjectionOutbox/event-2'),{status:'PENDING'});
+});
+test('policy changes between queue discovery and processing stop before event reads',async()=>{
+ const store=memoryStore();store.listPending=async()=>{store.documents.set('runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['operacao/eventos']});return [{id:'event-2',data:{eventId:'event',version:2}}];};const calls=trackReads(store);
+ const result=await drainEventProjections({station:'FI',store,secret});assert.equal(result.paused,true);
+ assert.deepEqual(calls,['runtimePolicy/folders','queue','runtimePolicy/folders']);
+});
 test('FJ consumes its own event outbox without a cross-project request or shared secret', async () => {
   const store = memoryStore();
   store.documents.set('events/event', {...event, updatedByUid:'member'});

@@ -1,3 +1,4 @@
+import {assertFeFolderReadable} from '../worker-fe-surveys/performance-policy.js';
 import {verifyTrainingIdentity} from '../worker-training/google-auth.js';
 import {createFirestoreStore} from '../worker-training/firestore.js';
 import {vacationServiceToken} from './google.js';
@@ -6,7 +7,14 @@ const runtimes=new WeakMap();
 function runtime(env){
  if(!runtimes.has(env)){
   const getAccessToken=vacationServiceToken({credentials:JSON.parse(env.FE_SERVICE_ACCOUNT_JSON)});
-  runtimes.set(env,createVacationService({store:createFirestoreStore({projectId:'outros-48120',getAccessToken})}));
+  const service=createVacationService({store:createFirestoreStore({projectId:'outros-48120',getAccessToken})});
+  const check=()=>assertFeFolderReadable('consultas/ferias-2027',getAccessToken,null,'VACATIONS');
+  runtimes.set(env,{async execute(...args){
+   await check();
+   const result=await service.execute(...args);
+   await check();
+   return result;
+  }});
  }
  return runtimes.get(env);
 }

@@ -25,6 +25,41 @@ function evaluationDocumentName_(collectionId, documentId) {
   return 'projects/' + FC_PERFORMANCE_PROJECT_ + '/databases/(default)/documents/' + fcPerformanceCollection_(collectionId) + '/' + documentId;
 }
 
+function fcAssertPerformanceFolder_(url, options) {
+  const payload = options && options.payload ? JSON.parse(options.payload) : {};
+  const paths = [url].concat(payload.documents || [], (payload.writes || []).map(function (write) {
+    return (write.update || write.transform || {}).name || (write.transform || {}).document || '';
+  }), ((payload.structuredQuery || payload.structuredAggregationQuery?.structuredQuery)?.from || []).map(function (source) {
+    return '/' + source.collectionId + '/';
+  }));
+  const folders = [];
+  if (paths.some(path => /\/fcPerformance[A-Za-z]+(?:\/|$)/.test(path))) {
+    folders.push('desempenho/fc', 'registros/ocorrencias', 'registros/qmentum');
+  }
+  if (paths.some(path => /\/qmentum[A-Za-z]+(?:\/|$)/.test(path))) folders.push('registros/qmentum');
+  if (paths.some(path => /\/occurrence[A-Za-z]+(?:\/|$)/.test(path))) folders.push('registros/ocorrencias');
+  if (folders.length) fcRequireFolders_(folders);
+}
+
+function fcRequireFolders_(folders) {
+  const policyUrl = 'https://firestore.googleapis.com/v1/projects/' + FC_PERFORMANCE_PROJECT_ + '/databases/(default)/documents/runtimePolicy/folders';
+  let document;
+  try {
+    document = firestoreRequest_(policyUrl, {method:'get', followRedirects:false});
+  } catch (error) {
+    if (error.status === 404) return;
+    throw error;
+  }
+  const policy = firestoreFieldsToJs_(document && document.fields || {});
+  if (policy.schemaVersion !== 1 || !Number.isSafeInteger(policy.revision) || policy.revision < 1 ||
+      !Array.isArray(policy.disabled) || policy.disabled.some(function (id) { return typeof id !== 'string'; })) {
+    throw Error('FC_PERFORMANCE_FOLDER_POLICY_INVALID');
+  }
+  if (policy.disabled.some(id => folders.some(folder => folder === id || folder.indexOf(id + '/') === 0))) {
+    throw Error('FC_PERFORMANCE_FOLDER_DISABLED');
+  }
+}
+
 function fcAssertFirestoreDestination_(url, options) {
   if (typeof url !== 'string' || !/^https:\/\/firestore\.googleapis\.com\/v1\/projects\/indicadores---sahmt\/databases\/\(default\)\/documents(?:[/:?]|$)/.test(url) ||
       /(?:\/\.\.?\/|%2e|%2f|%5c|\\)/i.test(url)) throw Error('FC_PERFORMANCE_PROJECT_DENIED');

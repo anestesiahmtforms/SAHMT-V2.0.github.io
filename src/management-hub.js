@@ -1,3 +1,5 @@
+import {consolidatedPerformanceFolders} from './operational-folders.js';
+import {operationalContentAllowed} from './operational-folder-runtime.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import './management-hub.css';
 import './fe-performance.css';
@@ -53,13 +55,20 @@ const panels={
 };
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
-export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,performanceUid=null,fbPerformanceReleased=false,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},performIndicators=async()=>{throw Error('INDICATOR_UNAVAILABLE');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{}}={}){
- access={...access,communication:communicationAllowed===true};
+export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,performanceUid=null,fbPerformanceReleased=false,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},performIndicators=async()=>{throw Error('INDICATOR_UNAVAILABLE');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true}={}){
+ const communicationVisible=communicationAllowed===true;
+ communicationAllowed=communicationAllowed===true&&operationalContentAllowed('comunicacao');
+ access={...access,communication:communicationAllowed};
  if(initialPanel==='indicators')initialPanel='records';
  const institutionalAllowed=()=>access.surveys===true&&access.institutionalSurveys!==false;
  const restrictedSurveyPanels=['institutional','climateForm','stressForm','professional','epidemiological'];
  const itemAllowed=item=>restrictedSurveyPanels.includes(item.panel)?institutionalAllowed():item.panel==='surveys'?(access.surveys===true||access.yearEndSchedule===true||access.vacations2027===true):(!item.access||access[item.access]===true);
- const panelAllowed=name=>restrictedSurveyPanels.includes(name)?institutionalAllowed():name==='home'||name==='surveys'&&(access.surveys===true||access.yearEndSchedule===true||access.vacations2027===true)||access[name==='yearEnd'?'yearEndSchedule':['institutional','climateForm','stressForm','professional','epidemiological'].includes(name)?'surveys':name]===true;
+ const panelFolders={records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',institutional:'consultas/pesquisas',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027',fePerformance:'desempenho/fe',sahmtPerformance:'desempenho/sahmt'};
+ const panelFolderAllowed=name=>name==='sahmtPerformance'
+  ? consolidatedPerformanceFolders.every(folderAllowed)
+  : !Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]);
+ const panelAllowed=name=>panelFolderAllowed(name)&&profilePanelAllowed(name);
+ const profilePanelAllowed=name=>restrictedSurveyPanels.includes(name)?institutionalAllowed():name==='home'||name==='surveys'&&(access.surveys===true||access.yearEndSchedule===true||access.vacations2027===true)||access[name==='yearEnd'?'yearEndSchedule':['institutional','climateForm','stressForm','professional','epidemiological'].includes(name)?'surveys':name]===true;
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');
@@ -72,11 +81,11 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   dialog.querySelector('#management-hub-title').textContent=spec.title;
   dialog.querySelector('[data-hub-heading-icon]').innerHTML=panel==='home'?'<img class="management-hub-diamond" src="'+assetBase+'assets/selo-qga-accredited-qmentum-diamond.png" alt="Diamond Qmentum" width="88" height="88" decoding="async">':icon(spec.icon);
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
-   if(item.access==='communication'&&!communicationAllowed)return '';
+   if(item.access==='communication'&&!communicationVisible)return '';
    if(item.access==='fiControl'&&access.fiControl!==true)return '';
    if(panel==='surveys'&&access.institutionalSurveys===false&&(restrictedSurveyPanels.includes(item.panel)||item.panel==='fePerformance'))return '';
    if(['performance','faPerformance','fcPerformance','fePerformance'].includes(item.access)&&access[item.access]!==true)return '';
-   const allowed=itemAllowed(item);
+   const allowed=itemAllowed(item)&&panelFolderAllowed(item.panel||item.route);
    return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
   if(panel==='communication'&&communicationAllowed&&openCommunication){
@@ -105,10 +114,10 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    }).catch(()=>{if(current())host.innerHTML='<p role="alert">Não foi possível abrir seu desempenho. Volte e tente novamente.</p>';});
   }
   if(panel==='results'&&access.results===true){
-   body.innerHTML='<div class="management-hub-grid">'+(access.sahmtPerformance===true?'<button type="button" class="management-hub-button" data-hub-sahmt-performance><span class="management-hub-medallion">'+icon('performance')+'</span><span class="management-hub-label">DESEMPENHO - SAHMT</span><span aria-hidden="true">›</span></button>':'')+'</div>';
+   body.innerHTML=(access.sahmtPerformance===true?'<button type="button" class="management-hub-button" data-hub-sahmt-performance'+(panelFolderAllowed('sahmtPerformance')?'':' disabled aria-disabled="true"')+'><span class="management-hub-medallion">'+icon('performance')+'</span><span class="management-hub-label">DESEMPENHO - SAHMT</span><span aria-hidden="true">›</span></button>':'');
   }
   if(panel==='institutional'&&institutionalAllowed()){
-   const surveyCard=(kind,url,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+(kind==='climate'?'climateForm':'stressForm')+'"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
+   const surveyCard=(kind,url,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+(kind==='climate'?'climateForm':'stressForm')+'"'+(panelFolderAllowed(kind==='climate'?'climateForm':'stressForm')?'':' disabled aria-disabled="true"')+'><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+subtitle+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
    body.innerHTML='<div class="management-surveys"><div class="management-surveys-intro"><h3>Pesquisas institucionais</h3><p>Participação voluntária. Escolha uma pesquisa para continuar.</p></div>'+(climateEnabled?'<div class="management-survey-links">'+surveyCard('climate','https://outros-48120.web.app/','PESQUISA DE CLIMA ORGANIZACIONAL','Ambiente, comunicação e colaboração')+surveyCard('wellbeing','https://outros-48120.web.app/stress.html','AVALIAÇÃO DE ESTRESSE E FADIGA','Saúde, recuperação e bem-estar')+'</div>':'<p class="management-surveys-pending">Aguardando liberação das pesquisas.</p>')+'</div>';
   }
   if(panel==='fePerformance'&&access.fePerformance===true){
@@ -141,12 +150,12 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  };
  const goBack=()=>{const parent=panels[panel].parent;if(parent){panel=parent;render();}else onExit();};
  const click=event=>{
-  if(event.target.closest('[data-hub-sahmt-performance]')){if(panel==='results'&&access.sahmtPerformance===true){panel='sahmtPerformance';render();}return;}
+  if(event.target.closest('[data-hub-sahmt-performance]')){if(panel==='results'&&panelAllowed('sahmtPerformance')){panel='sahmtPerformance';render();}return;}
   const survey=event.target.closest('[data-survey-panel]');
-  if(survey){if(panel==='institutional'&&climateEnabled&&access.surveys===true&&['climateForm','stressForm'].includes(survey.dataset.surveyPanel)){panel=survey.dataset.surveyPanel;render();}return;}
+  if(survey){if(panel==='institutional'&&climateEnabled&&access.surveys===true&&['climateForm','stressForm'].includes(survey.dataset.surveyPanel)&&panelFolderAllowed(survey.dataset.surveyPanel)){panel=survey.dataset.surveyPanel;render();}return;}
   const button=event.target.closest('[data-hub-item]');if(!button||button.disabled)return;
   const item=panels[panel].items?.[Number(button.dataset.hubItem)];
-  if(!item||!itemAllowed(item))return;
+  if(!item||!itemAllowed(item)||!panelFolderAllowed(item.panel||item.route))return;
   if(item.panel){panel=item.panel;render();}else if(item.route)onNavigate(item.route);
  };
  const cancel=event=>{event.preventDefault();goBack();};

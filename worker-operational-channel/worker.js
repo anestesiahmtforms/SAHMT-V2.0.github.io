@@ -1,3 +1,4 @@
+import {createChannelFolderCheck} from './folder-policy.js';
 import {CHANNEL_COLLECTIONS, CHANNEL_GRANT_MS, parseChannelPolicy, channelActorFromProfile, normalizeChannelSubmission, canReadChannelCollection,
   canReadChannelRecord,canWriteChannel,validDay,validId,channelError} from '../src/provisional-channel-contract.js';
 import {createChannelIdentityVerifier,readChannelJson} from './identity.js';
@@ -43,7 +44,7 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
     try {
       if(!env.OPERATIONAL_CHANNEL_STATE?.idFromName||!env.OPERATIONAL_CHANNEL_AUTHORIZATION?.idFromName)throw channelError('CHANNEL_BINDING_MISSING',503);
       if(url.pathname==='/v1/operational-channel/events')return await upgradeRealtime(request,env,now());
-      if(url.pathname==='/v1/operational-continuity/import'){const result=await importContinuitySnapshot(request,env,now());return json(await result.json(),result.status,origin);}
+      if(url.pathname==='/v1/operational-continuity/import'){const result=await importContinuitySnapshot(request,env,now(),{fetchImpl});return json(await result.json(),result.status,origin);}
       const body=await readChannelJson(request);
       if(!body||!['authorize','submit','list','ack','withdraw','status','bootstrap','recover','source','watch'].includes(body.action))throw channelError('CHANNEL_REQUEST_INVALID');
       const bearer=request.headers.get('Authorization')||'';
@@ -51,16 +52,19 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       const appCheckToken=request.headers.get('X-Firebase-AppCheck');
       if(appCheckToken&&!/^[A-Za-z0-9_.-]{100,16000}$/.test(appCheckToken))throw channelError('CHANNEL_APP_CHECK_INVALID',401);
       const identity=await verifyIdentity(bearer.slice(7),env.FA_FIREBASE_WEB_API_KEY,appCheckToken);
+      const checkFolders=createChannelFolderCheck({fetchImpl,bearer,appCheckToken,body});
+      await checkFolders();
+      const deliver=async(value,status=200,responseOrigin=origin)=>{if(status<400)await checkFolders();return json(value,status,responseOrigin);};
       if(body.action==='source'){
         if(env.OPERATIONAL_CONTINUITY_ENABLED!=='true')throw channelError('CONTINUITY_DISABLED',503);
         if(Object.keys(body).some(key=>!['action','path'].includes(key))||! /^(users|stations|contacts|eventMembers|appConfig|eventCatalogs|vacations|scheduleDays|events|labels|checklists)\/[A-Za-z0-9_-]{1,128}$/.test(body.path||''))throw channelError('CHANNEL_REQUEST_INVALID');
         if(retiredContinuityKind(env,body.path.split('/')[0])||(env.FH_MODULE_RETIRED==='true'&&body.path==='appConfig/labelStaff'))throw channelError('CHANNEL_MODULE_MOVED',409);
         const data=await firestore(body.path,bearer,appCheckToken),result=await recordContinuitySourceChange(env,body.path,data,now());
-        return json({code:'CHANNEL_SOURCE_UPDATED'},result.status,origin);
+        return await deliver({code:'CHANNEL_SOURCE_UPDATED'},result.status,origin);
       }
       if(['bootstrap','recover'].includes(body.action)){
         if(Object.keys(body).some(key=>!['action','day','after'].includes(key)))throw channelError('CHANNEL_REQUEST_INVALID');
-        const result=await bootstrapContinuity(env,identity.uid,body.day,now(),{recoverOnly:body.action==='recover',after:body.after});return json(await result.json(),result.status,origin);
+        const result=await bootstrapContinuity(env,identity.uid,body.day,now(),{recoverOnly:body.action==='recover',after:body.after});return await deliver(await result.json(),result.status,origin);
       }
       const authority=env.OPERATIONAL_CHANNEL_AUTHORIZATION.get(env.OPERATIONAL_CHANNEL_AUTHORIZATION.idFromName(identity.uid));
       let grantResponse=await internal(authority,'get',{now:now()}),grant=await grantResponse.json(),actor=grant.actor;
@@ -69,7 +73,7 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
         if(!actor||actor.fromContinuity||body.refresh===true||actor.expiresAt<=now()||now()-actor.verifiedAt>=12*3600000) {
           // One profile read on initial enrollment / real profile refresh. Never
           // invoked by submit/list polling, so quota exhaustion does not create a loop.
-          if(actor&&body.refresh===true&&now()-actor.verifiedAt<60000)return json({code:'CHANNEL_AUTHORIZED',expiresAt:actor.expiresAt},200,origin);
+          if(actor&&body.refresh===true&&now()-actor.verifiedAt<60000)return await deliver({code:'CHANNEL_AUTHORIZED',expiresAt:actor.expiresAt},200,origin);
           let profile;
           try {profile=await firestore('users/'+encodeURIComponent(identity.uid),bearer,appCheckToken);actor=channelActorFromProfile(identity.uid,profile,now());}
           catch(error){if(error.status===403)await internal(authority,'revoke',{now:now()});throw error;}
@@ -77,7 +81,7 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
           if(env.OPERATIONAL_CONTINUITY_ENABLED==='true')await internal(authority,'continuity-profile-put',{profile:{schemaVersion:1,uid:identity.uid,verifiedAt:now(),profile:{...profile,uid:profile.uid||identity.uid}},now:now()});
         }
         if(!actor.active||!actor.access)throw channelError('CHANNEL_USER_DENIED',403);
-        return json({code:'CHANNEL_AUTHORIZED',expiresAt:actor.expiresAt},200,origin);
+        return await deliver({code:'CHANNEL_AUTHORIZED',expiresAt:actor.expiresAt},200,origin);
       }
       if(!actor&&!grant.revoked&&env.OPERATIONAL_CHANNEL_AUTHORIZATION_JSON) {
         const policy=parseChannelPolicy(env.OPERATIONAL_CHANNEL_AUTHORIZATION_JSON,now());actor=policy.users.get(identity.uid);
@@ -87,7 +91,7 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       if(actor.expiresAt<=now()||actor.verifiedAt>now()||actor.expiresAt-actor.verifiedAt>CHANNEL_GRANT_MS)throw channelError('CHANNEL_AUTHORIZATION_EXPIRED',403);
       if(body.action==='watch'){
         if(Object.keys(body).some(key=>key!=='action'))throw channelError('CHANNEL_REQUEST_INVALID');
-        return json(await issueRealtimeTicket(env,actor,now()),200,origin);
+        return await deliver(await issueRealtimeTicket(env,actor,now()),200,origin);
       }
       const collection=body.collection,day=body.day;
       if(!CHANNEL_COLLECTIONS.includes(collection)||!validDay(day))throw channelError('CHANNEL_REQUEST_INVALID');
@@ -105,28 +109,28 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
           await notifyRealtime(env,collection,day);
         }
         delete value._superseded;
-        return json(value,response.status,origin);
+        return await deliver(value,response.status,origin);
       }
       if(body.action==='list') {
         if(!canReadChannelCollection(collection,actor))throw channelError('CHANNEL_READ_DENIED',403);
-        const response=await internal(stub,'list',{actor,now:now(),cursor:body.cursor||null});return json({...await response.json(),authorizedUntil:actor.expiresAt},response.status,origin);
+        const response=await internal(stub,'list',{actor,now:now(),cursor:body.cursor||null});return await deliver({...await response.json(),authorizedUntil:actor.expiresAt},response.status,origin);
       }
       if(!validId(body.requestId)||!canWriteChannel(collection,actor))throw channelError('CHANNEL_WRITE_DENIED',403);
-      if(body.action==='withdraw'){const response=await internal(stub,'withdraw',{actor,collection,requestId:body.requestId,now:now()}),value=await response.json();if(response.ok){await setContinuityOperationState(env,actor.uid,body.requestId,value.code==='CHANNEL_CONFIRMED'?'confirmed':'withdrawn');await notifyRealtime(env,collection,day);}return json(value,response.status,origin);}
+      if(body.action==='withdraw'){const response=await internal(stub,'withdraw',{actor,collection,requestId:body.requestId,now:now()}),value=await response.json();if(response.ok){await setContinuityOperationState(env,actor.uid,body.requestId,value.code==='CHANNEL_CONFIRMED'?'confirmed':'withdrawn');await notifyRealtime(env,collection,day);}return await deliver(value,response.status,origin);}
       const pendingResponse=await internal(stub,'get',{actor,requestId:body.requestId,now:now()}),pending=await pendingResponse.json();
-      if(pendingResponse.status!==200)return json(pending,pendingResponse.status,origin);
-      if(body.action==='status')return json({code:'CHANNEL_RECEIPT',state:pending.state},200,origin);
-      if(pending.state==='confirmed'){await setContinuityOperationState(env,actor.uid,body.requestId,'confirmed');return json({code:'CHANNEL_CONFIRMED'},200,origin);}
-      if(pending.state!=='pending')return json({code:'CHANNEL_CONFIRMATION_CONFLICT'},409,origin);
+      if(pendingResponse.status!==200)return await deliver(pending,pendingResponse.status,origin);
+      if(body.action==='status')return await deliver({code:'CHANNEL_RECEIPT',state:pending.state},200,origin);
+      if(pending.state==='confirmed'){await setContinuityOperationState(env,actor.uid,body.requestId,'confirmed');return await deliver({code:'CHANNEL_CONFIRMED'},200,origin);}
+      if(pending.state!=='pending')return await deliver({code:'CHANNEL_CONFIRMATION_CONFLICT'},409,origin);
       // Only an explicit post-commit acknowledgment reads Firestore; polling never does.
       const path=collection==='scheduleReleases'?'scheduleDays/'+day:collection+'/'+body.requestId;
-      let fields;try{fields=await firestore(path,bearer,appCheckToken);}catch(error){return json({code:error.status===409?'CHANNEL_CONFIRMATION_CONFLICT':'CHANNEL_CONFIRMATION_PENDING'},[403,409].includes(error.status)?409:503,origin);}
+      let fields;try{fields=await firestore(path,bearer,appCheckToken);}catch(error){return await deliver({code:error.status===409?'CHANNEL_CONFIRMATION_CONFLICT':'CHANNEL_CONFIRMATION_PENDING'},[403,409].includes(error.status)?409:503,origin);}
       const matches=collection==='scheduleReleases'?!updateScheduleReleaseState(fields.highlights?.siglas||[],pending.data).changed:
         fields.id===body.requestId&&fields.clientMutationId===body.requestId&&fields.createdByUid===actor.uid&&
         Object.entries(pending.data).filter(([key])=>!['createdByName','updatedByName'].includes(key)).every(([key,value])=>canonical(fields[key])===canonical(value));
-      if(!matches)return json({code:'CHANNEL_CONFIRMATION_CONFLICT'},409,origin);
+      if(!matches)return await deliver({code:'CHANNEL_CONFIRMATION_CONFLICT'},409,origin);
       await recordContinuityCommit(env,collection,day,fields,now());
-      const response=await internal(stub,'ack',{actor,requestId:body.requestId,now:now()});if(response.ok){await setContinuityOperationState(env,actor.uid,body.requestId,'confirmed');await notifyRealtime(env,collection,day);}return json(await response.json(),response.status,origin);
+      const response=await internal(stub,'ack',{actor,requestId:body.requestId,now:now()});if(response.ok){await setContinuityOperationState(env,actor.uid,body.requestId,'confirmed');await notifyRealtime(env,collection,day);}return await deliver(await response.json(),response.status,origin);
     }catch(error){return json({code:/^(?:CHANNEL|CONTINUITY)_[A-Z_]+$/.test(error.code||'')?error.code:'CHANNEL_UNAVAILABLE'},error.status||503,origin);}
   }};
 }

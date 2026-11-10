@@ -11,6 +11,15 @@ beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisab
  await setDoc(doc(db,'evaluationSummaries','member'),{uid:'member',performanceTotal:3});
  });});
 const dbFor=uid=>env.authenticatedContext(uid,{firebase:{sign_in_provider:'google.com'}}).firestore();
+test('an approved reader can watch only the folder policy document and cannot alter it',async()=>{
+ const ref=db=>doc(db,'htmlTrainingSettings','folders');
+ await env.withSecurityRulesDisabled(c=>setDoc(ref(c.firestore()),{version:1,disabled:[]}));
+ await assertSucceeds(getDoc(ref(dbFor('member'))));
+ await assertFails(getDoc(ref(dbFor('revoked'))));
+ await assertFails(getDoc(ref(env.unauthenticatedContext().firestore())));
+ await assertFails(getDoc(doc(dbFor('member'),'htmlTrainingSettings','folderIndex')));
+ await assertFails(setDoc(ref(dbFor('admin')),{version:2,disabled:[]}));
+});
 test('direct Google member reads own performance without custom claims or a lease',async()=>{
  await assertSucceeds(getDoc(doc(dbFor('member'),'evaluationSummaries','member')));
  await assertFails(getDoc(doc(dbFor('other'),'evaluationSummaries','member')));
@@ -23,4 +32,20 @@ test('even an administrator cannot invent scores, replace cutover evidence or wr
 test('inactive cutover evidence blocks domain reads while a user can inspect their existing profile',async()=>{
  await env.withSecurityRulesDisabled(async c=>updateDoc(doc(c.firestore(),'evaluationRuntime','independentFbCutover'),{status:'PREPARED'}));
  await assertFails(getDoc(doc(dbFor('member'),'evaluationSummaries','member')));await assertSucceeds(getDoc(doc(dbFor('member'),'users','member')));
+});
+
+test('disabled management child blocks its documents while sibling and catalog remain available',async()=>{
+ await env.withSecurityRulesDisabled(async context=>{
+  const db=context.firestore();
+  await setDoc(doc(db,'runtimePolicy','folders'),{schemaVersion:1,revision:1,disabled:['gestao/area-gestao-da-qualidade']});
+  await setDoc(doc(db,'documents','quality'),{managementAreaId:'area-gestao-da-qualidade'});
+  await setDoc(doc(db,'documents','finance'),{managementAreaId:'area-gestao-financeira'});
+  await setDoc(doc(db,'managementAreas','area-gestao-da-qualidade'),{active:true});
+ });
+ for(const uid of ['member','admin']){
+  const db=dbFor(uid);
+  await assertFails(getDoc(doc(db,'documents','quality')));
+  await assertSucceeds(getDoc(doc(db,'documents','finance')));
+  await assertSucceeds(getDoc(doc(db,'managementAreas','area-gestao-da-qualidade')));
+ }
 });

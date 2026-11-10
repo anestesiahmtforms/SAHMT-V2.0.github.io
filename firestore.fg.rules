@@ -1,6 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // FOLDER_READ_POLICY_V1: source-local read gate, including administrator reads.
+    // Missing control document preserves bootstrap behavior; malformed policy denies.
+    function folderReadPolicyValid_(policy) {
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 && policy.disabled is list;
+    }
+    function folderReadAllowed_(ancestors) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      return !exists(path) || (folderReadPolicyValid_(get(path).data) && !get(path).data.disabled.hasAny(ancestors));
+    }
     function signedIn() { return request.auth != null; }
     function moduleSession() {
       return request.auth != null && request.auth.token.aud == 'sahmt-checklist-fg' &&
@@ -99,7 +108,7 @@ service cloud.firestore {
           data.updatedByUid == request.auth.uid && data.updatedAt is timestamp && data.version is int && data.version >= 1;
       }
 
-      allow read: if moduleSession() && (checklistAccess());
+      allow read: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (moduleSession() && (checklistAccess()));
       allow create: if moduleSession() && (can('checklistManage') && validStation(request.resource.data, stationId) &&
         (!request.resource.data.keys().hasAny(['functionLabel']) || stationTitleEditor()) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
@@ -136,13 +145,13 @@ service cloud.firestore {
           data.responsibleUid == null && data.responsibleName == null && data.responsibleEmail == null;
       }
 
-      allow read: if moduleSession() && (checklistAccess());
+      allow read: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (moduleSession() && (checklistAccess()));
       allow create: if moduleSession() && (can('checklistWrite') && validChecklistRecord(request.resource.data, checklistId));
       allow update: if moduleSession() && (false);
       allow delete: if moduleSession() && (false);
     }
     match /checklistSignatures/{signatureId} {
-      allow read: if moduleSession() && (can('checklistRead'));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (moduleSession() && (can('checklistRead')));
       allow write: if moduleSession() && (false);
     }
     match /checklistSignatureRequests/{requestId} {
@@ -166,18 +175,18 @@ service cloud.firestore {
         return common && acknowledgement && acknowledgementFields && checklistScienceWindowOpen(request.time);
       }
 
-      allow get: if moduleSession() && (signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||
-        (validIsoDay(requestId) && checklistAccess()) || resource.data.signerUid == request.auth.uid || can('checklistManage')));
-      allow list: if moduleSession() && (can('checklistManage'));
+      allow get: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (moduleSession() && (signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||
+        (validIsoDay(requestId) && checklistAccess()) || resource.data.signerUid == request.auth.uid || can('checklistManage'))));
+      allow list: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (moduleSession() && (can('checklistManage')));
       allow create: if moduleSession() && (validChecklistSignatureRequest(request.resource.data, requestId));
       allow update, delete: if moduleSession() && (false);
     }
-    match /checklistResponsibilities/{day} { allow read: if moduleSession() && (checklistAccess()); allow write: if moduleSession() && (false); }
+    match /checklistResponsibilities/{day} { allow read: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (moduleSession() && (checklistAccess())); allow write: if moduleSession() && (false); }
 
-    match /fgPerformanceReceipts/{day} { allow read: if moduleSession() && checklistAccess(); allow write: if false; }
-    match /fgPerformanceLedger/{id} { allow read: if moduleSession() && checklistAccess() && (resource.data.uid == request.auth.uid || isAdmin()); allow write: if false; }
-    match /fgPerformanceSummaries/{uid} { allow read: if moduleSession() && checklistAccess(); allow write: if false; }
-    match /fgPerformanceRuntime/{id} { allow read: if moduleSession() && checklistAccess() && id == 'state'; allow write: if false; }
+    match /fgPerformanceReceipts/{day} { allow read: if folderReadAllowed_(['operacao', 'operacao/checklist', 'operacao/checklist/desempenho']) && (moduleSession() && checklistAccess()); allow write: if false; }
+    match /fgPerformanceLedger/{id} { allow read: if folderReadAllowed_(['operacao', 'operacao/checklist', 'operacao/checklist/desempenho']) && (moduleSession() && checklistAccess() && (resource.data.uid == request.auth.uid || isAdmin())); allow write: if false; }
+    match /fgPerformanceSummaries/{uid} { allow read: if folderReadAllowed_(['operacao', 'operacao/checklist', 'operacao/checklist/desempenho']) && (moduleSession() && checklistAccess()); allow write: if false; }
+    match /fgPerformanceRuntime/{id} { allow read: if folderReadAllowed_(['operacao', 'operacao/checklist', 'operacao/checklist/desempenho']) && (moduleSession() && checklistAccess() && id == 'state'); allow write: if false; }
     match /userCategories/{id} { allow read: if moduleSession() && activeUser() && (resource.data.uid == request.auth.uid || isAdmin()); allow write: if false; }
     match /userCategoryDefinitions/{id} { allow read: if moduleSession() && checklistAccess(); allow write: if false; }
     match /{document=**} { allow read, write: if false; }

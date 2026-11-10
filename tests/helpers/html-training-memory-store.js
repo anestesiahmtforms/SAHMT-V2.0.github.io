@@ -16,6 +16,7 @@ export function memoryStore() {
         const reads = new Map(), writes = [];
         const tx = {
           async get(c, id) { const k = key(c, id); reads.set(k, revisions.get(k) || 0); return clone(data.get(k)); },
+          list: (...args) => store.list(...args),
           set(c, id, value) { writes.push({ c, id, value: clone(value) }); },
           create(c, id, value) { writes.push({ c, id, value: clone(value), create: true }); },
           delete(c, id) { writes.push({ c, id, remove: true }); },

@@ -6,6 +6,7 @@ test('deployed vacations bundle authenticates and loads only Firestore in worker
  const f=vacationFixture(),snapshot=await vacationSnapshot(f),hash=await vacationHash(email),bundle=await build({entryPoints:['worker-fe-vacations/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
  const mf=new Miniflare(convertV4MiniflareOptions({name:'vacations',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],bindings:{VACATIONS_ENABLED:'true',FA_WEB_API_KEY:'synthetic-key',FE_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
  const u=new URL(request.url);calls.push(u.hostname+u.pathname);
+   if(new URL(request.url).pathname.endsWith('/runtimePolicy/folders'))return new Response(null,{status:404});
  if(u.hostname==='identitytoolkit.googleapis.com')return Response.json({users:[{localId:uid,email,emailVerified:true,validSince:'0'}]});
  if(u.hostname==='oauth2.googleapis.com'){const claim=JSON.parse(Buffer.from(new URLSearchParams(await request.text()).get('assertion').split('.')[1],'base64url'));assert.equal(claim.scope,'https://www.googleapis.com/auth/datastore');return Response.json({access_token:'synthetic-service',expires_in:3600});}
  assert.notEqual(u.hostname,'sheets.googleapis.com');if(u.pathname.endsWith('/vacations2027Schedules/current'))return Response.json({fields:encodeFields(snapshot)});

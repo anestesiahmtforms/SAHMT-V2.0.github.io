@@ -32,6 +32,12 @@ const block=`
         c is map && c.size() > 0 && c.keys().hasOnly(${strings(OPEN.map(q=>q.id))}) &&
         ${OPEN.map(q=>`climateCommentValue(c.get('${q.id}', ''))`).join(' && ')};
     }
+    function surveyFolderOpen_(folder) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['consultas', 'consultas/pesquisas', folder]);
+    }
     function climateReader() { return request.auth != null && request.auth.token.get('climateReportReader', false) == true; }
     match /climateResponses/{id} {
       allow read, delete: if false;
@@ -45,8 +51,8 @@ const block=`
       allow update: if false;
     }
     match /climateCycles/{id} { allow read, write: if false; }
-    match /climateReports/{id} { allow read: if climateReader(); allow write: if false; }
-    match /climateActionReports/{id} { allow read: if climateReader(); allow write: if false; }
+    match /climateReports/{id} { allow read: if surveyFolderOpen_('consultas/pesquisas/clima') && climateReader(); allow write: if false; }
+    match /climateActionReports/{id} { allow read: if surveyFolderOpen_('consultas/pesquisas/clima') && climateReader(); allow write: if false; }
     match /surveyParticipation/{id} { allow read, write: if false; }
     match /epidemiologicalCycles/{id} { allow read, write: if false; }
     match /epidemiologicalResponses/{id} { allow read, write: if false; }

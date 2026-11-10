@@ -50,9 +50,58 @@ function firestoreDocumentsUrl_(path) {
     '/databases/' + encodeURIComponent(SAHMT_V2_CONFIG.databaseId) + '/documents' + path;
 }
 
+/** Source-local folder policy; metadata reads never recurse or use cached grants. */
+function sahmtFolderFailure_(code,status){const error=Error(code);error.safeCode=code;error.status=status||503;throw error;}
+function sahmtFolderIdValid_(id){
+  return typeof id==='string'&&!!id&&id.split('/').every(function(part){
+    if(!part||part==='.'||part==='..')return false;
+    try{const decoded=decodeURIComponent(part);return !/[\x00-\x1f\x7f]/.test(decoded)&&encodeURIComponent(decoded)===part;}catch(_){return false;}
+  });
+}
+function sahmtRequireFolders_(ids){
+  if(!Array.isArray(ids)||!ids.length)return;
+  let document;
+  try{document=firestoreRequest_(firestoreDocumentsUrl_('/runtimePolicy/folders'),{method:'get'});}
+  catch(error){if(error.status===404)return;sahmtFolderFailure_('CONTROLE_POLITICA_INDISPONIVEL');}
+  const policy=firestoreFieldsToJs_(document&&document.fields||{});
+  if(policy.schemaVersion!==1||!Number.isSafeInteger(policy.revision)||policy.revision<1||
+      !Array.isArray(policy.disabled)||!Array.from(policy.disabled).every(sahmtFolderIdValid_))sahmtFolderFailure_('CONTROLE_POLITICA_INVALIDA');
+  ids.forEach(function(id){
+    if(!sahmtFolderIdValid_(id))sahmtFolderFailure_('CONTROLE_POLITICA_INVALIDA');
+    const parts=id.split('/');
+    for(let n=1;n<=parts.length;n++)if(policy.disabled.indexOf(parts.slice(0,n).join('/'))>=0)sahmtFolderFailure_('CONTROLE_PASTA_DESATIVADA',403);
+  });
+}
+function sahmtCollectionFolders_(collection){
+  if(['runtimePolicy','migrationControl','users','documentAccessEmails','accessRequests'].includes(collection))return [];
+  if(collection==='vacations')return ['operacao/escala/ferias'];
+  if(collection==='scheduleDays')return ['operacao/escala'];
+  if(['contacts','eventMembers','userCategories'].includes(collection))return ['operacao/pessoas'];
+  if(['events','eventCatalogs','eventProjectionOutbox','eventProjections'].includes(collection))return ['operacao/eventos'];
+  if(/^fgPerformance/.test(collection))return ['operacao/checklist/desempenho'];
+  if(/^checklist|^stations$/.test(collection))return ['operacao/checklist'];
+  if(/^label/.test(collection))return ['operacao/etiquetas'];
+  return [{FG:'operacao/checklist',FH:'operacao/etiquetas',FI:'operacao/eventos',FJ:'operacao/eventos'}[SAHMT_V2_CONFIG.station]];
+}
+function sahmtGuardFirestoreRequest_(url,options){
+  const suffix=url.slice(firestoreDocumentsUrl_('').length).split('?')[0];
+  if(suffix==='/runtimePolicy/folders'||[':beginTransaction',':rollback'].includes(suffix))return;
+  const collections=[];
+  if(suffix.startsWith('/'))collections.push(decodeURIComponent(suffix.split('/')[1]));
+  else if(options&&options.payload){
+    let body;try{body=JSON.parse(options.payload);}catch(_){sahmtFolderFailure_('CONTROLE_POLITICA_INVALIDA');}
+    (body.structuredQuery&&body.structuredQuery.from||[]).forEach(function(row){collections.push(row.collectionId);});
+    (body.documents||[]).forEach(function(name){collections.push(String(name).split('/documents/')[1]?.split('/')[0]);});
+    (body.writes||[]).forEach(function(write){const name=write.update&&write.update.name||write.delete||write.transform&&write.transform.document;collections.push(String(name).split('/documents/')[1]?.split('/')[0]);});
+  }
+  const ids=[];collections.forEach(function(collection){sahmtCollectionFolders_(collection).forEach(function(id){if(ids.indexOf(id)<0)ids.push(id);});});
+  sahmtRequireFolders_(ids);
+}
+
 function firestoreRequest_(url, options) {
   const ownRoot = firestoreDocumentsUrl_('');
   if (!(url === ownRoot || url.startsWith(ownRoot + '/') || url.startsWith(ownRoot + ':'))) throw new Error('DESTINO_FIRESTORE_INVALIDO');
+  sahmtGuardFirestoreRequest_(url,options);
   const response = UrlFetchApp.fetch(url, Object.assign({
     muteHttpExceptions: true,
     headers: {Authorization: 'Bearer ' + ScriptApp.getOAuthToken()}

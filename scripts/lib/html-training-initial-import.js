@@ -54,10 +54,13 @@ export async function importInitialDrafts(store,plan,{apply=false,onProgress=()=
     const rows=item.records.filter(r=>r.collection===collection);
     if((await tx.getMany(collection,rows.map(r=>r.id))).some(Boolean))throw Error('IMPORT_ORPHAN_VERSION_CONFLICT');
    }
-   if(apply)for(const record of item.records)tx.create(record.collection,record.id,record.data);
+   if(apply){
+    for(const record of item.records)tx.create(record.collection,record.id,record.data);
+    tx.set('htmlTrainingSettings','folderIndex',{schemaVersion:1,complete:false});
+   }
    return 'CREATED';
   });
-  if(result==='SKIPPED')skipped++;else {created++;createdIds.add(item.id);if(apply)documentsWritten+=item.records.length;}
+  if(result==='SKIPPED')skipped++;else {created++;createdIds.add(item.id);if(apply)documentsWritten+=item.records.length+1;}
   await onProgress({completed:created+skipped,total:plan.length,created,skipped,documentsWritten});
  }
  // Verify committed bytes through a fresh read, not just commit acknowledgement.

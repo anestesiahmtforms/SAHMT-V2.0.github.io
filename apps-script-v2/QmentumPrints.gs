@@ -20,7 +20,7 @@ function qmPrintDriveFetch_(url,options){
  if(!/^https:\/\/www\.googleapis\.com\/(?:upload\/)?drive\/v3\//.test(url))qmPrintFail_('DRIVE_ENDPOINT_DENIED');
  qmPrintQuotaGuard_();
  const opts=Object.assign({method:'get'},options||{});opts.headers=Object.assign({},opts.headers||{},{Authorization:'Bearer '+ScriptApp.getOAuthToken()});opts.muteHttpExceptions=true;opts.followRedirects=false;
- let response;try{const perform=function(){return UrlFetchApp.fetch(url,opts);};response=typeof sahmtUrlFetchRun_==='function'?sahmtUrlFetchRun_(perform):perform();}catch(e){if(e.code==='SAHMT_URLFETCH_DAILY_QUOTA'||typeof sahmtUrlFetchDailyQuota_==='function'&&sahmtUrlFetchDailyQuota_(e))qmPrintFail_('QUOTA_WAIT');throw e;}const status=response.getResponseCode();if(status<200||status>=300)qmPrintFail_('DRIVE_UNAVAILABLE');return response;
+ let response;try{const perform=function(){sahmtRequireFolders_(['registros/qmentum'],qmServerUrl_('/runtimePolicy/folders').replace(/\/runtimePolicy\/folders$/,''));return UrlFetchApp.fetch(url,opts);};response=typeof sahmtUrlFetchRun_==='function'?sahmtUrlFetchRun_(perform):perform();}catch(e){if(e.code==='SAHMT_URLFETCH_DAILY_QUOTA'||typeof sahmtUrlFetchDailyQuota_==='function'&&sahmtUrlFetchDailyQuota_(e))qmPrintFail_('QUOTA_WAIT');throw e;}const status=response.getResponseCode();if(status<200||status>=300)qmPrintFail_('DRIVE_UNAVAILABLE');return response;
 }
 function qmPrintDriveJson_(url,options){const text=qmPrintDriveFetch_(url,options).getContentText();if(text.length>250000)qmPrintFail_('DRIVE_RESPONSE_LIMIT');return JSON.parse(text||'{}');}
 function qmPrintList_(config){

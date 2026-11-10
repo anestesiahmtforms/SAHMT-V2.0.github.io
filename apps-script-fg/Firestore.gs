@@ -11,6 +11,7 @@ function fgExternalRequest_(collection,operation,body){
   const project=FG_EXTERNAL_COLLECTIONS[collection];
   if(!project||![':batchGet',':runQuery'].includes(operation))throw Error('FG_EXTERNAL_READ_SCOPE');
   if(collection==='userCategories'&&operation!==':batchGet')throw Error('FG_EXTERNAL_READ_SCOPE');
+  sahmtRequireFolders_(['operacao/checklist'].concat(sahmtCollectionFolders_(collection)));
   const prefix='projects/'+project+'/databases/(default)/documents/';
   if(operation===':batchGet'){
     if(!Array.isArray(body.documents)||body.documents.length!==1||!body.documents[0].startsWith(prefix+collection+'/')||body.documents[0].slice((prefix+collection+'/').length).includes('/'))throw Error('FG_EXTERNAL_READ_SCOPE');

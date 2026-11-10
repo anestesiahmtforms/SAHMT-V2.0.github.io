@@ -92,6 +92,7 @@ function publishScheduleSourceToFirestore() {
 }
 
 function requireScheduleSourceOperator_() {
+  sahmtRequireFolders_(['operacao/escala','operacao/escala/ferias']);
   const properties = PropertiesService.getScriptProperties();
   const allowed = String(properties.getProperty(SAHMT_V2_SCHEDULE_SOURCE.allowlistProperty) || '')
     .split(/[\s,;]+/).map(function (email) { return email.trim().toLowerCase(); }).filter(Boolean);
@@ -107,6 +108,7 @@ function requireScheduleSourceOperator_() {
 }
 
 function readScheduleSource_() {
+  sahmtRequireFolders_(['operacao/escala','operacao/escala/ferias']);
   const spreadsheet = SpreadsheetApp.openById(SAHMT_V2_SCHEDULE_SOURCE.spreadsheetId);
   const file = DriveApp.getFileById(SAHMT_V2_SCHEDULE_SOURCE.spreadsheetId);
   const scheduleSheet = spreadsheet.getSheetByName(SAHMT_V2_SCHEDULE_SOURCE.scheduleTab);
@@ -357,6 +359,7 @@ function scheduleSourceDate_(value) {
 }
 
 function readScheduleFirestore_() {
+  sahmtRequireFolders_(['operacao/escala','operacao/escala/ferias']);
   const scheduleDays = listFirestoreDocumentsPaged_('scheduleDays', ['id', 'date', 'positions', 'highlights', 'version', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']);
   const vacations = listFirestoreDocumentsPaged_('vacations', ['id', 'start', 'end', 'siglas', 'label', 'notes', 'active', 'createdByUid', 'createdAt', 'updatedByUid', 'updatedAt']);
   return {scheduleDays: scheduleDays, vacations: vacations};

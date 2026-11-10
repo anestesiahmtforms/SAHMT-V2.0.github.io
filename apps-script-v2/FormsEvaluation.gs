@@ -82,8 +82,12 @@ function formsEvaluationGoogleError_(status, url, body) {
   if (activationUrl) error.activationUrl = activationUrl;
   return error;
 }
+function formsEvaluationRequireFolders_() {
+  sahmtRequireFolders_(['gestao'],'https://firestore.googleapis.com/v1/projects/sahmt-gestao-5ae66/databases/(default)/documents',true);
+}
 function formsEvaluationGoogleRequest_(url, options) {
   if (!/^https:\/\/(forms|www|docs|sheets|slides)\.googleapis\.com\//.test(url)) throw new Error('Origem Google API não permitida.');
+  formsEvaluationRequireFolders_();
   const response = UrlFetchApp.fetch(url, Object.assign({muteHttpExceptions: true, headers: {Authorization: 'Bearer ' + ScriptApp.getOAuthToken()}}, options || {}));
   const status = response.getResponseCode();
   if (status < 200 || status >= 300) throw formsEvaluationGoogleError_(status, url, response.getContentText());
@@ -102,6 +106,7 @@ function formsEvaluationResolve_(link, aliases) {
   if (link.kind === 'SHORT_URL') {
     for (let hop = 0; hop < 5; hop++) {
       if (!formsEvaluationLink_(url)) throw new Error('Redirecionamento fora do Google Forms.');
+      formsEvaluationRequireFolders_();
       const response = UrlFetchApp.fetch(url, {followRedirects: false, muteHttpExceptions: true});
       const status = response.getResponseCode();
       if (status >= 300 && status < 400) {
@@ -112,6 +117,7 @@ function formsEvaluationResolve_(link, aliases) {
   }
   const resolvedLink = formsEvaluationLink_(url);
   if (!resolvedLink) throw new Error('Alias do formulário ainda não resolvido.');
+  formsEvaluationRequireFolders_();
   const form = resolvedLink.formId ? FormApp.openById(resolvedLink.formId) : FormApp.openByUrl(resolvedLink.normalizedUrl);
   const metadata = formsEvaluationMetadata_(form.getId());
   const published = formsEvaluationLink_(metadata.responderUri);
@@ -685,6 +691,7 @@ function formsEvaluationFinalizePublication_(formId, requestId) {
     if (formsEvaluationDocumentArea_(cfg) || formsEvaluationDocumentArea_(activity)) return {status: 'RETIRED', code: 'TRAINING_HTML_REQUIRED'};
     if (!cfg || !activity || !Array.isArray(cfg.eligibleGroups) || !cfg.eligibleGroups.length || (cfg.status !== 'READY' && cfg.publicationPending !== true)) return {status: 'CONFIGURATION_PENDING'};
     configVersion = cfg.configVersion;
+    formsEvaluationRequireFolders_();
     form = FormApp.openById(formId);
     const releaseProof = formsEvaluationReleaseGate_(formId, activity, cfg);
     const emails = formsEvaluationPublicationContext_(cfg, null);
@@ -765,6 +772,7 @@ function formsEvaluationConfigured_(payload, actorUid, tx) {
   const fromDay = /^\d{4}-\d{2}-\d{2}$/.test(String(payload.validFrom)) ? String(payload.validFrom) : Utilities.formatDate(validFrom, 'America/Sao_Paulo', 'yyyy-MM-dd');
   if (!previous && fromDay < today) throw new Error('Importação histórica exige prévia e decisão administrativa; esta configuração não importa períodos passados.');
   const metadata = formsEvaluationMetadata_(payload.activityId);
+  formsEvaluationRequireFolders_();
   const form = FormApp.openById(payload.activityId);
   const repeat = formsEvaluationRepeatPolicy_(previous);
   if(!previous && repeat && form.hasLimitOneResponsePerUser()){
@@ -1305,6 +1313,7 @@ function prepareEvaluationTemplate(templateFormId, originalFormId) {
   if (!formsEvaluationId_(templateFormId) || !formsEvaluationId_(originalFormId) || templateFormId === originalFormId) throw new Error('Use somente a cópia reutilizável, distinta do original protegido.');
   const protectedIds = String(PropertiesService.getScriptProperties().getProperty('SAHMT_V2_EVALUATION_PROTECTED_FORM_IDS') || '').split(/[\s,;]+/).filter(Boolean);
   if (protectedIds.includes(templateFormId)) throw new Error('O modelo informado está na lista de originais protegidos.');
+  formsEvaluationRequireFolders_();
   const form = FormApp.openById(templateFormId);
   if (form.getResponses().length) throw new Error('O modelo possui respostas; nenhuma alteração será realizada.');
   const specs = formsEvaluationTemplateSpecs_(), before = formsEvaluationMetadata_(templateFormId);
@@ -1317,6 +1326,7 @@ function prepareEvaluationTemplate(templateFormId, originalFormId) {
   const batch = formsEvaluationTemplateBatch_(fresh, specs);
   formsEvaluationGoogleRequest_('https://forms.googleapis.com/v1/forms/' + encodeURIComponent(templateFormId) + ':batchUpdate', {method: 'post', contentType: 'application/json', payload: JSON.stringify(batch)});
   const after = formsEvaluationMetadata_(templateFormId);
+  formsEvaluationRequireFolders_();
   formsEvaluationVerifyTemplate_(before, after, specs, FormApp.openById(templateFormId));
   return {prepared: true, published: false, questionsPreserved: formsEvaluationQuestionSnapshot_({items: formsEvaluationTemplateOriginalItems_(before, specs)}).length, mapping: formsEvaluationConfiguration_(after, {modalities: {acknowledgement: true, suggestion: true, test: false}}).mapping};
 }
@@ -1375,6 +1385,7 @@ function capturarHomologacaoAvaliacaoSahmtV2() {
     if (reviewers.length !== 1 || participants.length !== 1) throw new Error('Use participante, gestor designado e administrador revisor em três contas independentes.');
     const metadata = formsEvaluationMetadata_(formId);
     if (!metadata.info || !String(metadata.info.title || '').startsWith('[HOMOLOGAÇÃO SAHMT]')) throw new Error('A origem deve ser uma cópia identificada por [HOMOLOGAÇÃO SAHMT].');
+    formsEvaluationRequireFolders_();
     const form = FormApp.openById(formId);
     if (!form.hasLimitOneResponsePerUser() || form.canEditResponse()) throw new Error('Homologação exige uma resposta por conta e edição após envio desativada.');
     const checked = formsEvaluationCheckedMapping_(metadata, cfg);

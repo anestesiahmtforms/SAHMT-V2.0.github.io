@@ -1,3 +1,4 @@
+import {createChannelFolderCheck} from './folder-policy.js';
 import {validateContinuityProfile,validateContinuityResource,continuityEntriesForActor,CONTINUITY_MAX_AGE_MS,CONTINUITY_MAX_BODY_BYTES} from '../src/remote-continuity-contract.js';
 import {channelActorFromProfile,validDay,validId,channelError} from '../src/provisional-channel-contract.js';
 import {readChannelJson} from './identity.js';
@@ -145,7 +146,13 @@ export function continuityStateAction(sql,path,body){
  }
  return response({code:'CONTINUITY_ACTION_INVALID'},400);
 }
-export async function importContinuitySnapshot(request,env,now){
+export async function importContinuitySnapshot(request,env,now,options={}){
+ let check=async()=>{};
+ const result=await importContinuitySnapshotChecked(request,env,now,{...options,onCheck:value=>{check=value;}});
+ if(result.ok)await check();
+ return result;
+}
+async function importContinuitySnapshotChecked(request,env,now,{fetchImpl=fetch,onCheck}={}){
  const time=request.headers.get('X-Continuity-Time')||'',nonce=request.headers.get('X-Continuity-Nonce')||'',signature=request.headers.get('X-Continuity-Signature')||'';
  if(!/^\d{13}$/.test(time)||Math.abs(now-Number(time))>300000||! /^[A-Za-z0-9_-]{24,100}$/.test(nonce)||! /^[a-f0-9]{64}$/.test(signature))failure('CONTINUITY_IMPORT_DENIED',401);
  const body=await readChannelJson(request,CONTINUITY_MAX_BODY_BYTES);
@@ -155,6 +162,14 @@ export async function importContinuitySnapshot(request,env,now){
  const expected=await continuityRequestSignature(secret,JSON.stringify(body),time,nonce);
  let difference=0;for(let i=0;i<64;i++)difference|=expected.charCodeAt(i)^signature.charCodeAt(i);if(difference)failure('CONTINUITY_IMPORT_DENIED',401);
  if(body?.schemaVersion!==1)failure('CONTINUITY_IMPORT_INVALID');
+ const contentAction=!auditOnly&&(body.action||body.resources?.length);
+ const policyBody=body.action==='source-change'?{action:'source',path:body.path}:{action:'bootstrap'};
+ const bearer=request.headers.get('X-Continuity-Policy-Authorization')||'';
+ if(contentAction&&!/^Bearer [A-Za-z0-9_.-]{1,16000}$/.test(bearer))failure('CONTINUITY_FOLDER_POLICY_AUTH_REQUIRED',503);
+ const checkFolders=contentAction?createChannelFolderCheck({fetchImpl,bearer,body:policyBody}):async()=>{};
+ await checkFolders();
+ onCheck(checkFolders);
+
  if(['drain','complete','source-change','claim','module-audit'].includes(body.action)){
   const nonceResponse=await internal(state(env),'continuity-import-nonce',{nonce,now});if(!nonceResponse.ok)return nonceResponse;
   if(body.action==='module-audit'){

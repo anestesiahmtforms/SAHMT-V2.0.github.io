@@ -1,3 +1,4 @@
+import {operationalContentAllowed} from './operational-folder-runtime.js';
 import {deployment} from './deployment-context.js';
 export const fbPerformanceReleaseEnabled=import.meta.env?.VITE_FB_PERFORMANCE_ENABLED==='true';
 export const fbPerformanceEnabled=deployment.target==='FB'&&fbPerformanceReleaseEnabled;
@@ -5,7 +6,7 @@ export const fbPerformanceEnabled=deployment.target==='FB'&&fbPerformanceRelease
 const endpoint='https://sahmt-fb-performance.anestesiahmtforms2.workers.dev/v1/fb-performance';
 export async function readFbPerformance({auth,subjectUid,isCurrent=()=>true,fetchImpl=fetch}){
  const user=auth?.currentUser;
- const current=()=>isCurrent()&&auth?.currentUser===user&&auth.app?.options?.projectId==='sahmt-gestao-5ae66';
+ const current=()=>operationalContentAllowed('desempenho/fb')&&isCurrent()&&auth?.currentUser===user&&auth.app?.options?.projectId==='sahmt-gestao-5ae66';
  if(!user||!current())throw Error('FB_PERFORMANCE_SESSION_CHANGED');
  const token=await user.getIdToken();if(!current())throw Error('FB_PERFORMANCE_SESSION_CHANGED');
  const response=await fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({action:'GET_PERFORMANCE',input:{subjectUid}}),credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',signal:AbortSignal.timeout(20000)});

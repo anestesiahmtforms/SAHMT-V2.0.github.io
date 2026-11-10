@@ -28,6 +28,7 @@ test('actual Worker runtime: FF-only Auth, zero-billing check, FF-only persisten
   if(u.hostname==='cloudbilling.googleapis.com')return Response.json({billingEnabled:false});
   if(u.hostname==='fcm.googleapis.com'){pushes.push(await request.json());return Response.json({name:`projects/${FF.projectId}/messages/synthetic`});}
   assert.equal(u.hostname,'firestore.googleapis.com');
+  if(u.pathname.endsWith('/runtimePolicy/folders')){const value=data.get(roots.FF+'/runtimePolicy/folders');return value?Response.json({fields:encodeFields(value)}):new Response('',{status:404});}
   if(!u.pathname.includes('/documents'))return Response.json({name:`projects/${FF.projectId}/databases/${FF.databaseId}`,freeTier:true});
   if(u.pathname.endsWith(':beginTransaction'))return Response.json({transaction:'synthetic-transaction'});
   if(u.pathname.endsWith(':rollback'))return Response.json({});
@@ -47,10 +48,15 @@ test('actual Worker runtime: FF-only Auth, zero-billing check, FF-only persisten
  }}));
  const call=async(action,input={},p=people[0])=>{requests.length=0;const r=await mf.dispatchFetch('https://worker.test/v1/communication',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json',Authorization:'Bearer '+token(p,FF.projectId,p.ff)},body:JSON.stringify({action,input})});const body=await r.json();assert.ok(requests.length<=44,'Free subrequest cap');return {status:r.status,body};};
  try{
-  assert.equal((await call('DIRECTORY',{},people[1])).status,403);
+  {const denial=await call('DIRECTORY',{},people[1]);assert.equal(denial.status,403,JSON.stringify(denial));}
   const device='synthetic-device-'+'x'.repeat(60);assert.equal((await call('REGISTER_DEVICE',{token:device},people[1])).status,200);
   const saved=await call('SAVE_MESSAGE',{version:0,message:{title:'Synthetic',message:'Never on lock screen',category:'COMUNICADO GERAL',priority:'NORMAL',audienceType:'USER',audienceValue:'fa-person',route:'management',status:'published',publishAt:Date.now()-1000,expiresAt:Date.now()+86400000}});assert.equal(saved.status,200,JSON.stringify(saved));const id=saved.body.message.id;
   data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});assert.equal((await call('PREPARE',{id})).status,200);assert.equal(pushes.length,0);
+  data.set(roots.FF+'/runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['comunicacao']});
+  const writesBeforePause=writes.length;
+  const paused=await call('SEND_BATCH',{id,batches:0,confirmed:true});assert.equal(paused.status,403);assert.equal(paused.body.code,'COMM_FOLDER_DISABLED');assert.equal(pushes.length,0);assert.equal(writes.length,writesBeforePause);
+  assert.equal((await call('BOOTSTRAP',{},people[1])).status,403);
+  data.delete(roots.FF+'/runtimePolicy/folders');
   const sent=await call('SEND_BATCH',{id,batches:0,confirmed:true});assert.equal(sent.status,200,JSON.stringify(sent));assert.equal(sent.body.dispatch.accepted,1);assert.equal(pushes[0].message.token,device);assert.equal(pushes[0].message.data.route,'home');assert.equal(pushes[0].message.data.body,'Never on lock screen');
   assert.equal((await call('SEND_BATCH',{id,batches:0,confirmed:true})).status,409);assert.equal(pushes.length,1);assert.ok(writes.length>0);assert.ok(writes.every(p=>p.startsWith(roots.FF+'/')));
   data.set(roots.FF+'/communicationSettings/main',{pushEnabled:false});

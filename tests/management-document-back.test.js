@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import * as model from '../src/html-training-model.js';
-import {trainingCategories, trainingFolderLevel, trainingPathAllowed} from '../src/html-training-folders.js';
+import {trainingCategories, trainingFolderLevel, trainingPathAllowed, trainingAccessPath, validTrainingFolderPath} from '../src/html-training-folders.js';
 import {renderTrainingDocumentCard} from '../src/html-training-card.js';
 import * as activity from '../src/html-training-activity.js';
 import {randomUUID} from 'node:crypto';
@@ -11,29 +11,81 @@ import {installMaterialViewer} from '../src/material-viewer.js';
 import {renderManagementDocumentCard} from '../src/management-document-folders.js';
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
-function trainings({holdOpen = false, holdBegin = false, completed = false} = {}) {
+function trainings({holdOpen = false, holdBegin = false, completed = false,admin=false,path,disabled=[],watchPolicy=false} = {}) {
   const listeners = new Map(), calls = [];
   const classes = new Set();
   const frame={srcdoc:'',addEventListener(){}};
   const root = {isConnected: true, innerHTML: '', classList: {add(...names) { names.forEach(name => classes.add(name)); }, remove(...names) { names.forEach(name => classes.delete(name)); }, toggle(name, force) { if(force) classes.add(name); else classes.delete(name); }, contains(name) { return classes.has(name); }}, setAttribute() {}, removeAttribute() {}, querySelector: selector => selector==='.ht-content-frame'?frame:null, querySelectorAll: () => [], contains: () => true,
     addEventListener: (key, value) => listeners.set(key, value), removeEventListener() {}, replaceChildren() { this.innerHTML = ''; }};
   const training = {id: 'one', title: 'Documento sintético', status: 'PUBLISHED', category: 'Protocolos', subcategory: 'Protocolos do SAHMT', version: 1, sectionCount: 1};
+  if(path)training.folderPath=path;
+  let folderAccess={version:0,disabled:disabled.map(path=>JSON.stringify(path))};
   let releaseOpen, releaseBegin;
-  const api = async action => {
+  const api = async (action,input) => {
     calls.push(action);
-    if (action === 'LIST') return {trainings: [structuredClone(training)]};
+    if (action === 'LIST') {
+      const folderPath=trainingAccessPath(training),inactive=!trainingPathAllowed(folderAccess,folderPath);
+      return {trainings:inactive?[]:[structuredClone(training)],inactiveTrainings:inactive?[{id:training.id,title:training.title,folderPath}]:[],
+        folderAccess:structuredClone(folderAccess),folderIndexReady:true,canManageFolders:admin,folderPaths:[folderPath]};
+    }
+    if(action==='SET_FOLDER_ACCESS'){const disabled=new Set(folderAccess.disabled),key=JSON.stringify(input.path);if(input.enabled)disabled.delete(key);else disabled.add(key);folderAccess={version:folderAccess.version+1,disabled:[...disabled]};return {folderAccess:structuredClone(folderAccess)};}
     if (action === 'OPEN') { if (holdOpen) await new Promise(resolve => { releaseOpen = resolve; }); return {training: structuredClone(training), state: {uid:'one',trainingId:'one',attempts: completed?[{trainingVersion:1,score:5,maxScore:5,suggestion:'Texto',completedAt:2,acknowledgedAt:1}]:[],run:completed?{stage:'COMPLETED',trainingVersion:1,readCount:1}:null}, questions: []}; }
     if (action === 'CONTENT') return {sections: [{id: 's', title: 'Seção', html: '<p>Texto</p>'}]};
     if (action === 'BEGIN') {if(holdBegin)await new Promise(resolve=>{releaseBegin=resolve;});return {state:{uid:'one',trainingId:'one',attempts:[],run:{id:'run-1',trainingVersion:1,stage:'READING',readCount:0}}};}
     throw Error(action);
   };
   const source = readFileSync(new URL('../src/html-training.js', import.meta.url), 'utf8');
-  const ctx = vm.createContext({...model, ...activity, crypto:{randomUUID}, h: model.escapeHtml, trainingCategories, trainingFolderLevel, trainingPathAllowed, renderTrainingDocumentCard, mountTrainingAudit() {}, root, api});
+  const ctx = vm.createContext({...model, ...activity, crypto:{randomUUID}, h: model.escapeHtml, trainingCategories, trainingFolderLevel, trainingPathAllowed, trainingAccessPath, validTrainingFolderPath, renderTrainingDocumentCard, mountTrainingAudit() {}, root, api});
   vm.runInContext(source.replace(/^import[^\n]+\n/gm, '').replaceAll('export ', '').replaceAll('import.meta.env', '{}'), ctx);
-  const controller = ctx.mountHtmlTrainings(root, {user: {uid: 'one'}, api});
+  let notifyPolicy;
+  const controller = ctx.mountHtmlTrainings(root, {user: {uid: 'one'},profile:admin?{role:'administrador_app'}:{}, api,
+    subscribeFolderAccess:watchPolicy?callback=>{notifyPolicy=callback;return ()=>{notifyPolicy=null;};}:undefined});
   const click = (action, data = {}) => listeners.get('click')({target: {closest: () => ({dataset: {ht: action, ...data}})}});
-  return {root, frame, controller, calls, click, training, releaseOpen: () => releaseOpen?.(),releaseBegin:()=>releaseBegin?.()};
+  return {root, frame, controller, calls, click, training, releaseOpen: () => releaseOpen?.(),releaseBegin:()=>releaseBegin?.(),
+    policy(paths){folderAccess={version:folderAccess.version+1,disabled:paths.map(path=>JSON.stringify(path))};notifyPolicy?.(structuredClone(folderAccess));},
+    disconnect(){notifyPolicy?.(null);}};
 }
+
+test('folder policy changes remove an open document and discard a pending response',async t=>{
+ const h=trainings({holdBegin:true,watchPolicy:true});t.after(()=>h.controller());
+ await tick();assert.deepEqual(h.calls,[]);
+ h.policy([]);await tick();h.click('folder',{folder:JSON.stringify(['Protocolos','Protocolos do SAHMT'])});await tick();
+ h.click('open',{id:'one'});await tick();await tick();
+ assert.match(h.root.innerHTML,/ht-content-frame/);
+ h.policy([['Protocolos']]);await tick();
+ assert.doesNotMatch(h.root.innerHTML,/ht-content-frame|data-ht="open"/);
+ assert.match(h.root.innerHTML,/disabled[^>]*aria-disabled="true"[^>]*>.*Documento sintético/s);
+ h.releaseBegin();await tick();
+ assert.doesNotMatch(h.root.innerHTML,/ht-content-frame|data-ht="open"/);
+ const before=[...h.calls];h.click('open',{id:'one'});h.click('edit',{id:'one'});await tick();
+ assert.deepEqual(h.calls,before);
+ h.disconnect();await tick();
+ assert.doesNotMatch(h.root.innerHTML,/data-ht="open"/);
+});
+
+test('disabled deep folders cannot hydrate stale catalog or expose folder commands to nonadministrators',async t=>{
+ const path=['Protocolos','Protocolos do SAHMT','Adultos','Via aérea'];
+ const h=trainings({path,disabled:[path.slice(0,3)]});t.after(()=>h.controller());await tick();
+ h.click('folder',{folder:JSON.stringify(path)});await tick();
+ h.click('toggle-folder',{folder:JSON.stringify(path)});await tick();
+ assert.deepEqual(h.calls,['LIST']);assert.doesNotMatch(h.root.innerHTML,/data-ht="toggle-folder"|data-ht="open"/);
+});
+
+test('administrator opens a descendant only after reactivating each independently disabled folder',async t=>{
+ const path=['Protocolos','Protocolos do SAHMT','Adultos','Via aérea'];
+ const h=trainings({admin:true,path,disabled:[path.slice(0,1),path.slice(0,3)]});t.after(()=>h.controller());await tick();
+ h.click('folder',{folder:JSON.stringify(path)});h.click('open',{id:'one'});await tick();
+ assert.deepEqual(h.calls,['LIST']);
+ h.click('toggle-folder',{folder:JSON.stringify(path.slice(0,1))});await tick();await tick();
+ h.click('folder',{folder:JSON.stringify(path.slice(0,2))});await tick();
+ assert.match(h.root.innerHTML,/Ativar Adultos/);
+ h.click('folder',{folder:JSON.stringify(path)});await tick();
+ assert.equal(h.calls.includes('OPEN'),false);
+ h.click('toggle-folder',{folder:JSON.stringify(path.slice(0,3))});await tick();await tick();
+ h.click('folder',{folder:JSON.stringify(path)});await tick();await tick();
+ assert.ok(h.calls.includes('OPEN'));assert.match(h.root.innerHTML,/data-ht="open"/);
+ h.click('open',{id:'one'});await tick();await tick();assert.ok(h.calls.includes('CONTENT'));assert.match(h.frame.srcdoc,/<p>Texto<\/p>/);
+});
 
 test('the protected text is visible before a slow BEGIN completes, without another opening button',async t=>{
   const h=trainings({holdBegin:true});t.after(()=>h.controller());await tick();h.click('open',{id:'one'});await tick();await tick();

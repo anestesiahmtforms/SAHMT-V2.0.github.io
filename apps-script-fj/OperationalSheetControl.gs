@@ -21,6 +21,7 @@ function oscOwner_() {
   if (String(Session.getEffectiveUser().getEmail()).toLowerCase() !== 'anestesiahmtforms10@gmail.com') oscFail_('CONTROLE_EXECUTOR_INVALIDO');
 }
 function oscBook_() {
+  sahmtRequireFolders_(OSC.tables.flatMap(function(table){return sahmtCollectionFolders_(table.collection);}));
   if (SAHMT_V2_CONFIG.projectId !== 'sahmt-escala-fj' || OSC.sheetId !== '1tkFlErSuz9iaj-uoR6zcAiGxvH5sT3n2HOAJi331i8Q') oscFail_('CONTROLE_DESTINO_INVALIDO');
   sahmtV2RequirePrivateSpreadsheet_(OSC.sheetId);
   return SpreadsheetApp.openById(OSC.sheetId);

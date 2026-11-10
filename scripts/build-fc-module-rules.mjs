@@ -55,5 +55,19 @@ ${marker}`);
 const legacy='    function signedFromFc() { return activeUser(); }\n';
 if(!output.includes(legacy))throw Error('FC_RULES_IDENTITY_HELPER_MISSING');
 output=output.replace(legacy,'');
+const folderRules = `
+    function fcRecordsFolderOpen_(folder) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['registros', folder]);
+    }
+`;
+const begin=output.indexOf(marker);
+const end=output.indexOf('    match /indicators/',begin);
+if(begin<0||end<0)throw Error('FC_RECORDS_RULE_SCOPE_MISSING');
+const occurrenceRules=output.slice(begin,end).replace(/(allow [a-z, ]+: if )(?!false\s*;)([^;]+);/g,
+  (_,prefix,condition)=>prefix+"fcRecordsFolderOpen_('registros/ocorrencias') && ("+condition+");");
+output=output.slice(0,begin)+folderRules+occurrenceRules+output.slice(end);
 await writeFile('firestore.fc.base.rules',addMemberCategoryRules(output));
 console.log('FC_MODULE_RULE_BASE_PREPARED');

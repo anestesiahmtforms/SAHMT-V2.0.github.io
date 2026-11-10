@@ -5,8 +5,9 @@ import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} fro
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 const validId=id=>typeof id==='string'&&/^[a-f0-9]{32}$/.test(id);
+const folders={climate:'consultas/pesquisas/clima',stress:'consultas/pesquisas/estresse',epidemiological:'consultas/epidemiologico'};
 const kinds={epidemiological:{cycleCollection:'epidemiologicalCycles',responseCollection:'epidemiologicalResponses',version:'1.0',validate:validateEpidemiologicalSubmission},climate:{cycleCollection:'climateCycles',responseCollection:'climateResponses',version:climateVersion,validate:climateInput},stress:{cycleCollection:'stressCycles',responseCollection:'stressResponses',version:stressVersion,validate:stressInput}};
-export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.randomUUID().replaceAll('-',''),reportReaderEmail,now=Date.now}={}) {
+export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.randomUUID().replaceAll('-',''),reportReaderEmail,checkPerformance=async()=>{},checkSurvey=async()=>{},now=Date.now}={}) {
   if(!profileStore?.get||!responseStore?.transaction)throw Error('SURVEY_STORE_REQUIRED');
   async function authorize(identity){
     if(!identity?.uid||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(identity.uid)||identity.emailVerified!==true||identity.provider!=='google.com'||typeof identity.email!=='string'||!identity.email.includes('@'))fail('SURVEY_UNAUTHENTICATED',401);
@@ -27,9 +28,10 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
         responseStore.get('fePerformanceSummaries',identity.uid),responseStore.get('fePerformanceReference','current'),
         responseStore.list('fePerformanceAwards',[{field:'uid',op:'EQUAL',value:identity.uid}],200)
       ]);
+      await checkPerformance();
       return {status:'READY',uid:identity.uid,summary:summary||{uid:identity.uid,total:0},reference:reference||{maxTotal:0},awards};
     }
-    if(action==='REPORT'&&exact(input,['survey','cycle'])&&input.survey==='epidemiological'&&input.cycle===CYCLE){if(!identity?.uid||identity.emailVerified!==true||identity.provider!=='google.com'||identity.email?.trim().toLowerCase()!==reportReaderEmail?.toLowerCase())fail('SURVEY_FORBIDDEN',403);const p=await profileStore.get('users',identity.uid);if(!p||p.uid!==identity.uid||p.email?.toLowerCase()!==identity.email.toLowerCase()||p.active!==true||p.access!==true||!(p.role==='administrador_app'||p.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);const cycle=await responseStore.get('epidemiologicalCycles',CYCLE);const report=cycle?.status==='closed'?await responseStore.get('epidemiologicalReports',CYCLE):null;const fresh=await profileStore.get('users',identity.uid);if(!fresh||fresh.uid!==identity.uid||fresh.email?.toLowerCase()!==identity.email.toLowerCase()||fresh.active!==true||fresh.access!==true||!(fresh.role==='administrador_app'||fresh.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);return {report:report?.grouping_version===2?report:null};}
+    if(action==='REPORT'&&exact(input,['survey','cycle'])&&input.survey==='epidemiological'&&input.cycle===CYCLE){if(!identity?.uid||identity.emailVerified!==true||identity.provider!=='google.com'||identity.email?.trim().toLowerCase()!==reportReaderEmail?.toLowerCase())fail('SURVEY_FORBIDDEN',403);const p=await profileStore.get('users',identity.uid);if(!p||p.uid!==identity.uid||p.email?.toLowerCase()!==identity.email.toLowerCase()||p.active!==true||p.access!==true||!(p.role==='administrador_app'||p.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);await checkSurvey(folders.epidemiological);const cycle=await responseStore.get('epidemiologicalCycles',CYCLE);const report=cycle?.status==='closed'?await responseStore.get('epidemiologicalReports',CYCLE):null;const fresh=await profileStore.get('users',identity.uid);if(!fresh||fresh.uid!==identity.uid||fresh.email?.toLowerCase()!==identity.email.toLowerCase()||fresh.active!==true||fresh.access!==true||!(fresh.role==='administrador_app'||fresh.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);await checkSurvey(folders.epidemiological);return {report:report?.grouping_version===2?report:null};}
     if(!['BOOTSTRAP','SUBMIT'].includes(action)||!exact(input,action==='BOOTSTRAP'?['survey','cycle']:['survey','cycle','response'])||!Object.hasOwn(kinds,input.survey)||input.cycle!==CYCLE)fail('SURVEY_INVALID_INPUT');
     const group=await authorize(identity),kind=kinds[input.survey],ledgerKey=`${identity.uid}_${input.survey}_${CYCLE}`;
     let response;
@@ -37,6 +39,7 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
       try {response=kind.validate({...input.response,group});}catch{fail('SURVEY_INVALID_INPUT');}
     }
     return responseStore.transaction(async tx=>{
+      await checkSurvey(folders[input.survey],tx);
       const cycle=await tx.get(kind.cycleCollection,CYCLE);
       if(cycle?.status!=='open'&&!(input.survey==='epidemiological'&&action==='BOOTSTRAP'&&cycle?.status==='closed'))fail('SURVEY_CYCLE_CLOSED',409);
       const participation=await tx.get('surveyParticipation',ledgerKey);
@@ -44,6 +47,7 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
       if(participation&&(participation.uid!==identity.uid||participation.survey!==input.survey||participation.cycle!==CYCLE||participation.completed!==true))fail('SURVEY_PARTICIPATION_INVALID',503);
       if(action==='BOOTSTRAP')return {group,alreadyResponded:!!participation,...(input.survey==='epidemiological'?{canReadReport:identity.email?.toLowerCase()===reportReaderEmail?.toLowerCase(),closed:cycle.status==='closed'}:{})};
       if(participation)return {accepted:true,alreadyResponded:true};
+      await checkPerformance(tx);
       if(await tx.get(kind.responseCollection,response.submission_id))fail('SURVEY_RESPONSE_ID_REUSED',409);
       const currentGroup=await authorize(identity);
       if(currentGroup!==group)fail('SURVEY_GROUP_CHANGED',409);

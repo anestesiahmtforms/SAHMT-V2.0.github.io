@@ -102,9 +102,15 @@ service cloud.firestore {
       allow get: if yearEndReader() && request.auth.uid == uid;
       allow list, write: if false;
     }
+    function yearEndFolderOpen_() {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['consultas', 'consultas/escala-final-de-ano']);
+    }
     match /yearEndSchedules/{cycle}/registrations/{uid} {
-      allow get: if cycle == '2026-2027' && (yearEndAdmin() || (yearEndMember() && request.auth.uid == uid));
-      allow list: if cycle == '2026-2027' && yearEndAdmin();
+      allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && (yearEndAdmin() || (yearEndMember() && request.auth.uid == uid));
+      allow list: if yearEndFolderOpen_() && cycle == '2026-2027' && yearEndAdmin();
       allow create: if cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
         yearEndRecord(request.resource.data, uid) &&
         request.resource.data.createdAt == request.time && yearEndPairedTotals({}, request.resource.data, 1) &&
@@ -116,21 +122,21 @@ service cloud.firestore {
       allow delete: if false;
     }
     match /yearEndSchedules/{cycle}/control/{id} {
-      allow get: if cycle == '2026-2027' && id == 'order' && yearEndAdmin();
+      allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && id == 'order' && yearEndAdmin();
       allow list, write: if false;
     }
     match /yearEndSchedules/{cycle}/summary/{id} {
-      allow get: if cycle == '2026-2027' && id == 'totals' && yearEndReader();
+      allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && id == 'totals' && yearEndReader();
       allow list, create, delete: if false;
       allow update: if cycle == '2026-2027' && id == 'totals' && yearEndMember() && yearEndWritesReady() &&
         yearEndPairedRegistration(resource.data, request.resource.data);
     }
     match /yearEndSchedules/{cycle}/policy/{id} {
-      allow get: if cycle == '2026-2027' && id == 'participation' && yearEndAdmin();
+      allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && id == 'participation' && yearEndAdmin();
       allow list, write: if false;
     }
     match /yearEndSchedules/{cycle}/participation/{uid} {
-      allow get: if cycle == '2026-2027' && request.auth.uid == uid && yearEndReader();
+      allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && request.auth.uid == uid && yearEndReader();
       allow list, write: if false;
     }
     // END_YEAR_END_SCHEDULE_V1

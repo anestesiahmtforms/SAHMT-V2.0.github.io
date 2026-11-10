@@ -157,6 +157,7 @@ jobs:
       - name: Build PWA
         env:
           VITE_FI_EVENTS_ENABLED: 'false'
+          VITE_FOLDER_POLICY_ENABLED: ${{ vars.VITE_FOLDER_POLICY_ENABLED || 'false' }}
           VITE_FI_ADMIN_ENABLED: ${{ vars.VITE_FI_ADMIN_ENABLED || 'false' }}
           VITE_FI_PILOT_ENABLED: ${{ vars.VITE_FI_PILOT_ENABLED || 'false' }}
           VITE_FJ_SCHEDULE_ENABLED: 'true'

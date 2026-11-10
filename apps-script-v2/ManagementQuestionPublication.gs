@@ -141,8 +141,10 @@ function gqpPrivateFile_(id) {
 }
 function gqpPorts_(cfg) {
   const props=PropertiesService.getScriptProperties(), lock=LockService.getScriptLock(), forms={};
-  function native(id) { return forms[id] || (forms[id]=FormApp.openById(id)); }
+  function checkFolder() { sahmtRequireFolders_(['gestao'],'https://firestore.googleapis.com/v1/projects/sahmt-gestao-5ae66/databases/(default)/documents',true); }
+  function native(id) { checkFolder(); return forms[id] || (forms[id]=FormApp.openById(id)); }
   function request(id,body) {
+    checkFolder();
     const url='https://forms.googleapis.com/v1/forms/'+encodeURIComponent(id)+(body?':batchUpdate':'');
     const headers={Authorization:'Bearer '+ScriptApp.getOAuthToken()};
     if(cfg.apiQuotaProjectId)headers['x-goog-user-project']=cfg.apiQuotaProjectId;

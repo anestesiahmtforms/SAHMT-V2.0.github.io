@@ -1,4 +1,5 @@
 import {homeScheduleCache} from './home-entry-cache.js';
+import {operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalContentAllowed, watchOperationalFolderPolicy} from './operational-folder-runtime.js';
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
 import {isChecklistScienceOpen} from './checklist-science-clock.js';
 import {createAccountMode} from './account-mode.js';
@@ -273,7 +274,8 @@ const reportPermissions = {
   checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage']
 };
 function reportAllowed(kind) {
-  return session.status === 'signed-in' && Boolean(session.user?.uid) && featureEnabledForRoute(kind, appFeatures) && reportPermissions[kind].some(can);
+  return (typeof operationalFolderRouteAllowed!=='function'||operationalFolderRouteAllowed(kind)) &&
+    session.status === 'signed-in' && Boolean(session.user?.uid) && featureEnabledForRoute(kind, appFeatures) && reportPermissions[kind].some(can);
 }
 function reportPermissionKey(kind) {
   if (kind === 'labels' && typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled) return JSON.stringify([session.labelProfile?.active, session.labelProfile?.access,
@@ -762,7 +764,7 @@ function moduleCards() {
   return [...Object.entries(labels), ['schedule', ['Escala diária', 'Consultar escala e eventos do dia']]].filter(([route]) => !['events', 'people', 'admin', 'occurrences', 'qmentum', 'fg-performance', 'fc-performance', 'fe-performance'].includes(route)
     && !['training', 'management-hub'].includes(route)
       && (route==='fe-performance'?fePerformanceEnabled&&commonUserActive:(commonModules.includes(route) || permissionFor[route]?.some(can)))
-    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).sort(([a], [b]) => ['checklist','schedule','labels','management'].indexOf(a) - ['checklist','schedule','labels','management'].indexOf(b)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
+    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).sort(([a], [b]) => ['checklist','schedule','labels','management'].indexOf(a) - ['checklist','schedule','labels','management'].indexOf(b)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(route)?' disabled aria-disabled="true" title="Pasta desativada ou sem confirmação do servidor"':route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',people:'PS',admin:'AD','fe-performance':'FE'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
@@ -906,6 +908,7 @@ function fitSchedulePositionGrid(container) {
 }
 
 function canManageScheduleEvents() {
+  if(typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed('events'))return false;
   return featureEnabledForRoute('events', appFeatures) && can('eventsWrite') && (can('admin') || session.profile?.role === 'gestor');
 }
 
@@ -914,6 +917,7 @@ function canEditScheduleEvents() {
 }
 
 function canReadScheduleEvents() {
+  if(typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed('events'))return false;
   return featureEnabledForRoute('events', appFeatures) && (can('eventsRead') || can('eventsWrite'));
 }
 
@@ -1510,7 +1514,7 @@ async function loadModule(route) {
     if(!consultationsAllowed)try{consultationsAllowed=await readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub});}catch{}
     if(!content.isConnected||!currentHub())return;
     const initialPanel=location.hash.split('/')[2]||'home';
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent:()=>currentHub()&&isCurrent(),participantOnly});},
@@ -1867,7 +1871,7 @@ async function loadModule(route) {
       const areaSlug=location.hash.split('/')[2];
       if(items.some(item=>item.id===areaSlug))selectedManagementAreaId=areaSlug;
       if (!items.some((item) => item.id === selectedManagementAreaId)) selectedManagementAreaId = items[0]?.id || '';
-      const areas = items.map((item) => `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}">${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
+      const areas = items.map((item) => `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}"${typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+item.id)?' disabled aria-disabled="true"':''} aria-pressed="${item.id === selectedManagementAreaId}">${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
       const existingAreaIds = new Set(items.map((item) => item.id));
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
@@ -1976,7 +1980,7 @@ async function loadAdminModule(content) {
     const {listUserProfiles, listAccessRequests,listMemberCategoryAssignments,listLabelModuleProfiles} = await import('./fi-admin-data.js');
     const [rawProfiles, accessRequests] = await Promise.all([listUserProfiles(), listAccessRequests()]);
     let labelProfiles=[],labelProfileLoadFailed=false;
-    if (can('labelsManage')) {
+    if (can('labelsManage')&&(typeof operationalFolderRouteAllowed!=='function'||operationalFolderRouteAllowed('labels'))) {
       try { labelProfiles=await listLabelModuleProfiles({uid:session.user.uid}); }
       catch { labelProfileLoadFailed=true; }
     }
@@ -3396,12 +3400,17 @@ async function shareReportPdf(kind) {
 }
 
 async function loadManagementAreaActivities(area) {
+  if(typeof operationalContentAllowed==='function'&&area&&!operationalContentAllowed('gestao/'+area.id))return;
   cleanupDocumentTraining?.(); cleanupDocumentTraining=null;
   const detail = document.querySelector('#management-area-detail');
   const loadId = ++managementActivityLoad;
   const requestUid = session.user?.uid;
   if (!detail) return;
   if (!area) { detail.innerHTML = '<p class="empty-state">Selecione uma área.</p>'; return; }
+  if(typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+area.id)){
+    detail.innerHTML='<p class="empty-state" role="status">Esta pasta está desativada.</p>';
+    return;
+  }
   if (deployment.target === 'FB' && area.id === 'area-gestao-de-documentos') {
     detail.innerHTML = '<p class="loading" role="status">Carregando treinamentos…</p>';
     try {
@@ -3827,7 +3836,7 @@ async function loadManagementAreaActivities(area) {
 
   if(deployment.target==='FB'&&area.id==='area-gestao-de-pessoas'&&loadId===managementActivityLoad&&detail.isConnected&&session.user?.uid===requestUid){
     let previousCleanup=cleanupDocumentTraining;
-    const entryCleanup=mountVaccinationEntry(detail,{user:session.user,profile:session.profile,
+    const entryCleanup=mountVaccinationEntry(detail,{user:session.user,profile:session.profile,folderAllowed:operationalContentAllowed,
       valid:()=>loadId===managementActivityLoad&&detail.isConnected&&session.user?.uid===requestUid&&session.status==='signed-in',
       onOpen:()=>{previousCleanup?.();previousCleanup=null;},onBack:()=>{void loadManagementAreaActivities(area);}});
     const cleanup=()=>{previousCleanup?.();previousCleanup=null;entryCleanup();};
@@ -5119,6 +5128,16 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 async function render() {
   const generation=++evaluationModuleGeneration,requestRoute=currentRoute();
   const current=()=>generation===evaluationModuleGeneration&&requestRoute===currentRoute();
+  if(typeof watchOperationalFolderPolicy==='function'){
+    const uid=session.status==='signed-in'?session.user?.uid||'':'';
+    watchOperationalFolderPolicy(uid,()=>{
+      if(session.status!=='signed-in'||session.user?.uid!==uid)return;
+      homeScheduleCache.clear(uid);
+      liveReports.clear('folder-policy-changed');
+      reportPayloads.clear();
+      if(!['admin','fi-control'].includes(currentRoute()))void render();
+    });
+  }
   if(currentRoute()!=='offline')googleAccessPanel?.close();else googleAccessPanel?.refresh();
   scheduleGridObserver?.disconnect(); scheduleGridObserver = null;
   // Captured draft fields are already queued independently of the outgoing DOM.
@@ -5167,10 +5186,19 @@ async function render() {
       const [{mountFiControl},{fiControlRequest}]=await Promise.all([import('./fi-control-ui.js'),import('./fi-control-client.js'),import('./fi-control.css')]);
       if(!isCurrent())return;
       const request=(action,input)=>fiControlRequest(action,input,uid,{pilot});
-      if(pilot)await request('service.status',{});
+      const serviceStatus=pilot||(!searchOnly&&operationalFolderPolicyEnabled)?await request('service.status',{}):null;
       if(!isCurrent())return;
-      cleanupCurrentModule=mountFiControl(document.querySelector('#fi-control-content'),{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot,searchOnly});
+      const host=document.querySelector('#fi-control-content');
+      const folderAdmin=!searchOnly&&!pilot&&serviceStatus?.folderManagement===true
+        ? (await import('./operational-folder-admin.js')).mountOperationalFolderAdmin : null;
+      if(!isCurrent())return;
+      cleanupCurrentModule=mountFiControl(host,{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot,searchOnly,folderAdmin});
     }catch{if(isCurrent()){const host=document.querySelector('#fi-control-content');host.innerHTML='<p role="status">Não foi possível abrir esta tela.</p><button type="button" class="secondary-button">Voltar à Home</button>';host.querySelector('button').addEventListener('click',()=>navigate('home'));}}
+    return;
+  }
+  if(!authLimited&&typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(requestedRoute)){
+    app.innerHTML='<main class="main-content"><p role="status">Esta pasta está desativada ou aguarda confirmação do servidor.</p><button type="button" class="secondary-button" data-folder-return>VOLTAR</button></main>';
+    app.querySelector('[data-folder-return]')?.addEventListener('click',()=>navigate('home'));
     return;
   }
   if(typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&['people','admin','app-updates-control'].includes(requestedRoute)&&!can('admin')){navigate('home');return;}

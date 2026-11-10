@@ -22,6 +22,7 @@ function memoryStore() {
         const reads = new Map(), writes = [];
         const tx = {
           async get(c, id) { const k = key(c, id); reads.set(k, revisions.get(k) || 0); return clone(data.get(k)); },
+          list: (...args) => store.list(...args),
           set(c, id, value) { writes.push({ c, id, value: clone(value) }); },
           create(c, id, value) { writes.push({ c, id, value: clone(value), create: true }); },
           delete(c, id) { writes.push({ c, id, remove: true }); },
@@ -62,8 +63,66 @@ async function setup() {
   const service = createHtmlTrainingService({ store, now: () => 1792970000000, uuid: () => `run-${++sequence}` });
   const exec = (action, input = {}, uid = 'participant') => service.execute(action, input, identity(uid));
   await exec('PUBLISH', publication(), 'admin');
+  await exec('BUILD_FOLDER_INDEX', {}, 'admin');
   return { store, service, exec };
 }
+
+function traceReads(store){
+ const reads=[],transaction=store.transaction.bind(store),list=store.list.bind(store);
+ store.transaction=fn=>transaction(tx=>{const get=tx.get.bind(tx);tx.get=(c,id)=>{reads.push(`${c}/${id}`);return get(c,id);};return fn(tx);});
+ store.list=(c,...args)=>{reads.push(`${c}/*`);return list(c,...args);};
+ return reads;
+}
+test('folder index prevents all blocked nonadministrator content reads, including score reads',async()=>{
+ const h=await setup();await h.exec('BUILD_FOLDER_INDEX',{},'admin');
+ await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:false,expectedVersion:0},'admin');
+ const reads=traceReads(h.store);
+ for(const uid of ['manager','participant'])for(const action of ['OPEN','CONTENT','EDIT','AUDIT_LIST','SCORE']){
+  await assert.rejects(h.exec(action,{trainingId:'rop-one'},uid),{code:'FORBIDDEN'});
+ }
+ const list=await h.exec('LIST');
+ assert.deepEqual(list.trainings,[]);
+ assert.deepEqual(list.inactiveTrainings,[{id:'rop-one',title:'ROP One',folderPath:['ROPs','Recovery']}]);
+ assert.deepEqual(reads.filter(path=>/^htmlTraining(?:s|Versions|Content|States|Audits|Scores)\//.test(path)),[]);
+});
+
+test('locked navigation does not disclose titles to profiles without the existing audience permission',async()=>{
+ const h=await setup(),draft=publication(1);draft.training.audienceGroup='RESTRICTED';
+ await h.exec('PUBLISH',draft,'admin');await h.exec('BUILD_FOLDER_INDEX',{},'admin');
+ await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:false,expectedVersion:0},'admin');
+ assert.deepEqual((await h.exec('LIST')).inactiveTrainings,[]);
+ assert.equal((await h.exec('LIST',{},'manager')).inactiveTrainings[0].title,'ROP One');
+});
+test('disabled policy without a complete index fails closed before scans and direct reads',async()=>{
+ const h=await setup();h.store.seed('htmlTrainingSettings','folderIndex',{schemaVersion:1,complete:false,entries:{}});
+ h.store.seed('htmlTrainingSettings','folders',{version:1,disabled:[JSON.stringify(['ROPs'])]});
+ const reads=traceReads(h.store);
+ for(const action of ['LIST','OPEN','EDIT','AUDIT_LIST','SCORE'])await assert.rejects(h.exec(action,{trainingId:'rop-one'},'manager'),{code:'FOLDER_INDEX_REQUIRED'});
+ assert.deepEqual(reads.filter(path=>path.startsWith('htmlTrainings/')),[]);
+});
+test('index migration requires administrator, and publishing updates nested routing atomically',async()=>{
+ const h=await setup();await assert.rejects(h.exec('BUILD_FOLDER_INDEX'),{code:'FORBIDDEN'});
+ await h.exec('BUILD_FOLDER_INDEX',{},'admin');
+ const pub=publication(1);pub.training.folderPath=['ROPs','Recovery','Adults','Airway'];await h.exec('PUBLISH',pub,'admin');
+ assert.deepEqual((await h.store.get('htmlTrainingSettings','folderIndex')).entries['rop-one'],pub.training.folderPath);
+ await h.exec('SET_FOLDER_ACCESS',{path:pub.training.folderPath,enabled:false,expectedVersion:0},'admin');
+ await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:false,expectedVersion:1},'admin');
+ await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:2},'admin');
+ const reads=traceReads(h.store);assert.deepEqual((await h.exec('LIST')).trainings,[]);
+ await assert.rejects(h.exec('OPEN',{trainingId:'rop-one'}),{code:'FORBIDDEN'});
+ assert.deepEqual(reads.filter(path=>path.startsWith('htmlTrainings/')),[]);
+});
+test('administrator can reactivate disabled folders and then repair an incomplete index',async()=>{
+ const h=await setup();h.store.seed('htmlTrainingSettings','folderIndex',{schemaVersion:1,complete:false,entries:{}});
+ h.store.seed('htmlTrainingSettings','folders',{version:1,disabled:[JSON.stringify(['ROPs'])]});
+ for(const action of ['OPEN','CONTENT','EDIT','AUDIT_LIST','SCORE'])await assert.rejects(h.exec(action,{trainingId:'rop-one',version:1},'admin'),{code:'FOLDER_INDEX_REQUIRED'});
+ assert.equal((await h.exec('LIST',{},'admin')).trainings.length,0);
+ await assert.rejects(h.exec('BUILD_FOLDER_INDEX',{},'admin'),{code:'FORBIDDEN'});
+ await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:1},'admin');
+ await h.exec('BUILD_FOLDER_INDEX',{},'admin');
+ assert.equal((await h.store.get('htmlTrainingSettings','folderIndex')).complete,true);
+ assert.equal((await h.exec('CONTENT',{trainingId:'rop-one',version:1},'admin')).sections.length,2);
+});
 async function ready(h, requestId = 'begin-one', uid = 'participant', answers = {}) {
   let { state } = await h.exec('BEGIN', { trainingId: 'rop-one', requestId }, uid);
   const runId = state.run.id;
@@ -76,6 +135,24 @@ async function ready(h, requestId = 'begin-one', uid = 'participant', answers = 
 const submit = (h, runId, requestId = 'submit-one', uid = 'participant', suggestion = 'Consider an additional example') =>
   h.exec('SUBMIT', { trainingId: 'rop-one', runId, requestId, suggestion }, uid);
 const errorCode = code => error => error.code === code && error.status >= 400;
+
+test('enabled sibling progress never reads a disabled sibling aggregate and administrator can reconcile earned points',async()=>{
+ const h=await setup(),other=publication();other.trainingId='blocked';other.training.category='Diretrizes';other.training.subcategory='';
+ await h.exec('PUBLISH',other,'admin');
+ await h.exec('BUILD_FOLDER_INDEX',{},'admin');
+ h.store.seed('htmlTrainingScores','participant',{uid:'participant',acknowledgement:0,test:99,suggestion:0,total:99,version:1,items:{blocked:{acknowledgement:0,test:99,suggestion:0}},updatedAt:1});
+ await h.exec('SET_FOLDER_ACCESS',{path:['Diretrizes'],enabled:false,expectedVersion:0},'admin');
+ const reads=traceReads(h.store),{runId}=await ready(h);
+ const result=await submit(h,runId);assert.equal(result.score,null);assert.equal(result.scoreProjectionPending,true);assert.equal(result.state.bestScore,5);
+ const replay=await submit(h,runId);assert.equal(replay.score,null);
+ const reviewed=await h.exec('REVIEW',{trainingId:'rop-one',uid:'participant',expectedVersion:result.state.version,points:2,note:'Approved'},'manager');assert.equal(reviewed.score,null);
+ assert.deepEqual(reads.filter(path=>path.startsWith('htmlTrainingScores/')),[]);
+ await assert.rejects(h.exec('RECONCILE_SCORE',{subjectUid:'participant'},'manager'),{code:'FORBIDDEN'});
+ await assert.rejects(h.exec('RECONCILE_SCORE',{subjectUid:'participant'},'admin'),{code:'FORBIDDEN'});
+ await h.exec('SET_FOLDER_ACCESS',{path:['Diretrizes'],enabled:true,expectedVersion:1},'admin');
+ const reconciled=await h.exec('RECONCILE_SCORE',{subjectUid:'participant'},'admin');assert.equal(reconciled.score.total,107);
+ assert.equal((await h.store.get('htmlTrainingStates','rop-one_participant')).bestScore,5);
+});
 
 test('published catalog and participant responses never expose private bank, source or answers', async () => {
   const h = await setup();
@@ -267,6 +344,8 @@ test('a first zero-point manual decision consumes the same grant, and permission
 
 test('bulk transaction reads preserve content, catalog and suggestions without a per-document network requirement', async () => {
   const h = await setup(); h.store.batchReads = [];
+  await h.exec('BUILD_FOLDER_INDEX',{},'admin');
+  const reads=traceReads(h.store);
   const { runId } = await ready(h); await submit(h, runId);
   assert.equal((await h.exec('LIST')).trainings[0].id, 'rop-one');
   assert.equal((await h.exec('CONTENT', { trainingId: 'rop-one', version: 1 })).sections[1].id, 'body');
@@ -274,7 +353,7 @@ test('bulk transaction reads preserve content, catalog and suggestions without a
   assert.ok(h.store.batchReads.some(read => read.collection === 'htmlTrainings' && read.count === 1));
   const contentVersion=await h.store.get('htmlTrainingVersions','rop-one_v1');
   assert.ok(h.store.batchReads.some(read => read.collection === 'htmlTrainingContent' && read.count === contentVersion.chunkCount));
-  assert.ok(h.store.batchReads.some(read => read.collection === 'htmlTrainingStates' && read.count === 1));
+  assert.equal(reads.filter(path=>path==='htmlTrainingStates/*').length,1);
 });
 
 test('audit saves have compare-and-swap, preserve previous draft author/value, and cannot cross item IDs', async () => {
@@ -410,9 +489,11 @@ test('only administrators change folder access; disabled parents and children bl
  assert.equal((await h.exec('LIST')).trainings.length,0);
  for(const action of ['OPEN','CONTENT','BEGIN'])await assert.rejects(h.exec(action,{trainingId:'rop-one',requestId:'one'}),{code:'FORBIDDEN'});
  await assert.rejects(h.exec('EDIT',{trainingId:'rop-one'},'manager'),{code:'FORBIDDEN'});
- assert.equal((await h.exec('LIST',{},'admin')).trainings.length,1);
+ assert.equal((await h.exec('LIST',{},'admin')).trainings.length,0);
+ await assert.rejects(h.exec('OPEN',{trainingId:'rop-one'},'admin'),{code:'FORBIDDEN'});
  await assert.rejects(h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:0},'admin'),{code:'VERSION_CONFLICT'});
  await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:1},'admin');
+ assert.equal((await h.exec('OPEN',{trainingId:'rop-one'},'admin')).training.id,'rop-one');
  await h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery'],enabled:false,expectedVersion:2},'admin');
  assert.equal((await h.exec('LIST')).trainings.length,0);
  await h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery'],enabled:true,expectedVersion:3},'admin');

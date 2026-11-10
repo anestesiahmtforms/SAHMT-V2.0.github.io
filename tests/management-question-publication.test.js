@@ -121,6 +121,7 @@ function nativeFixture(){
  f.ctx.managementDriveJson_=url=>clone(metadata[url.match(/files\/([^?]+)/)[1]]);f.ctx.managementDrivePermissions_=()=>clone(grants);
  f.ctx.managementDriveRequest_=()=>({getBlob:()=>({getBytes:()=>[1,2]})});
  f.ctx.Utilities={DigestAlgorithm:{SHA_256:'sha256'},computeDigest:(type,bytes)=>[...createHash(type).update(Buffer.from(bytes)).digest()]};
+ f.ctx.sahmtRequireFolders_=()=>{};
  f.ctx.FormApp={openById:()=>({isPublished:()=>published,isAcceptingResponses:()=>accepting,setPublished:v=>{published=v;},setAcceptingResponses:v=>{accepting=v;}})};
  const calls=[];f.ctx.ScriptApp={getOAuthToken:()=> 'synthetic-oauth'};
  f.ctx.UrlFetchApp={fetch:(url,opts)=>{calls.push({url,opts});return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(f.form)};}};

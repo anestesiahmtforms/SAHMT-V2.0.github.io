@@ -1,4 +1,5 @@
-import test from 'node:test';import assert from 'node:assert/strict';
+import test from 'node:test';
+import {assertFePerformanceReadable} from '../worker-fe-surveys/performance-policy.js';import assert from 'node:assert/strict';
 import {createSurveyService} from '../worker-training/survey-service.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';
 import {institutionalAssignmentKey} from '../src/institutional-group.js';
@@ -61,4 +62,26 @@ test('invalid identity, schema, closed cycle or revoked profile cannot consume a
  for(const field of ['uid','email','ip','responseId']){const f=await fixture(),payload=input('stress');payload.response[field]='forbidden';await assert.rejects(f.service.execute('SUBMIT',payload,identity),e=>e.code==='SURVEY_INVALID_INPUT');assert.equal((await f.responses.list('surveyParticipation')).length,0);}
  const f=await fixture();f.responses.seed('stressCycles','2026',{status:'closed'});await assert.rejects(f.service.execute('SUBMIT',input('stress'),identity),e=>e.code==='SURVEY_CYCLE_CLOSED');assert.equal((await f.responses.list('surveyParticipation')).length,0);
  f.responses.seed('stressCycles','2026',{status:'open'});f.profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:false});await assert.rejects(f.service.execute('SUBMIT',input('stress'),identity),e=>e.code==='SURVEY_FORBIDDEN');assert.equal((await f.responses.list('stressResponses')).length,0);
+});
+
+test('FE folder pause preserves participation and awards for retry without reading the ledger',async()=>{
+ const {profiles,responses}=await fixture();
+ const clock=Date.parse('2026-10-28T12:00:00Z');
+ responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:clock-1000});
+ responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:['desempenho/fe']});
+ const reads=[];
+ const responseStore={...responses,transaction:fn=>responses.transaction(tx=>fn({
+  ...tx,get:(collection,id)=>{reads.push(collection);return tx.get(collection,id);}
+ }))};
+ const service=createSurveyService({profileStore:profiles,responseStore,now:()=>clock,
+  checkPerformance:tx=>assertFePerformanceReadable(()=>assert.fail('Unexpected standalone read'),tx)});
+ await assert.rejects(service.execute('SUBMIT',input('stress'),identity),{code:'SURVEY_FOLDER_DISABLED'});
+ assert.equal(reads.some(collection=>collection.startsWith('fePerformance')),false);
+ assert.equal((await responses.list('surveyParticipation')).length,0);
+ assert.equal((await responses.list('stressResponses')).length,0);
+ responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:2,disabled:[]});
+ assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:false});
+ assert.equal((await responses.list('fePerformanceAwards')).length,1);
+ responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:3,disabled:['desempenho']});
+ assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:true});
 });

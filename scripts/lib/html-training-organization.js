@@ -30,9 +30,17 @@ export async function applyTrainingOrganization(store,plan,{uid,now=Date.now()}=
    if(profile?.active!==true||profile.access!==true||!(profile.role==='administrador_app'||profile.permissions?.admin===true))throw Error('ORGANIZATION_ADMIN_REQUIRED');
    const training=await tx.get('htmlTrainings',item.trainingId);
    if(!training||fingerprint(training)!==item.expected)throw Error('ORGANIZATION_VERSION_CONFLICT');
+   const folders=await tx.get('htmlTrainingSettings','folders');
    tx.create('htmlTrainingOrganizationHistory',historyId,{id:historyId,trainingId:item.trainingId,previousSubcategory:training.subcategory||'',subcategory:item.subcategory,
     audienceGroup:training.audienceGroup,trainingVersion:training.version,updatedAt:now,updatedByUid:uid,source:'OFFICIAL_DRIVE_FOLDER_STRUCTURE'});
-   tx.set('htmlTrainings',item.trainingId,{...training,subcategory:item.subcategory,organizationUpdatedAt:now,organizationUpdatedByUid:uid});
+   tx.set('htmlTrainings',item.trainingId,{...training,subcategory:item.subcategory,
+    ...(Array.isArray(training.folderPath)?{folderPath:[training.category,item.subcategory,...training.folderPath.slice(2)]}:{}),
+    organizationUpdatedAt:now,organizationUpdatedByUid:uid});
+   // Moving content must invalidate the former authorization routing in the same commit.
+   tx.set('htmlTrainingSettings','folderIndex',{schemaVersion:1,complete:false,updatedAt:now,updatedByUid:uid});
+   if(Number.isSafeInteger(folders?.version)&&Array.isArray(folders.disabled)&&folders.disabled.length){
+    tx.set('htmlTrainingSettings','folders',{...folders,version:folders.version+1,updatedAt:now,updatedByUid:uid});
+   }
   });
   results.push(item.trainingId);
  }

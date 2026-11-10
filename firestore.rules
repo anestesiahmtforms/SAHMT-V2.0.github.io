@@ -1,6 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // FOLDER_READ_POLICY_V1: source-local read gate, including administrator reads.
+    // Missing control document preserves bootstrap behavior; malformed policy denies.
+    function folderReadPolicyValid_(policy) {
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 && policy.disabled is list;
+    }
+    function folderReadAllowed_(ancestors) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      return !exists(path) || (folderReadPolicyValid_(get(path).data) && !get(path).data.disabled.hasAny(ancestors));
+    }
+    match /runtimePolicy/folders {
+      allow get: if activeUser();
+      allow list, write: if false;
+    }
     // MEMBER_CATEGORIES_V1: descriptive membership, never an automatic grant.
     function memberCategoryActive_() {
       let p = /databases/$(database)/documents/users/$(request.auth.uid);
@@ -24,6 +37,14 @@ service cloud.firestore {
     }
     // END_MEMBER_CATEGORIES_V1
 
+    function scheduleFolderReadAllowed_() {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      let disabled = policy.disabled;
+      return folderReadPolicyValid_(policy) && !disabled.hasAny(['operacao', 'operacao/escala']) &&
+        (!disabled.hasAny(['operacao/eventos']) || resource.data.get('highlights', {}).get('events', []).size() == 0) &&
+        (!disabled.hasAny(['operacao/escala/ferias']) || resource.data.get('vacationLabel', '') == '');
+    }
     function signedIn() { return request.auth != null; }
     function profilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
     function hasProfile() { return signedIn() && exists(profilePath()); }
@@ -150,7 +171,7 @@ service cloud.firestore {
       allow create: if validEvaluationRequest(request.resource.data, id);
       allow update, delete: if false;
     }
-    match /checklistResponsibilities/{day} { allow read: if checklistAccess(); allow write: if false; }
+    match /checklistResponsibilities/{day} { allow read: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (checklistAccess()); allow write: if false; }
     function qualityManageArea(areaId) { return can('qualityManage') && areaId == 'area-gestao-da-qualidade'; }
     function assignedDocumentAreaManager(areaId) {
       let path = /databases/$(database)/documents/managementAreas/$(areaId);
@@ -467,7 +488,7 @@ service cloud.firestore {
           data.version is int && data.version > 0;
       }
 
-      allow read: if can('labelsRead') || can('labelsWrite') || can('labelsManage') || can('eventsRead') || can('eventsWrite');
+      allow read: if folderReadAllowed_(['operacao', 'operacao/etiquetas']) && (can('labelsRead') || can('labelsWrite') || can('labelsManage') || can('eventsRead') || can('eventsWrite'));
       allow create: if can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
         request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1;
@@ -488,7 +509,7 @@ service cloud.firestore {
           data.createdAt is timestamp && data.updatedAt == request.time && data.version is int && data.version > 0;
       }
 
-      allow read: if can('eventsRead') || can('eventsWrite') || can('eventsCatalogManage');
+      allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (can('eventsRead') || can('eventsWrite') || can('eventsCatalogManage'));
       allow create: if can('eventsCatalogManage') && validEventCatalog(request.resource.data, catalogId) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time &&
         request.resource.data.version == 1;
@@ -497,6 +518,12 @@ service cloud.firestore {
         request.resource.data.version == resource.data.version + 1 &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payers', 'creditors', 'updatedByUid', 'updatedAt', 'version']);
       allow delete: if false;
+    }
+    function managementFolderOpen_(areaId) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['gestao', 'gestao/' + areaId]);
     }
     match /managementAreas/{areaId} {
       function managementAccess() {
@@ -574,7 +601,7 @@ service cloud.firestore {
           request.resource.data.version == resource.data.get('version', 0) + 1;
       }
 
-      allow read: if can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign');
+      allow read: if scheduleFolderReadAllowed_() && (can('scheduleRead') || can('scheduleWrite') || can('eventsRead') || can('eventsWrite') || can('checklistSign'));
       allow create: if false;
       allow update: if validScheduleHighlightUpdate(scheduleId) || validScheduleEventHighlightUpdate(scheduleId);
       allow delete: if false;
@@ -595,7 +622,7 @@ service cloud.firestore {
           data.createdAt is timestamp && data.updatedAt is timestamp;
       }
 
-      allow read: if ((can('scheduleRead') || can('scheduleWrite')) && resource.data.active == true) || can('peopleManage');
+      allow read: if folderReadAllowed_(['operacao', 'operacao/pessoas']) && (((can('scheduleRead') || can('scheduleWrite')) && resource.data.active == true) || can('peopleManage'));
       allow create: if can('peopleManage') && validContact(request.resource.data, sigla) &&
         request.resource.data.createdByUid == request.auth.uid;
       allow update: if can('peopleManage') && resource.data.sigla == sigla &&
@@ -613,7 +640,7 @@ service cloud.firestore {
           data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
       }
 
-      allow read: if can('eventsRead') || can('eventsWrite') || can('checklistSign');
+      allow read: if folderReadAllowed_(['operacao', 'operacao/pessoas']) && (can('eventsRead') || can('eventsWrite') || can('checklistSign'));
       allow create, update: if can('peopleManage') && validEventMember(request.resource.data, sigla);
       allow delete: if false;
     }
@@ -629,7 +656,7 @@ service cloud.firestore {
           data.createdAt is timestamp && data.updatedAt is timestamp;
       }
 
-      allow read: if ((can('scheduleRead') || can('checklistSign')) && resource.data.active == true) || can('scheduleWrite');
+      allow read: if folderReadAllowed_(['operacao', 'operacao/escala', 'operacao/escala/ferias']) && (((can('scheduleRead') || can('checklistSign')) && resource.data.active == true) || can('scheduleWrite'));
       allow create: if can('scheduleWrite') && validVacation(request.resource.data, vacationId);
       allow update: if can('scheduleWrite') && resource.data.id == vacationId &&
         request.resource.data.createdByUid == resource.data.createdByUid &&
@@ -734,7 +761,7 @@ service cloud.firestore {
             (data.get('memberSigla', '') == profile().sigla || data.get('scheduleSigla', '') == profile().sigla))));
       }
 
-      allow read: if eventRecordReadAccess(resource.data);
+      allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (eventRecordReadAccess(resource.data));
       allow create: if can('eventsWrite') && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
         validEventRecord(request.resource.data, eventId, false);
       allow update: if can('eventsWrite') && can('admin') && updateActorIsSelf() &&
@@ -746,7 +773,7 @@ service cloud.firestore {
         validEventRecord(request.resource.data, eventId, true);
       allow delete: if false;
       match /history/{version} {
-        allow read: if exists(/databases/$(database)/documents/events/$(eventId)) && eventRecordReadAccess(get(/databases/$(database)/documents/events/$(eventId)).data);
+        allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (exists(/databases/$(database)/documents/events/$(eventId)) && eventRecordReadAccess(get(/databases/$(database)/documents/events/$(eventId)).data));
         allow create: if can('eventsWrite') && can('admin') && validEventHistoryEntry(request.resource.data, eventId, version);
         allow update, delete: if false;
       }
@@ -825,7 +852,7 @@ service cloud.firestore {
           (exists(existingPath) && siglas == get(existingPath).data.staffSiglas);
       }
 
-      allow read: if labelRecordAccess();
+      allow read: if folderReadAllowed_(['operacao', 'operacao/etiquetas']) && (labelRecordAccess());
       allow create: if (can('labelsWrite') || can('labelsManage')) && actorIsSelf() && validLabelRecord(request.resource.data, labelId);
       allow update: if (can('labelsWrite') || can('labelsManage')) && updateActorIsSelf() &&
         (labelActorAccess(resource.data) || can('labelsManage')) &&
@@ -836,7 +863,7 @@ service cloud.firestore {
         validLabelRecord(request.resource.data, labelId);
       allow delete: if false;
       match /history/{version} {
-        allow read: if exists(/databases/$(database)/documents/labels/$(labelId)) && labelHistoryAccess(labelId);
+        allow read: if folderReadAllowed_(['operacao', 'operacao/etiquetas']) && (exists(/databases/$(database)/documents/labels/$(labelId)) && labelHistoryAccess(labelId));
         allow create: if (can('labelsWrite') || can('labelsManage')) && validLabelHistoryEntry(request.resource.data, labelId, version);
         allow update, delete: if false;
       }
@@ -883,7 +910,7 @@ service cloud.firestore {
           data.updatedByUid == request.auth.uid && data.updatedAt is timestamp && data.version is int && data.version >= 1;
       }
 
-      allow read: if checklistAccess();
+      allow read: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (checklistAccess());
       allow create: if can('checklistManage') && validStation(request.resource.data, stationId) &&
         (!request.resource.data.keys().hasAny(['functionLabel']) || stationTitleEditor()) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
@@ -920,13 +947,13 @@ service cloud.firestore {
           data.responsibleUid == null && data.responsibleName == null && data.responsibleEmail == null;
       }
 
-      allow read: if checklistAccess();
+      allow read: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (checklistAccess());
       allow create: if can('checklistWrite') && validChecklistRecord(request.resource.data, checklistId);
       allow update: if false;
       allow delete: if false;
     }
     match /checklistSignatures/{signatureId} {
-      allow read: if can('checklistRead');
+      allow read: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (can('checklistRead'));
       allow write: if false;
     }
     match /checklistSignatureRequests/{requestId} {
@@ -950,9 +977,9 @@ service cloud.firestore {
         return common && acknowledgement && acknowledgementFields;
       }
 
-      allow get: if signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||
-        (validIsoDay(requestId) && checklistAccess()) || resource.data.signerUid == request.auth.uid || can('checklistManage'));
-      allow list: if can('checklistManage');
+      allow get: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (signedIn() && (!exists(/databases/$(database)/documents/checklistSignatureRequests/$(requestId)) ||
+        (validIsoDay(requestId) && checklistAccess()) || resource.data.signerUid == request.auth.uid || can('checklistManage')));
+      allow list: if folderReadAllowed_(['operacao', 'operacao/checklist']) && (can('checklistManage'));
       allow create: if validChecklistSignatureRequest(request.resource.data, requestId);
       allow update, delete: if false;
     }
@@ -1178,7 +1205,7 @@ service cloud.firestore {
         return base && (started || completed || cancelled);
       }
 
-      allow read: if activityAccess(resource.data.managementAreaId);
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && activityAccess(resource.data.managementAreaId);
       allow create: if (can('managementActivityWrite') || qualityManageArea(request.resource.data.managementAreaId)) && validManagementActivity(request.resource.data, activityId);
       allow update: if (can('managementActivityWrite') || can('managementManage') || qualityManageArea(resource.data.managementAreaId)) && validManagementActivityTransition(activityId);
       allow delete: if false;
@@ -1213,7 +1240,7 @@ service cloud.firestore {
       function activityInteractionAccess(activityId, interactionUid) {
         let activityPath = /databases/$(database)/documents/activities/$(activityId);
         let activity = get(activityPath).data;
-        return activeUser() && exists(activityPath) && activity.active == true &&
+        return activeUser() && exists(activityPath) && activity.active == true && managementFolderOpen_(activity.managementAreaId) &&
           (interactionUid == request.auth.uid || can('managementRead') || activity.createdByUid == request.auth.uid ||
            (activity.responsibleUids is list && activity.responsibleUids.hasAny([request.auth.uid])) ||
            (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])) || qualityManageArea(activity.managementAreaId));
@@ -1257,10 +1284,10 @@ service cloud.firestore {
            (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])) || qualityManageArea(activity.managementAreaId));
       }
 
-      allow get: if exists(/databases/$(database)/documents/activityScoreReviews/$(reviewId))
+      allow get: if (resource == null || managementFolderOpen_(resource.data.managementAreaId)) && exists(/databases/$(database)/documents/activityScoreReviews/$(reviewId))
         ? activityParticipantAccess(resource.data.activityId)
         : activityParticipantAccess(reviewId);
-      allow list: if activeUser() && activityPointsReviewer(resource.data.managementAreaId);
+      allow list: if managementFolderOpen_(resource.data.managementAreaId) && activeUser() && activityPointsReviewer(resource.data.managementAreaId);
       allow create: if activeUser() && validActivityScoreReview(request.resource.data, reviewId);
       allow update, delete: if false;
     }
@@ -1301,7 +1328,7 @@ service cloud.firestore {
           data.createdAt == request.time && data.updatedAt == request.time;
       }
 
-      allow read: if indicatorAccess(resource.data.managementAreaId);
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && indicatorAccess(resource.data.managementAreaId);
       allow create: if (can('managementIndicatorsWrite') || qualityManageArea(request.resource.data.managementAreaId)) && validManagementIndicator(request.resource.data, indicatorId);
       allow update, delete: if false;
     }
@@ -1324,7 +1351,7 @@ service cloud.firestore {
           data.notes is string && data.notes.size() <= 800 && data.createdByUid == request.auth.uid && data.createdAt == request.time;
       }
 
-      allow read: if indicatorAccess(get(/databases/$(database)/documents/indicators/$(resource.data.indicatorId)).data.managementAreaId);
+      allow read: if managementFolderOpen_(get(/databases/$(database)/documents/indicators/$(resource.data.indicatorId)).data.managementAreaId) && indicatorAccess(get(/databases/$(database)/documents/indicators/$(resource.data.indicatorId)).data.managementAreaId);
       allow create: if (can('managementIndicatorsWrite') || qualityManageArea(get(/databases/$(database)/documents/indicators/$(request.resource.data.indicatorId)).data.managementAreaId)) && validIndicatorMeasurement(request.resource.data, measurementId);
       allow update, delete: if false;
     }
@@ -1352,7 +1379,7 @@ service cloud.firestore {
            (resource.data.status == 'IN_PROGRESS' && request.resource.data.status == 'COMPLETED' && request.resource.data.completedAt == request.time));
       }
 
-      allow read: if actionPlanAccess(resource.data.managementAreaId);
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && actionPlanAccess(resource.data.managementAreaId);
       allow create: if (can('managementPlansManage') || qualityManageArea(request.resource.data.managementAreaId)) && validActionPlan(request.resource.data, planId);
       allow update: if (can('managementPlansManage') || qualityManageArea(resource.data.managementAreaId)) && validActionPlanTransition(planId);
       allow delete: if false;
@@ -1392,7 +1419,7 @@ service cloud.firestore {
           request.resource.data.createdAt == resource.data.createdAt;
       }
 
-      allow read: if actionPlanAccess(get(/databases/$(database)/documents/actionPlans/$(resource.data.planId)).data.managementAreaId) || (signedIn() && resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid]));
+      allow read: if managementFolderOpen_(get(/databases/$(database)/documents/actionPlans/$(resource.data.planId)).data.managementAreaId) && (actionPlanAccess(get(/databases/$(database)/documents/actionPlans/$(resource.data.planId)).data.managementAreaId) || (signedIn() && resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid])));
       allow create: if (can('managementPlansManage') || qualityPlanManage(request.resource.data.planId)) && validActionPlanItem(request.resource.data, itemId);
       allow update: if (can('managementPlansManage') || qualityPlanManage(resource.data.planId)) && validActionPlanItemTransition(itemId);
       allow delete: if false;
@@ -1412,7 +1439,7 @@ service cloud.firestore {
           data.updatedByUid == request.auth.uid && data.updatedAt == request.time && data.version is int && data.version >= 1;
       }
 
-      allow read: if can('documentsManage') || can('managementRead') || qualityManageArea(resource.data.managementAreaId);
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && (can('documentsManage') || can('managementRead') || qualityManageArea(resource.data.managementAreaId));
       allow create: if managementDocumentManage(request.resource.data.managementAreaId) && activeManagementArea(request.resource.data.managementAreaId) &&
         validManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
         request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time &&
@@ -1471,7 +1498,7 @@ service cloud.firestore {
       }
 
       allow get: if resource == null && (can('documentsManage') || assignedDocumentAreaManager('area-gestao-de-documentos'));
-      allow read: if resource != null && (managementDocumentManage(resource.data.managementAreaId) ||
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && resource != null && (managementDocumentManage(resource.data.managementAreaId) ||
         (can('managementRead') && resource.data.active == true && documentGroupAccess(resource.data.audienceGroup)));
       allow create: if managementDocumentManage(request.resource.data.managementAreaId) && activeManagementArea(request.resource.data.managementAreaId) &&
         validScopedManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
@@ -1512,7 +1539,7 @@ service cloud.firestore {
              getAfter(eventPath).data.createdAt == request.time));
       }
 
-      allow read: if can('equipmentManage');
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && can('equipmentManage');
       allow create: if can('equipmentManage') && validEquipment(request.resource.data, equipmentId) &&
         activeManagementArea(request.resource.data.managementAreaId) && request.resource.data.status == 'OPERATIONAL' &&
         request.resource.data.active == true && request.resource.data.lastEventId == null && request.resource.data.lastEventAt == null &&
@@ -1542,7 +1569,7 @@ service cloud.firestore {
           ((data.type == 'STATUS_CHANGE' && data.toStatus != data.fromStatus) || (data.type == 'INCIDENT' && data.toStatus == data.fromStatus));
       }
 
-      allow read: if can('equipmentManage');
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && can('equipmentManage');
       allow create: if validEquipmentEventCreate(eventId);
       allow update, delete: if false;
     }
@@ -1569,7 +1596,7 @@ service cloud.firestore {
            (resource.data.status == 'IN_PROGRESS' && data.status == 'COMPLETED' && data.completedAt == request.time));
       }
 
-      allow read: if can('equipmentManage');
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && can('equipmentManage');
       allow create: if can('equipmentManage') && validMaintenanceRecord(request.resource.data, recordId) &&
         request.resource.data.status == 'OPEN' && request.resource.data.completedAt == null && request.resource.data.version == 1 &&
         request.resource.data.createdAt == request.time && request.resource.data.equipmentId is string &&

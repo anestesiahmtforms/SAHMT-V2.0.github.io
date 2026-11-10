@@ -1,4 +1,5 @@
 /** Server-side publication validation. No browser DOM or third-party runtime. */
+import {trainingAccessPath,validTrainingFolderPath} from '../src/html-training-folders.js';
 export function fail(code, status = 400) {
   const error = new Error(code); error.code = code; error.status = status; throw error;
 }
@@ -84,6 +85,12 @@ export function publication(input) {
     audienceGroup: metadata.audienceGroup, managerUid: metadata.managerUid === '' ? '' : identifier(metadata.managerUid), status: metadata.status,
     source: copy(metadata.source || {}),
   };
+  if(metadata.folderPath!==undefined){
+    if(!validTrainingFolderPath(metadata.folderPath))fail('INVALID_INPUT');
+    const path=trainingAccessPath({folderPath:metadata.folderPath});
+    if(path[0]!==trainingAccessPath(training)[0])fail('INVALID_INPUT');
+    training.folderPath=path;training.subcategory=path[1]||'';
+  }
   if (!['GENERAL', 'RESTRICTED'].includes(training.audienceGroup) || !['DRAFT', 'PUBLISHED'].includes(training.status)) fail('INVALID_INPUT');
   documentSize(training.source, 20000);
   if (input.institutionalReviewConfirmed !== undefined && typeof input.institutionalReviewConfirmed !== 'boolean') fail('INVALID_INPUT');

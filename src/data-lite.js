@@ -5,6 +5,7 @@ import {readFreshSafeCache, readSafeCache, writeSafeCache, listUnsettledOperatio
 import {isFirestoreCacheFallbackError, readThroughSafeCache} from './offline-cache.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 import {projectPendingSchedule} from './offline-schedule-overlay.js';
+import {assertOperationalContentAllowed} from './operational-folder-runtime.js';
 
 function mayUseOfflineCache(error) {
   return isFirestoreCacheFallbackError(error);
@@ -20,6 +21,9 @@ export async function readAppFeatures(uid) {
 }
 
 export async function readSchedule(day, uid, {onRefresh, independent = false} = {}) {
+  assertOperationalContentAllowed('operacao/escala');
+  assertOperationalContentAllowed('operacao/eventos');
+  assertOperationalContentAllowed('operacao/escala/ferias');
   if(independent&&!operationalModuleEnabled('FJ'))throw Object.assign(new Error('Módulo Escala indisponível.'),{code:'MODULE_DISABLED'});
   const project = async value => projectPendingSchedule(value, uid ? await listUnsettledOperations(uid) : [], {uid, day});
   const value = await readThroughSafeCache({uid, kind: 'scheduleDays', id: day, localFirst: true, onRefresh: onRefresh ? value => {void project(value).then(onRefresh).catch(() => {});} : undefined, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
@@ -32,6 +36,7 @@ export async function readSchedule(day, uid, {onRefresh, independent = false} = 
 }
 
 export async function listActiveContacts({uid, pageSize = 200, onRefresh, independent = false} = {}) {
+  assertOperationalContentAllowed('operacao/pessoas');
   if(independent&&!operationalModuleEnabled('FJ'))throw Object.assign(new Error('Módulo Eventos indisponível.'),{code:'MODULE_DISABLED'});
   return readThroughSafeCache({uid, kind: 'contacts', id: 'active', localFirst: true, onRefresh, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
     const targetDb = operationalModuleEnabled('FJ') ? await getOperationalModuleDatabase('FJ', uid) : db;
@@ -46,6 +51,7 @@ export async function listActiveContacts({uid, pageSize = 200, onRefresh, indepe
 }
 
 export async function listVacationsForDate(day, {uid, pageSize = 100, onRefresh, independent = false} = {}) {
+  assertOperationalContentAllowed('operacao/escala/ferias');
   if(independent&&!operationalModuleEnabled('FJ'))throw Object.assign(new Error('Módulo Escala indisponível.'),{code:'MODULE_DISABLED'});
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Informe uma data válida para consultar as férias.');
   return readThroughSafeCache({uid, kind: 'vacations', id: day, localFirst: true, onRefresh, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {

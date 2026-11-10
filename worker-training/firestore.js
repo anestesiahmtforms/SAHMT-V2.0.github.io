@@ -52,10 +52,10 @@ export function createFirestoreStore({projectId=TRAINING_PROJECT,getAccessToken,
   if(records.size!==names.length)throw fail('TRAINING_STORE_UNAVAILABLE');
   return names.map(key=>records.get(key));
  }
- async function list(collection,filters=[],limit=500){
+ async function list(collection,filters=[],limit=500,transaction){
   if(!safe(collection)||!Array.isArray(filters)||!Number.isInteger(limit)||limit<1||limit>1000)throw fail('TRAINING_STORE_QUERY_INVALID',400);
   const clauses=filters.map(f=>{if(!/^[A-Za-z][A-Za-z0-9_]*$/.test(f.field)||!['EQUAL','ARRAY_CONTAINS'].includes(f.op))throw fail('TRAINING_STORE_QUERY_INVALID',400);return {fieldFilter:{field:{fieldPath:f.field},op:f.op,value:encode(f.value)}};});
-  const data=await request(':runQuery',{structuredQuery:{from:[{collectionId:collection}],...(clauses.length?{where:clauses.length===1?clauses[0]:{compositeFilter:{op:'AND',filters:clauses}}}:{}),limit}});
+  const data=await request(':runQuery',{structuredQuery:{from:[{collectionId:collection}],...(clauses.length?{where:clauses.length===1?clauses[0]:{compositeFilter:{op:'AND',filters:clauses}}}:{}),limit},...(transaction?{transaction}:{})});
   const documents=(data||[]).filter(x=>x.document).map(x=>({id:x.document.name.split('/').at(-1),...decodeFields(x.document.fields||{})}));
   if(documents.length===limit)throw fail('TRAINING_STORE_QUERY_TRUNCATED');
   return documents;
@@ -66,7 +66,9 @@ export function createFirestoreStore({projectId=TRAINING_PROJECT,getAccessToken,
    const id=opened.transaction,writes=[];
    const set=(collection,key,value,create=false)=>{writes.push({update:{name:name(collection,key),fields:encodeFields(value)},...(create?{currentDocument:{exists:false}}:{})});};
    try{
-    const result=await callback({get:(collection,key)=>get(collection,key,id),getMany:(collection,keys)=>getMany(collection,keys,id),set:(c,k,v)=>set(c,k,v),create:(c,k,v)=>set(c,k,v,true),delete:(c,k)=>writes.push({delete:name(c,k)})});
+    const result=await callback({get:(collection,key)=>get(collection,key,id),getMany:(collection,keys)=>getMany(collection,keys,id),
+      list:(collection,filters,limit)=>list(collection,filters,limit,id),
+      set:(c,k,v)=>set(c,k,v),create:(c,k,v)=>set(c,k,v,true),delete:(c,k)=>writes.push({delete:name(c,k)})});
     if(writes.length){if(writes.length>450||Buffer.byteLength(JSON.stringify(writes))>9*1024*1024)throw fail('TRAINING_STORE_COMMIT_LIMIT',413);await request(':commit',{transaction:id,writes});}
     else await request(':rollback',{transaction:id});
     return result;

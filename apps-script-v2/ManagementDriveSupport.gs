@@ -2,6 +2,7 @@
 function managementDriveError_(code) { throw new Error(code); }
 function managementDriveRequest_(url,options) {
   if(!/^https:\/\/www\.googleapis\.com\/(?:upload\/)?drive\/v[23]\//.test(url))managementDriveError_('MANAGEMENT_DRIVE_ENDPOINT_INVALID');
+  sahmtRequireFolders_(['gestao/area-gestao-de-documentos'],'https://firestore.googleapis.com/v1/projects/sahmt-gestao-5ae66/databases/(default)/documents');
   const opts=Object.assign({method:'get'},options||{});opts.headers=Object.assign({Authorization:'Bearer '+ScriptApp.getOAuthToken()},opts.headers||{});
   opts.muteHttpExceptions=true;opts.followRedirects=false;
   const r=UrlFetchApp.fetch(url,opts),status=r.getResponseCode();

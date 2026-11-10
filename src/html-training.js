@@ -2,12 +2,13 @@ import './html-training.css';
 import { deployment } from './deployment-context.js';
 import { escapeHtml as h, canManageTraining, isTrainingAdmin, readerDocument } from './html-training-model.js';
 import { mountTrainingAudit } from './html-training-audit.js';
-import {trainingCategories,trainingFolderLevel,trainingPathAllowed} from './html-training-folders.js';
+import {trainingCategories,trainingFolderLevel,trainingPathAllowed,trainingAccessPath,validTrainingFolderPath,parseTrainingFolderAccess} from './html-training-folders.js';
 import {renderTrainingDocumentCard} from './html-training-card.js';
 import {htmlTrainingActivityState, loadHtmlTrainingDocument, hydrateHtmlTrainingActivities} from './html-training-activity.js';
 import {mountReadingTracker} from './html-training-reading.js';
 
 const categories = trainingCategories;
+const folderErrorMessages={FOLDER_INDEX_REQUIRED:'O controle de pastas precisa ser atualizado pelo administrador. Seu acesso ao conteúdo permanece suspenso até essa atualização.',FOLDER_INDEX_TOO_LARGE:'O acervo excede o limite desta preparação. O administrador precisa organizar a migração antes de desativar pastas.'};
 const uuid = () => globalThis.crypto.randomUUID();
 const button = (action, label, extra='') => `<button type="button" data-ht="${action}" ${extra}>${label}</button>`;
 const field = (name,label,value='',type='text',extra='') => `<label class="ht-field">${h(label)}<input name="${h(name)}" type="${type}" value="${h(value)}" ${extra}></label>`;
@@ -24,6 +25,20 @@ export async function createHtmlTrainingClient(user) {
   return {
     valid,
     subscribeInvalidated(callback) { return onAuthStateChanged(auth,()=>{if(!valid())callback();}); },
+    subscribeFolderAccess(callback) {
+      let disposed=false, unsubscribe;
+      const offline=()=>callback(null);
+      globalThis.addEventListener?.('offline',offline);
+      Promise.all([import('./firebase.js'),import('firebase/firestore')]).then(([{db},{doc,onSnapshot}])=>{
+        if(disposed)return;
+        unsubscribe=onSnapshot(doc(db,'htmlTrainingSettings','folders'),{includeMetadataChanges:true},snapshot=>{
+          if(disposed)return;
+          if(!valid()||snapshot.metadata.fromCache||globalThis.navigator?.onLine===false)return offline();
+          callback(snapshot.exists()?parseTrainingFolderAccess(snapshot.data()):{version:0,disabled:[]});
+        },()=>{if(!disposed)offline();});
+      }).catch(()=>{if(!disposed)offline();});
+      return ()=>{disposed=true;unsubscribe?.();globalThis.removeEventListener?.('offline',offline);};
+    },
     async api(action,input) {
       if (!valid()) throw Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'});
       const token = await auth.currentUser.getIdToken();
@@ -31,6 +46,7 @@ export async function createHtmlTrainingClient(user) {
       const response = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({action,input}),cache:'no-store',credentials:'omit'});
       if (!valid()) throw Object.assign(new Error('Sua sessão mudou.'),{code:'SESSION_CHANGED'});
       const data = await response.json();
+      if(!response.ok&&folderErrorMessages[data.code])throw Object.assign(new Error(folderErrorMessages[data.code]),{code:data.code,status:response.status});
       if (!response.ok) throw Object.assign(new Error(data.message || ({TRAINING_READING_REQUIRED:'Atualize o aplicativo e reabra o documento para validar a leitura completa.',TRAINING_READING_INCOMPLETE:'Percorra todos os trechos e aguarde o tempo de leitura antes de continuar.',TRAINING_READING_SESSION_CHANGED:'A leitura foi aberta em outro acesso. Reabra o documento para continuar aqui.',TRAINING_READING_PLAN_UNAVAILABLE:'A validação deste material está sendo preparada. Tente novamente em instantes.'}[data.code]) || 'Não foi possível concluir a operação.'),{code:data.code || data.error?.code,status:response.status});
       return data;
     }
@@ -38,7 +54,7 @@ export async function createHtmlTrainingClient(user) {
 }
 
 /** Mount returns cleanup immediately, including while startup/auth is pending. */
-export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {}) {
+export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscribeFolderAccess:providedSubscription} = {}) {
   const dialog=root.closest?.('dialog.management-area-dialog');
   const banner=dialog?root.ownerDocument.createElement('section'):null;
   if(banner){
@@ -48,17 +64,20 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     dialog.classList.add('management-area-dialog--document-library');
   }
   let alive=true, revision=0, api=providedApi, valid=()=>true, auditCleanup=null, unsubscribe=null, busy=false, operationId=0;
-  let catalog=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
+  let catalog=[], inactiveTrainings=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
   const uid=user?.uid, activityStates=new Map();
-  let progressGeneration=0,folderAccess={version:0,disabled:[]},folderControlAvailable=false;
+  let progressGeneration=0,folderAccess={version:0,disabled:[]},folderControlAvailable=false,folderPaths=[],folderIndexReady=true;
+  let watchingPolicy=false, confirmedPolicy=null, unsubscribePolicy;
   let readingPlan=null,readingTracker=null;
   const stopReading=()=>{readingTracker?.cleanup();readingTracker=null;};
   const accessAdmin=()=>isTrainingAdmin(profile)&&folderControlAvailable;
+  const contentAllowed=training=>trainingPathAllowed(folderAccess,trainingAccessPath(training));
+  const folderLevel=()=>trainingFolderLevel([...catalog.filter(contentAllowed),...inactiveTrainings],folderPath,accessAdmin()?folderPaths:[]);
   const activityFor=training=>{const entry=activityStates.get(training.id);return htmlTrainingActivityState(training,entry?.version===training.version?entry.state:null,uid);};
   function refreshVisibleActivities(){
     const token=revision,generation=++progressGeneration;
-    const level=trainingFolderLevel(catalog,folderPath);
-    const visible=level.trainings.filter(t=>t.status==='PUBLISHED');
+    const level=folderLevel();
+    const visible=level.trainings.filter(t=>t.status==='PUBLISHED'&&contentAllowed(t));
     const validProgress=()=>current(token)&&mode==='catalog'&&generation===progressGeneration;
     const paint=(training,activity)=>{for(const b of root.querySelectorAll('[data-ht="open"]'))if(b.dataset.id===training.id){b.dataset.activityState=activity.color;b.setAttribute('aria-description',activity.label);const status=b.querySelector('.ht-document-status');if(status)status.textContent=activity.label;const icon=b.querySelector('.ht-document-chevron');if(icon)icon.textContent=activity.complete?'✓':'↗';}};
     void hydrateHtmlTrainingActivities({trainings:visible,isCurrent:validProgress,read:t=>call('OPEN',{trainingId:t.id},token),
@@ -66,9 +85,10 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
       onError(training){activityStates.delete(training.id);paint(training,{...htmlTrainingActivityState(training),label:'Atividades ainda não confirmadas'});}});
   }
   const current = token => alive && root.isConnected && token===revision && user?.uid===uid && valid();
-  const stop = () => {stopReading();alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view','ht-navigation-view','ht-leaf-catalog');root.removeAttribute('aria-busy');root.replaceChildren();if(banner){banner.replaceWith(...banner.childNodes);dialog.classList.remove('management-area-dialog--document-library','management-area-dialog--catalog-banner','management-area-dialog--leaf-banner');}};
+  const stop = () => {stopReading();alive=false;revision++;progressGeneration++;activityStates.clear();unsubscribe?.();unsubscribePolicy?.();auditCleanup?.();auditCleanup=null;root.classList.remove('html-trainings','ht-reading','ht-catalog-view','ht-navigation-view','ht-leaf-catalog');root.removeAttribute('aria-busy');root.replaceChildren();if(banner){banner.replaceWith(...banner.childNodes);dialog.classList.remove('management-area-dialog--document-library','management-area-dialog--catalog-banner','management-area-dialog--leaf-banner');}};
   async function call(action,input={},token=revision) {
     if(!current(token))throw Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'});
+    if(watchingPolicy&&!confirmedPolicy)throw Object.assign(new Error('Aguardando a confirmação de acesso às pastas.'),{code:'STALE_RESPONSE'});
     const result=await api(action,input);
     if(!current(token)) throw Object.assign(new Error('Resposta de sessão encerrada.'),{code:'STALE_RESPONSE'});
     return result;
@@ -77,10 +97,11 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     if(!alive || err?.code==='STALE_RESPONSE') return;
     if(mode==='opening'){mode='catalog';active=null;content=null;state=null;}
     if(err?.status===401 || err?.status===403 || ['SESSION_CHANGED','FORBIDDEN','UNAUTHORIZED','ACCESS_DENIED'].includes(err?.code)) {
-      revision++;progressGeneration++;activityStates.clear();active=null;content=null;editor=null;questions=[];state=null;catalog=[];mode='denied';
+      revision++;progressGeneration++;activityStates.clear();active=null;content=null;editor=null;questions=[];state=null;catalog=[];inactiveTrainings=[];mode='denied';
       auditCleanup?.();auditCleanup=null;
     }
     error=err?.code==='VERSION_CHANGED'?'O treinamento foi atualizado. Reabra o item para continuar a versão atual; nenhuma tentativa foi consumida.':err?.code==='VERSION_CONFLICT'?'Outro acesso alterou este registro. Reabra o treinamento para carregar a versão atual antes de salvar.':err?.message || 'O serviço não respondeu. Tente novamente.';
+    if(folderErrorMessages[err?.code])error=folderErrorMessages[err.code];
     render();
   }
   async function perform(fn) {
@@ -107,22 +128,29 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${h(active?.title || 'Treinamentos')}</h2><p>Leitura · Avaliação · Sugestão</p></div>${mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;
   }
   function catalogue(){
-    const level=trainingFolderLevel(catalog,folderPath),leaf=level.folders.length===0&&level.trainings.length>0,visible=level.trainings;
+    const level=folderLevel(),leaf=level.folders.length===0&&level.trainings.length>0,visible=level.trainings;
     const folderButton=(path,label,extra='')=>{
-      const enabled=trainingPathAllowed(folderAccess,path),locked=path.length&&!enabled&&!accessAdmin();
-      return button('folder',label,`data-folder="${h(JSON.stringify(path))}" data-folder-enabled="${enabled}" ${locked?'disabled aria-disabled="true" data-locked="true"':''} ${accessAdmin()&&path.length?'aria-description="'+(enabled?'Ativado':'Desativado')+' para usuários."':''} ${extra}`);
+      const enabled=trainingPathAllowed(folderAccess,path),locked=path.length&&!enabled;
+      return button('folder',label,`data-folder="${h(JSON.stringify(path))}" data-folder-enabled="${enabled}" ${locked?'disabled aria-disabled="true" aria-description="Desativado" data-locked="true"':''} ${extra}`);
     };
     const book='<span class="ht-book-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15M6 8h3M6 12h3m6-4h3m-3 4h3"/></svg></span>';
     const folders=level.folders.map(folder=>{
       const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder ht-navigation-book"');
       if(!accessAdmin())return entry;
       const enabled=!folderAccess.disabled.includes(JSON.stringify(folder.path));
-      return `<div class="ht-navigation-card">${entry}${button('toggle-folder',enabled?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${enabled?'Desativar':'Ativar'} ${h(folder.name)}"`)}</div>`;
+      return `<div class="ht-navigation-card">${entry}${button('toggle-folder',enabled?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${enabled?'Desativar':'Ativar'} ${h(folder.name)}" ${enabled&&!folderIndexReady?'disabled data-locked="true"':''}`)}</div>`;
     }).join('');
-    const documents=visible.map(t=>renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t)})).join('');
+    const documents=visible.map(t=>contentAllowed(t)
+      ?renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t)})
+      :renderTrainingDocumentCard(t,{compact:leaf,inactive:true})).join('');
     const count=level.folders.length+visible.length;
     const grid=count?`<div class="ht-browser-grid ht-folders${visible.length?' ht-catalog':''}${leaf?' ht-compact-documents':''}" style="--ht-grid-rows:${Math.ceil(count/2)};--ht-document-count:${Math.max(1,visible.length)};--ht-document-rows:${Math.max(1,Math.ceil(visible.length/2))}" role="group" aria-label="Pastas e documentos">${folders}${documents}</div>`:'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>';
-    return (folderPath.length?`<div class="ht-folder-toolbar">${folderButton(folderPath.slice(0,-1),'VOLTAR','class="ht-secondary"')}</div>`:'')+grid;
+    const preparation=accessAdmin()&&!folderIndexReady
+      ?folderAccess.disabled.length
+        ?'<p class="ht-notice">Ative as pastas desativadas para preparar o controle do acervo.</p>'
+        :'<p class="ht-notice">Prepare o controle de pastas para liberar a desativação.</p>'+button('build-folder-index','Preparar controle de pastas','class="ht-secondary"')
+      :'';
+    return preparation+(folderPath.length?`<div class="ht-folder-toolbar">${button('back','VOLTAR','class="ht-secondary"')}</div>`:'')+grid;
   }
   function summary(){const attempts=state?.attempts?.length || 0;return `<div class="ht-summary"><span><b>${attempts}/2</b> tentativas concluídas</span><span><b>${h(state?.bestScore ?? 0)}</b> maior nota</span><span><b>${h(state?.ackPoints ?? 0)}</b> ponto de ciência</span></div>`;}
   function manageBar(){return canManageTraining(active,user,profile)?`<aside class="ht-management">${button('edit','Editar treinamento',`data-id="${h(active.id)}" class="ht-secondary"`)}${active.hasAudit?`<div class="ht-audit-banner"><div><strong>Auditoria desta ROP</strong><p>Instrumento operacional vinculado ao tema. A conclusão não concede pontos.</p></div>${button('audit','Realizar auditoria')}</div>`:''}</aside>`:'';}
@@ -167,14 +195,14 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     if(!alive)return;
     stopReading();
     dialog?.classList.toggle('management-area-dialog--catalog-banner',mode==='catalog');
-    const level=mode==='catalog'?trainingFolderLevel(catalog,folderPath):null;
+    const level=mode==='catalog'?folderLevel():null;
     const leaf=Boolean(level&&!level.folders.length&&level.trainings.length);
     root.classList.toggle('ht-leaf-catalog',leaf);
     dialog?.classList.toggle('management-area-dialog--leaf-banner',leaf);
     root.classList.add('html-trainings');
     root.classList.toggle('ht-reading',mode==='participant'&&Boolean(content?.sections?.length));
     root.classList.toggle('ht-catalog-view',mode==='catalog');
-    root.classList.toggle('ht-navigation-view',mode==='catalog'&&(folderPath.length<=1||trainingFolderLevel(catalog,folderPath).folders.length>0));
+    root.classList.toggle('ht-navigation-view',mode==='catalog'&&(folderPath.length<=1||folderLevel().folders.length>0));
     if(mode==='participant'&&active&&state)activityStates.set(active.id,{version:active.version,state});
     root.innerHTML=top()+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='participant'?participation():mode==='editor'&&editor?editorView():mode==='opening'?'<p class="ht-notice" role="status">Abrindo o texto do documento…</p>':'');
     if(mode==='participant'&&content?.sections?.length){
@@ -204,10 +232,41 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     renderBusy();
     scheduleCompactLabels();
   }
-  async function loadCatalog(){revision++;progressGeneration++;active=null;content=null;editor=null;questions=[];state=null;mode='catalog';error='';notice='';auditCleanup?.();auditCleanup=null;render();const token=revision;const res=await call('LIST',{},token);catalog=res.trainings||[];folderAccess=res.folderAccess||{version:0,disabled:[]};folderControlAvailable=res.canManageFolders===true;render();refreshVisibleActivities();}
+  function resetCatalog(){
+    stopReading();revision++;progressGeneration++;activityStates.clear();
+    catalog=[];inactiveTrainings=[];active=null;content=null;editor=null;questions=[];state=null;readingPlan=null;
+    answers={};suggestion='';submitRequest=null;mode='catalog';error='';notice='';
+    auditCleanup?.();auditCleanup=null;
+  }
+  async function loadCatalog(){
+    resetCatalog();render();
+    const res=await call('LIST',{},revision);
+    const access=res.folderAccess||{version:0,disabled:[]};
+    if(watchingPolicy&&access.version!==confirmedPolicy?.version)return;
+    folderAccess=watchingPolicy?confirmedPolicy:access;
+    folderControlAvailable=res.canManageFolders===true;
+    folderPaths=res.folderPaths||[];folderIndexReady=res.folderIndexReady!==false;
+    catalog=(res.trainings||[]).filter(contentAllowed);
+    inactiveTrainings=(res.inactiveTrainings||[]).filter(t=>!contentAllowed(t));
+    render();refreshVisibleActivities();
+  }
+  function applyFolderPolicy(next){
+    if(!alive||!valid())return;
+    if(!next){
+      confirmedPolicy=null;operationId++;busy=false;resetCatalog();mode='denied';
+      error='Não foi possível confirmar o acesso às pastas. Aguarde a conexão com o servidor.';render();
+      return;
+    }
+    if(confirmedPolicy?.version===next.version&&JSON.stringify(confirmedPolicy.disabled)===JSON.stringify(next.disabled))return;
+    confirmedPolicy={version:next.version,disabled:[...next.disabled]};
+    folderAccess=confirmedPolicy;
+    operationId++;busy=false;
+    void perform(loadCatalog);
+  }
   async function open(id){
-    revision++;progressGeneration++;const token=revision;error='';notice='';
     const selected=catalog.find(t=>t.id===id);
+    if(!selected||!contentAllowed(selected))return;
+    revision++;progressGeneration++;const token=revision;error='';notice='';
     active=selected||null;content=null;state=null;mode='opening';render();
     const loaded=await loadHtmlTrainingDocument((action,input)=>call(action,input,token),{trainingId:id,version:selected?.version});
     if(!current(token))return;
@@ -228,6 +287,10 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
     const form=root.querySelector('[data-editor]');if(!form)return;
     const f=new FormData(form),e=editor;
     for(const k of ['title','category','subcategory','audienceGroup'])e.training[k]=String(f.get(k)||'');
+    if(e.training.folderPath){
+      const rootPath=trainingAccessPath({category:e.training.category,subcategory:e.training.subcategory});
+      e.training.folderPath=rootPath.length>1?[...rootPath,...e.training.folderPath.slice(2)]:rootPath;
+    }
     if(isTrainingAdmin(profile))e.training.managerUid=String(f.get('managerUid')||'');
     e.sections.forEach((s,i)=>{s.title=String(f.get(`section-title-${i}`)||'');s.html=form.querySelector(`[data-section="${i}"]`)?.contentDocument?.querySelector('.material')?.innerHTML ?? s.html;});
     e.selectedQuestionIds=[...form.querySelectorAll('[data-selected]:checked')].map(el=>el.dataset.selected);
@@ -237,22 +300,32 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   async function publish(status){collectEditor();if(editor.selectedQuestionIds.length!==5)throw new Error('Selecione exatamente cinco questões do banco.');const e=editor;const res=await call('PUBLISH',{trainingId:active.id,expectedVersion:e.training.version,training:{...e.training,status},institutionalReviewConfirmed:e.institutionalReviewConfirmed===true,deferInstitutionalReview:isTrainingAdmin(profile)&&!!e.training.source?.pendingReviewPublication&&e.institutionalReviewConfirmed!==true,reviewDeferralReason:e.training.source?.pendingReviewPublication?.reason,sections:e.sections,bank:e.bank,selectedQuestionIds:e.selectedQuestionIds,auditSchema:e.auditSchema});active=res.training;catalog=catalog.map(t=>t.id===active.id?active:t);activityStates.delete(active.id);await edit(active.id);notice=status==='DRAFT'?'Rascunho salvo no serviço.':'Treinamento publicado no PWA. Consulte o estado da sincronização com o Drive.';render();}
   const click=event=>{
     const b=event.target.closest('[data-ht]');if(!b||!root.contains(b))return;
+    if(b.disabled)return;
     const action=b.dataset.ht;
     if(action==='back'){goBack();return;}
     if(busy)return;
     if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
     perform(async()=>{
       if(action==='catalog')return loadCatalog();
+      if(action==='build-folder-index'){
+        if(!accessAdmin())return;
+        await call('BUILD_FOLDER_INDEX');await loadCatalog();return;
+      }
       if(action==='toggle-folder'){
         if(!accessAdmin())return;
         const path=JSON.parse(b.dataset.folder),enabled=folderAccess.disabled.includes(JSON.stringify(path));
         const result=await call('SET_FOLDER_ACCESS',{path,enabled,expectedVersion:folderAccess.version});
-        folderAccess=result.folderAccess;notice=path.at(-1)+(enabled?' ativado':' desativado')+' para usuários.';render();return;
+        if(!watchingPolicy){folderAccess=result.folderAccess;await loadCatalog();}
+        return;
       }
 
-      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||path.length>2)return;if(!accessAdmin()&&!trainingPathAllowed(folderAccess,path))return;folderPath=path;render();refreshVisibleActivities();return;}
+      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||(path.length&&!validTrainingFolderPath(path)))return;if(!trainingPathAllowed(folderAccess,path))return;folderPath=path;render();refreshVisibleActivities();return;}
       if(action==='open')return open(b.dataset.id);
-      if(action==='edit'){editorParent=mode==='participant'?'participant':'catalog';return edit(b.dataset.id);}
+      if(action==='edit'){
+        const training=catalog.find(t=>t.id===b.dataset.id)||((active?.id===b.dataset.id)?active:null);
+        if(!training||!contentAllowed(training)||!canManageTraining(training,user,profile))return;
+        editorParent=mode==='participant'?'participant':'catalog';return edit(b.dataset.id);
+      }
       if(action==='audit'){
         const result=await call('EDIT',{trainingId:active.id});
         if(!result.auditSchema)throw new Error('Modelo de auditoria não disponível para esta ROP.');
@@ -292,7 +365,22 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi} = {})
   globalThis.visualViewport?.addEventListener('resize',resize);
   root.ownerDocument?.fonts?.ready.then(()=>{if(alive)scheduleCompactLabels();});
   root.classList.add('html-trainings');root.innerHTML='<p class="ht-notice" role="status">Consultando treinamentos autorizados…</p>';
-  (async()=>{try{if(!uid)throw new Error('Entre com sua conta institucional para acessar os treinamentos.');if(!api){const client=await createHtmlTrainingClient(user);if(!alive)return;api=client.api;valid=client.valid;unsubscribe=client.subscribeInvalidated(()=>fail(Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'})));}if(!current(revision))return;await loadCatalog();}catch(err){fail(err);}})();
+  (async()=>{
+    try{
+      if(!uid)throw new Error('Entre com sua conta institucional para acessar os treinamentos.');
+      let subscribe=providedSubscription;
+      if(!api){
+        const client=await createHtmlTrainingClient(user);if(!alive)return;
+        api=client.api;valid=client.valid;subscribe=client.subscribeFolderAccess;
+        unsubscribe=client.subscribeInvalidated(()=>fail(Object.assign(new Error('Sua sessão mudou. Entre novamente.'),{code:'SESSION_CHANGED'})));
+      }
+      if(!current(revision))return;
+      if(subscribe){
+        watchingPolicy=true;unsubscribePolicy=subscribe(applyFolderPolicy);return;
+      }
+      await loadCatalog();
+    }catch(err){fail(err);}
+  })();
   const cleanup = () => {globalThis.cancelAnimationFrame?.(labelFrame);globalThis.removeEventListener?.('resize',resize);globalThis.visualViewport?.removeEventListener('resize',resize);root.removeEventListener('click',click);root.removeEventListener('submit',preventSubmit);stop();};
   cleanup.goBack=goBack;
   return cleanup;

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
+import {adaptFcPerformanceDeclaration} from '../scripts/lib/fc-performance-source.js';
 import {readFile} from 'node:fs/promises';
 const source=await readFile(new URL('../apps-script-fc/Performance.gs',import.meta.url),'utf8');
 const project='indicadores---sahmt',start=new Date('2026-11-01T20:00:00Z');
@@ -56,4 +57,27 @@ test('FC performance validates its runtime within the same FC transaction and re
  assert.equal(f.context.evaluationReadTransaction_('fc-transaction',project),'fc-transaction');
  f.context.fcPerformanceAssertRuntimeTransaction_('fc-transaction');assert.equal(f.reads.at(-1).transaction,'fc-transaction');
  assert.throws(()=>f.context.evaluationReadTransaction_('fc-transaction','sahmt-gestao-5ae66'),/FC_PERFORMANCE_CROSS_PROJECT_TRANSACTION/);
+});
+
+test('FC Apps Script pauses performance queries before content and preserves the missing policy bootstrap',()=>{
+ const reads=[],ctx=vm.createContext({firestoreFieldsToJs_:fields=>fields,firestoreRequest_:url=>{reads.push(url);return {fields:{schemaVersion:1,revision:2,disabled:['desempenho']}};}});
+ vm.runInContext(source,ctx);
+ const root='https://firestore.googleapis.com/v1/projects/'+project+'/databases/(default)/documents';
+ assert.throws(()=>ctx.fcAssertPerformanceFolder_(root+':runQuery',{payload:JSON.stringify({structuredQuery:{from:[{collectionId:'fcPerformanceAwards'}]}})}),/FC_PERFORMANCE_FOLDER_DISABLED/);
+ assert.deepEqual(reads,[root+'/runtimePolicy/folders']);
+ ctx.firestoreRequest_=()=>{throw Object.assign(Error('missing'),{status:404});};
+ assert.doesNotThrow(()=>ctx.fcAssertPerformanceFolder_(root+'/fcPerformanceRuntime/state'));
+});
+
+test('FC transport adapter inserts the folder check before fetching performance content',()=>{
+ const calls=[];
+ const ctx=vm.createContext({
+  fcAssertFirestoreDestination_:()=>calls.push('destination'),
+  fcAssertPerformanceFolder_:()=>{calls.push('policy');throw Error('FC_PERFORMANCE_FOLDER_DISABLED');},
+  contentRead:()=>calls.push('content')
+ });
+ const declaration='function firestoreRequest_(url, options) { return contentRead(url, options); }';
+ vm.runInContext(adaptFcPerformanceDeclaration('firestoreRequest_',declaration),ctx);
+ assert.throws(()=>ctx.firestoreRequest_('synthetic'),/FC_PERFORMANCE_FOLDER_DISABLED/);
+ assert.deepEqual(calls,['destination','policy']);
 });

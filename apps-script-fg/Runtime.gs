@@ -28,6 +28,7 @@ function verificarProntidaoChecklistFG(){
   console.log(JSON.stringify(result));return result;
 }
 function validarCienciaChecklistFG(event){
+  sahmtRequireFolders_(['operacao/checklist/desempenho']);
   const lock=LockService.getUserLock();lock.waitLock(30000);
   try{
     checklistScienceAssertOperator_();

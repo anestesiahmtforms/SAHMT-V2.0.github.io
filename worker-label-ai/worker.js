@@ -1,3 +1,5 @@
+import {assertFolderReadable} from '../server/folder-read-policy.js';
+import {decodeFields} from '../worker-training/firestore.js';
 const PROJECT_ID = 'sahmt-17a16';
 const PROJECT_NUMBER = '1072832154794';
 const WEB_APP_ID = '1:1072832154794:web:38e8e627d4189ebb0a14d3';
@@ -344,6 +346,20 @@ function tokenPolicy(kind, projectId = PROJECT_ID) {
   };
 }
 
+async function requireLabelFolder(idToken,fetchImpl,projectId) {
+  try {
+    const response=await fetchImpl('https://firestore.googleapis.com/v1/projects/'+projectId+'/databases/(default)/documents/runtimePolicy/folders',{
+      method:'GET',headers:{Authorization:'Bearer '+idToken,Accept:'application/json'},cache:'no-store',redirect:'manual',signal:AbortSignal.timeout(8000)});
+    if(response.status===404){await response.body?.cancel();return;}
+    if(!response.ok)throw Error('POLICY_UNAVAILABLE');
+    const document=await response.json();
+    assertFolderReadable(decodeFields(document.fields||{}),'operacao/etiquetas');
+  }catch(error){
+    if(error.code==='FOLDER_DISABLED')throw new WorkerError(403,'FOLDER_DISABLED','A pasta Etiquetas está desativada.');
+    throw new WorkerError(503,'FOLDER_POLICY_UNAVAILABLE','Não foi possível confirmar a disponibilidade da pasta.');
+  }
+}
+
 export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.crypto, now = Date.now, projectId = PROJECT_ID} = {}) {
   if (![PROJECT_ID, 'sahmt-etiquetas-fh'].includes(projectId)) throw new Error('LABEL_PROJECT_INVALID');
   const getKeys = createJwkCache(fetchImpl, now);
@@ -382,6 +398,7 @@ export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.
       if (projectId === 'sahmt-etiquetas-fh' && (identity.sourceProjectId !== PROJECT_ID || identity.moduleStation !== 'FH' ||
           identity.firebase?.sign_in_provider !== 'custom' || !Number.isSafeInteger(identity.moduleLeaseExpiresAt) || identity.moduleLeaseExpiresAt <= now() / 1000))
         throw new WorkerError(401, 'UNAUTHENTICATED', 'A sessão de Etiquetas expirou. Abra o módulo novamente.');
+      await requireLabelFolder(idToken,fetchImpl,projectId);
       await readAuthorizedProfile(identity.sub, idToken, fetchImpl, projectId);
 
       const contentType = request.headers.get('Content-Type') || '';
@@ -393,6 +410,7 @@ export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.
       catch { throw new WorkerError(400, 'INVALID_REQUEST', 'A imagem enviada está inválida. Capture novamente.'); }
       const images = validateImages(body, request);
       const result = await extractWithOpenAi(images, env.OPENAI_API_KEY, fetchImpl);
+      await requireLabelFolder(idToken,fetchImpl,projectId);
       return jsonResponse(200, result, origin);
     } catch (error) {
       return errorResponse(error, origin);

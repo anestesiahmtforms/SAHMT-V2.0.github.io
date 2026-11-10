@@ -3,6 +3,7 @@ import {Buffer} from 'node:buffer';
 import {boundedJson, fail} from './identity.js';
 import {normalizeProjectionEvent, planEventProjection} from './projection-plan.js';
 import {decodeFields} from '../worker-training/firestore.js';
+import {assertProjectionFoldersReadable,projectionPolicyError} from './folder-policy.js';
 
 const ENDPOINT = 'https://sahmt-fj-escala.sahmt-fj-563bc56a.workers.dev/internal/v1/event-projection';
 function requireSecret(secret) {if (!/^[A-Za-z0-9_-]{43,128}$/.test(secret || '')) throw fail('DOMAIN_PROJECTION_CONFIG_REQUIRED');}
@@ -36,6 +37,7 @@ export async function verifyProjectionRequest(request, secret, {now = Date.now} 
 export async function applyEventProjection(event, store) {
   const validated = normalizeProjectionEvent(event);
   return store.transaction(async transaction => {
+    await assertProjectionFoldersReadable(transaction);
     const current = await transaction.get('eventProjections', validated.eventId), previous = current?.data || null;
     const dates = [...new Set([previous?.date, validated.date].filter(Boolean))], schedules = {};
     for (const date of dates) {
@@ -53,10 +55,13 @@ export async function applyEventProjection(event, store) {
 }
 
 export async function drainEventProjections({station, store, secret, fetchImpl = fetch} = {}) {
+  try{await assertProjectionFoldersReadable(store);}
+  catch(error){if(error.code==='DOMAIN_FOLDER_DISABLED')return {station,completed:0,failed:0,paused:true};throw error;}
   if (station === 'FI') requireSecret(secret);
   const items = await store.listPending(); let completed = 0, failed = 0;
   for (const item of items) {
     try {
+      await assertProjectionFoldersReadable(store);
       if (station === 'FJ' && item.collection !== 'eventProjectionOutbox') await applyEventProjection(item.data, store);
       else if (station === 'FI' || station === 'FJ') {
         const source = await store.get('events', item.data.eventId);
@@ -77,22 +82,31 @@ export async function drainEventProjections({station, store, secret, fetchImpl =
         let reply;
         if (station === 'FJ') reply = await applyEventProjection(event, store);
         else {
+        await assertProjectionFoldersReadable(store);
         const body = JSON.stringify(event);
         const response = await fetchImpl(ENDPOINT, {method: 'POST', body, headers: projectionHeaders(body, secret),
           redirect: 'manual', signal: AbortSignal.timeout(20000)});
         reply = await boundedJson(response, 8192);
+        if(!response.ok&&projectionPolicyError(reply))throw fail(reply.code,response.status);
         if (!response.ok || reply.eventId !== event.eventId || !Number.isSafeInteger(reply.version) || reply.version < event.version ||
             !['APPLIED', 'ALREADY_APPLIED', 'WAITING_SCHEDULE'].includes(reply.status)) throw fail('DOMAIN_PROJECTION_DELIVERY_UNAVAILABLE');
         }
         await store.transaction(async transaction => {
+          await assertProjectionFoldersReadable(transaction);
           const current = await transaction.get('eventProjectionOutbox', item.id);
           if (current?.data.status === 'PENDING') transaction.completeOutbox(item.id, reply.version);
         });
       } else throw fail('DOMAIN_PROJECTION_CONFIG_REQUIRED');
       completed++;
     } catch (error) {
+      // A control change is a pause, never a failed delivery or queue mutation.
+      if(projectionPolicyError(error)){
+        if(error.code==='DOMAIN_FOLDER_DISABLED')return {station,completed,failed,paused:true};
+        throw error;
+      }
       failed++;
       if (station === 'FI' || item.collection === 'eventProjectionOutbox') await store.transaction(async transaction => {
+        await assertProjectionFoldersReadable(transaction);
         const current = await transaction.get('eventProjectionOutbox', item.id);
         if (current?.data.status === 'PENDING') transaction.deferOutbox(item.id);
       }).catch(() => {});

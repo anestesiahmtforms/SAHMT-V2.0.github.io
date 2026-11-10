@@ -1,6 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // FOLDER_READ_POLICY_V1: source-local read gate, including administrator reads.
+    // Missing control document preserves bootstrap behavior; malformed policy denies.
+    function folderReadPolicyValid_(policy) {
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 && policy.disabled is list;
+    }
+    function folderReadAllowed_(ancestors) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      return !exists(path) || (folderReadPolicyValid_(get(path).data) && !get(path).data.disabled.hasAny(ancestors));
+    }
+    match /runtimePolicy/folders {
+      allow get: if moduleSession() && activeUser();
+      allow list, write: if false;
+    }
     function signedIn() { return request.auth != null; }
     function moduleSession() {
       return request.auth != null && request.auth.token.aud == 'sahmt-etiquetas-fh' &&
@@ -59,7 +72,7 @@ service cloud.firestore {
           data.version is int && data.version > 0;
       }
 
-      allow read: if moduleSession() && (can('labelsRead') || can('labelsWrite') || can('labelsManage'));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/etiquetas']) && (moduleSession() && (can('labelsRead') || can('labelsWrite') || can('labelsManage')));
       allow create: if moduleSession() && (can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
         request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1);
@@ -148,7 +161,7 @@ service cloud.firestore {
         return !exists(path) && existsAfter(path);
       }
 
-      allow read: if moduleSession() && (labelRecordAccess());
+      allow read: if folderReadAllowed_(['operacao', 'operacao/etiquetas']) && (moduleSession() && (labelRecordAccess()));
       allow create: if moduleSession() && ((can('labelsWrite') || can('labelsManage')) && actorIsSelf() && validLabelRecord(request.resource.data, labelId));
       allow update: if moduleSession() && ((can('labelsWrite') || can('labelsManage')) && updateActorIsSelf() &&
         (labelActorAccess(resource.data) || can('labelsManage')) &&
@@ -160,7 +173,7 @@ service cloud.firestore {
         validLabelRecord(request.resource.data, labelId));
       allow delete: if moduleSession() && (false);
       match /history/{version} {
-        allow read: if moduleSession() && (exists(/databases/$(database)/documents/labels/$(labelId)) && labelHistoryAccess(labelId));
+        allow read: if folderReadAllowed_(['operacao', 'operacao/etiquetas']) && (moduleSession() && (exists(/databases/$(database)/documents/labels/$(labelId)) && labelHistoryAccess(labelId)));
         allow create: if moduleSession() && ((can('labelsWrite') || can('labelsManage')) && validLabelHistoryEntry(request.resource.data, labelId, version));
         allow update, delete: if moduleSession() && (false);
       }

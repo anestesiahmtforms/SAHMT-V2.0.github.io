@@ -13,8 +13,8 @@ function memory(){
  const get=async(c,id)=>structuredClone(records.get(c+'/'+id)??null);
  const getMany=(c,ids)=>Promise.all(ids.map(id=>get(c,id)));
  return {records,writes,get,getMany,async transaction(fn){
-  const staged=[];const result=await fn({get,getMany,create:(c,id,data)=>staged.push({c,id,data:structuredClone(data)})});
-  for(const w of staged){assert.equal(records.has(w.c+'/'+w.id),false);records.set(w.c+'/'+w.id,w.data);writes.push(w);}
+  const staged=[];const result=await fn({get,getMany,create:(c,id,data)=>staged.push({c,id,data:structuredClone(data),create:true}),set:(c,id,data)=>staged.push({c,id,data:structuredClone(data)})});
+  for(const w of staged){if(w.create)assert.equal(records.has(w.c+'/'+w.id),false);records.set(w.c+'/'+w.id,w.data);writes.push(w);}
   return result;
  }};
 }
@@ -26,13 +26,19 @@ test('initial import dry-run validates drafts without writing any data',async()=
 });
 test('apply creates private version and content with provenance, no users, scores or Drive queue',async()=>{
  const store=memory(),report=await importInitialDrafts(store,plan(),{apply:true});
- assert.equal(report.documentsWritten,3);assert.equal(store.records.size,3);
+ assert.equal(report.documentsWritten,4);assert.equal(store.records.size,4);
  const metadata=await store.get('htmlTrainings','demo');
  assert.equal(metadata.status,'DRAFT');assert.equal(metadata.managerUid,'');assert.equal(metadata.createdByUid,'');
  assert.equal(metadata.initialImportSha256,sha);assert.equal(metadata.importPending[0].code,'SOURCE_REVIEW_REQUIRED');
  assert.equal(store.writes.some(w=>/users|Scores|States|Sync/.test(w.c)),false);
  const version=await store.get('htmlTrainingVersions','demo_v1'),chunk=await store.get('htmlTrainingContent','demo_v1_p0');
  assert.equal(version.bank[0].correctOptionId,'b');assert.deepEqual(JSON.parse(chunk.part),manifest().trainings[0].sections);
+});
+
+test('import invalidates an existing routing index before new documents can be served',async()=>{
+ const store=memory();store.records.set('htmlTrainingSettings/folderIndex',{schemaVersion:1,complete:true,entries:{}});
+ await importInitialDrafts(store,plan(),{apply:true});
+ assert.equal(store.records.get('htmlTrainingSettings/folderIndex').complete,false);
 });
 test('rerun with a new timestamp skips imported items and preserves later edits',async()=>{
  const store=memory();await importInitialDrafts(store,plan(),{apply:true});

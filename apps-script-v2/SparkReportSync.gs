@@ -29,10 +29,6 @@ function recoverLegacySparkReportsManually() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return {skipped: 'another run holds the lock'};
   try {
-    const spreadsheetId = sahmtV2SpreadsheetId_();
-    sahmtV2RequirePrivateSpreadsheet_(spreadsheetId);
-    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
-    requireSparkReportTabs_(spreadsheet);
     const properties = sahmtV2Properties_();
     const configs = SAHMT_V2_SPARK_REPORT_SCAN.resources;
     const start = Number(properties.getProperty(SAHMT_V2_SPARK_REPORT_SCAN.rotationProperty) || 0) % configs.length;
@@ -52,6 +48,10 @@ function recoverLegacySparkReportsManually() {
         result.processed++;
       }
     }
+    const spreadsheetId = sahmtV2SpreadsheetId_();
+    sahmtV2RequirePrivateSpreadsheet_(spreadsheetId);
+    const spreadsheet = SpreadsheetApp.openById(spreadsheetId);
+    requireSparkReportTabs_(spreadsheet);
     upsertSparkReportRows_(spreadsheet, pending);
     // Advance cursors only after every report row has been written successfully.
     // A retry after a partial cursor save is safe because row keys are idempotent.

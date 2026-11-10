@@ -20,7 +20,14 @@ test('organization changes only presentation metadata and records history withou
  assert.equal(result.permissionChanges,0);assert.equal(result.organized,1);
  assert.deepEqual(s.data.get('htmlTrainings/one'),{...before,subcategory:'Protocolos do SAHMT',organizationUpdatedAt:123,organizationUpdatedByUid:'admin'});
  assert.deepEqual(s.data.get('htmlTrainingScores/user'),{total:7});assert.deepEqual(s.data.get('htmlTrainingStates/one_user'),{attempts:[1]});
- assert.equal(s.writes.length,2);assert.equal(s.writes[0].c,'htmlTrainingOrganizationHistory');
+ assert.equal(s.writes.length,3);assert.equal(s.writes[0].c,'htmlTrainingOrganizationHistory');
+});
+
+test('moving a document invalidates its old read-routing index atomically',async()=>{
+ const s=store();
+ s.data.set('htmlTrainingSettings/folderIndex',{schemaVersion:1,complete:true,entries:{one:['Protocolos','Antiga']}});
+ await applyTrainingOrganization(s,planTrainingOrganization([training()],mapping()),{uid:'admin',now:123});
+ assert.equal(s.data.get('htmlTrainingSettings/folderIndex').complete,false);
 });
 test('revoked administration or a concurrent edit prevents every staged organization write',async()=>{
  const plan=planTrainingOrganization([training()],mapping());

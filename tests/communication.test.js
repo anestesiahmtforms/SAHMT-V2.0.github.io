@@ -126,12 +126,12 @@ test('worker rejects origin, methods, oversized body, disabled config and safe e
 });
 test('source stores refuse writes and FF storage paths are fixed',async()=>{
  const fa=createStore({getToken:async()=>'',source:'FA'});await assert.rejects(fa.transaction(()=>{}),{code:'COMM_SOURCE_READ_ONLY'});await assert.rejects(fa.get('communicationDevices','x'),{code:'COMM_SOURCE_DENIED'});
- const urls=[],ff=createStore({getToken:async()=>'',fetchImpl:async url=>{urls.push(url);return Response.json({fields:{}});}});await ff.get('communicationMessages','one');assert.ok(urls[0].includes('/sahmt-comunicacao-ff/databases/comunicacao/'));
+ const urls=[],ff=createStore({getToken:async()=>'',fetchImpl:async url=>{if(String(url).endsWith('/runtimePolicy/folders'))return new Response('',{status:404});urls.push(url);return Response.json({fields:{}});}});await ff.get('communicationMessages','one');assert.ok(urls[0].includes('/sahmt-comunicacao-ff/databases/comunicacao/'));
  await ff.get('communicationMessages','one',undefined,['title','message']);assert.deepEqual(new URL(urls[1]).searchParams.getAll('mask.fieldPaths'),['title','message']);
 });
 test('recent inbox queries only published notices in descending publication order',async()=>{
  let query;
- const ff=createStore({getToken:async()=>'',fetchImpl:async(_url,{body})=>{query=JSON.parse(body).structuredQuery;return Response.json([]);}});
+ const ff=createStore({getToken:async()=>'',fetchImpl:async(_url,{body})=>{if(String(_url).endsWith('/runtimePolicy/folders'))return new Response('',{status:404});query=JSON.parse(body).structuredQuery;return Response.json([]);}});
  await ff.page('communicationMessages',{cursor:`${NOW-1000}|old-notice`,publishedBefore:NOW,limit:5});
  assert.deepEqual(query.where.compositeFilter.filters.map(({fieldFilter:{field,op}})=>[field.fieldPath,op]),[['status','EQUAL'],['publishAt','LESS_THAN_OR_EQUAL']]);
  assert.equal(query.where.compositeFilter.filters[0].fieldFilter.value.stringValue,'published');

@@ -1,5 +1,6 @@
+import {assertFolderReadable} from '../server/folder-read-policy.js';
 import { documentGroupsFromAccess, normalizeDocumentAccessEmail } from '../src/document-access.js';
-import {trainingPathAllowed,trainingCategories,trainingAccessPath} from '../src/html-training-folders.js';
+import {trainingPathAllowed,trainingAccessPath,validTrainingFolderPath,parseTrainingFolderAccess} from '../src/html-training-folders.js';
 import {Buffer} from 'node:buffer';
 import { finalizeRopAudit } from '../src/domain/rop-audit.js';
 import { copy, documentSize, fail, identifier, publication, text, version } from './domain-validation.js';
@@ -7,22 +8,26 @@ import {buildReadingPlan} from './reading-plan.js';
 import {startReading,readingProgress,assertReadingComplete} from './reading-state.js';
 
 const C = Object.freeze({ training: 'htmlTrainings', versions: 'htmlTrainingVersions', content: 'htmlTrainingContent',
-  state: 'htmlTrainingStates', score: 'htmlTrainingScores', audits: 'htmlTrainingAudits', sync: 'htmlTrainingSync' });
+  state: 'htmlTrainingStates', score: 'htmlTrainingScores', pendingScores: 'htmlTrainingPendingScores', audits: 'htmlTrainingAudits', sync: 'htmlTrainingSync' });
 const managedActions = new Set(['EDIT', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE']);
-const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE', 'SET_FOLDER_ACCESS','READING_START','READING_PROGRESS']);
+const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE', 'SET_FOLDER_ACCESS','BUILD_FOLDER_INDEX','RECONCILE_SCORE','READING_START','READING_PROGRESS']);
 const admin = profile => profile.role === 'administrador_app' || profile.permissions?.admin === true;
 const manages = (profile, training, uid) => admin(profile) || training.managerUid === uid;
+const navigationCard = training => ({
+  title:training.title, status:training.status, audienceGroup:training.audienceGroup, managerUid:training.managerUid||''
+});
 const emptyState = (trainingId, uid) => ({ uid, trainingId, attempts: [], bestScore: 0, ackPoints: 0, suggestionDecision: null, version: 0, run: null });
 const selectedQuestions = privateVersion => privateVersion.selectedQuestionIds.map(id => privateVersion.bank.find(q => q.id === id));
 const participantQuestions = privateVersion => selectedQuestions(privateVersion).map(q => ({ id: q.id, stem: q.stem, options: copy(q.options), points: q.points }));
 const publicTraining = (training, profile, uid) => {
-  const fields = ['id', 'title', 'category', 'subcategory', 'audienceGroup', 'managerUid', 'status', 'version', 'sectionCount', 'selectedQuestionIds', 'maxScore', 'updatedAt'];
+  const fields = ['id', 'title', 'category', 'subcategory', 'folderPath', 'audienceGroup', 'managerUid', 'status', 'version', 'sectionCount', 'selectedQuestionIds', 'maxScore', 'updatedAt'];
   return { ...Object.fromEntries(fields.filter(k => training[k] !== undefined).map(k => [k, copy(training[k])])), canManage: manages(profile, training, uid), hasAudit: training.hasAudit === true };
 };
 const publicState = (state, training) => ({ ...copy(state), ...(state.run && state.run.stage !== 'COMPLETED' && state.run.trainingVersion !== training.version ? { run: null, versionChanged: true } : {}) });
 const itemScore = state => ({ acknowledgement: state.ackPoints, test: state.bestScore, suggestion: state.suggestionDecision?.points || 0 });
 const total = score => score.acknowledgement + score.test + score.suggestion;
 const getMany = (tx, collection, ids) => typeof tx.getMany === 'function' ? tx.getMany(collection, ids) : Promise.all(ids.map(id => tx.get(collection, id)));
+const validFolderIndex=index=>index?.schemaVersion===1&&index.complete===true&&index.entries&&typeof index.entries==='object'&&!Array.isArray(index.entries)&&Object.entries(index.entries).every(([id,path])=>/^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,199}$/.test(id)&&validTrainingFolderPath(path)&&JSON.stringify(trainingAccessPath({folderPath:path}))===JSON.stringify(path));
 export function contentParts(sections) {
   const bytes=Buffer.from(JSON.stringify(sections)),parts=[];
   for(let start=0;start<bytes.length;){
@@ -49,13 +54,29 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
   async function authorize(tx, identity) {
     const profile = await tx.get('users', identity.uid);
     if (!profile || profile.active !== true || profile.access !== true || (profile.uid && profile.uid !== identity.uid)) fail('FORBIDDEN', 403);
+    const areaPolicy=await tx.get('runtimePolicy','folders');
+    if(areaPolicy!==null)assertFolderReadable(areaPolicy,'gestao/area-gestao-de-documentos');
     const access = await tx.get('documentAccessEmails', identity.email);
     const settings=await tx.get('htmlTrainingSettings','folders');
-    return { profile, groups: documentGroupsFromAccess(access, identity.email), folderAccess:{version:settings?.version||0,disabled:settings?.disabled||[]} }; 
+    const folderAccess=settings===null?{version:0,disabled:[]}:parseTrainingFolderAccess(settings);
+    if(!folderAccess)fail('TRAINING_FOLDER_POLICY_UNAVAILABLE',503);
+    const folderIndex=await tx.get('htmlTrainingSettings','folderIndex');
+    return {profile,groups:documentGroupsFromAccess(access,identity.email),
+      folderAccess:folderAccess||{version:0,disabled:[]},folderPolicyValid:!!folderAccess,folderIndex};
+  }
+  function requireIndexWhenDisabled(auth){
+    if(auth.folderAccess.disabled.length&&!validFolderIndex(auth.folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
+  }
+  function assertIndexedRead(auth,id){
+    requireIndexWhenDisabled(auth);
+    if(!auth.folderAccess.disabled.length)return;
+    if(!Object.hasOwn(auth.folderIndex.entries,id))fail('FOLDER_INDEX_REQUIRED',409);
+    if(!trainingPathAllowed(auth.folderAccess,auth.folderIndex.entries[id]))fail('FORBIDDEN',403);
   }
   function canRead(auth, training, uid) {
-    const path=trainingAccessPath(training);
-    if(!admin(auth.profile)&&!trainingPathAllowed(auth.folderAccess,path))return false;
+    return trainingPathAllowed(auth.folderAccess,trainingAccessPath(training))&&canSeeCard(auth,training,uid);
+  }
+  function canSeeCard(auth, training, uid) {
     return manages(auth.profile, training, uid) || training.status === 'PUBLISHED' && auth.groups.includes(training.audienceGroup);
   }
   async function getVersion(tx, training) {
@@ -81,15 +102,40 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     if (sections.length !== training.sectionCount) fail('CONTENT_UNAVAILABLE', 503);
     return sections;
   }
-  async function updateScore(tx, state, timestamp) {
-    const existing = await tx.get(C.score, state.uid);
-    const items = { ...(existing?.items || {}), [state.trainingId]: itemScore(state) };
-    const score = { uid: state.uid, acknowledgement: 0, test: 0, suggestion: 0, total: 0, version: (existing?.version || 0) + 1, items, updatedAt: timestamp };
+  function summarizeScore(uid, existing, items, timestamp) {
+    const score = { uid, acknowledgement: 0, test: 0, suggestion: 0, total: 0, version: (existing?.version || 0) + 1, items, updatedAt: timestamp };
     for (const item of Object.values(items)) {
       score.acknowledgement += item.acknowledgement; score.test += item.test; score.suggestion += item.suggestion;
     }
     score.total = total(score); documentSize(score);
     return score;
+  }
+  const mayReadAggregate=auth=>auth.folderAccess.disabled.length===0;
+  async function readOrUpdateScore(tx, uid, timestamp, state) {
+    const existing = await tx.get(C.score, uid);
+    const pending = await tx.get(C.pendingScores, uid);
+    if (!pending && !state) return existing;
+    const ids = pending?.trainingIds || [];
+    const items = {...existing?.items};
+    const states = await getMany(tx,C.state,ids.map(id=>`${identifier(id)}_${uid}`));
+    for (const [index, saved] of states.entries()) {
+      if (saved?.uid!==uid || saved.trainingId!==ids[index]) fail('SCORE_UNAVAILABLE',503);
+      items[saved.trainingId] = itemScore(saved);
+    }
+    if (state) items[state.trainingId] = itemScore(state);
+    const score = summarizeScore(uid,existing,items,timestamp);
+    tx.set(C.score,uid,score);
+    if (pending) tx.delete(C.pendingScores,uid);
+    return score;
+  }
+  async function recordScore(tx, auth, state, timestamp) {
+    if (mayReadAggregate(auth)) return {score:await readOrUpdateScore(tx,state.uid,timestamp,state)};
+    // Store only routing metadata here. The earned points are in the training's own state.
+    const pending = await tx.get(C.pendingScores,state.uid);
+    const trainingIds = [...new Set([...(pending?.trainingIds || []),state.trainingId])];
+    const record={trainingIds};documentSize(record);
+    tx.set(C.pendingScores,state.uid,record);
+    return {score:null,scoreProjectionPending:true};
   }
   const saveState = (tx, state, timestamp) => { state.version++; state.updatedAt = timestamp; documentSize(state); tx.set(C.state, `${state.trainingId}_${state.uid}`, state); };
 
@@ -98,32 +144,32 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     if (!actions.has(action) || !input || typeof input !== 'object' || Array.isArray(input)) fail('INVALID_INPUT');
     documentSize(input, 10000000);
     const timestamp = now(); if (!Number.isSafeInteger(timestamp) || timestamp < 0) throw new TypeError('TRAINING_CLOCK_INVALID');
-    // Collection queries discover candidate IDs only. Each returned document,
-    // profile and assignment is read again inside the authorization transaction.
-    let candidates = [];
-    if (action === 'LIST') {
-      // Preflight avoids scanning the catalog for a revoked account.
-      await store.transaction(tx => authorize(tx, identity));
-      candidates = await store.list(C.training, [], 1000);
-    } else if (action === 'EDIT' || action === 'AUDIT_LIST') {
-      identifier(input.trainingId);
-      await store.transaction(async tx => {
-        const auth = await authorize(tx, identity), training = await tx.get(C.training, input.trainingId);
-        if (!training) fail('NOT_FOUND', 404);
-        if (!manages(auth.profile, training, identity.uid)) fail('FORBIDDEN', 403);
-      });
-      candidates = await store.list(action === 'EDIT' ? C.state : C.audits, [{ field: 'trainingId', op: 'EQUAL', value: input.trainingId }], 1000);
-    }
     const publish = action === 'PUBLISH' ? publication(input) : null;
     const runId = action === 'BEGIN' ? identifier(uuid()) : null;
     return store.transaction(async tx => {
       const auth = await authorize(tx, identity);
+      if(action==='BUILD_FOLDER_INDEX'){
+        if(!admin(auth.profile))fail('FORBIDDEN',403);
+        if(auth.folderAccess.disabled.length)fail('FORBIDDEN',403);
+        let rows;
+        try { rows=await tx.list(C.training,[],1000); }
+        catch(error){if(error.code==='TRAINING_STORE_QUERY_TRUNCATED')fail('FOLDER_INDEX_TOO_LARGE',409);throw error;}
+        if(rows.length>=1000)fail('FOLDER_INDEX_TOO_LARGE',409);
+        const entries=Object.fromEntries(rows.map(row=>[identifier(row.id),trainingAccessPath(row)]));
+        const cards=Object.fromEntries(rows.map(row=>[identifier(row.id),navigationCard(row)]));
+        const folderIndex={schemaVersion:1,complete:true,entries,cards,version:(auth.folderIndex?.version||0)+1,updatedAt:timestamp,updatedByUid:identity.uid};
+        if(!validFolderIndex(folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
+        documentSize(folderIndex);tx.set('htmlTrainingSettings','folderIndex',folderIndex);
+        return {folderIndexReady:true,folderPaths:Object.values(entries)};
+      }
       if(action==='SET_FOLDER_ACCESS'){
         if(!admin(auth.profile))fail('FORBIDDEN',403);
+        if(!auth.folderPolicyValid)fail('TRAINING_FOLDER_POLICY_UNAVAILABLE',503);
         const path=input.path;
-        if(!Array.isArray(path)||path.length<1||path.length>2||!trainingCategories.includes(path[0])||path.some(value=>typeof value!=='string'||!value.trim()||value.length>160)||typeof input.enabled!=='boolean')fail('INVALID_INPUT');
+        if(!validTrainingFolderPath(path)||JSON.stringify(trainingAccessPath({folderPath:path}))!==JSON.stringify(path)||typeof input.enabled!=='boolean')fail('INVALID_INPUT');
         version(input.expectedVersion);
         if(input.expectedVersion!==auth.folderAccess.version)fail('VERSION_CONFLICT',409);
+        if(!input.enabled&&!validFolderIndex(auth.folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
         const key=JSON.stringify(path),disabled=new Set(auth.folderAccess.disabled);
         if(input.enabled)disabled.delete(key);else disabled.add(key);
         const folderAccess={version:auth.folderAccess.version+1,disabled:[...disabled].sort()};
@@ -131,10 +177,14 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
         tx.set('htmlTrainingSettings','folders',{...folderAccess,updatedAt:timestamp,updatedByUid:identity.uid});
         return {folderAccess};
       }
-      if (action === 'SCORE') {
+      if (action === 'SCORE' || action === 'RECONCILE_SCORE') {
+        requireIndexWhenDisabled(auth);
         const uid = input.subjectUid === undefined ? identity.uid : identifier(input.subjectUid);
+        if (action === 'RECONCILE_SCORE' && !admin(auth.profile)) fail('FORBIDDEN',403);
         if (uid !== identity.uid && !admin(auth.profile)) fail('FORBIDDEN', 403);
-        const projection = await tx.get(C.score, uid);
+        // This aggregate mixes every training. Do not read it and filter later.
+        if(!mayReadAggregate(auth))fail('FORBIDDEN',403);
+        const projection = await readOrUpdateScore(tx,uid,timestamp);
         const fields = ['uid', 'acknowledgement', 'test', 'suggestion', 'total', 'version', 'items', 'updatedAt'];
         const score = projection ? Object.fromEntries(fields.map(field => [field, copy(projection[field])])) :
           { uid, acknowledgement: 0, test: 0, suggestion: 0, total: 0, version: 0, items: {}, updatedAt: null };
@@ -151,16 +201,33 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
         return { score, trainings };
       }
       if (action === 'LIST') {
+        if(!admin(auth.profile))requireIndexWhenDisabled(auth);
         const trainings = [];
-        for (const training of await getMany(tx, C.training, candidates.map(candidate => identifier(candidate.id)))) {
+        const indexed=validFolderIndex(auth.folderIndex);
+        const entries=indexed?Object.entries(auth.folderIndex.entries):[];
+        const enabled=entries.filter(([,path])=>trainingPathAllowed(auth.folderAccess,path));
+        const inactiveTrainings=entries.flatMap(([id,folderPath])=>{
+          if(trainingPathAllowed(auth.folderAccess,folderPath))return [];
+          const card=Object.hasOwn(auth.folderIndex.cards||{},id)?auth.folderIndex.cards[id]:null;
+          return card&&canSeeCard(auth,card,identity.uid)?[{id,title:card.title,folderPath}]:[];
+        });
+        // Keep the administrative controls reachable when a legacy policy needs its index prepared.
+        const rows=indexed?await getMany(tx,C.training,enabled.map(([id])=>id))
+          : auth.folderAccess.disabled.length?[]:await tx.list(C.training,[],1000);
+        for (const training of rows) {
           if (training && canRead(auth, training, identity.uid)) trainings.push(publicTraining(training, auth.profile, identity.uid));
         }
-        return { trainings: trainings.sort((a, b) => a.title.localeCompare(b.title)),folderAccess:auth.folderAccess,canManageFolders:admin(auth.profile) };
+        const disabledPaths=auth.folderAccess.disabled.map(key=>JSON.parse(key));
+        return { trainings: trainings.sort((a, b) => a.title.localeCompare(b.title)),inactiveTrainings,folderAccess:auth.folderAccess,
+          canManageFolders:admin(auth.profile),folderIndexReady:indexed,
+          folderPaths:admin(auth.profile)?[...entries.map(([,path])=>path),...disabledPaths]:[] };
       }
       const trainingId = identifier(input.trainingId);
+      assertIndexedRead(auth,trainingId);
+      if(publish&&!trainingPathAllowed(auth.folderAccess,trainingAccessPath(publish.training)))fail('FORBIDDEN',403);
       const training = await tx.get(C.training, trainingId);
 
-      if(training&&!admin(auth.profile)&&!trainingPathAllowed(auth.folderAccess,trainingAccessPath(training)))fail('FORBIDDEN',403);
+      if(training&&!trainingPathAllowed(auth.folderAccess,trainingAccessPath(training)))fail('FORBIDDEN',403);
       if (action === 'PUBLISH') {
         if (!training && !admin(auth.profile) || training && !manages(auth.profile, training, identity.uid)) fail('FORBIDDEN', 403);
         if (publish.training.managerUid === '' && !admin(auth.profile) || input.deferInstitutionalReview === true && !admin(auth.profile)) fail('FORBIDDEN', 403);
@@ -197,6 +264,9 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
           training: copy(metadata), sectionCount: publish.sections.length, chunkCount: parts.length, contentEncoding:'JSON_UTF8_CHUNKS_V1',
           createdAt: timestamp, createdByUid: identity.uid, previousVersion: publish.expectedVersion };
         documentSize(snapshot);
+        const folderIndex={schemaVersion:1,complete:validFolderIndex(auth.folderIndex),entries:{...(auth.folderIndex?.entries||{}),[trainingId]:trainingAccessPath(metadata)},
+          cards:{...auth.folderIndex?.cards,[trainingId]:navigationCard(metadata)},version:(auth.folderIndex?.version||0)+1,updatedAt:timestamp,updatedByUid:identity.uid};
+        documentSize(folderIndex);
         // Transport chunks preserve reading sections, including images larger
         // than one Firestore document. Version/content IDs remain create-only.
         tx.create(C.versions, id, snapshot);
@@ -205,6 +275,11 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
           documentSize(chunk); tx.create(C.content, chunk.id, chunk);
         });
         tx.set(C.training, trainingId, metadata);
+        tx.set('htmlTrainingSettings','folderIndex',folderIndex);
+        if(training&&auth.folderPolicyValid&&auth.folderAccess.disabled.length&&
+          JSON.stringify(trainingAccessPath(training))!==JSON.stringify(trainingAccessPath(metadata))){
+          tx.set('htmlTrainingSettings','folders',{...auth.folderAccess,version:auth.folderAccess.version+1,updatedAt:timestamp,updatedByUid:identity.uid});
+        }
         tx.create(C.sync, id, { id, trainingId, version: nextVersion, status: 'PENDING', source: copy(metadata.source), expectedSourceRevisions: copy(metadata.source.revisions || {}), createdAt: timestamp, createdByUid: identity.uid, attempts: 0 });
         return { training: { ...copy(metadata), canManage: true } };
       }
@@ -215,16 +290,14 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
       } else if (!canRead(auth, training, identity.uid)) fail('FORBIDDEN', 403);
 
       if (action === 'AUDIT_LIST') {
-        const audits = [];
-        for (const audit of await getMany(tx, C.audits, candidates.map(candidate => identifier(candidate.id)))) {
-          if (audit?.trainingId === trainingId) audits.push(audit);
-        }
+        const audits = await tx.list(C.audits,[{field:'trainingId',op:'EQUAL',value:trainingId}],1000);
         return { audits: audits.sort((a, b) => b.updatedAt - a.updatedAt) };
       }
 
       if (action === 'EDIT') {
         const snapshot = await getVersion(tx, training), sections = await sectionsFor(tx, training, snapshot), suggestions = [];
-        for (const state of await getMany(tx, C.state, candidates.map(candidate => `${trainingId}_${identifier(candidate.uid)}`))) {
+        const states=await tx.list(C.state,[{field:'trainingId',op:'EQUAL',value:trainingId}],1000);
+        for (const state of states) {
           if (state?.trainingId === trainingId && state.attempts.some(attempt => attempt.suggestion?.trim())) suggestions.push({ uid: state.uid, version: state.version, attempts: copy(state.attempts), suggestionDecision: copy(state.suggestionDecision) });
         }
         return { training: { ...copy(training), canManage: true }, bank: copy(snapshot.bank), sections, auditSchema: copy(snapshot.auditSchema), suggestions };
@@ -281,8 +354,8 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
         const previous = state.suggestionDecision;
         state.suggestionDecision = { points: input.points, note, decidedAt: timestamp, decidedByUid: identity.uid,
           history: [...(previous?.history || []), ...(previous ? [Object.fromEntries(Object.entries(previous).filter(([key]) => key !== 'history'))] : [])] };
-        const score = await updateScore(tx, state, timestamp);
-        saveState(tx, state, timestamp); tx.set(C.score, uid, score); return { state, score };
+        const result = await recordScore(tx,auth,state,timestamp);
+        saveState(tx,state,timestamp);return {state,...result};
       }
 
       if (action === 'OPEN') {
@@ -311,7 +384,8 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
         const prior = state.attempts.find(attempt => attempt.runId === submittedRunId || attempt.requestId === requestId);
         if (prior) {
           if (prior.runId !== submittedRunId || prior.suggestion !== suggestion) fail('IDEMPOTENCY_CONFLICT', 409);
-          const score = await tx.get(C.score, uid);
+          if(!mayReadAggregate(auth))return {state:publicState(state,training),score:null,scoreProjectionPending:true};
+          const score = await readOrUpdateScore(tx,uid,timestamp);
           if (!score) fail('SCORE_UNAVAILABLE', 503);
           return { state: publicState(state, training), score };
         }
@@ -365,8 +439,8 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
           answers: copy(run.answers), score: points, maxScore: training.maxScore, suggestion: input.suggestion ?? '', acknowledgedAt: run.acknowledgedAt, completedAt: timestamp });
         state.bestScore = Math.max(state.bestScore, points); state.ackPoints = 1;
         run.stage = 'COMPLETED'; run.completedAt = timestamp;
-        const score = await updateScore(tx, state, timestamp);
-        saveState(tx, state, timestamp); tx.set(C.score, uid, score); return { state, score };
+        const result = await recordScore(tx,auth,state,timestamp);
+        saveState(tx,state,timestamp);return {state,...result};
       } else fail('INVALID_INPUT');
       saveState(tx, state, timestamp); return { state };
     });

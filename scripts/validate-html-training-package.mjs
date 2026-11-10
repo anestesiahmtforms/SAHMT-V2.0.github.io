@@ -5,14 +5,14 @@ import {verifyPreparedHtmlTrainings} from './prepare-html-trainings.mjs';
 
 const verified=await verifyPreparedHtmlTrainings({workspaceRoot:process.cwd()});
 const manifest=JSON.parse(await fs.readFile('.local-preview/html-training-import/manifest.private.json','utf8'));
-const records=new Map(),allowed=new Set(['users','documentAccessEmails','htmlTrainings','htmlTrainingVersions','htmlTrainingContent','htmlTrainingSync']);
+const records=new Map(),allowed=new Set(['users','documentAccessEmails','htmlTrainings','htmlTrainingVersions','htmlTrainingContent','htmlTrainingSync','htmlTrainingSettings']);
 const copy=value=>value==null?null:structuredClone(value);
 const store={
  async get(c,id){return copy(records.get(c+'/'+id));},
  async list(c,filters=[]){return [...records].filter(([key,value])=>key.startsWith(c+'/')&&filters.every(f=>value[f.field]===f.value)).map(([key,value])=>({...copy(value),id:key.slice(c.length+1)}));},
  async transaction(fn){
   const writes=[];
-  const tx={get:store.get,getMany:(c,ids)=>Promise.all(ids.map(id=>store.get(c,id))),set:(c,id,data)=>writes.push({c,id,data}),create:(c,id,data)=>writes.push({c,id,data,create:true}),delete:()=>{throw Error('VALIDATION_DELETE_FORBIDDEN');}};
+  const tx={get:store.get,list:store.list,getMany:(c,ids)=>Promise.all(ids.map(id=>store.get(c,id))),set:(c,id,data)=>writes.push({c,id,data}),create:(c,id,data)=>writes.push({c,id,data,create:true}),delete:()=>{throw Error('VALIDATION_DELETE_FORBIDDEN');}};
   const result=await fn(tx);
   for(const w of writes){if(!allowed.has(w.c)||w.create&&records.has(w.c+'/'+w.id))throw Error('VALIDATION_WRITE_SCOPE');}
   for(const w of writes)records.set(w.c+'/'+w.id,copy(w.data));

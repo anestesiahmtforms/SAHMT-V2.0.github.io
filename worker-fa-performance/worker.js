@@ -20,6 +20,7 @@ export function createFaPerformanceWorker({verifyIdentity=verifyTrainingIdentity
   const identity=await verifyIdentity(request.headers.get('Authorization'),{apiKey:env.FA_WEB_API_KEY,projectId:PROJECT}),db=getStore(env);
   const admin=p=>p?.uid===identity.uid&&p.email?.toLowerCase()===identity.email&&p.active===true&&p.access===true&&(p.role==='administrador_app'||p.permissions?.admin===true);
   if(!admin(await db.get('users',identity.uid)))return reply({code:'FA_PERFORMANCE_FORBIDDEN'},403);
+  await db.checkAvailability?.();
   const runtime=await db.get('faPerformanceRuntime','current');
   if(runtime?.enabled!==true||runtime.projectId!==PROJECT||runtime.schemaVersion!==1||runtime.mode!=='FA_ONLY'||runtime.automaticExternalSync!==false||!Number.isFinite(Date.parse(runtime.effectiveFrom))||Date.now()<Date.parse(runtime.effectiveFrom))return reply({code:'FA_PERFORMANCE_PENDING'},503);
   const ref=await db.get('faPerformanceReference','team');if(ref?.status!=='CONFIRMED'||!Number.isSafeInteger(ref.revision))return reply({code:'FA_PERFORMANCE_PENDING'},503);
@@ -28,7 +29,8 @@ export function createFaPerformanceWorker({verifyIdentity=verifyTrainingIdentity
   const fresh=await db.get('users',identity.uid),reference=await db.get('faPerformanceReference','team'),active=await db.get('faPerformanceRuntime','current');
   if(!admin(fresh))return reply({code:'FA_PERFORMANCE_FORBIDDEN'},403);
   if(reference?.status!=='CONFIRMED'||reference.revision!==ref.revision||active?.enabled!==true||active.mode!==runtime.mode||active.projectId!==PROJECT||active.effectiveFrom!==runtime.effectiveFrom)return reply({code:'FA_PERFORMANCE_PENDING'},503);
+  await db.checkAvailability?.();
   return reply({summary,team:team.filter(p=>p.revision===ref.revision),awards:awards.filter(a=>a.revision===ref.revision),ledger,reference:ref,effectiveFrom:runtime.effectiveFrom,sourceProjectId:PROJECT},200);
- }catch(e){return reply({code:'FA_PERFORMANCE_UNAVAILABLE'},e?.status===401?401:503);}
+ }catch(e){if(e?.code==='FOLDER_DISABLED')return reply({code:'FA_FOLDER_DISABLED'},403);return reply({code:'FA_PERFORMANCE_UNAVAILABLE'},e?.status===401?401:503);}
  }};}
 export default createFaPerformanceWorker();

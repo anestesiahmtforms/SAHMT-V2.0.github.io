@@ -10,5 +10,5 @@
   "placement": {"region": "gcp:southamerica-east1"},
   "triggers": {"crons": ["0 6 1 * *", "23 */6 * * *"]},
   "observability": {"enabled": true, "redact_query_string": true, "logs": {"enabled": true, "head_sampling_rate": 1}, "traces": {"enabled": true, "head_sampling_rate": 0.01}},
-  "vars": {"FI_CONTROL_ENABLED": "false", "FI_AI_ENABLED": "false", "FI_MONTHLY_ENABLED": "false", "FI_PILOT_ENABLED": "false", "FI_REQUIRE_APP_CHECK": "true", "FA_PUBLIC_API_KEY": "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"}
+  "vars": {"FI_CONTROL_ENABLED": "false", "FI_FOLDER_MANAGEMENT_ENABLED": "false", "FI_AI_ENABLED": "false", "FI_MONTHLY_ENABLED": "false", "FI_PILOT_ENABLED": "false", "FI_REQUIRE_APP_CHECK": "true", "FA_PUBLIC_API_KEY": "AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"}
 }

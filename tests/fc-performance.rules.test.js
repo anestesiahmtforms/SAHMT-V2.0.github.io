@@ -30,3 +30,31 @@ test('anonymous, same UID in FA/FB and revoked FC profile cannot read points',as
 test('even an administrator cannot write balances, awards, receipts or runtime from the browser',async()=>{
  for(const user of [uid,'admin'])for(const name of ['fcPerformanceRuntime','fcPerformanceReference','fcPerformanceSummaries','fcPerformanceAwards','fcPerformanceLedger','fcPerformanceSourceReceipts'])await assertFails(setDoc(doc(google(user),name,user),{uid:user,category:'PERFORMANCE',points:999}));
 });
+
+test('FC folder blocks direct reads for members and administrators',async()=>{
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'runtimePolicy','folders'),{schemaVersion:1,revision:1,disabled:['desempenho/fc']}));
+ for (const actor of [uid,'admin']) await assertFails(getDoc(doc(google(actor),'fcPerformanceRuntime','state')));
+ await assertFails(getDocs(query(collection(google(),'fcPerformanceAwards'),where('uid','==',uid),where('category','==','PERFORMANCE'),limit(200))));
+ await assertSucceeds(getDoc(doc(google(),'users',uid)));
+});
+
+test('FC record siblings retain independent controls and the parent blocks both',async()=>{
+ const policy=disabled=>env.withSecurityRulesDisabled(async c=>{
+  const db=c.firestore();
+  await setDoc(doc(db,'runtimePolicy','folders'),{schemaVersion:1,revision:2,disabled});
+  await setDoc(doc(db,'users',uid),{uid,active:true,access:true,permissions:{occurrencesCatalogRead:true}});
+  await setDoc(doc(db,'occurrenceCatalogs','current'),{active:true});
+  await setDoc(doc(db,'qmentumAccess',uid),{uid,active:true,role:'manager'});
+ });
+ const db=google(),occurrence=doc(db,'occurrenceCatalogs','current'),qmentum=doc(db,'qmentumAccess',uid);
+ await policy(['registros/ocorrencias']);
+ await assertFails(getDoc(occurrence));
+ await assertSucceeds(getDoc(qmentum));
+ await policy(['registros/qmentum']);
+ await assertSucceeds(getDoc(occurrence));
+ await assertFails(getDoc(qmentum));
+ await policy(['registros']);
+ await assertFails(getDoc(occurrence));
+ await assertFails(getDoc(qmentum));
+ await assertFails(getDoc(doc(db,'fcPerformanceRuntime','state')));
+});

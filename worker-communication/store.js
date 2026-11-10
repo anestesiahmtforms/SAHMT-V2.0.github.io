@@ -1,3 +1,4 @@
+import {assertFolderReadable} from '../server/folder-read-policy.js';
 import {encodeFields,decodeFields} from '../worker-training/firestore.js';
 import {FF,fail,id} from '../communication/domain.js';
 import {boundedJson} from './google.js';
@@ -7,7 +8,19 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
  const project=source==='FA'?'sahmt-17a16':source==='FJ'?'sahmt-escala-fj':FF.projectId;
  const name=`projects/${project}/databases/${source?'(default)':FF.databaseId}/documents`,root='https://firestore.googleapis.com/v1/'+name;
  const checkCollection=c=>{id(c);if(source&&!(source==='FJ'?['scheduleDays']:['users','scheduleDays']).includes(c))throw fail('COMM_SOURCE_DENIED',403);};
+ async function assertAvailable(collection){
+  if(source&&collection!=='scheduleDays')return;
+  try{
+   const r=await fetchImpl(root+'/runtimePolicy/folders',{method:'GET',headers:{Authorization:'Bearer '+await getToken()},redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(10000)});
+   if(r.status===404){await r.body?.cancel();return;}
+   if(!r.ok)throw Error('POLICY_UNAVAILABLE');
+   const policy=decodeFields((await boundedJson(r)).fields||{});
+   for(const folder of source?['operacao/escala','operacao/eventos','operacao/escala/ferias']:['comunicacao'])assertFolderReadable(policy,folder);
+  }catch(error){if(error.code==='COMM_OPERATION_WORK_LIMIT')throw error;throw fail(error.code==='FOLDER_DISABLED'?'COMM_FOLDER_DISABLED':'COMM_FOLDER_POLICY_UNAVAILABLE',error.code==='FOLDER_DISABLED'?403:503);}
+ }
  async function request(path,body){
+  if(!source&&(!body||[':runQuery',':batchGet',':runAggregationQuery'].includes(path)))await assertAvailable();
+  else if(path.includes('/scheduleDays/'))await assertAvailable('scheduleDays');
   const r=await fetchImpl(root+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});
   if(r.status===404&&!body){await r.body?.cancel();return null;}
   const d=await boundedJson(r);if(!r.ok)throw fail(r.status===429?'COMM_PROVIDER_QUOTA_EXHAUSTED':r.status===409||d.error?.status==='ABORTED'?'COMM_CONFLICT':'COMM_STORE_UNAVAILABLE',r.status===429?429:r.status===409||d.error?.status==='ABORTED'?409:503);return d;
@@ -46,6 +59,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
  }
  async function transaction(work){
   if(source)throw fail('COMM_SOURCE_READ_ONLY',403);
+  await assertAvailable();
   const {transaction:t}=await request(':beginTransaction',{options:{readWrite:{}}}),writes=[];if(!t)throw fail('COMM_STORE_UNAVAILABLE',503);
   const tx={get:(c,k)=>get(c,k,t),countPublished:(start,end)=>countPublished(start,end,t),set:(c,k,v)=>writes.push({update:{name:name+'/'+path(c,k),fields:encodeFields(v)}}),create:(c,k,v)=>writes.push({update:{name:name+'/'+path(c,k),fields:encodeFields(v)},currentDocument:{exists:false}})};
   try{const result=await work(tx);if(writes.length>40)throw fail('COMM_OPERATION_WORK_LIMIT',429);await request(writes.length?':commit':':rollback',writes.length?{transaction:t,writes}:{transaction:t});return result;}
@@ -68,5 +82,5 @@ export function createStore({getToken,fetchImpl=fetch,source=null}){
   if(names.some(n=>!map.has(n)))throw fail('COMM_STORE_UNAVAILABLE',503);
   return names.map((n,i)=>map.get(n)?{...map.get(n),id:keys[i]}:null);
  }
- return {get,getMany,page,listUserAppInstallations,transaction,countPublished};
+ return {get,getMany,page,listUserAppInstallations,transaction,countPublished,assertAvailable};
 }

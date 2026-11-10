@@ -1,3 +1,5 @@
+import {assertFolderReadable} from '../server/folder-read-policy.js';
+import {assertFePerformanceReadable,assertFeFolderReadable} from '../worker-fe-surveys/performance-policy.js';
 import {createProfessionalRegistrationService} from './professional-registration-service.js';
 import {createRegistrationDrive} from './registration-drive.js';
 import {createBiosafetyManualService} from './biosafety-manual-service.js';
@@ -37,22 +39,42 @@ function buildRuntime(env){
  const runtime=sharedRuntime(env);
  return runtime.training??=createHtmlTrainingService({store:runtime.store,now:Date.now,uuid:()=>crypto.randomUUID(),readingRequired:env.HTML_TRAINING_READING_REQUIRED==='true'});
 }
+const biosafetyFolder='gestao/area-gestao-de-pessoas/biosseguranca';
 function vaccinationRuntime(env){
  const runtime=sharedRuntime(env);
- return runtime.vaccination??=createVaccinationService({store:runtime.store,adminDriveFolderUrl:env.PROFESSIONAL_DRIVE_FOLDER_URL});
+ return runtime.vaccination??=folderGuard(runtime,createVaccinationService({store:runtime.store,adminDriveFolderUrl:env.PROFESSIONAL_DRIVE_FOLDER_URL}),'VAC',biosafetyFolder+'/vacinacao');
 }
-function dosimetryRuntime(env){const runtime=sharedRuntime(env);return runtime.dosimetry??=createDosimetryService({store:runtime.store});}
-function manualRuntime(env){const runtime=sharedRuntime(env);return runtime.manual??=createBiosafetyManualService({store:runtime.store});}
+function dosimetryRuntime(env){const runtime=sharedRuntime(env);return runtime.dosimetry??=folderGuard(runtime,createDosimetryService({store:runtime.store}),'DOSIMETRY',biosafetyFolder+'/dosimetria');}
+function manualRuntime(env){const runtime=sharedRuntime(env);return runtime.manual??=folderGuard(runtime,createBiosafetyManualService({store:runtime.store}),'MANUAL',biosafetyFolder+'/manual');}
 function registrationDriveRuntime(env){const runtime=sharedRuntime(env);if(!runtime.registrationDrive){let config;try{config=JSON.parse(env.REGISTRATION_DRIVE_CLIENT_JSON||'null');}catch{}runtime.registrationDrive=createRegistrationDrive({store:runtime.store,clientConfig:config,encryptionKey:env.REGISTRATION_DRIVE_KEY});}return runtime.registrationDrive;}
-function registrationRuntime(env){const runtime=sharedRuntime(env);return runtime.registration??=createProfessionalRegistrationService({store:runtime.store,drive:registrationDriveRuntime(env)});}
+function folderGuard(runtime,service,prefix,folder='consultas/cadastro-profissional') {
+ async function check(folderId) {
+  try {
+   const policy=await runtime.store.get('runtimePolicy','folders');
+   if(policy!==null)assertFolderReadable(policy,folderId);
+  } catch(error) {
+   const disabled=error.code==='FOLDER_DISABLED';
+   const code=prefix+(disabled?'_FOLDER_DISABLED':'_FOLDER_POLICY_UNAVAILABLE');
+   throw Object.assign(Error(code),{code,status:disabled?403:503});
+  }
+ }
+ return {async execute(...args){
+  const folderId=typeof folder==='function'?folder(args[1]):folder;
+  await check(folderId);
+  const result=await service.execute(...args);
+  await check(folderId);
+  return result;
+ }};
+}
+function registrationRuntime(env){const runtime=sharedRuntime(env);return runtime.registration??=folderGuard(runtime,createProfessionalRegistrationService({store:runtime.store,drive:registrationDriveRuntime(env)}),'REGISTRATION');}
 function surveyRuntime(env){
  const runtime=sharedRuntime(env);
  let config;try{config=JSON.parse(env.REGISTRATION_DRIVE_CLIENT_JSON||'null');}catch{}
- return runtime.surveys??=createSurveyService({reportReaderEmail:config?.reportReaderEmail,profileStore:runtime.store,responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
+ return runtime.surveys??=createSurveyService({reportReaderEmail:config?.reportReaderEmail,checkPerformance:tx=>assertFePerformanceReadable(runtime.getAccessToken,tx),checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,runtime.getAccessToken,tx),profileStore:runtime.store,responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
 }
 function yearEndStatusRuntime(env){
  const runtime=sharedRuntime(env);
- return runtime.yearEndStatus??=createYearEndStatusService({store:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
+ return runtime.yearEndStatus??=createYearEndStatusService({store:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken}),checkAvailability:()=>assertFeFolderReadable('consultas/escala-final-de-ano',runtime.getAccessToken,null,'YEAR_END')});
 }
 function documentRuntime(env){
  const runtime=sharedRuntime(env);
@@ -63,12 +85,17 @@ function documentRuntime(env){
   if(env.DOCUMENT_UPLOADS_ENABLED==='true'&&env.PROFESSIONAL_DRIVE_OAUTH_JSON){
    try{drive=createDriveClient({credentials:JSON.parse(env.PROFESSIONAL_DRIVE_OAUTH_JSON)});}catch{drive={ready:false};}
   }
-  runtime.documents=createProfessionalDocumentService({store:runtime.store,drive});
+  runtime.documents=folderGuard(runtime,createProfessionalDocumentService({store:runtime.store,drive}),'DOCUMENT',input=>{
+   if(input?.context==='VACCINATION')return biosafetyFolder+'/vacinacao';
+   const root='gestao/area-gestao-de-pessoas/documentacao';
+   const child={REGISTRATION:'cadastral',CERTIFICATES:'certificados',PROFESSIONAL:'profissional'}[input?.context];
+   return typeof child==='string'?root+'/'+child:root;
+  });
  }
  return runtime.documents;
 }
-const legacyTrainingCodes=new Set(['INSTITUTIONAL_REVIEW_REQUIRED','INVALID_INPUT','PAYLOAD_TOO_LARGE','UNSAFE_CONTENT','ALREADY_REVIEWED','ATTEMPT_LIMIT','AUDIT_IMMUTABLE','AUDIT_INVALID','AUDIT_UNAVAILABLE','BANK_QUESTIONS_REMOVED','CONTENT_UNAVAILABLE','FORBIDDEN','IDEMPOTENCY_CONFLICT','INVALID_ANSWERS','INVALID_MANAGER','NO_SUGGESTION','NOT_FOUND','NOT_PUBLISHED','READ_ORDER','RUN_CONFLICT','SCORE_UNAVAILABLE','SELF_REVIEW','STAGE_CONFLICT','UNAUTHENTICATED','VERSION_CHANGED','VERSION_CONFLICT']);
-export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildYearEndStatusService=yearEndStatusRuntime,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime,buildRegistrationService=registrationRuntime,buildRegistrationDrive=registrationDriveRuntime}={}){
+const legacyTrainingCodes=new Set(['FOLDER_INDEX_REQUIRED','FOLDER_INDEX_TOO_LARGE','INSTITUTIONAL_REVIEW_REQUIRED','INVALID_INPUT','PAYLOAD_TOO_LARGE','UNSAFE_CONTENT','ALREADY_REVIEWED','ATTEMPT_LIMIT','AUDIT_IMMUTABLE','AUDIT_INVALID','AUDIT_UNAVAILABLE','BANK_QUESTIONS_REMOVED','CONTENT_UNAVAILABLE','FORBIDDEN','IDEMPOTENCY_CONFLICT','INVALID_ANSWERS','INVALID_MANAGER','NO_SUGGESTION','NOT_FOUND','NOT_PUBLISHED','READ_ORDER','RUN_CONFLICT','SCORE_UNAVAILABLE','SELF_REVIEW','STAGE_CONFLICT','UNAUTHENTICATED','VERSION_CHANGED','VERSION_CONFLICT']);
+export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildYearEndStatusService=yearEndStatusRuntime,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime,buildRegistrationService=registrationRuntime,buildRegistrationDrive=env=>folderGuard(sharedRuntime(env),registrationDriveRuntime(env),'REGDRIVE')}={}){
  const routes={
   '/v1/professional-registration':{prefix:'REGISTRATION',max:64*1024,flag:'PROFESSIONAL_REGISTRATION_ENABLED',build:buildRegistrationService,sourceProject:'sahmt-17a16'},
   '/v1/registration-drive':{prefix:'REGDRIVE',max:8*1024*1024,flag:'PROFESSIONAL_REGISTRATION_ENABLED',build:buildRegistrationDrive,sourceProject:'sahmt-17a16'},

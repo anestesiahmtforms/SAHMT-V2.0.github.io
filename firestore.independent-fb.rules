@@ -24,6 +24,10 @@ service cloud.firestore {
     }
     // END_MEMBER_CATEGORIES_V1
 
+    match /runtimePolicy/folders {
+      allow get: if activeUser();
+      allow list, write: if false;
+    }
     function fbDomainOpen_(writeOperation) {
       let path = /databases/$(database)/documents/evaluationRuntime/independentFbCutover;
       return exists(path) && get(path).data.status == 'ACTIVE' &&
@@ -35,6 +39,11 @@ service cloud.firestore {
     function hasProfile() { return signedIn() && exists(profilePath()); }
     function profile() { return get(profilePath()).data; }
     function activeUser() { return hasProfile() && profile().active == true && profile().access == true; }
+    match /htmlTrainingSettings/folders {
+      // Approved clients watch revocations without opening the catalog or private index.
+      allow get: if memberCategoryActive_();
+      allow write: if false;
+    }
     function isAdmin() {
       return activeUser() && ((profile().role == 'administrador_app') ||
         (profile().permissions.keys().hasAny(['admin']) && profile().permissions.admin == true));
@@ -383,6 +392,12 @@ service cloud.firestore {
     }
 
 
+    function managementFolderOpen_(areaId) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['gestao', 'gestao/' + areaId]);
+    }
     match /managementAreas/{areaId} {
       function managementAccess() {
         return can('managementRead') || can('managementManage') || can('managementActivityWrite') ||
@@ -643,7 +658,7 @@ service cloud.firestore {
         return base && (started || completed || cancelled);
       }
 
-      allow read: if fbDomainOpen_(false) && (activityAccess(resource.data.managementAreaId));
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (activityAccess(resource.data.managementAreaId));
       allow create: if fbDomainOpen_(true) && ((can('managementActivityWrite') || qualityManageArea(request.resource.data.managementAreaId)) && validManagementActivity(request.resource.data, activityId));
       allow update: if fbDomainOpen_(true) && ((can('managementActivityWrite') || can('managementManage') || qualityManageArea(resource.data.managementAreaId)) && validManagementActivityTransition(activityId));
       allow delete: if fbDomainOpen_(true) && (false);
@@ -678,7 +693,7 @@ service cloud.firestore {
       function activityInteractionAccess(activityId, interactionUid) {
         let activityPath = /databases/$(database)/documents/activities/$(activityId);
         let activity = get(activityPath).data;
-        return activeUser() && exists(activityPath) && activity.active == true &&
+        return activeUser() && exists(activityPath) && activity.active == true && managementFolderOpen_(activity.managementAreaId) &&
           (interactionUid == request.auth.uid || can('managementRead') || activity.createdByUid == request.auth.uid ||
            (activity.responsibleUids is list && activity.responsibleUids.hasAny([request.auth.uid])) ||
            (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])) || qualityManageArea(activity.managementAreaId));
@@ -722,10 +737,10 @@ service cloud.firestore {
            (activity.participantUids is list && activity.participantUids.hasAny([request.auth.uid])) || qualityManageArea(activity.managementAreaId));
       }
 
-      allow get: if fbDomainOpen_(false) && (exists(/databases/$(database)/documents/activityScoreReviews/$(reviewId))
+      allow get: if (resource == null || managementFolderOpen_(resource.data.managementAreaId)) && fbDomainOpen_(false) && (exists(/databases/$(database)/documents/activityScoreReviews/$(reviewId))
         ? activityParticipantAccess(resource.data.activityId)
         : activityParticipantAccess(reviewId));
-      allow list: if fbDomainOpen_(false) && (activeUser() && activityPointsReviewer(resource.data.managementAreaId));
+      allow list: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (activeUser() && activityPointsReviewer(resource.data.managementAreaId));
       allow create: if fbDomainOpen_(true) && (activeUser() && validActivityScoreReview(request.resource.data, reviewId));
       allow update, delete: if fbDomainOpen_(true) && (false);
     }
@@ -766,7 +781,7 @@ service cloud.firestore {
           data.createdAt == request.time && data.updatedAt == request.time;
       }
 
-      allow read: if fbDomainOpen_(false) && (indicatorAccess(resource.data.managementAreaId));
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (indicatorAccess(resource.data.managementAreaId));
       allow create: if fbDomainOpen_(true) && ((can('managementIndicatorsWrite') || qualityManageArea(request.resource.data.managementAreaId)) && validManagementIndicator(request.resource.data, indicatorId));
       allow update, delete: if fbDomainOpen_(true) && (false);
     }
@@ -789,7 +804,7 @@ service cloud.firestore {
           data.notes is string && data.notes.size() <= 800 && data.createdByUid == request.auth.uid && data.createdAt == request.time;
       }
 
-      allow read: if fbDomainOpen_(false) && (indicatorAccess(get(/databases/$(database)/documents/indicators/$(resource.data.indicatorId)).data.managementAreaId));
+      allow read: if managementFolderOpen_(get(/databases/$(database)/documents/indicators/$(resource.data.indicatorId)).data.managementAreaId) && fbDomainOpen_(false) && (indicatorAccess(get(/databases/$(database)/documents/indicators/$(resource.data.indicatorId)).data.managementAreaId));
       allow create: if fbDomainOpen_(true) && ((can('managementIndicatorsWrite') || qualityManageArea(get(/databases/$(database)/documents/indicators/$(request.resource.data.indicatorId)).data.managementAreaId)) && validIndicatorMeasurement(request.resource.data, measurementId));
       allow update, delete: if fbDomainOpen_(true) && (false);
     }
@@ -817,7 +832,7 @@ service cloud.firestore {
            (resource.data.status == 'IN_PROGRESS' && request.resource.data.status == 'COMPLETED' && request.resource.data.completedAt == request.time));
       }
 
-      allow read: if fbDomainOpen_(false) && (actionPlanAccess(resource.data.managementAreaId));
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (actionPlanAccess(resource.data.managementAreaId));
       allow create: if fbDomainOpen_(true) && ((can('managementPlansManage') || qualityManageArea(request.resource.data.managementAreaId)) && validActionPlan(request.resource.data, planId));
       allow update: if fbDomainOpen_(true) && ((can('managementPlansManage') || qualityManageArea(resource.data.managementAreaId)) && validActionPlanTransition(planId));
       allow delete: if fbDomainOpen_(true) && (false);
@@ -857,7 +872,7 @@ service cloud.firestore {
           request.resource.data.createdAt == resource.data.createdAt;
       }
 
-      allow read: if fbDomainOpen_(false) && (actionPlanAccess(get(/databases/$(database)/documents/actionPlans/$(resource.data.planId)).data.managementAreaId) || (signedIn() && resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid])));
+      allow read: if managementFolderOpen_(get(/databases/$(database)/documents/actionPlans/$(resource.data.planId)).data.managementAreaId) && fbDomainOpen_(false) && (actionPlanAccess(get(/databases/$(database)/documents/actionPlans/$(resource.data.planId)).data.managementAreaId) || (signedIn() && resource.data.responsibleUids is list && resource.data.responsibleUids.hasAny([request.auth.uid])));
       allow create: if fbDomainOpen_(true) && ((can('managementPlansManage') || qualityPlanManage(request.resource.data.planId)) && validActionPlanItem(request.resource.data, itemId));
       allow update: if fbDomainOpen_(true) && ((can('managementPlansManage') || qualityPlanManage(resource.data.planId)) && validActionPlanItemTransition(itemId));
       allow delete: if fbDomainOpen_(true) && (false);
@@ -877,7 +892,7 @@ service cloud.firestore {
           data.updatedByUid == request.auth.uid && data.updatedAt == request.time && data.version is int && data.version >= 1;
       }
 
-      allow read: if fbDomainOpen_(false) && (can('documentsManage') || can('managementRead') || qualityManageArea(resource.data.managementAreaId));
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (can('documentsManage') || can('managementRead') || qualityManageArea(resource.data.managementAreaId));
       allow create: if fbDomainOpen_(true) && (managementDocumentManage(request.resource.data.managementAreaId) && activeManagementArea(request.resource.data.managementAreaId) &&
         validManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
         request.resource.data.publishedAt == request.time && request.resource.data.createdAt == request.time &&
@@ -937,7 +952,7 @@ service cloud.firestore {
       }
 
       allow get: if fbDomainOpen_(false) && (resource == null && (can('documentsManage') || assignedDocumentAreaManager('area-gestao-de-documentos')));
-      allow read: if fbDomainOpen_(false) && (resource != null && (managementDocumentManage(resource.data.managementAreaId) ||
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (resource != null && (managementDocumentManage(resource.data.managementAreaId) ||
         (can('managementRead') && resource.data.active == true && documentGroupAccess(resource.data.audienceGroup))));
       allow create: if fbDomainOpen_(true) && (managementDocumentManage(request.resource.data.managementAreaId) && activeManagementArea(request.resource.data.managementAreaId) &&
         validScopedManagementDocument(request.resource.data, documentId) && request.resource.data.version == 1 &&
@@ -978,7 +993,7 @@ service cloud.firestore {
              getAfter(eventPath).data.createdAt == request.time));
       }
 
-      allow read: if fbDomainOpen_(false) && (can('equipmentManage'));
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (can('equipmentManage'));
       allow create: if fbDomainOpen_(true) && (can('equipmentManage') && validEquipment(request.resource.data, equipmentId) &&
         activeManagementArea(request.resource.data.managementAreaId) && request.resource.data.status == 'OPERATIONAL' &&
         request.resource.data.active == true && request.resource.data.lastEventId == null && request.resource.data.lastEventAt == null &&
@@ -1008,7 +1023,7 @@ service cloud.firestore {
           ((data.type == 'STATUS_CHANGE' && data.toStatus != data.fromStatus) || (data.type == 'INCIDENT' && data.toStatus == data.fromStatus));
       }
 
-      allow read: if fbDomainOpen_(false) && (can('equipmentManage'));
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (can('equipmentManage'));
       allow create: if fbDomainOpen_(true) && (validEquipmentEventCreate(eventId));
       allow update, delete: if fbDomainOpen_(true) && (false);
     }
@@ -1035,7 +1050,7 @@ service cloud.firestore {
            (resource.data.status == 'IN_PROGRESS' && data.status == 'COMPLETED' && data.completedAt == request.time));
       }
 
-      allow read: if fbDomainOpen_(false) && (can('equipmentManage'));
+      allow read: if managementFolderOpen_(resource.data.managementAreaId) && fbDomainOpen_(false) && (can('equipmentManage'));
       allow create: if fbDomainOpen_(true) && (can('equipmentManage') && validMaintenanceRecord(request.resource.data, recordId) &&
         request.resource.data.status == 'OPEN' && request.resource.data.completedAt == null && request.resource.data.version == 1 &&
         request.resource.data.createdAt == request.time && request.resource.data.equipmentId is string &&

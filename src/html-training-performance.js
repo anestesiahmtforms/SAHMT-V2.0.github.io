@@ -16,14 +16,20 @@ export function renderTrainingScore(payload,uid,base){
 
 /** Independent loading: an unavailable legacy balance never blocks new training results. */
 export function mountHtmlTrainingPerformance(root,{user,container=root,isCurrent=()=>true,api:providedApi}={}){
- let alive=true,seq=0,subject=user.uid,payload=null,base=null,client=null,unsubscribe=null;
+ let alive=true,seq=0,subject=user.uid,payload=null,base=null,client=null,unsubscribe=null,unsubscribePolicy=null;
+ const watchesPolicy=!providedApi;
+ let policy=null;
  const valid=()=>alive&&root.isConnected&&isCurrent()&&(!client||client.valid());
  const render=()=>{if(valid())root.innerHTML=renderTrainingScore(payload,subject,base);};
  async function load(uid=subject){
   subject=uid;payload=null;const ticket=++seq;
+  if(watchesPolicy&&(!policy||policy.disabled.length)){
+   if(valid())root.innerHTML='<h4>Resultados dos treinamentos</h4><p role="status">A pontuação geral fica indisponível enquanto houver pastas desativadas ou sem confirmação do servidor.</p>';
+   return;
+  }
   if(valid())root.innerHTML='<h4>Resultados dos treinamentos</h4><p role="status">Atualizando resultados…</p>';
   try{
-   if(!providedApi&&!client){const {createHtmlTrainingClient}=await import('./html-training.js');client=await createHtmlTrainingClient(user);if(!alive)return;unsubscribe=client.subscribeInvalidated(()=>{seq++;payload=null;if(alive)root.textContent='Sua sessão mudou. Entre novamente.';});}
+   if(!providedApi&&!client)return;
    const result=await (providedApi||client.api)('SCORE',{subjectUid:uid});
    if(!valid()||ticket!==seq)return;
    payload=result;render();
@@ -36,8 +42,23 @@ export function mountHtmlTrainingPerformance(root,{user,container=root,isCurrent
  container.addEventListener('change',onChange);root.addEventListener('click',retry);
  window.addEventListener('html-training-score-updated',refresh);
  window.addEventListener('online',refresh);window.addEventListener('offline',offline);
- void import('./html-training-performance.css');void load();
- const stop=()=>{alive=false;seq++;unsubscribe?.();container.removeEventListener('change',onChange);root.removeEventListener('click',retry);window.removeEventListener('html-training-score-updated',refresh);window.removeEventListener('online',refresh);window.removeEventListener('offline',offline);payload=null;};
+ void import('./html-training-performance.css');
+ if(providedApi)void load();
+ else void (async()=>{
+  try{
+   const {createHtmlTrainingClient}=await import('./html-training.js');
+   client=await createHtmlTrainingClient(user);if(!alive)return;
+   unsubscribe=client.subscribeInvalidated(()=>{seq++;payload=null;if(alive)root.textContent='Sua sessão mudou. Entre novamente.';});
+   if(watchesPolicy){
+    unsubscribePolicy=client.subscribeFolderAccess(next=>{
+     if(policy?.version===next?.version&&Boolean(policy)===Boolean(next))return;
+     policy=next;void load();
+    });
+   }
+   void load();
+  }catch{if(alive)root.textContent='Não foi possível confirmar os resultados dos treinamentos.';}
+ })();
+ const stop=()=>{alive=false;seq++;unsubscribe?.();unsubscribePolicy?.();container.removeEventListener('change',onChange);root.removeEventListener('click',retry);window.removeEventListener('html-training-score-updated',refresh);window.removeEventListener('online',refresh);window.removeEventListener('offline',offline);payload=null;};
  stop.setBase=value=>{base=value;if(value.subjectUid!==subject)void load(value.subjectUid);else render();};
  return stop;
 }

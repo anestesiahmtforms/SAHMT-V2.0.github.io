@@ -28,6 +28,7 @@ function oscOwner_() {
 }
 function oscBook_() {
   if (SAHMT_V2_CONFIG.projectId !== 'sahmt-17a16' || sahmtV2SpreadsheetId_() !== OSC.sheetId) oscFail_('CONTROLE_DESTINO_INVALIDO');
+  sahmtRequireFolders_([...new Set(OSC.tables.flatMap(table=>sahmtV2CollectionFolders_(table.collection)))]);
   sahmtV2RequirePrivateSpreadsheet_(OSC.sheetId);
   return SpreadsheetApp.openById(OSC.sheetId);
 }

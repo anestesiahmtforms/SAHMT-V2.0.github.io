@@ -34,7 +34,7 @@ function atrasoPoints(value){
  return multiple===0?-.5:-multiple;
 }
 
-export function createSahmtPerformanceSources({getAccessToken,fetchImpl=fetch,fePerformanceRead,readBudget=null,now=Date.now}={}){
+export function createSahmtPerformanceSources({getAccessToken,fetchImpl=fetch,fePerformanceRead,readBudget=null,checkAvailability=async()=>{},now=Date.now}={}){
  if(typeof getAccessToken!=='function'||typeof fetchImpl!=='function')throw Error('SAHMT_SOURCE_CONFIGURATION_REQUIRED');
  const relayReaders={FE:fePerformanceRead};
  function context(cutoff){const ms=timestamp(cutoff);if(!Number.isFinite(ms)||ms>now())throw Error('SAHMT_SOURCE_CUTOFF_REQUIRED');return {cutoff:new Date(ms).toISOString(),ms,readsByProject:{},periodsBySource:{},reservations:{}};}
@@ -51,6 +51,7 @@ export function createSahmtPerformanceSources({getAccessToken,fetchImpl=fetch,fe
   held.settled=true;
  }
  async function request(ctx,source,path,body=null,take=1){
+  await checkAvailability(source);
   const held=await reservation(ctx,source),used=ctx.readsByProject[source]||0;if(used>=held.count||held.settled)fail(source,'READ_BUDGET');
   take=Math.min(take,held.count-used);
   if(body)body={...body,readTime:ctx.cutoff,structuredQuery:{...body.structuredQuery,limit:take}};

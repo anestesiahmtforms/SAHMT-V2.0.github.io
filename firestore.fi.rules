@@ -1,6 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // FOLDER_READ_POLICY_V1: source-local read gate, including administrator reads.
+    // Missing control document preserves bootstrap behavior; malformed policy denies.
+    function folderReadPolicyValid_(policy) {
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 && policy.disabled is list;
+    }
+    function folderReadAllowed_(ancestors) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      return !exists(path) || (folderReadPolicyValid_(get(path).data) && !get(path).data.disabled.hasAny(ancestors));
+    }
     function signedIn() { return request.auth != null; }
     function moduleSession() {
       return request.auth != null && request.auth.token.aud == 'sahmt-operacional-fi' &&
@@ -40,7 +49,7 @@ service cloud.firestore {
           data.version is int && data.version > 0;
       }
 
-      allow read: if moduleSession() && (can('labelsRead') || can('labelsWrite') || can('labelsManage') || can('eventsRead') || can('eventsWrite'));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/etiquetas']) && (moduleSession() && (can('labelsRead') || can('labelsWrite') || can('labelsManage') || can('eventsRead') || can('eventsWrite')));
       allow create: if moduleSession() && (can('labelsManage') && validLabelStaffCatalog(request.resource.data) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.updatedByUid == request.auth.uid &&
         request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time && request.resource.data.version == 1);
@@ -61,7 +70,7 @@ service cloud.firestore {
           data.createdAt is timestamp && data.updatedAt == request.time && data.version is int && data.version > 0;
       }
 
-      allow read: if moduleSession() && (can('eventsRead') || can('eventsWrite') || can('eventsCatalogManage'));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (moduleSession() && (can('eventsRead') || can('eventsWrite') || can('eventsCatalogManage')));
       allow create: if moduleSession() && (can('eventsCatalogManage') && validEventCatalog(request.resource.data, catalogId) &&
         request.resource.data.createdByUid == request.auth.uid && request.resource.data.createdAt == request.time &&
         request.resource.data.version == 1);
@@ -172,7 +181,7 @@ service cloud.firestore {
       function eventProjectionExistsAfter(eventId, version) {
         return existsAfter(/databases/$(database)/documents/eventProjectionOutbox/$(eventId + '-' + string(version)));
       }
-      allow read: if moduleSession() && (eventRecordReadAccess(resource.data));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (moduleSession() && (eventRecordReadAccess(resource.data)));
       allow create: if moduleSession() && (can('eventsWrite') && actorIsSelf() && request.resource.data.updatedByUid == request.auth.uid &&
         eventProjectionExistsAfter(eventId, request.resource.data.version) && validEventRecord(request.resource.data, eventId, false));
       allow update: if moduleSession() && (can('eventsWrite') && can('admin') && updateActorIsSelf() &&
@@ -184,7 +193,7 @@ service cloud.firestore {
         validEventRecord(request.resource.data, eventId, true));
       allow delete: if false;
       match /history/{version} {
-        allow read: if moduleSession() && (exists(/databases/$(database)/documents/events/$(eventId)) && eventRecordReadAccess(get(/databases/$(database)/documents/events/$(eventId)).data));
+        allow read: if folderReadAllowed_(['operacao', 'operacao/eventos']) && (moduleSession() && (exists(/databases/$(database)/documents/events/$(eventId)) && eventRecordReadAccess(get(/databases/$(database)/documents/events/$(eventId)).data)));
         allow create: if moduleSession() && (can('eventsWrite') && can('admin') && validEventHistoryEntry(request.resource.data, eventId, version));
         allow update, delete: if false;
       }
@@ -205,7 +214,7 @@ service cloud.firestore {
           data.createdAt is timestamp && data.updatedAt is timestamp;
       }
 
-      allow read: if moduleSession() && (((can('eventsRead') || can('eventsWrite')) && resource.data.active == true) || can('peopleManage'));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/pessoas']) && (moduleSession() && (((can('eventsRead') || can('eventsWrite')) && resource.data.active == true) || can('peopleManage')));
       allow create: if moduleSession() && (can('peopleManage') && validContact(request.resource.data, sigla) &&
         request.resource.data.createdByUid == request.auth.uid);
       allow update: if moduleSession() && (can('peopleManage') && resource.data.sigla == sigla &&
@@ -223,7 +232,7 @@ service cloud.firestore {
           data.updatedByUid == request.auth.uid && data.updatedAt == request.time;
       }
 
-      allow read: if moduleSession() && (can('eventsRead') || can('eventsWrite'));
+      allow read: if folderReadAllowed_(['operacao', 'operacao/pessoas']) && (moduleSession() && (can('eventsRead') || can('eventsWrite')));
       allow create, update: if moduleSession() && (can('peopleManage') && validEventMember(request.resource.data, sigla));
       allow delete: if false;
     }

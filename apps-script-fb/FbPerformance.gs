@@ -6,13 +6,28 @@ function fbPerformanceEncode_(v){if(v===null)return {nullValue:null};if(typeof v
 function fbPerformanceEncodeFields_(o){return Object.fromEntries(Object.keys(o).map(k=>[k,fbPerformanceEncode_(o[k])]));}
 function fbPerformanceHttp_(suffix,body){
  fbPerformanceIdentity_();
- if(!/^\/(?:fbPerformanceRuntime\/current|fbPerformanceReference\/team|fbPerformanceControl\/centralCutover)$/.test(suffix)&&![':runQuery',':commit'].includes(suffix))throw Error('FB_HTTP_SCOPE_DENIED');
+ if(!['/runtimePolicy/folders','/htmlTrainingSettings/folders'].includes(suffix)&&!/^\/(?:fbPerformanceRuntime\/current|fbPerformanceReference\/team|fbPerformanceControl\/centralCutover)$/.test(suffix)&&![':runQuery',':commit'].includes(suffix))throw Error('FB_HTTP_SCOPE_DENIED');
  const response=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FB_PERFORMANCE.project+'/databases/(default)/documents'+suffix,{method:body===undefined?'get':'post',contentType:'application/json',headers:{Authorization:'Bearer '+ScriptApp.getOAuthToken()},muteHttpExceptions:true,...(body===undefined?{}:{payload:JSON.stringify(body)})});
  const status=response.getResponseCode();if(status===404&&body===undefined)return null;
  if(status!==200)throw Error('FB_FIRESTORE_HTTP_'+status);
  return JSON.parse(response.getContentText());
 }
+function fbPerformanceRequireFolders_(){
+ const control=fbPerformanceHttp_('/runtimePolicy/folders');
+ if(control){
+  const policy=fbPerformanceFields_(control.fields||{});
+  if(policy.schemaVersion!==1||!Number.isSafeInteger(policy.revision)||policy.revision<1||
+     !Array.isArray(policy.disabled)||policy.disabled.some(id=>typeof id!=='string'||!id))throw Error('FB_FOLDER_POLICY_INVALID');
+  if(policy.disabled.some(id=>['desempenho','desempenho/fb','gestao'].includes(id)||id.indexOf('gestao/')===0))throw Error('FB_FOLDER_DISABLED');
+ }
+ const training=fbPerformanceHttp_('/htmlTrainingSettings/folders');
+ if(!training)return;
+ const access=fbPerformanceFields_(training.fields||{});
+ if(!Number.isSafeInteger(access.version)||access.version<0||!Array.isArray(access.disabled))throw Error('FB_FOLDER_POLICY_INVALID');
+ if(access.disabled.length)throw Error('FB_FOLDER_DISABLED');
+}
 function fbPerformanceRead_(collection,maximum,readTime){
+ fbPerformanceRequireFolders_();
  const allowed=['users','evaluationAwards','evaluationLedger','evaluationFormConfigs','scores','evaluationParticipations','htmlTrainingStates','htmlTrainings'];
  if(!allowed.includes(collection))throw Error('FB_COLLECTION_DENIED');
  const projection={htmlTrainings:['title'],htmlTrainingStates:['uid','trainingId','version','attempts','suggestionDecision'],users:['uid','active','access'],evaluationAwards:['uid','category','modality','points','originalPoints','awardVersion','lastLedgerId','creditScopeId','activityId','areaId','version','updatedAt','sourceType','sourceId','evidence','approvedByUid'],evaluationLedger:['awardId','uid','category','modality','creditScopeId','activityId','version','points','originalPoints','correctedPoints','pointsBefore','awardVersion','correctsId','createdAt','sourceType','sourceId','evidence','approvedByUid'],evaluationFormConfigs:['creditScopeId','version'],scores:['uid','sourceType','sourceId','ruleId','originProjectId','points','createdAt'],evaluationParticipations:['uid','activityId','creditScopeId','version','status','responseId','submittedAt']};
@@ -55,6 +70,7 @@ function instalarDesempenhoFbV1(){
 function executarDesempenhoFbV1(){
  fbPerformanceIdentity_();const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return;
  try{
+  fbPerformanceRequireFolders_();
   const raw=fbPerformanceHttp_('/fbPerformanceRuntime/current'),runtime=raw&&fbPerformanceFields_(raw.fields||{});
   const effectiveFrom=Date.parse(runtime&&runtime.effectiveFrom);
   if(!runtime||runtime.enabled!==true||runtime.projectId!==FB_PERFORMANCE.project||runtime.mode!=='FB_ONLY'||!isFinite(effectiveFrom)||Date.now()<effectiveFrom)throw Error('FB_NOT_ACTIVE');
@@ -71,6 +87,7 @@ function executarDesempenhoFbV1(){
   for(let offset=0;offset<writes.length;offset+=300){const state=fbPerformanceFields_(fbPerformanceHttp_('/fbPerformanceRuntime/current').fields);if(state.enabled!==true)throw Error('FB_ACTIVATION_CHANGED');fbPerformanceHttp_(':commit',{writes:writes.slice(offset,offset+300)});}
   const finalRuntime=fbPerformanceFields_(fbPerformanceHttp_('/fbPerformanceRuntime/current').fields);
   if(finalRuntime.enabled!==true||finalRuntime.mode!==runtime.mode||finalRuntime.projectId!==runtime.projectId||finalRuntime.effectiveFrom!==runtime.effectiveFrom)throw Error('FB_ACTIVATION_CHANGED');
+  fbPerformanceRequireFolders_();
   fbPerformanceHttp_(':commit',{writes:[fbPerformanceWrite_('fbPerformanceReference','team',{status:'CONFIRMED',revision:revision,maxPerformance:projection.maxPerformance,eligibleCount:projection.eligibleCount,confirmedAt:now})]});
   const report={code:'FB_PERFORMANCE_CYCLE',projectId:FB_PERFORMANCE.project,revision:revision,awards:projection.awards.length,summaries:Object.keys(projection.totals).length,externalOrHistoricalExcluded:projection.excluded};console.log(JSON.stringify(report));return report;
  }finally{lock.releaseLock();}

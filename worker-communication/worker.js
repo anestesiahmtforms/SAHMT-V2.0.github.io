@@ -9,7 +9,7 @@ function limitedFetch(action){let calls=0;return (url,options)=>{
  if(target.hostname==='firestore.googleapis.com'){
   const ff=path.startsWith(`/v1/projects/${FF.projectId}/databases/${FF.databaseId}`);
   const fa=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-17a16\/databases\/\(default\)\/documents\/users\/[^/]+$/.test(path);
-  const fj=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-escala-fj\/databases\/\(default\)\/documents\/scheduleDays\/[^/]+$/.test(path);
+  const fj=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-escala-fj\/databases\/\(default\)\/documents\/(?:scheduleDays\/[^/]+|runtimePolicy\/folders)$/.test(path);
   if(!ff&&!fa&&!fj)throw fail('COMM_SOURCE_DENIED',403);
  }
  if(target.hostname==='identitytoolkit.googleapis.com'&&path.includes('/projects/')&&!path.startsWith(`/v1/projects/${FF.projectId}/`))throw fail('COMM_SOURCE_DENIED',403);
@@ -35,13 +35,15 @@ async function runtime(env,fetchImpl,buildService){
   return true;
  };
  const send=async(token,data)=>{
+  await store.assertAvailable();
   const r=await fetchImpl(`https://fcm.googleapis.com/v1/projects/${FF.projectId}/messages:send`,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+await getToken(),'Content-Type':'application/json'},body:JSON.stringify({message:{token,data:{...data,source:'SAHMT_FF'},webpush:{headers:{TTL:'3600',Urgency:'normal'}}}})});
   const d=await boundedJson(r,16384),code=d.error?.details?.find(x=>x['@type']==='type.googleapis.com/google.firebase.fcm.v1.FcmError')?.errorCode;
   if(r.ok&&typeof d.name==='string')return {status:'accepted',providerId:d.name};
   if(code==='UNREGISTERED')return {status:'failed',disable:true,reason:'UNREGISTERED'};
   return {status:'failed',reason:r.status===429?'PROVIDER_QUOTA':code==='SENDER_ID_MISMATCH'?'SENDER_ID_MISMATCH':'PROVIDER_REJECTED'};
  };
- return createCommunicationService({store,fa,scheduleSource,send,recipientEnabled,pushQueue:env.COMMUNICATION_PUSH_QUEUE});
+ const service=createCommunicationService({store,fa,scheduleSource,send,recipientEnabled,pushQueue:env.COMMUNICATION_PUSH_QUEUE});
+ return {async execute(...args){await store.assertAvailable();const result=await service.execute(...args);await store.assertAvailable();return result;},async consumePush(...args){await store.assertAvailable();return service.consumePush(...args);}};
 }
 export function createCommunicationWorker({verify=verifyCommunicationActor,buildService}={}){
  return {

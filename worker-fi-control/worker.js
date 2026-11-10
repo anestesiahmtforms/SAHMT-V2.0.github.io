@@ -1,3 +1,7 @@
+import {createFiFolderReader} from './folders.js';
+import {createFolderPolicyStore} from '../worker-folder-policy/worker.js';
+import {inspectFolderPublication,publishFolderAvailability} from '../worker-folder-policy/publication.js';
+import {createServiceTokenProvider} from '../worker-fa-performance/service-token.js';
 import {boundedJson} from '../worker-operational-domain/identity.js';
 import {createFiStore,FI_PROJECTS,fiError} from './store.js';
 import {createFiActorVerifier,createFiServiceToken} from './identity.js';
@@ -31,12 +35,21 @@ function runtime(env,fetchImpl=fetch){
  const store=createFiStore({projectId:FI_PROJECTS.FI,getAccessToken,fetchImpl});
  const sources=readBudget=>Object.fromEntries(Object.entries(SOURCE_COLLECTIONS).map(([alias,allowedCollections])=>[alias,createFiStore({projectId:FI_PROJECTS[alias],allowedCollections,getAccessToken,fetchImpl,readOnly:true,readBudget})]));
  const projections={FA:createFiStore({projectId:FI_PROJECTS.FA,getAccessToken,fetchImpl,allowedCollections:['users','accessRequests','appConfig']}),FJ:createFiStore({projectId:FI_PROJECTS.FJ,getAccessToken,fetchImpl,allowedCollections:['contacts','eventMembers']})};
- return {store,sources,projections};
+ const trainingPolicy=createFiStore({projectId:FI_PROJECTS.FB,getAccessToken,fetchImpl,allowedCollections:['htmlTrainingSettings'],readOnly:true});
+ const policyStore=createFiStore({projectId:FI_PROJECTS.FA,getAccessToken,fetchImpl,allowedCollections:['runtimePolicy'],readOnly:true});
+ const folders=createFiFolderReader({readPolicy:()=>policyStore.get('runtimePolicy','folders'),readTrainingPolicy:()=>trainingPolicy.get('htmlTrainingSettings','folders')});
+ return {store,sources,projections,folders};
 }
-export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch}={}){
+function folderPublisher(env,fetchImpl){
+ const credentials=JSON.parse(env.FOLDER_POLICY_SERVICE_ACCOUNT_JSON||'null');
+    return createFolderPolicyStore({getAccessToken:createServiceTokenProvider({credentials,fetchImpl:fetchImpl}),fetchImpl:fetchImpl});
+}
+export function createFiControlWorker({verifyActor,buildServices,buildFolderPublisher=folderPublisher,fetchImpl=fetch}={}){
  const createServices=buildServices||(async(env,rt,requestFetch,pilot)=>{
   const settings=await rt.store.get('fiControlConfig','runtime');if(settings?.enabled!==true)throw fiError('FI_NOT_READY');
   const modelProvider=createOpenAIProvider({apiKey:env.FI_AI_ENABLED==='true'||pilot?env.OPENAI_API_KEY:undefined,fetchImpl:requestFetch});
+  const guard=rt.folders;
+  const guardedModel={enabled:modelProvider.enabled,async generate(...args){await guard.recheck();return modelProvider.generate(...args);}};
   const monthlyBudgetMicros=pilot?Math.min(250000,pilot.monthlyBudgetMicros||0):settings.monthlyBudgetMicros;
   const admin=createFiAdminService({store:rt.store,projections:rt.projections});
   const quota=createFiRequestQuota({store:rt.store});
@@ -48,29 +61,49 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
     // One FJ profile query, one contact query and one date-specific read.
     const lease=await readBudget.open({[FI_PROJECTS.FJ]:question.status==='lookup'?7:3});
     try{
-     const schedule=await createFiSourceProvider({stores:rt.sources(lease)}).personalSchedule(actor,question);
+     const schedule=await createFiSourceProvider({stores:guard.wrap(rt.sources(lease))}).personalSchedule(actor,question);
      return {results:[],coverage:[],schedule};
     }finally{await lease.finish().catch(()=>{});}
    }
    const lease=await readBudget.open(searchReadPlan);
    try{
-    const sourceProvider=createFiSourceProvider({stores:rt.sources(lease),indexStore:rt.store});
+    const indexStore={async get(...args){
+     await guard.checkHtmlLibrary();
+     return rt.store.get(...args);
+    }};
+    const sourceProvider=createFiSourceProvider({stores:guard.wrap(rt.sources(lease)),indexStore});
     return await createFiSearch({sourceProvider})(actor,input);
    }finally{await lease.finish().catch(()=>{});}
   }
   return {async dispatch(actor,action,input){
-   if(action==='search')return boundedSearch(actor,input);
-   if(action==='monthly.generate')return createMonthlyService({store:rt.store,sourceProvider:createFiSourceProvider({stores:rt.sources()}),modelProvider,config:{monthlyBudgetMicros,dailyUserLimit:pilot?3:settings.dailyUserLimit}})(actor,input);
+   if(action==='search'){
+    await guard.start();
+    const result=await boundedSearch(actor,input);
+    await guard.recheck();
+    return result;
+   }
+   if(action==='monthly.generate'){
+    await guard.checkMonthly();
+    const result=await createMonthlyService({store:rt.store,sourceProvider:createFiSourceProvider({stores:guard.wrap(rt.sources())}),modelProvider:guardedModel,config:{monthlyBudgetMicros,dailyUserLimit:pilot?3:settings.dailyUserLimit}})(actor,input);
+    await guard.recheck();
+    return result;
+   }
    if(action==='monthly.list'){
     if(!isAdmin(actor))throw fiError('FI_FORBIDDEN',403);
-    const units=new Set(await createFiSourceProvider({stores:rt.sources()}).monthlyAccess(actor));
-    return (await rt.store.list('fiAiRuns',[{field:'status',op:'EQUAL',value:'complete'}],101))
+    await guard.checkMonthly();
+    const units=new Set(await createFiSourceProvider({stores:guard.wrap(rt.sources())}).monthlyAccess(actor));
+    const rows=(await rt.store.list('fiAiRuns',[{field:'status',op:'EQUAL',value:'complete'}],101))
      .filter(row=>Array.isArray(row.units)&&row.units.length>0&&row.units.every(unit=>units.has(unit)))
      .sort((a,b)=>b.period.localeCompare(a.period));
+    await guard.recheck();
+    return rows;
    }
-   if(action==='service.status')return {station:'FI',purpose:'ADMINISTRATIVE_CONTROL_AND_AI',aiEnabled:modelProvider.enabled,monthlyEnabled:env.FI_MONTHLY_ENABLED==='true',pilot:!!pilot,...(isAdmin(actor)?{monthlyBudgetMicros:monthlyBudgetMicros||0}:{} )};
+   if(action==='service.status')return {station:'FI',purpose:'ADMINISTRATIVE_CONTROL_AND_AI',aiEnabled:modelProvider.enabled,monthlyEnabled:env.FI_MONTHLY_ENABLED==='true',pilot:!!pilot,...(isAdmin(actor)?{monthlyBudgetMicros:monthlyBudgetMicros||0,folderManagement:!pilot&&env.FI_FOLDER_MANAGEMENT_ENABLED==='true'}:{} )};
    if(!adminReadActions.has(action)&&settings.adminWritesEnabled!==true)throw fiError('FI_ADMIN_CUTOVER_PENDING');
-   return admin.execute({actor,action,input});
+   if(action.startsWith('people.'))await guard.assertOpen('operacao/pessoas');
+   const result=await admin.execute({actor,action,input});
+   if(action.startsWith('people.'))await guard.recheck();
+   return result;
   }};
  });
  return {async fetch(request,env){
@@ -97,6 +130,18 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
     pilot=await rt.store.get('fiControlConfig','pilot');
     if(!pilotAccess(actor,pilot,body.action))throw fiError('FI_FORBIDDEN',403);
    }
+   if(['folders.inspect','folders.publish'].includes(body.action)){
+    if(pilotRoute||!isAdmin(actor))throw fiError('FI_FORBIDDEN',403);
+    if(env.FI_FOLDER_MANAGEMENT_ENABLED!=='true')throw fiError('FI_NOT_READY');
+    const publisher=buildFolderPublisher(env,requestFetch);
+    const store={...publisher,profile:async uid=>uid===actor.uid?{...actor.profile,uid}:null};
+    if(body.action==='folders.inspect'){
+     if(Object.keys(body.input).length)throw fiError('FI_INPUT_INVALID',400);
+     return json(await inspectFolderPublication({store,actor:actor.uid}));
+    }
+    const result=await publishFolderAvailability({store,actor:actor.uid,data:body.input});
+    return json(result,result.pending?202:200);
+   }
    return json(await (await createServices(env,rt,requestFetch,pilot)).dispatch(actor,body.action,body.input));
   }catch(error){
    const code=/^[A-Z0-9_]{1,100}$/.test(error.code||error.message||'')?(error.code||error.message):'FI_UNAVAILABLE';
@@ -108,7 +153,8 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
    if(env.FI_CONTROL_ENABLED!=='true')return;
    ctx.waitUntil((async()=>{
     const rt=runtime(env,boundedFetch(fetchImpl));
-    await refreshFiCatalogue({source:rt.sources().FB,target:rt.store});
+    await rt.folders.checkHtmlLibrary();
+    await refreshFiCatalogue({source:rt.folders.wrap(rt.sources()).FB,target:rt.store,verifyPolicy:()=>rt.folders.recheck()});
    })().catch(()=>console.error(JSON.stringify({code:'FI_CATALOGUE_REFRESH_FAILED'}))));
    return;
   }

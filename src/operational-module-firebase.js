@@ -4,14 +4,20 @@ import {OPERATIONAL_MODULE_TARGETS, createOperationalModuleExchange} from './ope
 import {createOperationalModuleSession} from './operational-module-session.js';
 import {bindOperationalSessionRoute} from './operational-session-route.js';
 import {currentRoute} from './router.js';
+import {assertOperationalContentAllowed} from './operational-folder-runtime.js';
 
 const env = import.meta.env || {};
 const instances = new Map();
+const assertStationReadable=station=>{
+  if(station==='FG')assertOperationalContentAllowed('operacao/checklist');
+  if(station==='FH')assertOperationalContentAllowed('operacao/etiquetas');
+};
 // Only the deployment configuration can choose these destinations.
 export const operationalModuleEnabled = station => deployment.target === 'FA' &&
   (station === 'FJ' ? env.VITE_FJ_SCHEDULE_ENABLED === 'true' : station === 'FH' ? env.VITE_FH_LABELS_ENABLED === 'true' : station === 'FG' && env.VITE_FG_CHECKLIST_ENABLED === 'true');
 
 async function getInstance(station) {
+  assertStationReadable(station);
   if (!operationalModuleEnabled(station)) throw Object.assign(new Error('MODULE_DISABLED'), {code: 'MODULE_DISABLED'});
   if (!instances.has(station)) {
     const pending = (async () => {
@@ -53,6 +59,7 @@ export async function getOperationalModuleDatabase(station, uid, {realtime = fal
   const expectedUid = uid || instance.faAuth.currentUser?.uid;
   await instance.session.ensure(expectedUid);
   const sdk = realtime ? await import('firebase/firestore') : await import('firebase/firestore/lite');
+  assertStationReadable(station);
   if (!instance.session.isActive() || instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser?.uid !== expectedUid)
     throw Object.assign(new Error('MODULE_SOURCE_SESSION_CHANGED'), {code: 'MODULE_SOURCE_SESSION_CHANGED'});
   return sdk.getFirestore(instance.app);
@@ -63,6 +70,7 @@ export async function getOperationalModuleIdToken(station, uid) {
   const expectedUid = uid || instance.faAuth.currentUser?.uid;
   const user = await instance.session.ensure(expectedUid);
   const token = await user.getIdToken();
+  assertStationReadable(station);
   if (!instance.session.isActive() || instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser !== user)
     throw Object.assign(new Error('MODULE_SOURCE_SESSION_CHANGED'), {code: 'MODULE_SOURCE_SESSION_CHANGED'});
   return token;

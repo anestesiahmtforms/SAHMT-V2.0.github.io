@@ -97,29 +97,36 @@ service cloud.firestore {
       allow get: if signedIn() && request.auth.uid == uid;
       allow list, create, update, delete: if false;
     }
+
+    function fcRecordsFolderOpen_(folder) {
+      let path = /databases/$(database)/documents/runtimePolicy/folders;
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['registros', folder]);
+    }
     match /occurrenceCatalogs/current {
-      allow get: if canCatalog();
+      allow get: if fcRecordsFolderOpen_('registros/ocorrencias') && (canCatalog());
       allow list, create, update, delete: if false;
     }
     match /occurrenceReports/{reportId} {
-      allow get: if canReadReport(reportId);
-      allow list: if canRead() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if canWrite() && !exists(reportPath(reportId)) &&
-        validReport(reportId, request.resource.data) && pairedAfter(reportId);
+      allow get: if fcRecordsFolderOpen_('registros/ocorrencias') && (canReadReport(reportId));
+      allow list: if fcRecordsFolderOpen_('registros/ocorrencias') && (canRead() && request.query.limit != null && request.query.limit <= 50);
+      allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && (canWrite() && !exists(reportPath(reportId)) &&
+        validReport(reportId, request.resource.data) && pairedAfter(reportId));
       allow update, delete: if false;
     }
     match /occurrenceAudit/{reportId} {
-      allow get: if canReadPrivate(reportId);
-      allow list: if canAudit() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if canWrite() && !exists(auditPath(reportId)) &&
-        validAudit(reportId, request.resource.data) && pairedAfter(reportId);
+      allow get: if fcRecordsFolderOpen_('registros/ocorrencias') && (canReadPrivate(reportId));
+      allow list: if fcRecordsFolderOpen_('registros/ocorrencias') && (canAudit() && request.query.limit != null && request.query.limit <= 50);
+      allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && (canWrite() && !exists(auditPath(reportId)) &&
+        validAudit(reportId, request.resource.data) && pairedAfter(reportId));
       allow update, delete: if false;
     }
     match /occurrenceScoreClaims/{reportId} {
-      allow get: if canReadPrivate(reportId);
-      allow list: if canAudit() && request.query.limit != null && request.query.limit <= 50;
-      allow create: if canWrite() && !exists(scorePath(reportId)) &&
-        validScoreClaim(reportId, request.resource.data) && pairedAfter(reportId);
+      allow get: if fcRecordsFolderOpen_('registros/ocorrencias') && (canReadPrivate(reportId));
+      allow list: if fcRecordsFolderOpen_('registros/ocorrencias') && (canAudit() && request.query.limit != null && request.query.limit <= 50);
+      allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && (canWrite() && !exists(scorePath(reportId)) &&
+        validScoreClaim(reportId, request.resource.data) && pairedAfter(reportId));
       allow update, delete: if false;
     }
     // Preserve the existing bounded indicators probe for signed-in FC users.

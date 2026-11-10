@@ -1,3 +1,4 @@
+import {assertOperationalContentAllowed} from './operational-folder-runtime.js';
 const validUid=value=>typeof value==='string'&&/^[^\s/]{1,128}$/.test(value);
 const pending=()=>Object.assign(new Error('A pontuação de FG ainda está aguardando confirmação.'),{code:'FG_PERFORMANCE_PENDING'});
 export async function loadFgPerformance({database,sdk,uid,subjectUid=uid,isCurrent=()=>true}){
@@ -26,6 +27,7 @@ export async function loadFgPerformance({database,sdk,uid,subjectUid=uid,isCurre
   return {summary:team.find(p=>p.uid===subjectUid),team,ledger,effectiveFrom:activatedAt.toISOString()};
 }
 export async function readFgPerformance({uid,subjectUid=uid,isCurrent=()=>true}){
+  assertOperationalContentAllowed('operacao/checklist/desempenho');
   const [{getOperationalModuleDatabase},sdk]=await Promise.all([import('./operational-module-firebase.js'),import('firebase/firestore/lite')]);
   const database=await getOperationalModuleDatabase('FG',uid);
   return loadFgPerformance({database,sdk,uid,subjectUid,isCurrent});

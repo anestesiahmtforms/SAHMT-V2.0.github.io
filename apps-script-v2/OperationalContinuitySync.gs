@@ -1,10 +1,11 @@
-/** Bounded reconciliation. An empty remote queue performs ZERO Firestore calls. */
+/** Bounded reconciliation. Control metadata stays fresh even when the queue is empty. */
 function sincronizarCanalOperacionalRemotoV1() {
   const p=PropertiesService.getScriptProperties();
   if(p.getProperty('SAHMT_CONTINUITY_SYNC_ENABLED')!=='YES')return {code:'CONTINUITY_SYNC_DISABLED'};
   const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return {code:'CONTINUITY_SYNC_BUSY'};
   try {
     if(Number(p.getProperty('SAHMT_CONTINUITY_PAUSE_UNTIL')||0)>Date.now())return {code:'CONTINUITY_SYNC_PAUSED'};
+    ocsRequireFolders_();
     if(p.getProperty('SAHMT_CONTINUITY_SEED_PENDING')==='YES')return ocsSeed_();
     const sourceReads=ocsFlushSources_();
     const remote=ocsRemote_({schemaVersion:1,action:'drain'});
@@ -30,7 +31,7 @@ function sincronizarCanalOperacionalRemotoV1() {
   } catch(error) {
     const code=String(error.message||'');
     p.setProperty('SAHMT_CONTINUITY_PAUSE_UNTIL',String(Date.now()+3600000));
-    if(p.getProperty('SAHMT_CONTINUITY_SEED_PENDING')==='YES'&&!/^CONTINUITY_(FIRESTORE_429|FIRESTORE_5\d\d|REMOTE_5\d\d)$/.test(code)){
+    if(p.getProperty('SAHMT_CONTINUITY_SEED_PENDING')==='YES'&&!/^CONTINUITY_(FOLDER_|FIRESTORE_429|FIRESTORE_5\d\d|REMOTE_5\d\d)/.test(code)){
       p.setProperty('SAHMT_CONTINUITY_SEED_PENDING','BLOCKED');p.setProperty('SAHMT_CONTINUITY_SEED_ERROR',/^CONTINUITY_/.test(code)?code:'CONTINUITY_SEED_VALIDATION_FAILED');
     }
     console.log(JSON.stringify({code:/^CONTINUITY_[A-Z_0-9]+$/.test(code)?code:'CONTINUITY_SYNC_UNAVAILABLE'}));
@@ -43,11 +44,19 @@ function ocsRemote_(body){
  const text=JSON.stringify(body),time=String(Date.now()),nonce=Utilities.getUuid().replace(/-/g,''),hex=function(bytes){return bytes.map(function(n){return ('0'+((n+256)%256).toString(16)).slice(-2);}).join('');};
  const digest=hex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,text,Utilities.Charset.UTF_8));
  const signature=hex(Utilities.computeHmacSha256Signature(time+'\n'+nonce+'\n'+digest,secret,Utilities.Charset.UTF_8));
- const r=UrlFetchApp.fetch(endpoint,{method:'post',contentType:'application/json',payload:text,headers:{Origin:'https://anestesiahmtforms.github.io','X-Continuity-Time':time,'X-Continuity-Nonce':nonce,'X-Continuity-Signature':signature},muteHttpExceptions:true,followRedirects:false});
+ const r=UrlFetchApp.fetch(endpoint,{method:'post',contentType:'application/json',payload:text,headers:{Origin:'https://anestesiahmtforms.github.io','X-Continuity-Time':time,'X-Continuity-Nonce':nonce,'X-Continuity-Signature':signature,'X-Continuity-Policy-Authorization':'Bearer '+ScriptApp.getOAuthToken()},muteHttpExceptions:true,followRedirects:false});
  if(r.getResponseCode()!==200)throw Error('CONTINUITY_REMOTE_'+r.getResponseCode());
  const value=JSON.parse(r.getContentText());if(!/^CONTINUITY_/.test(value.code||''))throw Error('CONTINUITY_REMOTE_INVALID');return value;
 }
+function ocsRequireFolders_(){
+ const document=ocsFirestore_('/runtimePolicy/folders');if(document===null)return;
+ const policy=ocsDecode_(document.fields||{});
+ if(policy.schemaVersion!==1||!Number.isSafeInteger(policy.revision)||policy.revision<1||!Array.isArray(policy.disabled)||!policy.disabled.every(function(id){if(typeof id!=='string'||!id)return false;return id.split('/').every(function(part){try{return part&&part!=='.'&&part!=='..'&&encodeURIComponent(decodeURIComponent(part))===part&&!/[\u0000-\u001f\u007f]/.test(decodeURIComponent(part));}catch(error){return false;}});}))throw Error('CONTINUITY_FOLDER_POLICY_INVALID');
+ const folders=['operacao/checklist','operacao/etiquetas','operacao/eventos','operacao/pessoas','operacao/escala','operacao/escala/ferias'];
+ if(policy.disabled.some(function(id){return folders.some(function(folder){return folder===id||folder.indexOf(id+'/')===0;});}))throw Error('CONTINUITY_FOLDER_DISABLED');
+}
 function ocsFirestore_(suffix,options){
+ if(suffix!=='/runtimePolicy/folders'&&!/^\/users\//.test(suffix))ocsRequireFolders_();
  const url='https://firestore.googleapis.com/v1/projects/sahmt-17a16/databases/(default)/documents'+suffix;
  const r=UrlFetchApp.fetch(url,Object.assign({method:'get',headers:{Authorization:'Bearer '+ScriptApp.getOAuthToken()},muteHttpExceptions:true,followRedirects:false},options||{}));
  if(r.getResponseCode()===404)return null;

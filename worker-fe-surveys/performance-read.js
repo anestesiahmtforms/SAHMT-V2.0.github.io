@@ -1,3 +1,4 @@
+import {assertFirestoreFoldersReadable} from '../server/firestore-folder-policy.js';
 import {createHmac,timingSafeEqual} from 'node:crypto';
 export const FE_PERFORMANCE_READ_PATH='/internal/performance-read';
 const root='https://firestore.googleapis.com/v1/projects/outros-48120/databases/(default)/documents';
@@ -33,14 +34,18 @@ export function createFePerformanceReadHandler({getAccessToken,fetchImpl=fetch,n
    allowed=masks[collection];url=root+':runQuery';body={readTime:input.cutoff,structuredQuery:{from:[{collectionId:collection}],select:{fields:allowed.map(fieldPath=>({fieldPath}))},orderBy:[{field:{fieldPath:'__name__'},direction:'ASCENDING'}],limit:q.limit,...(cursor?{startAt:{values:[{referenceValue:cursor}],before:false}}:{})}};
   }else return reject(400);
   try{
-   const response=await fetchImpl(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getAccessToken(env),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(25000)});
+   const token=await getAccessToken(env);
+   const check=()=>assertFirestoreFoldersReadable({root,token,fetchImpl,folders:['desempenho/fe']});
+   await check();
+   const response=await fetchImpl(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(25000)});
    if(!response.ok){await response.body?.cancel();return reject([400,401,403,404,412].includes(response.status)?response.status:503);}
    const value=await response.json();
    const clean=doc=>{if(!doc||typeof doc!=='object')throw Error();return {name:doc.name,fields:Object.fromEntries(Object.entries(doc.fields||{}).filter(([key])=>allowed.includes(key)))};};
    const result=body?(Array.isArray(value)?value.map(row=>({...(row.document?{document:clean(row.document)}:{}),...(row.error?{error:{code:row.error.code}}:{}),readTime:row.readTime})):null):clean(value);
    if(!result)return reject(503);
+   await check();
    return Response.json(result,{headers:{'Cache-Control':'no-store'}});
-  }catch{return reject(503);}
+  }catch(error){return reject(error.code==='FOLDER_DISABLED'?403:503);}
  }catch{return reject(400);}};
 }
 export function createFePerformanceReader({endpoint,secret,fetchImpl=fetch,now=Date.now}={}){

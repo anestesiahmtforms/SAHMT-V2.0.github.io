@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {webcrypto} from 'node:crypto';
 import {createWorker} from './worker.js';
+import {encodeFields} from '../worker-training/firestore.js';
 
 const PROJECT_ID = 'sahmt-17a16';
 const PROJECT_NUMBER = '1072832154794';
@@ -50,7 +51,8 @@ function firestoreProfile({uid = 'test-user-1', active = true, access = true, ro
   }};
 }
 
-function createFixture({profile = firestoreProfile(), openAiStatus = 200, openAiPayload, apiKey = 'test-only-secret', projectId = PROJECT_ID} = {}) {
+function createFixture({profile = firestoreProfile(), openAiStatus = 200, openAiPayload, apiKey = 'test-only-secret', projectId = PROJECT_ID, policy = null, policyStatus = 200, revoke = false} = {}) {
+  let policyReads=0;
   const calls = [];
   const fetchImpl = async (input, init = {}) => {
     const url = String(input);
@@ -61,6 +63,7 @@ function createFixture({profile = firestoreProfile(), openAiStatus = 200, openAi
     if (url === 'https://firebaseappcheck.googleapis.com/v1/jwks') {
       return Response.json({keys: [appCheckJwk]}, {headers: {'Cache-Control': 'public, max-age=7200'}});
     }
+    if(url.endsWith('/runtimePolicy/folders')){policyReads++;if(policyStatus!==200)return new Response('',{status:policyStatus});const value=revoke&&policyReads>1?{schemaVersion:1,revision:2,disabled:['operacao/etiquetas']}:policy;return value===null?new Response('',{status:404}):Response.json({fields:encodeFields(value)});}
     if (url.startsWith(`https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/users/`)) {
       return profile === null ? new Response('', {status: 404}) : Response.json(profile);
     }
@@ -213,7 +216,7 @@ test('extração usa o GPT-6 Luna, imagens principais/recortes e devolve rascunh
   assert.equal(openAiRequest.text.format.type, 'json_schema');
   assert.equal(openAiRequest.input[0].content.filter((part) => part.type === 'input_image').length, 2);
   assert.match(openAiRequest.input[0].content[0].text, /zero de oito/);
-  assert.equal(fixture.calls.filter((call) => call.url.includes('firestore.googleapis.com')).length, 1);
+  assert.equal(fixture.calls.filter((call) => call.url.includes('/documents/users/')).length, 1);
   assert.equal(fixture.calls.some((call) => /POST|PATCH/.test(call.init.method || 'GET') && call.url.includes('firestore.googleapis.com')), false);
 });
 
@@ -247,7 +250,7 @@ const fhClaims = {iss:'https://securetoken.google.com/sahmt-etiquetas-fh',aud:'s
 test('FH image reader verifies its own leased token and reads only the FH profile',async()=>{
  const fixture=createFixture({projectId:'sahmt-etiquetas-fh'}),response=await fixture.request(await validTokenPair({idClaims:fhClaims}));
  assert.equal(response.status,200);assert.deepEqual(await response.json(),{model:'gpt-6-luna',patientName:validExtraction.nomePaciente,insurance:validExtraction.convenio,procedureCode:validExtraction.cirurgia,encounterCode:validExtraction.atendimento,type:'',creditor:'',uncertain:[]});
- const profiles=fixture.calls.filter(x=>x.url.includes('firestore.googleapis.com'));
+ const profiles=fixture.calls.filter(x=>x.url.includes('/documents/users/'));
  assert.equal(profiles.length,1);assert.match(profiles[0].url,/projects\/sahmt-etiquetas-fh\/databases/);
 });
 test('FH image reader rejects FA tokens, expired leases and foreign module claims before profile or OpenAI calls',async()=>{
@@ -256,3 +259,9 @@ test('FH image reader rejects FA tokens, expired leases and foreign module claim
   assert.equal(fixture.calls.some(x=>x.url.includes('firestore.googleapis.com')||x.url.includes('api.openai.com')),false);
  }
 });
+
+for(const disabled of [['operacao'],['operacao/etiquetas']])test('disabled label folder blocks extraction before profile and AI reads: '+disabled,async()=>{const f=createFixture({policy:{schemaVersion:1,revision:1,disabled}});const response=await f.request(await validTokenPair());assert.equal(response.status,403);assert.equal(f.calls.some(c=>c.url.includes('/users/')||c.url.includes('api.openai.com')),false);});
+for(const config of [{policy:{}},{policyStatus:503}])test('unconfirmed label policy fails closed '+JSON.stringify(config),async()=>{const f=createFixture(config);assert.equal((await f.request(await validTokenPair())).status,503);assert.equal(f.calls.some(c=>c.url.includes('api.openai.com')),false);});
+test('revocation during extraction withholds the result',async()=>{const f=createFixture({policy:{schemaVersion:1,revision:1,disabled:[]},revoke:true});assert.equal((await f.request(await validTokenPair())).status,403);});
+
+test('FH extraction obeys local folder policy and unrelated sibling remains active',async()=>{const pair=await validTokenPair({idClaims:fhClaims});const blocked=createFixture({projectId:'sahmt-etiquetas-fh',policy:{schemaVersion:1,revision:1,disabled:['operacao/etiquetas']}});assert.equal((await blocked.request(pair)).status,403);assert.equal(blocked.calls.some(c=>c.url.includes('/users/')||c.url.includes('api.openai.com')),false);const sibling=createFixture({projectId:'sahmt-etiquetas-fh',policy:{schemaVersion:1,revision:1,disabled:['operacao/eventos']}});assert.equal((await sibling.request(pair)).status,200);assert.equal(sibling.calls.filter(c=>c.url.endsWith('/runtimePolicy/folders')).length,2);});

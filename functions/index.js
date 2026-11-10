@@ -76,7 +76,22 @@ function selectResponsible({schedule, day, vacations, events, contacts}) {
   return {ok: false, reason: 'Não há uma pessoa disponível na primeira posição da escala.'};
 }
 
+async function requireReportFolders(transaction, folders, {includeChildren = false} = {}) {
+  const snapshot = await transaction.get(db.doc('runtimePolicy/folders'));
+  if (!snapshot.exists) return;
+  const policy = snapshot.data();
+  if (policy.schemaVersion !== 1 || !Number.isSafeInteger(policy.revision) || policy.revision < 1 ||
+      !Array.isArray(policy.disabled) || policy.disabled.some(id => typeof id !== 'string' || !id)) {
+    throw new HttpsError('unavailable', 'Não foi possível confirmar a disponibilidade das pastas.');
+  }
+  if (policy.disabled.some(id => folders.some(folder => folder === id || folder.startsWith(id + '/') ||
+      (includeChildren && id.startsWith(folder + '/'))))) {
+    throw new HttpsError('failed-precondition', 'Uma pasta necessária para esta operação está desativada.');
+  }
+}
+
 async function readSnapshot(transaction, day, uid) {
+  await requireReportFolders(transaction, ['operacao/checklist', 'operacao/escala/ferias', 'operacao/eventos', 'operacao/pessoas']);
   const profileRef = db.doc(`users/${uid}`);
   const scheduleRef = db.doc(`scheduleDays/${day}`);
   const stationsQuery = db.collection('stations').where('active', '==', true).orderBy('order', 'asc').limit(MAX_STATIONS + 1);
@@ -445,6 +460,8 @@ export const completeManagementActivity = onCall({region: REGION, enforceAppChec
   const scoreId = `activity-${createHash('sha256').update(`${activityId}\u0000${uid}`).digest('hex')}`;
   const scoreRef = db.doc(`scores/${scoreId}`);
   return db.runTransaction(async (transaction) => {
+    // The callable receives an activity ID without its area. Check all areas before reading it.
+    await requireReportFolders(transaction, ['gestao'], {includeChildren: true});
     const [profileDoc, activityDoc] = await Promise.all([transaction.get(profileRef), transaction.get(activityRef)]);
     if (!profileDoc.exists) throw new HttpsError('permission-denied', 'Perfil SAHMT não encontrado.');
     const profile = profileDoc.data();
@@ -536,6 +553,8 @@ export const cancelManagementActivity = onCall({region: REGION, enforceAppCheck:
   const interactionId = `cancellation-${createHash('sha256').update(`${activityId}\u0000${uid}`).digest('hex')}`;
   const interactionRef = db.doc(`activityInteractions/${interactionId}`);
   return db.runTransaction(async (transaction) => {
+    // The callable receives an activity ID without its area. Check all areas before reading it.
+    await requireReportFolders(transaction, ['gestao'], {includeChildren: true});
     const [profileDoc, activityDoc] = await Promise.all([transaction.get(profileRef), transaction.get(activityRef)]);
     if (!profileDoc.exists) throw new HttpsError('permission-denied', 'Perfil SAHMT não encontrado.');
     const profile = profileDoc.data();

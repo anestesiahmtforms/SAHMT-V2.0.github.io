@@ -70,6 +70,10 @@ test('catalog access follows registration authorization and rejects blocked or r
  for(const actor of ['reader-synthetic','unauthorized-synthetic','blocked-writer']){
   await assertFails(getDoc(doc(google(actor),'occurrenceCatalogs/current')));
  }
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'runtimePolicy','folders'),{
+  schemaVersion:1,revision:1,disabled:['registros/ocorrencias']
+ }));
+ await assertFails(getDocFromServer(doc(google('writer-without-catalog'),'occurrenceCatalogs/current')));
 });
 
 test('occurrence score claims reject a foreign project even in a paired write',async()=>{

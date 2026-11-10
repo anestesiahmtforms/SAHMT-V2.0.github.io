@@ -7,7 +7,7 @@ export function createModuleStore({station, getAccessToken, fetchImpl = fetch} =
   const prefix = `projects/${projectId}/databases/(default)/documents`, root = 'https://firestore.googleapis.com/v1/' + prefix;
   const readable = station === 'FI' ? ['events', 'eventProjectionOutbox', 'operationalSheetArchives'] : ['scheduleDays', 'eventProjections', 'events', 'eventProjectionOutbox', 'operationalSheetArchives'];
   const name = (collection, id) => {
-    if (!readable.includes(collection) || !/^[A-Za-z0-9_-]{1,180}$/.test(id || '')) throw fail('DOMAIN_STORE_PATH_DENIED', 400);
+    if (!(readable.includes(collection)||collection==='runtimePolicy'&&id==='folders') || !/^[A-Za-z0-9_-]{1,180}$/.test(id || '')) throw fail('DOMAIN_STORE_PATH_DENIED', 400);
     return prefix + '/' + collection + '/' + id;
   };
   async function request(path, body) {

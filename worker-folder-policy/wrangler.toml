@@ -1,0 +1,7 @@
+name = "sahmt-folder-policy"
+main = "worker.js"
+compatibility_date = "2026-10-13"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+FOLDER_POLICY_ENABLED = "false"
