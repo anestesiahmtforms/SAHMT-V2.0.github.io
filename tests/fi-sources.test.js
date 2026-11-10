@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {gzipSync} from 'node:zlib';
 import {createFiSourceProvider} from '../worker-fi-control/sources.js';
 import {parseScheduleQuestion} from '../worker-fi-control/personal-schedule.js';
 const actor={uid:'fa-a',fiUid:'fi-a',email:'ana@example.test',profile:{active:true,access:true,permissions:{}},memberCategories:[]};
@@ -81,6 +82,22 @@ test('management activities require current permission and formal involvement',a
  const fb=store({users:[profile],evaluationRuntime:fbRuntime,activities:rows});
  const provider=createFiSourceProvider({stores:{FA:fa,FB:fb}});
  assert.deepEqual((await provider.searchRecords(actor)).map(r=>r.id).sort(),['FB.activities.assigned','FB.activities.own','FB.activities.participant']);
+});
+test('HTML search validates the current version and audience and includes disabled folders read-only',async()=>{
+ const catalogue=[
+  {id:'open',title:'Material público',version:1,status:'PUBLISHED',category:'Protocolos',subcategory:'Desativados',audienceGroup:'GENERAL'},
+  {id:'restricted',title:'Documento interno',version:1,status:'PUBLISHED',category:'Protocolos',audienceGroup:'RESTRICTED'},
+  {id:'stale',title:'Outra edição',version:2,status:'PUBLISHED',category:'Protocolos',audienceGroup:'GENERAL'}
+ ];
+ const entries=catalogue.map(r=>({id:r.id,title:r.title,version:1,text:'Palavra no texto HTML'}));
+ const revision='a'.repeat(64),compressed=gzipSync(JSON.stringify(entries)).toString('base64');
+ const indexStore=store({fiSearchRecords:[{id:'html-library',revision,count:3},{id:'html-library-content',revision,compressed}]});
+ const fa=store({users:[{...sourceProfile,id:actor.uid,uid:actor.uid}]});
+ const fb=store({users:[sourceProfile],evaluationRuntime:fbRuntime,documentAccessEmails:documentAccess(['GENERAL','RESTRICTED']),htmlTrainings:catalogue,htmlTrainingSettings:[{id:'folders',disabled:['["Protocolos","Desativados"]']}]});
+ const provider=createFiSourceProvider({stores:{FA:fa,FB:fb},indexStore});
+ const rows=await provider.searchRecords(actor,row=>row.text.includes('HTML')?1:0);
+ assert.deepEqual(rows.map(row=>[row.id,row.folderActive,row.url]),[['FB.htmlTrainings.open',false,'']]);
+ assert.ok(provider.coverage.some(r=>r.source==='FB.htmlTrainings'&&r.status==='UNAVAILABLE'));
 });
 test('an unavailable training collection does not discard authorized documents',async()=>{
  const profile={...sourceProfile,permissions:{...sourceProfile.permissions,trainingsRead:true}};

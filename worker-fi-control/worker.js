@@ -52,7 +52,7 @@ export function createFiControlWorker({verifyActor,buildServices,fetchImpl=fetch
    }
    const lease=await readBudget.open(searchReadPlan);
    try{
-    const sourceProvider=createFiSourceProvider({stores:rt.sources(lease)});
+    const sourceProvider=createFiSourceProvider({stores:rt.sources(lease),indexStore:rt.store});
     return await createFiSearch({sourceProvider})(actor,input);
    }finally{await lease.finish().catch(()=>{});}
   }

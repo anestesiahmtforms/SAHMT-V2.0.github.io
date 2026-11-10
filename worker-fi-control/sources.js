@@ -4,8 +4,23 @@ import {QMENTUM_INDICATORS} from '../src/qmentum-catalog.js';
 import {isCurrentMessage} from '../communication/domain.js';
 import {SAHMT_START_ISO} from '../worker-indicators/sahmt-performance-period.js';
 import {ownSchedulePositions,validScheduleSigla} from './personal-schedule.js';
-export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','activities','evaluationRuntime'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events','scheduleDays']});
+import {trainingAccessPath,trainingPathAllowed} from '../src/html-training-folders.js';
+import {gunzipSync} from 'node:zlib';
+import {Buffer} from 'node:buffer';
+export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','activities','evaluationRuntime','htmlTrainings','htmlTrainingSettings'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events','scheduleDays']});
 const FB_CATALOG_QUERY_LIMIT=301;
+let cachedHtmlIndex;
+async function loadHtmlIndex(store){
+ const manifest=await store.get('fiSearchRecords','html-library');
+ if(!/^[a-f0-9]{64}$/.test(manifest?.revision)||!Number.isSafeInteger(manifest.count)||manifest.count<1||manifest.count>300)throw Error('HTML_INDEX_UNAVAILABLE');
+ if(cachedHtmlIndex?.revision===manifest.revision)return cachedHtmlIndex.entries;
+ const data=await store.get('fiSearchRecords','html-library-content');
+ if(data?.revision!==manifest.revision||typeof data.compressed!=='string'||data.compressed.length>700000)throw Error('HTML_INDEX_STALE');
+ const entries=JSON.parse(gunzipSync(Buffer.from(data.compressed,'base64'),{maxOutputLength:2*1024*1024}).toString('utf8'));
+ if(!Array.isArray(entries)||entries.length!==manifest.count)throw Error('HTML_INDEX_INVALID');
+ cachedHtmlIndex={revision:manifest.revision,entries};
+ return entries;
+}
 const admin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 const permission=(p,...names)=>admin(p)||names.some(n=>p?.permissions?.[n]===true);
 const eq=(field,value)=>({field,op:'EQUAL',value});
@@ -29,7 +44,7 @@ async function performanceMetrics(fd,period){
   ...(durations.length?[{id:'FD.batch_p95',label:'P95 do tempo entre o horário previsto e a confirmação da consolidação',value:durations[Math.ceil(durations.length*.95)-1],unit:'ms'}]:[])
  ];
 }
-export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={}){
+export function createFiSourceProvider({stores,indexStore,resolveIdentity,now=Date.now}={}){
  const coverage=[];
  async function identity(source,actor){
   if(resolveIdentity)return resolveIdentity(source,actor);
@@ -51,7 +66,33 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   try{return await fb.list(collection,[],FB_CATALOG_QUERY_LIMIT);}
   catch(error){unavailable(`FB.${collection}`,error);return [];}
  }
- async function documents(actor){return scope('FB',async fb=>{
+ async function htmlMaterials(fb,actor,profile,gate,groups,faGroups,effective,score){
+  if(!indexStore||typeof score!=='function')return [];
+  const source='FB.htmlTrainings';
+  try{
+   const entries=await loadHtmlIndex(indexStore);
+   const matches=entries.filter(entry=>score(entry)>0);
+   if(!matches.length)return [];
+   const [folders,...current]=await fb.getMany([['htmlTrainingSettings','folders'],...matches.map(entry=>['htmlTrainings',entry.id])]);
+   const rows=[];
+   let stale=false;
+   for(const [i,entry] of matches.entries()){
+    const material=current[i];
+    if(material?.status!=='PUBLISHED')continue;
+    if(!['GENERAL','RESTRICTED'].includes(material.audienceGroup)||typeof material.category!=='string'||!material.category.trim()||material.category.length>80)continue;
+    const manages=admin(profile)||material.managerUid===profile.uid;
+    if(!manages&&!groups.includes(material.audienceGroup))continue;
+    const restricted=material.audienceGroup==='RESTRICTED'||/DOCUMENTOS? ADMINISTRATIV|ADMINISTRATIVE|ORGANOGRAMA|ORGANOGRAM/.test(normalize(material.category))||/ORGANOGRAMA|ORGANOGRAM/.test(normalize(material.title));
+    if(restricted&&(!effective||!(manages||groups.includes('RESTRICTED'))||!(admin(gate)||gate.permissions?.documentsManage===true||faGroups.includes('RESTRICTED'))))continue;
+    if(material.id!==entry.id||material.version!==entry.version||material.title!==entry.title){stale=true;continue;}
+    const folderActive=trainingPathAllowed(folders,trainingAccessPath(material));
+    rows.push(record('FB','htmlTrainings',material,{kind:'document',audience:restricted?'RESTRICTED':'GENERAL',category:material.category,classificationVerified:true,folderActive,sourceAllowedUids:[actor.uid],text:entry.text,searchText:entry.searchText,url:''}));
+   }
+   if(stale)coverage.push({source,status:'UNAVAILABLE',detail:'Algumas edições do acervo HTML ainda aguardam atualização no índice.'});
+   return rows;
+  }catch(error){unavailable(source,error);return [];}
+ }
+ async function documents(actor,score){return scope('FB',async fb=>{
   const p=await identity('FB',actor);if(!p||!permission(p,'managementRead','documentsManage','qualityManage','trainingsRead','trainingsManage','managementActivityWrite'))return [];
   const runtime=await fb.get('evaluationRuntime','independentFbCutover');
   if(runtime?.status!=='ACTIVE'||runtime.release!=='fb-independent-20261022-v1')return [];
@@ -70,6 +111,7 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
    const [faAccess,assignment]=restrictedGrants;
    const effective=assignment?.schemaVersion===1&&assignment.identityStatus==='LINKED'&&assignment.uid===actor.uid&&assignment.email===actor.email&&assignment.memberCategories?.includes('EFETIVO');
    const groups=documentGroupsFromAccess(access,actor.email),faGroups=documentGroupsFromAccess(faAccess,actor.email),areaById=new Map(areas.map(area=>[area.id,area]));
+   rows.push(...await htmlMaterials(fb,actor,p,gate,groups,faGroups,effective,score));
    for(const collection of ['documents','scopedDocuments']){
    const docs=await catalogList(fb,collection);
    const authorized=new Map();
@@ -133,7 +175,7 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
     rows.push(record('FB','activities',activity,{kind:'operational',audience:'INVOLVED',sourceAllowedUids:[actor.uid],authorUid:authored?actor.uid:'',participantUids:assigned?[actor.uid]:[],text:compact(activity.description,activity.status,activity.priority,activity.dueAt),url:'#/management'}));
    }
   }
-  coverage.push({source:'FB.documents',status:'CONTENT_NOT_INDEXED',detail:'Pesquisa em títulos e descrições, incluindo materiais inativos; o corpo integral dos arquivos ainda não foi indexado.'});return rows;
+  coverage.push({source:'FB.documents',status:'CONTENT_NOT_INDEXED',detail:'Para arquivos externos do Drive, a busca usa os títulos e as descrições cadastrados.'});return rows;
  });}
  async function operational(source,collection,actor,required,fields,arrayFields,route){return scope(source,async store=>{
   const p=await identity(source,actor);if(!p||!permission(p,...required))return [];
@@ -202,9 +244,9 @@ export function createFiSourceProvider({stores,resolveIdentity,now=Date.now}={})
   const units=await fc.getMany(grant.units.map(id=>['qmentumUnits',id]));
   return [...new Set(grant.units.filter((id,i)=>units[i]?.active===true&&units[i].unitId===id))].sort();
  }
- return {coverage,monthlyAccess,personalSchedule,async searchRecords(actor){
+ return {coverage,monthlyAccess,personalSchedule,async searchRecords(actor,score){
   coverage.length=0;
-  const rows=[...await documents(actor),...await operational('FJ','events',actor,['eventsRead','eventsWrite'],['memberSigla','scheduleSigla'],[],'#/schedule'),...await operational('FH','labels',actor,['labelsRead','labelsWrite'],[],['staffSiglas'],'#/labels'),...await operational('FG','checklists',actor,['checklistRead','checklistWrite'],['responsibleSigla','checkerSigla'],[],'#/checklist'),...await notifications(actor)];
+  const rows=[...await documents(actor,score),...await operational('FJ','events',actor,['eventsRead','eventsWrite'],['memberSigla','scheduleSigla'],[],'#/schedule'),...await operational('FH','labels',actor,['labelsRead','labelsWrite'],[],['staffSiglas'],'#/labels'),...await operational('FG','checklists',actor,['checklistRead','checklistWrite'],['responsibleSigla','checkerSigla'],[],'#/checklist'),...await notifications(actor)];
   return rows.filter(r=>canReadRecord(actor,r));
  },async monthlySnapshot(actor,period){
   const units=await monthlyAccess(actor);
