@@ -1,6 +1,6 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
 import {UNUSED_SCHEDULE_HELPERS,pruneUnusedScheduleRuleHelpers} from '../scripts/lib/firestore-rules-unused-helpers.js';
-const source=readFileSync(new URL('../firestore.rules',import.meta.url),'utf8');
+const source=readFileSync(new URL('../firestore.fa.fi-fj-retired.rules',import.meta.url),'utf8');
 test('prunes only unreachable legacy schedule helpers, preserving all allow expressions',()=>{
  const result=pruneUnusedScheduleRuleHelpers(source);
  assert.deepEqual(result.removed,[...UNUSED_SCHEDULE_HELPERS]);assert.ok(result.removedSourceBytes>3000);
