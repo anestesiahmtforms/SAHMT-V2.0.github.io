@@ -1,5 +1,5 @@
 import test from 'node:test';
-import {assertFePerformanceReadable} from '../worker-fe-surveys/performance-policy.js';import assert from 'node:assert/strict';
+import {assertFeFolderReadable} from '../worker-fe-surveys/survey-policy.js';import assert from 'node:assert/strict';
 import {createSurveyService} from '../worker-training/survey-service.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';
 import {institutionalAssignmentKey} from '../src/institutional-group.js';
@@ -47,15 +47,9 @@ test('FE does not award historical participation or a second point for duplicate
  const retry=input('climate','c'.repeat(32));await service.execute('SUBMIT',retry,identity);
  assert.equal((await f.responses.list('fePerformanceAwards')).length,0);
 });
-test('FE performance read returns only the caller ledger and never includes survey responses',async()=>{
- const f=await fixture();f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.parse('2026-10-01T00:00:00Z')});
- f.responses.seed('fePerformanceAwards',`${identity.uid}_climate_2026`,{uid:identity.uid,category:'PERFORMANCE',points:1,survey:'climate',cycle:'2026',createdAt:Date.parse('2026-10-02T00:00:00Z')});
- f.responses.seed('fePerformanceAwards','other_climate_2026',{uid:'other',category:'PERFORMANCE',points:1,survey:'climate',cycle:'2026',createdAt:Date.parse('2026-10-02T00:00:00Z')});
- const result=await f.service.execute('GET_PERFORMANCE',{},identity);assert.equal(result.uid,identity.uid);assert.equal(result.awards.length,1);assert.equal(result.awards[0].uid,identity.uid);assert.equal(Object.hasOwn(result.awards[0],'answers'),false);
-});
-test('FE performance stays in preparation until its server activation boundary',async()=>{
- const f=await fixture();f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.now()+60000});
- const result=await f.service.execute('GET_PERFORMANCE',{},identity);assert.equal(result.status,'PREPARING');assert.equal(result.awards.length,0);
+test('legacy performance reads are rejected by the survey service',async()=>{
+ const {service}=await fixture();
+ await assert.rejects(service.execute('GET_PERFORMANCE',{},identity),error=>error.code==='SURVEY_INVALID_INPUT');
 });
 test('invalid identity, schema, closed cycle or revoked profile cannot consume a participation slot',async()=>{
  for(const patch of [{emailVerified:false},{provider:'password'},{uid:'../bad'},{email:'other@example.invalid'}]){const f=await fixture();await assert.rejects(f.service.execute('SUBMIT',input('stress'),{...identity,...patch}));assert.equal((await f.responses.list('surveyParticipation')).length,0);}
@@ -74,7 +68,7 @@ test('FE folder pause preserves participation and awards for retry without readi
   ...tx,get:(collection,id)=>{reads.push(collection);return tx.get(collection,id);}
  }))};
  const service=createSurveyService({profileStore:profiles,responseStore,now:()=>clock,
-  checkPerformance:tx=>assertFePerformanceReadable(()=>assert.fail('Unexpected standalone read'),tx)});
+  checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,()=>assert.fail('Unexpected standalone read'),tx)});
  await assert.rejects(service.execute('SUBMIT',input('stress'),identity),{code:'SURVEY_FOLDER_DISABLED'});
  assert.equal(reads.some(collection=>collection.startsWith('fePerformance')),false);
  assert.equal((await responses.list('surveyParticipation')).length,0);
