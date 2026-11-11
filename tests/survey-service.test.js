@@ -30,22 +30,19 @@ test('concurrent submissions with distinct random IDs commit a single ledger and
 });
 test('FE awards one point for an accepted participation without copying survey answers',async()=>{
  const f=await fixture(),clock=Date.parse('2026-10-28T12:00:00Z');
- f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.parse('2026-10-01T00:00:00Z')});
  const service=createSurveyService({profileStore:f.profiles,responseStore:f.responses,now:()=>clock,uuid:()=> 'b'.repeat(32)});
  assert.deepEqual(await service.execute('SUBMIT',input('climate'),identity),{accepted:true,alreadyResponded:false});
- const awards=await f.responses.list('fePerformanceAwards');
- assert.equal(awards.length,1);assert.equal(awards[0].uid,identity.uid);assert.equal(awards[0].points,1);assert.equal(awards[0].survey,'climate');
- assert.equal(Object.hasOwn(awards[0],'answers'),false);assert.equal(Object.hasOwn(awards[0],'comments'),false);assert.equal(Object.hasOwn(awards[0],'responseId'),false);
+ const events=await f.responses.list('feFunctionalPerformanceEvents');
+ assert.equal(events.length,1);assert.equal(events[0].uid,identity.uid);assert.equal(events[0].points,1);assert.equal(events[0].survey,'climate');
+ assert.equal(events[0].affiliation,'EFETIVO');assert.equal(Object.hasOwn(events[0],'answers'),false);assert.equal(Object.hasOwn(events[0],'comments'),false);assert.equal(Object.hasOwn(events[0],'responseId'),false);
 });
-test('FE does not award historical participation or a second point for duplicate submissions',async()=>{
+test('FE source events keep the original time and do not duplicate a participation',async()=>{
  const f=await fixture(),clock=Date.parse('2026-10-28T12:00:00Z');
- f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.parse('2026-10-29T00:00:00Z')});
  const service=createSurveyService({profileStore:f.profiles,responseStore:f.responses,now:()=>clock,uuid:()=> 'b'.repeat(32)});
  await service.execute('SUBMIT',input('climate'),identity);
- assert.equal((await f.responses.list('fePerformanceAwards')).length,0);
- f.responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:Date.parse('2026-10-01T00:00:00Z')});
+ const events=await f.responses.list('feFunctionalPerformanceEvents');assert.equal(events.length,1);assert.equal(events[0].createdAt,clock);
  const retry=input('climate','c'.repeat(32));await service.execute('SUBMIT',retry,identity);
- assert.equal((await f.responses.list('fePerformanceAwards')).length,0);
+ assert.equal((await f.responses.list('feFunctionalPerformanceEvents')).length,1);
 });
 test('legacy performance reads are rejected by the survey service',async()=>{
  const {service}=await fixture();
@@ -61,7 +58,6 @@ test('invalid identity, schema, closed cycle or revoked profile cannot consume a
 test('FE folder pause preserves participation and awards for retry without reading the ledger',async()=>{
  const {profiles,responses}=await fixture();
  const clock=Date.parse('2026-10-28T12:00:00Z');
- responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:clock-1000});
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:['desempenho/fe']});
  const reads=[];
  const responseStore={...responses,transaction:fn=>responses.transaction(tx=>fn({
@@ -70,12 +66,12 @@ test('FE folder pause preserves participation and awards for retry without readi
  const service=createSurveyService({profileStore:profiles,responseStore,now:()=>clock,
   checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,()=>assert.fail('Unexpected standalone read'),tx)});
  await assert.rejects(service.execute('SUBMIT',input('stress'),identity),{code:'SURVEY_FOLDER_DISABLED'});
- assert.equal(reads.some(collection=>collection.startsWith('fePerformance')),false);
+ assert.equal(reads.includes('feFunctionalPerformanceEvents'),false);
  assert.equal((await responses.list('surveyParticipation')).length,0);
  assert.equal((await responses.list('stressResponses')).length,0);
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:2,disabled:[]});
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:false});
- assert.equal((await responses.list('fePerformanceAwards')).length,1);
+ assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:3,disabled:['desempenho']});
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:true});
 });
