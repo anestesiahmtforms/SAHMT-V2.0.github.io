@@ -12,7 +12,6 @@ import './home-layout.css';
 import './performance-ui.css';
 import './fc-performance.css';
 import {fcPerformanceEnabled} from './fc-performance-data.js';
-import {fePerformanceEnabled} from './fe-performance-data.js';
 import './catalog-folders.css';
 import {MEMBER_CATEGORIES,memberCategoryLabels,mergeMemberCategoryAssignments,memberCategoryCounts} from './member-categories.js';
 import {withinDeadline} from './async-deadline.js';
@@ -136,11 +135,11 @@ const labels = {
   labels: ['Etiquetas', 'Modelos e registros de etiquetas'],
   management: ['Governança', 'Áreas, atividades e indicadores'],
   'management-hub': ['Governança', 'Áreas de governança'],
+  functional: ['Funcional', 'Sua situação funcional na equipe'],
   'year-end-schedule': ['ESCALA FINAL DE ANO', 'Confirme suas escolhas de plantão e grupo de trabalho.'],
   qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
   'fg-performance': ['Desempenho FG', 'Checklist'],
   'fc-performance': ['Desempenho FC', 'Pontuação das ações em FC'],
-  'fe-performance': ['Desempenho FE', 'Pontuação por participação em pesquisas'],
   checklist: ['Checklist', 'Registro e acompanhamento operacional'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
   occurrences: ['REGISTRO DE OCORRÊNCIAS', 'Relato de ocorrências e não conformidades'],
@@ -763,11 +762,11 @@ function moduleCards() {
   const commonUserActive = session.status === 'signed-in' && session.profile?.active === true && session.profile?.access === true;
   const commonModules = commonUserActive ? ['schedule', 'management', ...(typeof fhLabelsEnabled !== 'undefined' && fhLabelsEnabled ? ['labels'] : []), ...(typeof fgChecklistEnabled !== 'undefined' && fgChecklistEnabled ? ['checklist'] : [])] : [];
   const moduleIcons = {schedule: 'assets/modules/home-calendar.svg', labels: 'assets/modules/home-lens.svg', management: 'assets/modules/home-brain-light.svg', checklist: 'assets/modules/home-qr.svg'};
-  return [...Object.entries(labels), ['schedule', ['Escala diária', 'Consultar escala e eventos do dia']]].filter(([route]) => !['events', 'people', 'admin', 'occurrences', 'qmentum', 'fg-performance', 'fc-performance', 'fe-performance'].includes(route)
+  return [...Object.entries(labels), ['schedule', ['Escala diária', 'Consultar escala e eventos do dia']]].filter(([route]) => !['events', 'people', 'admin', 'occurrences', 'qmentum', 'fg-performance', 'fc-performance'].includes(route)
     && !['training', 'management-hub'].includes(route)
-      && (route==='fe-performance'?fePerformanceEnabled&&commonUserActive:(commonModules.includes(route) || permissionFor[route]?.some(can)))
+      && (commonModules.includes(route) || permissionFor[route]?.some(can))
     && (route === 'management' || featureEnabledForRoute(route, appFeatures))).sort(([a], [b]) => ['checklist','schedule','labels','management'].indexOf(a) - ['checklist','schedule','labels','management'].indexOf(b)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(route)?' disabled aria-disabled="true" title="Pasta desativada ou sem confirmação do servidor"':route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
-    ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',people:'PS',admin:'AD','fe-performance':'FE'}[route]}</span>`}
+    ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',people:'PS',admin:'AD'}[route]}</span>`}
     <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
 }
@@ -805,9 +804,8 @@ function can(permission) {
 // permissions remain independent; this release never grants administrator rights.
 function canOpenRestrictedModule(route) {
   if (route === 'fg-performance') return canManageChecklistPermissions();
-  if (['management','qmentum','training','fb-performance','fc-performance','fe-performance'].includes(route) && !can('admin')) return false;
+  if (['management','qmentum','training','fb-performance','fc-performance'].includes(route) && !can('admin')) return false;
   if (route === 'fc-performance') return fcPerformanceEnabled && canUseManagementPilot(session);
-  if (route === 'fe-performance') return fePerformanceEnabled && session.status==='signed-in' && session.profile?.active===true && session.profile?.access===true && session.profile?.uid===session.user?.uid;
   if (can('admin')) return true;
   if (!canUseManagementPilot(session)) return false;
   if (route === 'qmentum') return true;
@@ -1522,7 +1520,9 @@ async function loadModule(route) {
   if(route === 'management-hub'){
     if(!canUseGovernanceHub(session)&&!(canUseVacationModule(session)&&['surveys','vacations2027'].includes(location.hash.split('/')[2]))){navigate('home');return;}
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
-    const {mountManagementHub}=await import('./management-hub.js');
+    const [{mountManagementHub},{getFunctionalAccess}]=await Promise.all([import('./management-hub.js'),import('./functional-access.js')]);
+    const functionalEnabled=deployment.target==='FA'&&import.meta.env.VITE_FK_FUNCTIONAL_ENABLED==='true';
+    const functionalAccess=functionalEnabled?await getFunctionalAccess(session):{allowed:false,group:null};
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
     const currentHub=()=>generation===evaluationModuleGeneration&&content.isConnected&&session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session);
     if(communicationAdminSession(session))preloadCommunicationModules({isCurrent:currentHub});
@@ -1545,8 +1545,23 @@ async function loadModule(route) {
       performIndicators:async(action,input,signal)=>{const {callSahmtPerformanceApi}=await import('./sahmt-performance-api.js');return callSahmtPerformanceApi({uid,isCurrent:()=>currentHub()&&isSahmtPerformanceAction(action),action,input,signal});},
       performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session)&&can('admin'),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:can('admin'),groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),sahmtPerformance:googleProjectAuthEnabled&&canUseGovernanceHub(session),surveys:consultationsAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance'),fePerformance:canOpenRestrictedModule('fe-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:can('admin'),groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed&&functionalAccess.group!=='EQUIPE',yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
+    return;
+  }
+  if(route==='functional'){
+    const content=document.querySelector('#module-content'),uid=session.user?.uid;
+    const [{getFunctionalAccess},{mountFunctionalModule},{auth}]=await Promise.all([
+      import('./functional-access.js'),import('./functional-ui.js'),import('./firebase-auth.js')]);
+    const access=await getFunctionalAccess(session);
+    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid)return;
+    if(deployment.target!=='FA'||!access.allowed||import.meta.env.VITE_FK_FUNCTIONAL_ENABLED!=='true'){
+      notice='O módulo Funcional está indisponível para este perfil ou ainda aguarda configuração.';navigate('management-hub');return;
+    }
+    const isCurrent=()=>content.isConnected&&currentRoute()==='functional'&&session.status==='signed-in'
+      &&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
+    const cleanup=await mountFunctionalModule(content,{uid,faAuth:auth,group:access.group,isCurrent});
+    if(isCurrent())cleanupCurrentModule=cleanup;else cleanup?.();
     return;
   }
   if(route === 'fg-performance'){
@@ -1574,19 +1589,6 @@ async function loadModule(route) {
       const cleanup=mountFcPerformanceModule(content,{isCurrent:current,repository:createFcPerformanceRepository({db,auth,uid,isCurrent:current})});
       if(current())cleanupCurrentModule=cleanup;else cleanup();
     }catch(error){if(current())content.innerHTML='<p class="empty-state" role="status">Não foi possível confirmar seu acesso ao Desempenho FC. Reconecte sua conta Google.</p>';}
-    return;
-  }
-  if(route === 'fe-performance'){
-    const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
-    const current=()=>generation===evaluationModuleGeneration&&content?.isConnected&&currentRoute()===route&&session.status==='signed-in'&&session.user?.uid===uid&&canOpenRestrictedModule(route);
-    if(!current()){navigate('home');return;}
-    try{
-      const [{createFePerformanceRepository},{mountFePerformanceModule},{callInstitutionalSurvey}]=await Promise.all([import('./fe-performance-data.js'),import('./fe-performance-ui.js'),import('./institutional-survey-client.js')]);
-      if(!current())return;
-      const repository=createFePerformanceRepository({uid,isCurrent:current,request:()=>callInstitutionalSurvey({uid,isCurrent:current,action:'GET_PERFORMANCE'})});
-      const cleanup=mountFePerformanceModule(content,{repository,isCurrent:current});
-      if(current())cleanupCurrentModule=cleanup;else cleanup();
-    }catch{if(current())content.innerHTML='<p class="empty-state" role="status">Não foi possível confirmar seu acesso ao Desempenho FE. Confira sua conexão e autorização de participação.</p>';}
     return;
   }
   if(route === 'qmentum'){
@@ -5245,7 +5247,7 @@ async function render() {
   if(!authLimited&&requestedRoute==='labels'&&!session.labelProfileLoaded)void loadOwnLabelModuleProfile(session.user?.uid);
   if(!authLimited&&requestedRoute==='checklist'&&!session.checklistProfileLoaded)void loadOwnChecklistModuleProfile(session.user?.uid);
   if (session.accountMode === 'team' && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance',
-    'fe-performance', 'people', 'admin', 'app-updates-control'].includes(requestedRoute)) {
+    'people', 'admin', 'app-updates-control'].includes(requestedRoute)) {
     navigate('home');
     return;
   }
@@ -5279,15 +5281,14 @@ async function render() {
     notice='Governança está temporariamente indisponível para este perfil.';
     navigate('home');return;
   }
-  if (deployment.target==='FA'&&requestedRoute==='fe-performance'){navigate('management-hub',{panel:'fePerformance'});return;}
-  if (deployment.target === 'FB' && ['qmentum','fg-performance','fc-performance','fe-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
+  if (deployment.target === 'FB' && ['qmentum','fg-performance','fc-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
   if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
   if (deniedOperationalModules.has(requestedRoute)) {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
   }
   if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
-  if (!authLimited && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance','fe-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
+  if (!authLimited && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
@@ -5303,18 +5304,18 @@ async function render() {
     return;
   }
   if(authLimited){}
-  else if(['qmentum','fg-performance','fc-performance','fe-performance'].includes(requestedRoute)){
+  else if(['qmentum','fg-performance','fc-performance'].includes(requestedRoute)){
     const {renderQmentumShell}=await import('./qmentum-shell.js');
     if(!current()||session.status!=='signed-in'||!canOpenRestrictedModule(requestedRoute))return;
-    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fg-performance'?'DESEMPENHO FG':requestedRoute==='fc-performance'?'DESEMPENHO FC':requestedRoute==='fe-performance'?'DESEMPENHO FE':undefined});
+    app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fg-performance'?'DESEMPENHO FG':requestedRoute==='fc-performance'?'DESEMPENHO FC':undefined});
   }else app.innerHTML = shellView();
   if(typeof syncHomeWelcomeMessage==='function')syncHomeWelcomeMessage();
   const profileReconnect=document.querySelector('[data-profile-reconnect]');
   if(profileReconnect)bindProfileRetryControl(profileReconnect);
-  if (!authLimited && ['occurrences','qmentum','fg-performance','fc-performance','fe-performance'].includes(requestedRoute)) {
+  if (!authLimited && ['occurrences','qmentum','fg-performance','fc-performance'].includes(requestedRoute)) {
     app.querySelectorAll('.main-content button[data-route="home"]').forEach(button=>{
       button.removeAttribute('data-route');button.textContent='VOLTAR';
-      button.addEventListener('click',()=>['fg-performance'].includes(requestedRoute)?navigate('checklist'):requestedRoute==='fe-performance'?navigate('home'):navigate('management-hub',{panel:'records'}));
+      button.addEventListener('click',()=>['fg-performance'].includes(requestedRoute)?navigate('checklist'):navigate('management-hub',{panel:'records'}));
     });
   }
   if(!authLimited&&requestedRoute==='notifications'){

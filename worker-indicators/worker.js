@@ -1,76 +1,14 @@
-import {assertFbPerformanceReadable} from '../server/fb-performance-folder-policy.js';
-import {createFirestoreStore as createFbFirestoreStore} from '../worker-training/firestore.js';
-import {consolidatedPerformanceFolders} from '../src/operational-folders.js';
-import {assertFirestoreFoldersReadable} from '../server/firestore-folder-policy.js';
-import {createSourceReadBudget} from './read-budget.js';
-import {verifySchedule} from './schedule-envelope.js';
-import {createSahmtPerformanceSources} from './sahmt-performance-sources.js';
-import {isSahmtPerformanceAction} from '../src/sahmt-performance-actions.js';
-import {createFePerformanceReader} from '../worker-fe-surveys/performance-read.js';
-import {FD_PROJECT,indicatorServiceToken} from './auth.js';import {createFirestoreStore} from './store.js';import {createIndicatorService} from './service.js';import {verifyTrainingIdentity} from '../worker-training/google-auth.js';import {Buffer} from 'node:buffer';
-const ORIGIN='https://anestesiahmtforms.github.io';const runtimes=new WeakMap();
-function runtime(env){
- if(!runtimes.has(env)){
-  let credentials;try{credentials=JSON.parse(env.INDICATOR_SERVICE_ACCOUNT_JSON);}catch{throw Error('INDICATOR_CONFIG_REQUIRED');}
-  let fePerformanceRead;
-  try{fePerformanceRead=createFePerformanceReader({endpoint:env.FE_PERFORMANCE_READ_URL,secret:env.FE_PERFORMANCE_READ_SECRET});}catch{}
-  const getAccessToken=indicatorServiceToken({credentials}),store=createFirestoreStore({getAccessToken}),readBudget=createSourceReadBudget({store});
-  async function check(folders, includeDescendants = []) {
-   if(!folders.length)return;
-   try {
-    await assertFirestoreFoldersReadable({
-     root:'https://firestore.googleapis.com/v1/projects/'+FD_PROJECT+'/databases/(default)/documents',
-     token:await getAccessToken(),
-     folders,includeDescendants
-    });
-   } catch(error) {
-    const disabled=error.code==='FOLDER_DISABLED';
-    const code=disabled?'INDICATOR_FOLDER_DISABLED':'INDICATOR_FOLDER_POLICY_UNAVAILABLE';
-    throw Object.assign(Error(code),{code,status:disabled?403:503});
-   }
-  }
-  const fbStore=createFbFirestoreStore({getAccessToken});
-  async function checkFb(checkPolicy = assertFbPerformanceReadable) {
-   try {
-    await checkPolicy(fbStore);
-   } catch(error) {
-    const disabled=error.code==='FOLDER_DISABLED';
-    const code=disabled?'INDICATOR_FOLDER_DISABLED':'INDICATOR_FOLDER_POLICY_UNAVAILABLE';
-    throw Object.assign(Error(code),{code,status:disabled?403:503});
-   }
-  }
-  const performanceSources=createSahmtPerformanceSources({
-   getAccessToken,readBudget,fePerformanceRead,
-   async checkAvailability(source){
-    await check(consolidatedPerformanceFolders);
-    if(source==='FB')await checkFb();
-   }
-  });
-  const service=createIndicatorService({store,performanceSources,sahmtEnabled:env.SAHMT_PERFORMANCE_ENABLED==='true'});
-  runtimes.set(env,{
-   async execute(action,input,identity) {
-    await check(consolidatedPerformanceFolders);
-    await checkFb();
-    const result=await service.execute(action,input,identity);
-    await check(consolidatedPerformanceFolders);
-    await checkFb();
-    return result;
-   },
-   async executeScheduled(body) {
-    if(body.action==='PERFORMANCE'){
-     await check(consolidatedPerformanceFolders);
-     await checkFb();
-    }
-    return service.executeScheduled(body);
-   }
-  });
- }
- return runtimes.get(env);
+const json=(code,status=410)=>Response.json({code},{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+
+/** FD is no longer the SAHMT performance runtime; FK owns this feature. */
+export function createIndicatorWorker(){
+ return Object.freeze({
+  async fetch(request){
+   const path=new URL(request.url).pathname;
+   if(path==='/v1/indicators'||path==='/v1/fd-scheduled-refresh')return json('SAHMT_PERFORMANCE_MOVED_TO_FK');
+   return json('INDICATOR_ROUTE_UNKNOWN',404);
+  },
+  async scheduled(){return {code:'SAHMT_PERFORMANCE_MOVED_TO_FK'};}
+ });
 }
-async function jsonBody(request){const max=65536,reader=request.body?.getReader();if(!reader||Number(request.headers.get('Content-Length'))>max)throw Object.assign(Error('INDICATOR_INVALID_INPUT'),{status:400});let size=0;const chunks=[];try{for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>max)throw Object.assign(Error('INDICATOR_INPUT_TOO_LARGE'),{status:413});chunks.push(value);}}finally{await reader.cancel().catch(()=>{});}try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw Object.assign(Error('INDICATOR_INVALID_INPUT'),{status:400});}}
-export function createIndicatorWorker({build=runtime,verifyIdentity=verifyTrainingIdentity,clock=Date.now}={}){return {async fetch(request,env){if(new URL(request.url).pathname==='/v1/fd-scheduled-refresh'){
- if(request.method!=='POST'||env.FD_FIXED_REFRESH_ENABLED!=='true'||env.INDICATORS_ENABLED!=='true')return Response.json({code:'FD_SCHEDULE_DISABLED'},{status:404,headers:{'Cache-Control':'no-store'}});
- let body;try{body=await verifySchedule(await jsonBody(request),env.FD_SCHEDULE_HMAC_SECRET,clock());}catch{return Response.json({code:'FD_SCHEDULE_DENIED'},{status:403,headers:{'Cache-Control':'no-store'}});}
- try{return Response.json(await build(env).executeScheduled(body),{headers:{'Cache-Control':'no-store'}});}catch(error){return Response.json({code:/^(?:FD|INDICATOR|SAHMT)_[A-Z_]+$/.test(error.code||error.message)?error.code||error.message:'FD_SCHEDULE_UNAVAILABLE'},{status:503,headers:{'Cache-Control':'no-store'}});}
-}const headers={'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',Vary:'Origin',...(request.headers.get('Origin')===ORIGIN?{'Access-Control-Allow-Origin':ORIGIN}:{})},reply=(data,status)=>Response.json(data,{status,headers});if(request.headers.get('Origin')!==ORIGIN)return reply({code:'INDICATOR_ORIGIN_DENIED'},403);if(new URL(request.url).pathname!=='/v1/indicators')return reply({code:'INDICATOR_ROUTE_UNKNOWN'},404);if(request.method==='OPTIONS')return new Response(null,{status:204,headers:{...headers,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type','Access-Control-Max-Age':'600'}});if(request.method!=='POST')return reply({code:'INDICATOR_METHOD_DENIED'},405);if(env.INDICATORS_ENABLED!=='true')return reply({code:'INDICATOR_UNAVAILABLE'},503);try{if(!/^application\/json(?:;|$)/i.test(request.headers.get('Content-Type')||''))throw Object.assign(Error('INDICATOR_INVALID_INPUT'),{status:400});const data=await jsonBody(request);if(!data||Object.keys(data).length!==2||typeof data.action!=='string'||!data.input||Array.isArray(data.input)||typeof data.input!=='object')throw Object.assign(Error('INDICATOR_INVALID_INPUT'),{status:400});if(!isSahmtPerformanceAction(data.action))return reply({code:'SAHMT_PERFORMANCE_UNSUPPORTED_ACTION'},404);const identity=await verifyIdentity(request.headers.get('Authorization'),{apiKey:env.FD_WEB_API_KEY,projectId:FD_PROJECT});return reply(await build(env).execute(data.action,data.input,identity),200);}catch(e){return reply({code:/^(?:INDICATOR|FD_PERFORMANCE|SAHMT)_[A-Z_]{1,100}$/.test(e.code||e.message)?e.code||e.message:'INDICATOR_UNAVAILABLE'},[400,401,403,404,409,413,422,429,503].includes(e.status)?e.status:503);}},async scheduled(){return {code:'INDICATOR_MANUAL_ONLY'};}};}
 export default createIndicatorWorker();

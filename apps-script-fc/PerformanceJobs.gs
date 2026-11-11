@@ -36,12 +36,15 @@ function executarDesempenhoFcV1(){
   evaluationAssertOperator_();
   const analysisReviews=validarRevisoesQmentumV1();
   const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return {code:'FC_PERFORMANCE_BUSY'};
+  let result;
   try{
     evaluationAssertOperator_();
-    const result={code:'FC_PERFORMANCE_CYCLE',analysisReviews:analysisReviews,occurrences:recuperarPontuacoesOcorrenciasFcV1(),
+    result={code:'FC_PERFORMANCE_CYCLE',analysisReviews:analysisReviews,occurrences:recuperarPontuacoesOcorrenciasFcV1(),
       qmentum:processarParticipacoesQmentumV1(),summary:evaluationPublishCategorySummary_('PERFORMANCE')};
-    console.log(JSON.stringify(result));return result;
   }finally{lock.releaseLock();}
+  try{result.functionalSync=fcPublishPerformanceToFk_().code;}
+  catch(error){result.functionalSync='PENDING';console.error('FK performance source push pending: '+String(error&&error.message||error));}
+  console.log(JSON.stringify(result));return result;
 }
 function executarCicloQmentumFcV1(){
   if(fcRuntimeCode_())return {code:'FC_INTEGRATION_DISABLED'};

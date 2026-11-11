@@ -1,9 +1,6 @@
 import {assertFolderReadable} from '../server/folder-read-policy.js';
 import {assertFirestoreFoldersReadable} from '../server/firestore-folder-policy.js';
 
-export const assertFePerformanceReadable = (getAccessToken, transaction) =>
-  assertFeFolderReadable('desempenho/fe', getAccessToken, transaction);
-
 export async function assertFeFolderReadable(folder, getAccessToken, transaction, prefix = 'SURVEY') {
   try {
     if (transaction) {

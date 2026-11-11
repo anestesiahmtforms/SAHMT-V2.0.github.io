@@ -1,6 +1,6 @@
 import {encodeFields,decodeFields} from '../worker-training/firestore.js';
 import {boundedJson} from '../worker-operational-domain/identity.js';
-export const FI_PROJECTS=Object.freeze({FA:'sahmt-17a16',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FD:'rotinas-8a617',FE:'outros-48120',FF:'sahmt-comunicacao-ff',FG:'sahmt-checklist-fg',FH:'sahmt-etiquetas-fh',FI:'sahmt-operacional-fi',FJ:'sahmt-escala-fj'});
+export const FI_PROJECTS=Object.freeze({FA:'sahmt-17a16',FB:'sahmt-gestao-5ae66',FC:'indicadores---sahmt',FE:'outros-48120',FF:'sahmt-comunicacao-ff',FG:'sahmt-checklist-fg',FH:'sahmt-etiquetas-fh',FI:'sahmt-operacional-fi',FJ:'sahmt-escala-fj'});
 export const FI_COLLECTIONS=Object.freeze(['users','contacts','eventMembers','memberCategoryAssignments','appConfig','fiAdminUsers','fiAdminIdentityLinks','fiAdminOutbox','fiAdminAudit','fiAdminUpdateRequests','fiAiBudget','fiAiQuota','fiAiReservations','fiAiRuns','fiSearchRecords','fiControlConfig','fiControlMigrations','fiTechnicalMetrics','fiSourceBudgets','fiControlQuotas']);
 export const fiError=(code,status=503)=>Object.assign(Error(code),{code,status});
 const segment=v=>typeof v==='string'&&v.length>0&&v.length<=180&&!/[\/\s\x00-\x1f]/.test(v)&&v!=='.'&&v!=='..';

@@ -14,7 +14,7 @@ export function stationForwarder(legacy,station,fetchImpl=fetch){
    const candidate=path==='/v1/institutional-surveys';
    let forward=candidate&&request.headers.get('Origin')===ORIGIN&&['POST','OPTIONS'].includes(request.method);
    // Keep the existing epidemiological report authorization and bootstrap in central.
-   if(forward)forward=request.method==='POST'&&['SUBMIT','GET_PERFORMANCE'].includes(await action(request));
+   if(forward)forward=request.method==='POST'&&await action(request)==='SUBMIT';
    if(!forward)return legacy.fetch(request,env,ctx);
    const headers=new Headers();for(const name of ['Origin','Content-Type','Authorization']){const value=request.headers.get(name);if(value)headers.set(name,value);}
    try{return await fetchImpl(new Request(targets[station]+path,{method:request.method,headers,body:request.body,redirect:'manual',signal:AbortSignal.timeout(25000),duplex:'half'}));}

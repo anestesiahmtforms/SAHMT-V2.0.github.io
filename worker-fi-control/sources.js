@@ -2,13 +2,13 @@ import {canReadRecord,normalize} from './fi-ai-policy.js';
 import {canManageManagementDocuments,documentGroupsFromAccess} from '../src/document-access.js';
 import {QMENTUM_INDICATORS} from '../src/qmentum-catalog.js';
 import {isCurrentMessage} from '../communication/domain.js';
-import {SAHMT_START_ISO} from '../worker-indicators/sahmt-performance-period.js';
+import {SAHMT_START_ISO} from '../worker-functional/sahmt-performance-period.js';
 import {ownSchedulePositions,validScheduleSigla} from './personal-schedule.js';
 import {trainingAccessPath,trainingPathAllowed} from '../src/html-training-folders.js';
 import {gunzipSync} from 'node:zlib';
 import {Buffer} from 'node:buffer';
 import {catalogCollections,catalogIndexId} from './catalog-index.js';
-export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','activities','evaluationRuntime','htmlTrainings','htmlTrainingSettings'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FD:['sahmtPerformanceReference','sahmtPerformanceRuns'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events','scheduleDays']});
+export const SOURCE_COLLECTIONS=Object.freeze({FA:['users','documentAccessEmails','accessRequests','appConfig','userCategories'],FB:['users','documents','scopedDocuments','managementAreas','documentAccessEmails','trainings','learningActivities','activities','evaluationRuntime','htmlTrainings','htmlTrainingSettings'],FC:['users','qmentumAccess','qmentumConfig','qmentumUnits'],FF:['users','communicationMessages'],FG:['users','checklists'],FH:['users','labels'],FJ:['users','contacts','events','scheduleDays']});
 const FB_CATALOG_QUERY_LIMIT=301;
 let cachedHtmlIndex;
 async function loadHtmlIndex(store){
@@ -29,22 +29,6 @@ const own=r=>r.active!==false&&r.deleted!==true&&r.sheetDeleted!==true;
 const version=r=>String(r.version||r.updatedAt||r.createdAt||'1');
 const compact=(...v)=>v.filter(x=>typeof x==='string'&&x.trim()).join(' · ').slice(0,5000);
 function preview(value){try{const u=new URL(value),m=u.pathname.match(/^\/(?:file|document|spreadsheets|presentation)\/d\/([A-Za-z0-9_-]{10,})/);if(u.protocol==='https:'&&!u.username&&!u.password&&m&&['drive.google.com','docs.google.com'].includes(u.hostname))return u.origin+u.pathname.slice(0,u.pathname.indexOf(m[1])+m[1].length)+'/preview';}catch{}return '';}
-async function performanceMetrics(fd,period){
- if(!fd||period<SAHMT_START_ISO.slice(0,7))return [];
- const year=Number(period.slice(0,4)),month=Number(period.slice(5));
- const days=Array.from({length:new Date(Date.UTC(year,month,0)).getUTCDate()},(_,i)=>`${period}-${String(i+1).padStart(2,'0')}`);
- const rows=await fd.getMany(days.map(day=>['sahmtPerformanceRuns',day+'_02']));
- const confirmed=rows.filter((r,i)=>r?.batchId===days[i]+'_02'&&r.status==='CONFIRMED');
- const observed=rows.filter((r,i)=>r?.batchId===days[i]+'_02'&&['CONFIRMED','PARTIAL','FAILED'].includes(r.status));
- if(!observed.length)return [];
- const durations=confirmed.map(r=>r.finishedAt-r.cutoff).filter(v=>Number.isFinite(v)&&v>=0&&v<=3600000).sort((a,b)=>a-b);
- return [
-  {id:'FD.batch_confirmed',label:'Consolidações diárias confirmadas',value:confirmed.length,unit:'dias'},
-  {id:'FD.batch_partial',label:'Consolidações diárias com falha ou resultado parcial',value:observed.length-confirmed.length,unit:'dias'},
-  {id:'FD.batch_missing',label:'Dias sem conclusão registrada',value:days.length-observed.length,unit:'dias'},
-  ...(durations.length?[{id:'FD.batch_p95',label:'P95 do tempo entre o horário previsto e a confirmação da consolidação',value:durations[Math.ceil(durations.length*.95)-1],unit:'ms'}]:[])
- ];
-}
 export function createFiSourceProvider({stores,indexStore,resolveIdentity,now=Date.now}={}){
  const coverage=[];
  async function identity(source,actor){
@@ -293,8 +277,7 @@ export function createFiSourceProvider({stores,indexStore,resolveIdentity,now=Da
     indicators.push({id:key,label:`${name} (${unitId})`,unit:'%',value:value.ratio*100,target:value.targetValidated===true&&Number.isFinite(value.target)?value.target*100:null,previous:comparable?prior.ratio*100:null});
    }
   }
-  const technicalMetrics=await performanceMetrics(stores.FD,period).catch(()=>[]);
-  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({period,revisions,indicators,omittedIndicators,technicalMetrics}))),signature=[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
-  return {schemaVersion:1,source:'FC',period,signature,units,complete:units.length>0&&missingSources.length===0&&indicators.length>0,missingSources,updatedAt:Math.max(0,...revisions.map(r=>r[2])),indicators,omittedIndicators,technicalMetrics};
+  const bytes=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify({period,revisions,indicators,omittedIndicators}))),signature=[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
+  return {schemaVersion:1,source:'FC',period,signature,units,complete:units.length>0&&missingSources.length===0&&indicators.length>0,missingSources,updatedAt:Math.max(0,...revisions.map(r=>r[2])),indicators,omittedIndicators};
  }};
 }

@@ -1,4 +1,4 @@
-import {assertFeFolderReadable} from '../worker-fe-surveys/performance-policy.js';
+import {assertFeFolderReadable} from '../worker-fe-surveys/survey-policy.js';
 import {verifyTrainingIdentity} from '../worker-training/google-auth.js';
 import {createFirestoreStore} from '../worker-training/firestore.js';
 import {vacationServiceToken} from './google.js';

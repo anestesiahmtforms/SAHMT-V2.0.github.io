@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "sahmt-17a16"
+    "default": "sahmt-17a16",
+    "fk": "sahmt-funcional-fk"
   }
 }
