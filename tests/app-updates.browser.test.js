@@ -21,11 +21,10 @@ test('Governance indicators and the update notice work above mobile dialogs',{ti
    await page.getByLabel('Rascunho').fill('Texto em andamento');
    await page.getByRole('button',{name:'Governança',exact:true}).click();
    await page.getByRole('button',{name:/INDICADORES - SAHMT/}).click();
-   await page.getByRole('button',{name:'INDICADORES - SAHMT',exact:true}).waitFor();
-   assert.equal(await page.locator('[data-hub-body] button').count(),1);
-   assert.deepEqual(await page.evaluate(()=>window.indicatorCalls),[]);
-   await page.getByRole('button',{name:'INDICADORES - SAHMT',exact:true}).click();
    await page.getByText('Os indicadores consolidados do SAHMT serão exibidos nesta área.').waitFor();
+   assert.equal(await page.locator('#management-hub-title').textContent(),'INDICADORES - SAHMT');
+   assert.equal(await page.locator('[data-hub-body] button').count(),0);
+   assert.deepEqual(await page.evaluate(()=>window.indicatorCalls),[]);
    assert.equal(await page.locator('iframe').count(),0);
    assert.equal(await page.locator('#management-hub-title').textContent(),'INDICADORES - SAHMT');
    assert.deepEqual(await page.evaluate(()=>window.indicatorCalls),[]);
