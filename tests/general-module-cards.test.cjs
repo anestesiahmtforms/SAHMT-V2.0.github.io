@@ -107,7 +107,7 @@ for (const role of ['gestor', 'coordenador', 'anestesiologista', 'temporario']) 
 
 function renderHarness(session, route='management') {
   const navigations = [], loads = [], shells = [];
-  const context = vm.createContext({googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
+  const context = vm.createContext({env:{BASE_URL:'/',VITE_FK_FUNCTIONAL_ENABLED:'true'},googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
     deployment:{target:'FA',externalManagementEnabled:false},googleAccessPanel:null,
     operationalDrafts:{flush:async()=>{},restore:async()=>{}},deniedOperationalModules:new Set(),
     session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
