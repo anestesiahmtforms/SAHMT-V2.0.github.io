@@ -384,7 +384,7 @@ test('Governança admite todos os perfis aprovados e mantém contas não aprovad
  }
  assert.deepEqual(pilot,before);
  const common=harness({session:approved(),route:'management-hub'});await common.ui.loadModule('management-hub');
- assert.deepEqual(common.imports,['./management-hub.js']);assert.equal(common.queries[0].name,'mountManagementHub');assert.deepEqual(common.navigations,[]);const access=common.queries[0].options.access;assert.equal(access.groups,false);assert.equal(access.records,false);assert.equal(access.results,true);assert.equal(access.sahmtPerformance,true);assert.equal(access.indicatorResults,undefined);assert.equal(access.institutionalSurveys,false);assert.equal(access.surveys,true);
+ assert.deepEqual(common.imports,['./management-hub.js','./functional-access.js']);assert.equal(common.queries[0].name,'mountManagementHub');assert.deepEqual(common.navigations,[]);const access=common.queries[0].options.access;assert.equal(access.groups,false);assert.equal(access.records,false);assert.equal(access.results,true);assert.equal(access.functional,true);assert.equal(access.sahmtPerformance,undefined);assert.equal(access.indicatorResults,undefined);assert.equal(access.institutionalSurveys,false);assert.equal(access.surveys,false);
  const direct=renderHarness(approved(),'management-hub');await direct.context.runRender();
  assert.deepEqual(direct.navigations,[]);assert.deepEqual(direct.loads,['management-hub']);
 });

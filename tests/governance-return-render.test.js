@@ -81,8 +81,8 @@ function harness({route='management',target='FB',session=authorized()}={}){
     fakeFunctionalAccess:async()=>({allowed:true,group:'EQUIPE'})
   });
   const code=(router+'\n'+cards+'\n'+occurrencePermission+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
-    .replaceAll('import.meta.env','env').replace("await import('./management-hub.js')",'await Promise.resolve({mountManagementHub:mountHub})')
-    .replace("await import('./functional-access.js')",'await Promise.resolve({getFunctionalAccess:fakeFunctionalAccess})');
+    .replaceAll('import.meta.env','env').replace("import('./management-hub.js')",'Promise.resolve({mountManagementHub:mountHub})')
+    .replace("import('./functional-access.js')",'Promise.resolve({getFunctionalAccess:fakeFunctionalAccess})');
   vm.runInContext(code,ctx);
   return {ctx,app,assignments,mounts,mountOptions,loaded,render:()=>ctx.render()};
 }
