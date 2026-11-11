@@ -55,7 +55,7 @@ test('invalid identity, schema, closed cycle or revoked profile cannot consume a
  f.responses.seed('stressCycles','2026',{status:'open'});f.profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:false});await assert.rejects(f.service.execute('SUBMIT',input('stress'),identity),e=>e.code==='SURVEY_FORBIDDEN');assert.equal((await f.responses.list('stressResponses')).length,0);
 });
 
-test('FE folder pause preserves participation and awards for retry without reading the ledger',async()=>{
+test('FE folder pause preserves participation and points for retry without reading the ledger',async()=>{
  const {profiles,responses}=await fixture();
  const clock=Date.parse('2026-10-28T12:00:00Z');
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:['consultas/pesquisas/estresse']});
@@ -73,5 +73,10 @@ test('FE folder pause preserves participation and awards for retry without readi
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:false});
  assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:3,disabled:['consultas']});
+ await assert.rejects(service.execute('SUBMIT',input('stress'),identity),{code:'SURVEY_FOLDER_DISABLED'});
+ assert.equal((await responses.list('surveyParticipation')).length,1);
+ assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
+ responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:4,disabled:[]});
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:true});
+ assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
 });
