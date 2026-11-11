@@ -39,9 +39,10 @@ test('Registro de Ocorrências possui rota própria sem reutilizar Eventos de Es
   location.hash='#/events';assert.equal(currentRoute(),'schedule');
 });
 
-test('Desempenho FD e FE têm rotas próprias no PWA',()=>{
+test('desempenho saiu das rotas FD e FE e está dentro do módulo Funcional em FK',()=>{
  location.hash='#/fd-performance';assert.equal(currentRoute(),'home');
- navigate('fe-performance');assert.equal(location.hash,'#/fe-performance');assert.equal(currentRoute(),'fe-performance');
+ location.hash='#/fe-performance';assert.equal(currentRoute(),'home');
+ navigate('functional');assert.equal(location.hash,'#/functional');assert.equal(currentRoute(),'functional');
 });
 
 test('sessão autenticada offline redesenha a rota ao navegar', () => {
@@ -59,12 +60,10 @@ test('voltar aos painéis de Governança usa a rota local sem recarregar FA', ()
   navigate('management-hub', {panel:'https://example.com'});
   assert.equal(location.hash, '#/management-hub');
 });
-test('station performance has an internal panel URL under its module container',()=>{
- for(const panel of ['fePerformance']){
-  navigate('management-hub',{panel});
-  assert.equal(location.hash,'#/management-hub/'+panel);
-  assert.equal(currentRoute(),'management-hub');
- }
+test('the retired FE performance panel cannot be opened under Governança',()=>{
+ navigate('management-hub',{panel:'fePerformance'});
+ assert.equal(location.hash,'#/management-hub');
+ assert.equal(currentRoute(),'management-hub');
 });
 
 test('vacation panel has an allowlisted FE URL',()=>{navigate('management-hub',{panel:'vacations2027'});assert.equal(location.hash,'#/management-hub/vacations2027');});
