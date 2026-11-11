@@ -14,17 +14,18 @@ test('FA institutional survey entry embeds the fixed FE destinations without ide
  const released=hub({surveys:true},'institutional',null,true);assert.match(released.body.innerHTML,/data-survey-panel="climateForm"/);assert.match(released.body.innerHTML,/data-survey-panel="stressForm"/);assert.doesNotMatch(released.body.innerHTML,/href=|uid=|email=|token=/);assert.match(released.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);assert.match(released.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
  assert.doesNotMatch(hub({surveys:true},'institutional',null,false).body.innerHTML,/data-survey-panel=/);
 });
-test('station performance belongs only to its FD or FE parent panel',()=>{
+test('station performance was removed from Governança when it moved to FK',()=>{
  const source=readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8');
  const metadata=source.slice(source.indexOf('const panels='),source.indexOf('// Surveys reuse'));
  const panels=vm.runInNewContext(metadata+';panels');
  assert.equal(panels.fdPerformance,undefined);
- assert.equal(panels.fePerformance.parent,'surveys');
+ assert.equal(panels.fePerformance,undefined);
+ assert.equal(panels.sahmtPerformance,undefined);
  assert.equal(panels.home.items.some(item=>['fdPerformance','fePerformance'].includes(item.panel)),false);
  assert.equal(panels.surveys.items.some(item=>item.label==='Desempenho FE'&&item.panel==='fePerformance'),false);
  assert.equal(panels.records.items.some(item=>['fdPerformance','fePerformance'].includes(item.panel)),false);
  assert.doesNotMatch(hub({surveys:true},'surveys').body.innerHTML,/Desempenho FE/);
- assert.doesNotMatch(hub({surveys:true,fePerformance:true},'surveys').body.innerHTML,/Desempenho FE/);assert.equal(panels.sahmtPerformance.parent,'results');
+ assert.doesNotMatch(hub({surveys:true,fePerformance:true},'surveys').body.innerHTML,/Desempenho FE/);
  for(const name of ['fdPerformance','fePerformance'])assert.equal(hub({},name).dialog.dataset.panel,'home');
 });
 
@@ -52,7 +53,7 @@ test('Governance keeps the live synchronization control visible in its modal hea
  const h=hub({records:true},'home',syncStatusElement);
  assert.equal(h.syncHost.child,syncStatusElement);
  assert.match(h.root.innerHTML,/<header[^>]*>.*identity-card__user-row.*data-hub-sync.*<\/header>/);
- h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'1'}}):null}});
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'2'}}):null}});
  assert.equal(h.dialog.dataset.panel,'records');
  assert.equal(h.syncHost.child,syncStatusElement);
  syncStatusElement.innerHTML='<button class="sync-status-button--synced">✓</button>';
@@ -80,7 +81,7 @@ test('Governance opens for every approved identity without granting protected de
 test('schedule access opens its menu while other survey panels retain their previous gate',()=>{
  const h=hub({yearEndSchedule:true},'home');
  assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,3);
- h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'3'}}):null}});
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'4'}}):null}});
  assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/management-hub-button--festive/);
  assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);
  h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});

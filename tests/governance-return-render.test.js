@@ -63,7 +63,7 @@ const authorized=()=>({status:'signed-in',user,profile:{uid:user.uid,email:user.
 const limited=()=>({status:'auth-limited',user,profile:{uid:user.uid,active:false,access:false,permissions:{}},offline:true,validatingProfile:true});
 function harness({route='management',target='FB',session=authorized()}={}){
   const app=dom(),assignments=[],mounts=[],mountOptions=[],loaded=[];
-  const ctx=vm.createContext({googleProjectAuthEnabled:true,operationalContentAllowed:()=>true,
+  const ctx=vm.createContext({env:{BASE_URL:'/',VITE_FK_FUNCTIONAL_ENABLED:'true'},googleProjectAuthEnabled:true,operationalContentAllowed:()=>true,
     app,document:app,session,loadOwnLabelModuleProfile(){},loadOwnChecklistModuleProfile(){},readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
     deployment:{target,faBase:'/SAHMT-V2.0.github.io/',externalManagementEnabled:true},rememberModuleNavigation(){},
     evaluationModuleGeneration:0,googleAccessPanel:null,scheduleGridObserver:null,operationalDrafts:{flush(){},restore(){}},
@@ -77,10 +77,12 @@ function harness({route='management',target='FB',session=authorized()}={}){
     todayInputValue:()=>'2026-01-01',labelReportMode:'daily',labelReportOpen:false,
     labels:{management:['Grupos de Gestão'],training:['Desempenho'],'management-hub':['Governança']},
     managementUtilityCards:()=>'',can:permission=>session.profile?.role==='administrador_app'||session.profile?.permissions?.[permission]===true,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
-    mountHub:(content,options)=>{mounts.push(options.initialPanel);mountOptions.push(options);return ()=>{};}
+    mountHub:(content,options)=>{mounts.push(options.initialPanel);mountOptions.push(options);return ()=>{};},
+    fakeFunctionalAccess:async()=>({allowed:true,group:'EQUIPE'})
   });
   const code=(router+'\n'+cards+'\n'+occurrencePermission+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
-    .replace("await import('./management-hub.js')",'await Promise.resolve({mountManagementHub:mountHub})');
+    .replaceAll('import.meta.env','env').replace("await import('./management-hub.js')",'await Promise.resolve({mountManagementHub:mountHub})')
+    .replace("await import('./functional-access.js')",'await Promise.resolve({getFunctionalAccess:fakeFunctionalAccess})');
   vm.runInContext(code,ctx);
   return {ctx,app,assignments,mounts,mountOptions,loaded,render:()=>ctx.render()};
 }
@@ -121,10 +123,10 @@ test('FA blocks Governance for an unverified common user before mounting any pan
   assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.mounts,[]);
 });
 
-test('FA directs verified members to FE without granting the other Governance panels',async()=>{
+test('FA directs verified team members to FK without granting the other Governance panels',async()=>{
   const session=authorized();session.profile.role='anestesiologista';session.user={...session.user,emailVerified:true,email:'team@example.invalid'};session.profile.memberCategories=['EFETIVO'];session.profile.email=session.user.email;
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
-  assert.equal(canUseYearEndSchedule(session),true);assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;assert.equal(access.indicatorResults,undefined);for(const key of ['groups','records','institutionalSurveys'])assert.equal(access[key],false);for(const key of ['surveys','yearEndSchedule','vacations2027','results','sahmtPerformance'])assert.equal(access[key],true);
+  assert.equal(canUseYearEndSchedule(session),true);assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;assert.equal(access.indicatorResults,undefined);for(const key of ['groups','records','institutionalSurveys','surveys'])assert.equal(access[key],false);for(const key of ['functional','yearEndSchedule','vacations2027','results'])assert.equal(access[key],true);assert.equal(access.sahmtPerformance,undefined);
 });
 for(const status of ['blocked','signed-out'])test(`FA does not mount Governance for ${status}`,async()=>{
   const h=harness({target:'FA',route:'management-hub',session:{...authorized(),status}});await h.render();

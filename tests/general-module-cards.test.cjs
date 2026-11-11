@@ -20,7 +20,7 @@ function extractFunction(name, {async = false} = {}) {
   assert.notEqual(start, -1, `${name} deve existir no código real`);
   const end = main.indexOf('\n}', start);
   assert.notEqual(end, -1, `${name} deve terminar no código real`);
-  return main.slice(start, end + 2).replaceAll('import.meta.env.BASE_URL', "'/'");
+  return main.slice(start, end + 2).replaceAll('import.meta.env.BASE_URL', "'/'").replaceAll('import.meta.env', 'env');
 }
 
 function approved(permissions = {}, role = 'anestesiologista') {
@@ -38,7 +38,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     listLearningActivities: async (...args) => { queries.push({name: 'listLearningActivities', args}); return []; },
     listLearningActivityReceipts: async (...args) => { queries.push({name: 'listLearningActivityReceipts', args}); return []; }
   };
-  const context = vm.createContext({googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,operationalContentAllowed:()=>true,
+  const context = vm.createContext({env:{BASE_URL:'/',VITE_FK_FUNCTIONAL_ENABLED:'true'},googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,operationalContentAllowed:()=>true,
     session, appFeatures, secondaryDomainProjects,readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
     deployment:{target:'FA'}, htmlTrainingConfigured:false, climateSurveyEnabled:true,
     fdPerformanceEnabled:false,fePerformanceEnabled:false,communicationFeatureEnabled:false,communicationAdminSession:()=>false,
@@ -52,6 +52,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     fakeImport: async (path) => {
       imports.push(path);
       if (path === './management-hub.js') return {mountManagementHub: (root, options) => { queries.push({name:'mountManagementHub', options}); return () => {}; }};
+      if (path === './functional-access.js') return {getFunctionalAccess:async()=>({allowed:true,group:'EQUIPE'})};
       if (path === './data.js') return data;
       if (path === './performance-ui.js') return {mountPerformanceModule: () => {queries.push({name:'mountPerformanceModule'}); return () => {};}};
       throw new Error(`Importação inesperada no teste: ${path}`);
