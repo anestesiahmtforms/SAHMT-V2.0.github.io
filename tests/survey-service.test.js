@@ -34,7 +34,7 @@ test('FE awards one point for an accepted participation without copying survey a
  assert.deepEqual(await service.execute('SUBMIT',input('climate'),identity),{accepted:true,alreadyResponded:false});
  const events=await f.responses.list('feFunctionalPerformanceEvents');
  assert.equal(events.length,1);assert.equal(events[0].uid,identity.uid);assert.equal(events[0].points,1);assert.equal(events[0].survey,'climate');
- assert.equal(events[0].affiliation,'EFETIVO');assert.equal(Object.hasOwn(events[0],'answers'),false);assert.equal(Object.hasOwn(events[0],'comments'),false);assert.equal(Object.hasOwn(events[0],'responseId'),false);
+ assert.equal(events[0].affiliation,'team');assert.equal(Object.hasOwn(events[0],'answers'),false);assert.equal(Object.hasOwn(events[0],'comments'),false);assert.equal(Object.hasOwn(events[0],'responseId'),false);
 });
 test('FE source events keep the original time and do not duplicate a participation',async()=>{
  const f=await fixture(),clock=Date.parse('2026-10-28T12:00:00Z');
@@ -58,7 +58,7 @@ test('invalid identity, schema, closed cycle or revoked profile cannot consume a
 test('FE folder pause preserves participation and awards for retry without reading the ledger',async()=>{
  const {profiles,responses}=await fixture();
  const clock=Date.parse('2026-10-28T12:00:00Z');
- responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:['desempenho/fe']});
+ responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:['consultas/pesquisas/estresse']});
  const reads=[];
  const responseStore={...responses,transaction:fn=>responses.transaction(tx=>fn({
   ...tx,get:(collection,id)=>{reads.push(collection);return tx.get(collection,id);}
@@ -72,6 +72,6 @@ test('FE folder pause preserves participation and awards for retry without readi
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:2,disabled:[]});
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:false});
  assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
- responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:3,disabled:['desempenho']});
+ responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:3,disabled:['consultas']});
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:true});
 });

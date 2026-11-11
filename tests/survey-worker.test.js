@@ -10,7 +10,7 @@ test('only survey route selects FA issuer and key; caller cannot choose its proj
  assert.equal((await worker.fetch(request({...body,projectId:'other'}),env)).status,400);
 });
 test('legacy performance read action is rejected by the authenticated survey route',async()=>{
- let payload;const worker=createTrainingWorker({verifyIdentity:async()=>({uid:'synthetic'}),buildSurveyService:()=>({execute:async(action,input)=>{payload={action,input};throw Object.assign(Error('SURVEY_INVALID_INPUT'),{code:'SURVEY_INVALID_INPUT'});}})});
+ let payload;const worker=createTrainingWorker({verifyIdentity:async()=>({uid:'synthetic'}),buildSurveyService:()=>({execute:async(action,input)=>{payload={action,input};throw Object.assign(Error('SURVEY_INVALID_INPUT'),{code:'SURVEY_INVALID_INPUT',status:400});}})});
  const request=new Request('https://worker.test/v1/institutional-surveys',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Authorization:'Bearer synthetic'},body:JSON.stringify({action:'GET_PERFORMANCE',input:{}})});
  const response=await worker.fetch(request,{INSTITUTIONAL_SURVEYS_ENABLED:'true',FA_WEB_API_KEY:'fa-public-key'});assert.equal(response.status,400);assert.deepEqual(payload,{action:'GET_PERFORMANCE',input:{}});assert.deepEqual(await response.json(),{code:'SURVEY_INVALID_INPUT'});
 });
