@@ -4,6 +4,7 @@ export const FIREBASE_PROJECTS = Object.freeze({
   FA: Object.freeze({projectId: 'sahmt-17a16', appName: 'sahmt-v2', databaseId: '(default)'}),
   FB: Object.freeze({projectId: 'sahmt-gestao-5ae66', appName: 'sahmt-management', databaseId: '(default)'}),
   FC: Object.freeze({projectId: 'indicadores---sahmt', appName: 'sahmt-indicators', databaseId: '(default)'}),
+  FK: Object.freeze({projectId: 'sahmt-funcional-fk', appName: 'sahmt-functional-fk', databaseId: '(default)'}),
   FI: Object.freeze({projectId: 'sahmt-operacional-fi', appName: 'sahmt-fi-operacional', databaseId: '(default)'}),
   FJ: Object.freeze({projectId: 'sahmt-escala-fj', appName: 'sahmt-fj-escala', databaseId: '(default)'}),
   FH: Object.freeze({projectId: 'sahmt-etiquetas-fh', appName: 'sahmt-fh-etiquetas', databaseId: '(default)'}),

@@ -1,6 +1,5 @@
 import {assertFolderReadable} from '../server/folder-read-policy.js';
 import {parseTrainingFolderAccess} from '../src/html-training-folders.js';
-import {consolidatedPerformanceFolders} from '../src/operational-folders.js';
 import {fiError} from './store.js';
 
 const mapped = {
@@ -43,7 +42,6 @@ export function createFiFolderReader({readPolicy,readTrainingPolicy}) {
    return;
   }
   const folder=mapped[alias]?.[base];
-  if(alias==='FD'&&base.startsWith('sahmtPerformance'))return checkMonthly();
   if(!folder)return;
   const value=await assertOpen(folder);
   if(alias==='FB'&&aggregateFb.includes(base)){
@@ -56,7 +54,7 @@ export function createFiFolderReader({readPolicy,readTrainingPolicy}) {
   if(value?.disabled.some(id=>id.startsWith('gestao/'))||(await training())?.disabled.length)throw fiError('FI_FOLDER_DISABLED',403);
  }
  async function checkMonthly() {
-  for(const folder of [...consolidatedPerformanceFolders,'registros/qmentum','gestao'])await assertOpen(folder);
+  for(const folder of ['registros/qmentum','gestao'])await assertOpen(folder);
   if((await policy())?.disabled.some(id=>id.startsWith('gestao/'))||(await training())?.disabled.length)throw fiError('FI_FOLDER_DISABLED',403);
  }
  return {

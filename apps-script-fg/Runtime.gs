@@ -36,16 +36,21 @@ function validarCienciaChecklistFG(event){
     const day=Utilities.formatDate(cutoff,'America/Sao_Paulo','yyyy-MM-dd');
     const exemption=checklistScoringDayExemption(day);
     if(exemption){
-      const result={code:'FG_APURACAO_DISPENSADA',day:day,reason:exemption};
+      const result=fgAttachFkPerformancePush_({code:'FG_APURACAO_DISPENSADA',day:day,reason:exemption});
       console.log(JSON.stringify(result));return result;
     }
     const request=evaluationGet_('checklistSignatureRequests',day);
     const outcome=fgAcknowledgementOnTime_(request,day,cutoff)&&request.status==='PENDING_VALIDATION'
       ?validateChecklistSignatureRequest_(request,{scienceOnly:true})
       :apurarDiaEncerradoChecklistFG_(day,cutoff).outcome;
-    const result={code:'FG_CHECKLIST_PROCESSADO',day:day,outcome:outcome};
+    const result=fgAttachFkPerformancePush_({code:'FG_CHECKLIST_PROCESSADO',day:day,outcome:outcome});
     console.log(JSON.stringify(result));return result;
   }finally{lock.releaseLock();}
+}
+function fgAttachFkPerformancePush_(result){
+  try { result.functionalSync=fgPublishPerformanceToFk_(new Date()).code; }
+  catch(error) { result.functionalSync='PENDING';console.error('FK performance source push pending: '+String(error&&error.message||error)); }
+  return result;
 }
 function atualizarResponsavelChecklistFG_(){
   return checklistSourceTransaction_(function(transaction){

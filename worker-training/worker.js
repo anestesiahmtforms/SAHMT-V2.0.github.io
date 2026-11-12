@@ -1,5 +1,5 @@
 import {assertFolderReadable} from '../server/folder-read-policy.js';
-import {assertFePerformanceReadable,assertFeFolderReadable} from '../worker-fe-surveys/performance-policy.js';
+import {assertFeFolderReadable} from '../worker-fe-surveys/survey-policy.js';
 import {createProfessionalRegistrationService} from './professional-registration-service.js';
 import {createRegistrationDrive} from './registration-drive.js';
 import {createBiosafetyManualService} from './biosafety-manual-service.js';
@@ -70,7 +70,7 @@ function registrationRuntime(env){const runtime=sharedRuntime(env);return runtim
 function surveyRuntime(env){
  const runtime=sharedRuntime(env);
  let config;try{config=JSON.parse(env.REGISTRATION_DRIVE_CLIENT_JSON||'null');}catch{}
- return runtime.surveys??=createSurveyService({reportReaderEmail:config?.reportReaderEmail,checkPerformance:tx=>assertFePerformanceReadable(runtime.getAccessToken,tx),checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,runtime.getAccessToken,tx),profileStore:runtime.store,responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
+ return runtime.surveys??=createSurveyService({reportReaderEmail:config?.reportReaderEmail,checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,runtime.getAccessToken,tx),profileStore:runtime.store,responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken:runtime.getAccessToken})});
 }
 function yearEndStatusRuntime(env){
  const runtime=sharedRuntime(env);

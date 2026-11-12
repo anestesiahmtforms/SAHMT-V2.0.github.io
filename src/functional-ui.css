@@ -1,0 +1,16 @@
+.functional-page{display:grid;gap:1rem;max-width:1080px;margin:0 auto;padding:clamp(1rem,3vw,2rem);color:#123854}
+.functional-page>header{padding:1.2rem;border:1px solid #e7d7af;border-radius:18px;background:linear-gradient(145deg,#fffdf6,#e6edf0)}
+.functional-page h2{margin:.1rem 0 .5rem;font-size:clamp(1.4rem,4vw,2rem)}
+.functional-page .eyebrow{font-size:.75rem;font-weight:800;letter-spacing:.12em}
+.functional-source-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:.8rem}
+.functional-source-card{padding:1rem;border:1px solid #d8e2e6;border-radius:14px;background:#fff;box-shadow:0 4px 14px #12385412}
+.functional-source-card h3{margin:0 0 .5rem;font-size:1rem}
+.functional-source-card p{margin:0;color:#526b7b;font-size:.9rem}
+.functional-survey{padding:1rem;border:1px solid #e7d7af;border-radius:14px;background:#fffdf6}
+.functional-survey h3{margin:0 0 .5rem}
+.functional-survey p{margin:.25rem 0 1rem;color:#526b7b}
+.functional-survey-actions{display:flex;flex-wrap:wrap;gap:.7rem;margin:.8rem 0}
+.functional-survey-actions button{min-height:44px;padding:.65rem 1rem;border:1px solid #1a536f;border-radius:10px;background:#fff;color:#123854;font:inherit;font-weight:700;cursor:pointer}
+.functional-survey-actions button:hover,.functional-survey-actions button:focus-visible{background:#e6f0f3;outline:2px solid #e7d7af;outline-offset:2px}
+.functional-survey-frame{display:block;width:100%;min-height:min(78vh,900px);border:1px solid #d8e2e6;border-radius:12px;background:#fff}
+.functional-epidemiological-form{padding:1rem;border:1px solid #d8e2e6;border-radius:12px;background:#fff}

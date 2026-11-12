@@ -27,5 +27,5 @@ const after=await client.request(path+'/settings'),afterModules=await modules(aw
 demand(hash(afterModules)===hash(files),'RELEASE_FORWARD_READBACK_FAILED');
 demand(hash(normalize(after.bindings))===hash(normalize(settings.bindings)),'RELEASE_EXISTING_BINDINGS_CHANGED');
 
-const result={station,centralWorker:worker,originalModulePreserved:true,otherBindingsPreserved:true,forwardedActions:['SUBMIT','GET_PERFORMANCE'],otherRoutesUnchanged:true,newCron:null,at:new Date().toISOString(),billingChanges:0};
+const result={station,centralWorker:worker,originalModulePreserved:true,otherBindingsPreserved:true,forwardedActions:['SUBMIT'],otherRoutesUnchanged:true,newCron:null,at:new Date().toISOString(),billingChanges:0};
 await report('2026-11-01-'+station.toLowerCase()+'-cutover',result);console.log(JSON.stringify(result));

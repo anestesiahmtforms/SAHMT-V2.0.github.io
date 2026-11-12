@@ -15,7 +15,13 @@ if(publication&&process.env.GITHUB_SHA&&publication.sourceRevision!==process.env
 const shellRelease=publication?.release||Date.now(),appVersion=publication?.appVersion||APP_VERSION;
 for (const target of faOnly?['FA']:['FA', 'FB']) {
   const env = {...process.env, SAHMT_DEPLOYMENT_TARGET:target, VITE_APP_RELEASE:String(shellRelease),VITE_APP_VERSION:appVersion};
+  if (target === 'FA') Object.assign(env, {
+    VITE_FC_PERFORMANCE_ENABLED:'false', VITE_FD_PERFORMANCE_ENABLED:'false', VITE_FE_PERFORMANCE_ENABLED:'false'
+  });
   if (target === 'FB') Object.assign(env, {
+    VITE_FK_FUNCTIONAL_ENABLED:'false', VITE_FK_AUTH_ORIGIN:'', VITE_FK_AUTH_BRIDGE_ENDPOINT:'',
+    VITE_FK_REFRESH_ENDPOINT:'', VITE_FK_PERFORMANCE_ENABLED:'false', VITE_FK_PERFORMANCE_ENDPOINT:'',
+    VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED:'false', VITE_FK_SURVEY_ENDPOINT:'',
     VITE_FI_ADMIN_ENABLED:'false', VITE_FI_PILOT_ENABLED:'false',
     VITE_MANAGEMENT_FIREBASE_ENABLED:'false', VITE_INDICATORS_FIREBASE_ENABLED:'false',
     VITE_FIREBASE_PROJECT_AUTH_ENABLED:'false', VITE_FIREBASE_PROJECT_AUTH_AUTO_CONNECT_ENABLED:'false',

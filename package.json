@@ -74,7 +74,7 @@
     "test:biosafety-manual-browser": "node --test tests/biosafety-manual.browser.test.js",
     "test:registration": "node --test tests/registration.test.js tests/registration-drive.test.js",
     "test:registration-browser": "node --test tests/registration.browser.test.js",
-    "test:fe-performance": "node --test tests/fe-performance-data.test.js tests/fe-performance-ui.test.js tests/institutional-survey-client.test.js tests/survey-service.test.js tests/survey-worker.test.js",
+    "test:fe-performance": "node --test tests/institutional-survey-client.test.js tests/survey-service.test.js tests/survey-worker.test.js",
     "test:fe-performance-rules": "firebase emulators:exec --config firebase.climate.test.json --project demo-sahmt-fe-performance --only firestore --non-interactive \"node --test tests/fe-performance.rules.test.js\"",
     "test:communication": "node --test tests/communication-usage.test.js tests/communication-queue-budget.test.js tests/communication-delivery-feedback.test.js tests/communication-operational-notices.test.js tests/communication.test.js tests/communication.workerd.test.js tests/communication-client-lifecycle.test.js",
     "test:communication-browser": "node --test tests/communication.browser.test.js tests/communication-home.browser.test.js",

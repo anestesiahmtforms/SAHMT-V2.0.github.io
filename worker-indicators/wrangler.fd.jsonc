@@ -10,8 +10,7 @@
   "workers_dev": true,
   "vars": {
     "INDICATORS_ENABLED": "true",
-    "FD_FIXED_REFRESH_ENABLED": "true",
-    "SAHMT_PERFORMANCE_ENABLED": "false"
+    "FD_FIXED_REFRESH_ENABLED": "true"
   },
   "triggers": {
     "crons": []

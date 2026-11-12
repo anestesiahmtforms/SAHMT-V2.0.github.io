@@ -6,7 +6,7 @@
  "compatibility_flags":["nodejs_compat"],
  "workers_dev":false,
  "services":[{"binding":"FD_INDICATOR_EXECUTOR","service":"sahmt-indicators"}],
- "vars":{"FD_FIXED_REFRESH_ENABLED":"true","SAHMT_PERFORMANCE_ENABLED":"false"},
+ "vars":{"FD_FIXED_REFRESH_ENABLED":"true"},
  "triggers":{"crons":["0 5 * * *"]},
  "observability":{"enabled":false}
 }

@@ -8,7 +8,9 @@
  "workers_dev":true,
  "vars":{
   "INSTITUTIONAL_SURVEYS_ENABLED":"true",
-  "FA_WEB_API_KEY":"AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"
+  "FA_WEB_API_KEY":"AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA",
+  "FK_APPS_SCRIPT_URL":"https://script.google.com/macros/s/AKfycbw1IOYZy4wuy4nt72FPrsUh_MYYWXrDfndgQmZCqTA9hSmYEJzMRe5w6EIarzTkXN5B/exec"
  },
+ "triggers":{"crons":["10 3 * * *"]},
  "observability":{"enabled":false}
 }

@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return database == '(default)' && request.auth != null;
+    }
+
+    function functionalAdmin() {
+      return signedIn() && request.auth.token.get('functionalRole', '') == 'ADMIN';
+    }
+
+    match /functionalProfiles/{uid} {
+      // Firestore cannot filter individual fields from a document read. Keep
+      // personal health and personnel data owner-only; scoped manager actions
+      // must be served through their permission-checked backend endpoints.
+      allow get: if signedIn() && (functionalAdmin() || request.auth.uid == uid);
+      allow list: if functionalAdmin();
+      allow create, update, delete: if false;
+    }
+
+    match /surveyParticipation/{participationId} {
+      allow get: if signedIn() && participationId.matches(
+        '^' + request.auth.uid + '_(climate|stress|epidemiological)_2026$'
+      );
+      allow list, create, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

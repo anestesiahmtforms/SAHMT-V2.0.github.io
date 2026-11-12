@@ -1,5 +1,7 @@
 # Desempenho SAHMT
 
+> **Registro histórico:** este documento descreve o desenho anterior centrado em FD e está superado pela migração em andamento para FK. As rotas de consulta legadas de desempenho foram desativadas no caminho central, e o agregador FK não lê o projeto FB. Não publique uma pontuação FK parcial: a origem FB ainda não possui um exportador aprovado. Nenhuma mudança no projeto ou nos dados de FB faz parte desta migração.
+
 O acesso fica em Governança → Indicadores → **DESEMPENHO - SAHMT**. O cabeçalho usa o contêiner existente. A FA encaminha ao painel de FD. Cada pessoa consulta seu próprio saldo e histórico, e o maior total da equipe serve de referência sem identificar outra pessoa.
 
 As seis categorias são Operacionais (FG/FI), Treinamentos e Gestão (FB), Registros (FC), Enquetes (FE), Notificações e Educação Continuada. As duas últimas recebem entradas administrativas. Correções mantêm o lançamento original e acrescentam uma diferença auditável. O saldo confirmado só muda na apuração diária, inclusive para lançamentos manuais.
