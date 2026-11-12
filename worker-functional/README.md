@@ -10,4 +10,4 @@ Keep FA's `VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED` disabled until the updated App
 
 ## SAHMT performance
 
-`/v1/performance` remains disabled. The FK source adapter contains no FB project ID or FB Firestore reader. The aggregate fails closed because the FB source handoff is not yet implemented, so it cannot publish a partial total. FG, FJ, and FC export their ledgers to FK; FE records answer-free EQUIPE participation events in its own project and exports them to FK. Do not enable performance until FB has an approved source-side publisher and complete batches are reconciled in FK.
+Performance remains separate in each instance and is not integrated with FK. FK does not read performance ledgers or events from FB, FC, FE, FG, or FJ, and no source publisher is configured. A future transfer requires a separately approved process.

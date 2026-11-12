@@ -3,7 +3,6 @@ import {createTrainingWorker} from '../worker-training/worker.js';
 import {createSurveyService} from '../worker-training/survey-service.js';
 import {createFirestoreStore} from '../worker-training/firestore.js';
 import {feServiceToken} from './auth.js';
-import {publishFePerformanceToFk} from './functional-push.js';
 
 const runtimes=new WeakMap();
 function buildSurveyService(env){
@@ -28,9 +27,6 @@ export function createFeSurveyWorker(options={}){
  return {fetch(request,env,ctx){
   if(new URL(request.url).pathname!=='/v1/institutional-surveys')return Response.json({code:'SURVEY_ROUTE_UNKNOWN'},{status:404,headers:{'Cache-Control':'no-store'}});
   return service.fetch(request,env,ctx);
- },scheduled(controller,env,ctx){
-  const run=()=>publishFePerformanceToFk({env,controller,tokenFactory:credentials=>feServiceToken({credentials})()});
-  if(ctx?.waitUntil)ctx.waitUntil(run());else return run();
  }};
 }
 export default createFeSurveyWorker();

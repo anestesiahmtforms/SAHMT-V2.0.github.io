@@ -46,14 +46,13 @@ function sourceDetail(key,value) {
 
 export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', isCurrent = () => true} = {}) {
   let disposed = false;
-  let performanceCleanup, surveyCleanup;
+  let surveyCleanup;
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
   let bridge;
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
-    performanceCleanup?.();
     surveyCleanup?.();
     root?.removeEventListener('click', onSurveyClick);
     bridge?.dispose();
@@ -95,15 +94,8 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
         ? '<div class="functional-survey-actions"><button type="button" data-fk-survey="climate">PESQUISA DE CLIMA ORGANIZACIONAL</button><button type="button" data-fk-survey="stress">AVALIAÇÃO DE ESTRESSE E FADIGA</button><button type="button" data-fk-survey="epidemiological">CADASTRO EPIDEMIOLÓGICO - SAHMT</button></div><div data-fk-survey-frame></div>'
         : ['EQUIPE','ADMINISTRADOR'].includes(group)?'<p class="empty-state" role="status">Os formulários estão sendo migrados para o armazenamento próprio do FK.</p>':'')
       + '</section>'
-      + (import.meta.env.VITE_FK_PERFORMANCE_ENABLED === 'true' && import.meta.env.VITE_FK_PERFORMANCE_ENDPOINT ? '<section class="functional-performance"><h3>Desempenho - SAHMT</h3><div data-fk-performance></div></section>' : '')
       + '</section>');
     root.addEventListener('click', onSurveyClick);
-    if (import.meta.env.VITE_FK_PERFORMANCE_ENABLED === 'true' && import.meta.env.VITE_FK_PERFORMANCE_ENDPOINT) {
-      const [{mountSahmtPerformance},{callSahmtPerformanceApi}]=await Promise.all([import('./sahmt-performance-ui.js'),import('./sahmt-performance-api.js')]);
-      if (!current()) return cleanup;
-      const target=root.querySelector('[data-fk-performance]');
-      if(target)performanceCleanup=mountSahmtPerformance(target,{request:(action,input)=>callSahmtPerformanceApi({uid,isCurrent:current,action,input}),isCurrent:current});
-    }
   } catch {
     paint('<section class="functional-page"><h2>Funcional</h2><p class="empty-state" role="status">Não foi possível confirmar sua autorização em FA e abrir seu perfil individual em FK. Tente novamente mais tarde.</p></section>');
   }

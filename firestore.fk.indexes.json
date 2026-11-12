@@ -1,29 +1,4 @@
 {
-  "indexes": [
-    {
-      "collectionGroup": "sahmtPerformanceSourceBatches",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "source", "order": "ASCENDING" },
-        { "fieldPath": "cutoff", "order": "ASCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "sahmtPerformanceSourceSnapshots",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "source", "order": "ASCENDING" },
-        { "fieldPath": "cutoff", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "sahmtPerformanceSourceSnapshots",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "source", "order": "ASCENDING" },
-        { "fieldPath": "cutoff", "order": "ASCENDING" }
-      ]
-    }
-  ],
+  "indexes": [],
   "fieldOverrides": []
 }

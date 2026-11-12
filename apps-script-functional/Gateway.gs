@@ -6,7 +6,6 @@ var FK_API_KEY_ = 'AIzaSyAFlbjIqKzfwEnZgyMOIveNsp4I4Wbf7QM';
 var FK_SIGNER_ = 'fk-functional-token-signer@sahmt-funcional-fk.iam.gserviceaccount.com';
 var FK_ALLOWED_SOURCES_ = ['performance','professionalRegistration','epidemiological','fe','climateSurvey',
   'stressFatigue','biosafetyManual','vaccination','dosimetry'];
-var FK_PERFORMANCE_SOURCE_CATEGORIES_ = {FG:'OPERATIONS',FJ:'OPERATIONS',FC:'RECORDS',FE:'SURVEYS'};
 var FK_AUTH_AUDIENCE_ = 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit';
 var FK_ADMIN_EMAIL_ = 'wx2064@gmail.com';
 var FK_MANAGER_EMAIL_ = 'marcio.henrique82@gmail.com';
@@ -18,8 +17,6 @@ function doPost(event) {
     if (payload.action === 'AUTH_SESSION') return json_(authorizeFaUser_(payload.faIdToken));
     if (payload.action === 'SYNC_OVERVIEW') return json_(syncOwnOverview_(payload.faIdToken));
     if (payload.action === 'FUNCTIONAL_SURVEY_SUBMIT') return json_(submitFunctionalSurvey_(payload));
-    if (payload.action === 'PERFORMANCE_SOURCE_PUSH') return json_(writePerformanceSourceBatch_(payload));
-    if (payload.action === 'PERFORMANCE_SOURCE_PUBLISH') return json_(publishPerformanceSourceBatch_(payload));
     throw new Error('FK_ACTION_INVALID');
   } catch (error) {
     return json_({ code: /^FK_[A-Z0-9_]+$/.test(String(error && error.message)) ? String(error.message) : 'FK_REQUEST_UNAVAILABLE' });
@@ -207,68 +204,6 @@ function createOnlyWrite_(name, fields) {
   return {update:{name:name, fields:toFirestoreFields_(fields)}, currentDocument:{exists:false}};
 }
 
-function writePerformanceSourceBatch_(payload) {
-  var source = payload && payload.source, category = FK_PERFORMANCE_SOURCE_CATEGORIES_[source];
-  var cutoff = payload && payload.cutoff, effectiveFrom = payload && payload.effectiveFrom;
-  var chunkIndex = payload && payload.chunkIndex, chunkCount = payload && payload.chunkCount;
-  var rows = payload && payload.rows;
-  if (!category || !Number.isSafeInteger(cutoff) || cutoff < Date.parse('2026-12-01T03:00:00.000Z') || cutoff > Date.now() + 300000 ||
-      !Number.isSafeInteger(effectiveFrom) || effectiveFrom < Date.parse('2026-12-01T03:00:00.000Z') || effectiveFrom >= cutoff ||
-      !Number.isSafeInteger(chunkIndex) || !Number.isSafeInteger(chunkCount) || chunkCount < 1 || chunkCount > 100 || chunkIndex < 0 || chunkIndex >= chunkCount ||
-      !Array.isArray(rows) || rows.length > 500 || !rows.length && (chunkCount !== 1 || chunkIndex !== 0)) throw new Error('FK_SOURCE_BATCH_INVALID');
-  var seen = new Set(), cleanRows = rows.map(function(row) {
-    if (!row || typeof row !== 'object' || Array.isArray(row) ||
-        Object.keys(row).some(function(key) { return ['id','uid','category','points','createdAt','label'].indexOf(key) < 0; }) ||
-        typeof row.id !== 'string' || !/^[A-Za-z0-9_.@+:%-]{1,200}$/.test(row.id) || seen.has(row.id) ||
-        typeof row.uid !== 'string' || !/^[A-Za-z0-9_.@+:%-]{1,128}$/.test(row.uid) || row.category !== category ||
-        typeof row.points !== 'number' || !Number.isFinite(row.points) || Math.abs(row.points) > 1000000 || Math.abs(row.points * 100 - Math.round(row.points * 100)) > 1e-6 ||
-        !Number.isSafeInteger(row.createdAt) || row.createdAt < effectiveFrom || row.createdAt >= cutoff ||
-        typeof row.label !== 'string' || row.label.length > 120) throw new Error('FK_SOURCE_ROW_INVALID');
-    seen.add(row.id);
-    return {id:row.id, uid:row.uid, category:category, points:row.points, createdAt:row.createdAt, label:row.label};
-  });
-  var batchId = source + '_' + cutoff + '_' + chunkIndex;
-  var fields = {schemaVersion:1, source:source, cutoff:cutoff, effectiveFrom:effectiveFrom,
-    chunkIndex:chunkIndex, chunkCount:chunkCount, rows:cleanRows};
-  if (Utilities.newBlob(JSON.stringify(fields)).getBytes().length > 425000) throw new Error('FK_SOURCE_BATCH_TOO_LARGE');
-  var documentRoot = 'projects/' + FK_PROJECT_ + '/databases/(default)/documents/';
-  var response = UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/' + FK_PROJECT_ +
-    '/databases/(default)/documents:commit', {
-      method:'post', contentType:'application/json',
-      headers:{Authorization:'Bearer ' + getFkWriterAccessToken_()},
-      payload:JSON.stringify({writes:[createOnlyWrite_(documentRoot + 'sahmtPerformanceSourceSnapshots/' + batchId, fields)]}),
-      muteHttpExceptions:true
-    });
-  if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) {
-    var errorStatus = '';
-    try { errorStatus = JSON.parse(response.getContentText()).error.status || ''; } catch (_) {}
-    throw new Error('FK_SOURCE_BATCH_WRITE_FAILED');
-  }
-  return {code:'FK_SOURCE_BATCH_SAVED', source:source, cutoff:cutoff, chunkIndex:chunkIndex, rowCount:cleanRows.length};
-}
-
-function publishPerformanceSourceBatch_(payload) {
-  var source=payload&&payload.source,category=FK_PERFORMANCE_SOURCE_CATEGORIES_[source];
-  var cutoff=payload&&payload.cutoff,effectiveFrom=payload&&payload.effectiveFrom;
-  var chunkCount=payload&&payload.chunkCount,rowCount=payload&&payload.rowCount;
-  if(!category||!Number.isSafeInteger(cutoff)||cutoff<Date.parse('2026-12-01T03:00:00.000Z')||cutoff>Date.now()+300000||
-    !Number.isSafeInteger(effectiveFrom)||effectiveFrom<Date.parse('2026-12-01T03:00:00.000Z')||effectiveFrom>=cutoff||
-    !Number.isSafeInteger(chunkCount)||chunkCount<1||chunkCount>100||!Number.isSafeInteger(rowCount)||rowCount<0||rowCount>30000)
-    throw new Error('FK_SOURCE_BATCH_INVALID');
-  var id=source+'_'+cutoff;
-  var fields={schemaVersion:1,source:source,cutoff:cutoff,effectiveFrom:effectiveFrom,chunkCount:chunkCount,rowCount:rowCount,status:'COMPLETE'};
-  var root='projects/'+FK_PROJECT_+'/databases/(default)/documents/';
-  var response=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FK_PROJECT_+
-    '/databases/(default)/documents:commit',{method:'post',contentType:'application/json',
-      headers:{Authorization:'Bearer '+getFkWriterAccessToken_()},
-      payload:JSON.stringify({writes:[createOnlyWrite_(root+'sahmtPerformanceSourceBatches/'+id,fields)]}),muteHttpExceptions:true});
-  if(response.getResponseCode()<200||response.getResponseCode()>=300){
-    var status='';try{status=JSON.parse(response.getContentText()).error.status||'';}catch(_){}
-    throw new Error('FK_SOURCE_BATCH_PUBLISH_FAILED');
-  }
-  return {code:'FK_SOURCE_BATCH_PUBLISHED',source:source,cutoff:cutoff};
-}
-
 function syncOwnOverview_(idToken) {
   var access = authorizeFaUser_(idToken, false), uid = access.uid;
   var canRead = access.group === 'EQUIPE' || access.group === 'ADMINISTRADOR';
@@ -384,11 +319,7 @@ function verifyEnvelope_(envelope) {
   var payload;
   try { payload = JSON.parse(envelope.payload); } catch (_) { throw new Error('FK_ENVELOPE_INVALID'); }
   var properties=PropertiesService.getScriptProperties(),secret;
-  if(payload.action==='PERFORMANCE_SOURCE_PUSH'||payload.action==='PERFORMANCE_SOURCE_PUBLISH'){
-    var source=payload.source;
-    if(!Object.prototype.hasOwnProperty.call(FK_PERFORMANCE_SOURCE_CATEGORIES_,source))throw new Error('FK_SOURCE_INVALID');
-    secret=properties.getProperty('FK_SOURCE_HMAC_SECRET_'+source);
-  }else secret=properties.getProperty('FK_HMAC_SECRET');
+  secret=properties.getProperty('FK_HMAC_SECRET');
   if (!secret || secret.length < 32) throw new Error('FK_SECRET_NOT_CONFIGURED');
   var message = envelope.timestamp + '\n' + envelope.nonce + '\n' + envelope.payload;
   var bytes = Utilities.computeHmacSha256Signature(message, secret, Utilities.Charset.UTF_8);
