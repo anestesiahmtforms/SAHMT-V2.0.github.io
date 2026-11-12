@@ -6,12 +6,13 @@ const fcConfig = Object.freeze({apiKey: 'synthetic-public-key', authDomain: 'ind
   projectId: 'indicadores---sahmt', storageBucket: 'indicadores---sahmt.firebasestorage.app',
   messagingSenderId: '123456789012', appId: '1:123456789012:web:abcdef0123456789'});
 
-test('central registry keeps all seven migrated Firebase apps separate', () => {
-  assert.deepEqual(Object.keys(FIREBASE_PROJECTS), ['FA', 'FB', 'FC', 'FI', 'FJ', 'FH', 'FG']);
-  assert.deepEqual(Object.values(FIREBASE_PROJECTS).map(value => value.databaseId), Array(7).fill('(default)'));
-  assert.equal(new Set(Object.values(FIREBASE_PROJECTS).map(value => value.projectId)).size, 7);
-  assert.equal(new Set(Object.values(FIREBASE_PROJECTS).map(value => value.appName)).size, 7);
+test('central registry keeps all eight migrated Firebase apps separate', () => {
+  assert.deepEqual(Object.keys(FIREBASE_PROJECTS), ['FA', 'FB', 'FC', 'FK', 'FI', 'FJ', 'FH', 'FG']);
+  assert.deepEqual(Object.values(FIREBASE_PROJECTS).map(value => value.databaseId), Array(8).fill('(default)'));
+  assert.equal(new Set(Object.values(FIREBASE_PROJECTS).map(value => value.projectId)).size, 8);
+  assert.equal(new Set(Object.values(FIREBASE_PROJECTS).map(value => value.appName)).size, 8);
   assert.equal(FIREBASE_PROJECTS.FG.projectId, 'sahmt-checklist-fg');
+  assert.equal(FIREBASE_PROJECTS.FK.projectId, 'sahmt-funcional-fk');
   assert.equal(FIREBASE_PROJECTS.FC.projectId, 'indicadores---sahmt');
 });
 
