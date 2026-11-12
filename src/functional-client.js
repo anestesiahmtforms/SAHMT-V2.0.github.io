@@ -1,6 +1,7 @@
 import {getFunctionalAuth} from './functional-firebase.js';
 
-const refreshEndpoint=import.meta.env.VITE_FK_REFRESH_ENDPOINT;
+const env=import.meta.env||{};
+const refreshEndpoint=env.VITE_FK_REFRESH_ENDPOINT;
 
 export async function refreshFunctionalOverview({faAuth,uid,isCurrent=()=>true,fetchImpl=fetch}={}){
   const source=faAuth?.currentUser;
@@ -16,7 +17,7 @@ export async function refreshFunctionalOverview({faAuth,uid,isCurrent=()=>true,f
 
 /** Calls the independent FK performance API using only the current FK session. */
 export async function callFunctionalAction({uid,isCurrent=()=>true,action,input,signal}={}){
-  const endpoint=import.meta.env.VITE_FK_PERFORMANCE_ENDPOINT;
+  const endpoint=env.VITE_FK_PERFORMANCE_ENDPOINT;
   const auth=getFunctionalAuth(),user=auth?.currentUser;
   if(!endpoint||!user||user.uid!==uid||!isCurrent())throw new Error('FK_SESSION_REQUIRED');
   const token=await user.getIdToken();
