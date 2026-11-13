@@ -20,6 +20,6 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=docu
  throw Error('Unexpected synthetic operation '+action);
 }};
 const root=document.querySelector('#root');
-const mount=host=>mountCommunication(host,{client,adminMode:admin,appSession:{user:{uid:'fixture-user',email:admin?'wx2064@gmail.com':'person@example.test'}},onBack:()=>{if(params.has('hub'))host.closest('dialog').querySelector('[data-hub-back]').click();else host.textContent='Voltou para Governança';}});
+const mount=host=>mountCommunication(host,{client,adminMode:admin,appSession:{user:{uid:'fixture-user',email:admin?'wx2064@gmail.com':'person@example.test',emailVerified:true}},onBack:()=>{if(params.has('hub'))host.closest('dialog').querySelector('[data-hub-back]').click();else host.textContent='Voltou para Governança';}});
 if(params.has('hub'))mountManagementHub(root,{communicationAllowed:admin,access:{groups:true,performance:true,records:true,results:true,surveys:true},isSurveySessionCurrent:()=>true,openCommunication:async host=>mount(host),onExit(){},onNavigate(){}});else mount(root);
 </script></html>
