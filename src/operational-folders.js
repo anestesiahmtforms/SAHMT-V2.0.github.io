@@ -3,6 +3,7 @@ import {folderReadable} from '../server/folder-read-policy.js';
 
 export const operationalFolders = Object.freeze({
  'comunicacao':'Central de Comunicação',
+ 'funcional':'Funcional',
  'indicadores':'Indicadores SAHMT',
  'registros':'Registros',
  'registros/ocorrencias':'Ocorrências',
@@ -55,6 +56,7 @@ export const consolidatedPerformanceFolders = Object.freeze([
 
 const routes = Object.freeze({
  communications:'comunicacao',
+ functional:'funcional',
  occurrences:'registros/ocorrencias',
  qmentum:'registros/qmentum',
  'year-end-schedule':'consultas/escala-final-de-ano',
