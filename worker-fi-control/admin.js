@@ -117,9 +117,11 @@ export function createFiAdminService({store,projections={},now=Date.now}) {
         return {value:{count:records.length},writes:records.flatMap(contactWrites)};
       });
     }
-    if(action==='admin.users.list'||action==='updates.users') {
-      const rows=(await list(store,'fiAdminUsers')).filter(row=>!isSystemOwnerEmail(row.email));
-      return rows.filter(row=>action==='admin.users.list'||(row.active===true&&row.access===true));
+    if(action==='admin.users.list')return (await list(store,'fiAdminUsers')).filter(row=>!isSystemOwnerEmail(row.email));
+    if(action==='updates.users') {
+      const rows=await list(projections.FA,'users');
+      return rows.filter(row=>uidValid(row.id)&&row.uid===row.id&&row.active===true&&row.access===true&&!isSystemOwnerEmail(row.email))
+        .map(({uid,email,displayName,sigla,active,access})=>({uid,email,displayName,sigla,active,access}));
     }
     if(action==='admin.categories.list')return list(store,'memberCategoryAssignments');
     if(action==='admin.requests.list')return (await list(projections.FA,'accessRequests')).filter(r=>r.status==='PENDING'&&!isSystemOwnerEmail(r.email));

@@ -9,6 +9,10 @@
 .app-device-row{display:grid;gap:5px;border-top:1px solid #173b5033;padding:12px 0;overflow-wrap:anywhere}
 .app-update-user{display:grid;gap:8px;border:1px solid #173b5033;border-radius:14px;padding:14px;margin:14px 0;overflow-wrap:anywhere}
 .app-updates-command{width:min(94vw,840px)}
+.fi-admin-dialog.app-updates-command[open] > header {
+  background: #f9dddd;
+  color: #622b31;
+}
 
 .fi-admin-dialog.app-updates-command[open] > .fi-admin-dialog__body {
   display: grid;

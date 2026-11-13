@@ -70,6 +70,19 @@ test('a new verified FA pending request receives an explicit FI directory link d
  assert.equal((await f.store.get('users','new-user')).email,'new@example.test');
  assert.equal((await f.FA.get('accessRequests','new-user')).status,'APPROVED');
 });
+test('update roster uses active FA profiles even if their FI profile is inactive',async()=>{
+  const f=fixture({
+    'fiAdminUsers/fa-ana':{uid:'fa-ana',email:'ana@example.test',active:false,access:true},
+    'fiAdminUsers/fi-only':{uid:'fi-only',email:'fi-only@example.test',active:true,access:true}
+  });
+  await f.FA.transaction(tx=>tx.set('users/blocked',{uid:'blocked',email:'blocked@example.test',active:true,access:false}));
+  const rows=await f.run('updates.users');
+  assert.deepEqual(rows.map(row=>row.uid),['fa-ana']);
+  assert.equal(rows[0].active,true);
+  assert.equal('permissions' in rows[0],false);
+  assert.equal((await f.store.get('fiAdminUsers','fa-ana')).active,false);
+});
+
 test('targeted update administration in FI preserves the FA client signal and per-device receipts',async()=>{
   const f=fixture({'fiAdminUsers/fa-ana':{uid:'fa-ana',email:'ana@example.test',active:true,access:true}});
   await f.FA.transaction(tx=>tx.set('users/fa-ana/appInstallations','device_FA',{uid:'fa-ana',deviceId:'device',target:'FA',loadedRelease:100}));
