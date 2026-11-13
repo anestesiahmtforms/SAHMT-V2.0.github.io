@@ -34,6 +34,7 @@ import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTraini
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {isValidDateKey, localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
+import {scheduleReadFailure} from './schedule-read-error.js';
 import {formatScheduleReleaseTime, visibleScheduleReleaseSiglas} from './schedule-release.js';
 import {releaseNoticeFeedback, releaseNoticeError, scheduleReleaseIdentity} from './communication-operational-notices.js';
 import {scheduleDelayFromMarker} from './schedule-event-marker.js';
@@ -1202,6 +1203,7 @@ async function loadSchedule() {
     let selectedVacations = [];
     let schedulePending = true;
     let scheduleError = false;
+    let scheduleFailure=null;
     let contactsError = false;
     let vacationsError = false, vacationsReady = false, snapshotSaved = false;
     const draw = () => {
@@ -1218,7 +1220,7 @@ async function loadSchedule() {
         return;
       }
       if (!schedule && scheduleError) {
-        content.innerHTML = `${messages.join('')}<p class="empty-state">Não foi possível carregar a escala agora.</p><button type="button" class="secondary-button" data-schedule-retry>Tentar novamente</button>`;
+        content.innerHTML = `${messages.join('')}<p class="empty-state">${escapeHtml(scheduleFailure?.message||'Não foi possível carregar a escala agora.')}</p>${scheduleFailure?'<small role="status" data-schedule-diagnostic>'+escapeHtml(scheduleFailure.reference)+'</small>':''}<button type="button" class="secondary-button" data-schedule-retry>Tentar novamente</button>`;
         content.querySelector?.('[data-schedule-retry]')?.addEventListener('click',()=>void render());
         return;
       }
@@ -1269,9 +1271,10 @@ async function loadSchedule() {
         schedule = value;
         schedulePending = false;
         draw();
-      }).catch(() => {
+      }).catch(error => {
         if (requestId !== requestSequence || !scheduleCurrent()) return;
         schedulePending = false;
+        scheduleFailure=scheduleReadFailure(error);
         scheduleError = true;homeScheduleCache.clear(homeUid);
         draw();
       });
@@ -1297,6 +1300,7 @@ async function loadSchedule() {
     } catch (error) {
       if (requestId !== requestSequence || !scheduleCurrent()) return;
       schedulePending = false;
+      scheduleFailure=scheduleReadFailure(error);
       scheduleError = true;
       draw();
     }

@@ -21,7 +21,14 @@ export function createOperationalModuleExchange({station, fetchImpl = globalThis
     let reader, response;
     try {
       const headers = {'Content-Type': 'application/json', Accept: 'application/json', Authorization: 'Bearer ' + faIdToken};
-      const appCheck = await getAppCheckToken();
+      let appCheck=null;
+      try{appCheck=await getAppCheckToken();}
+      catch(error){
+        // FJ forwards optional attestation to FA Firestore. Provider failures
+        // on Safari must reach the server's authorization decision, rather
+        // than preventing the exchange locally. Server denial stays final.
+        if(station!=='FJ'||!/^app-?check\//i.test(String(error?.code||'')))throw error;
+      }
       if (signal?.aborted) throw fail('MODULE_SOURCE_SESSION_CHANGED');
       if (appCheck !== null && appCheck !== undefined && (typeof appCheck !== 'string' || !appCheck ||
           appCheck.length > 16000 || /[\s\x00-\x1f]/.test(appCheck))) throw fail('MODULE_BROKER_REQUEST_INVALID');

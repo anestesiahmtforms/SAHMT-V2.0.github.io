@@ -39,17 +39,20 @@ export function createOperationalModuleSession({station, faAuth, targetAuth, sub
     const live = () => active && !disposed && !timedOut && owner === generation && faAuth.currentUser === source;
     const assertLive = () => {if (!live()) throw fail('MODULE_SOURCE_SESSION_CHANGED');};
     const work = enqueue(async () => {
-      let signedUser;
+      let signedUser,phase='source-token';
       try {
         assertLive();
         if (targetAuth.currentUser && targetAuth.currentUser.uid !== uid) await clearTarget();
         assertLive();
         const faIdToken = await source.getIdToken(); assertLive();
+        phase='exchange';
         const credential = await exchange({faIdToken, faUid: uid, signal: controller.signal}); assertLive();
         if (credential?.uid !== uid || typeof credential.customToken !== 'string' || !credential.customToken ||
             credential.expiresIn !== 300) throw fail('MODULE_SESSION_INVALID');
+        phase='target-login';
         const signed = await signIn(targetAuth, credential.customToken); signedUser = signed?.user; assertLive();
         if (!signedUser || signedUser.uid !== uid || targetAuth.currentUser !== signedUser) throw fail('MODULE_SESSION_INVALID');
+        phase='claims';
         const result = await signedUser.getIdTokenResult(false); assertLive();
         const claims = result?.claims, expiry = claims?.moduleLeaseExpiresAt;
         if (claims?.aud !== projectId || claims?.sub !== uid || claims?.sourceProjectId !== 'sahmt-17a16' ||
@@ -66,7 +69,10 @@ export function createOperationalModuleSession({station, faAuth, targetAuth, sub
         clearLease();
         // The serial queue prevents this cleanup from reaching a newer signin.
         if (targetAuth.currentUser) {try {await clearTarget();} catch {}}
-        throw fail(/^MODULE_[A-Z_]+$/.test(error?.code || '') ? error.code : 'MODULE_SESSION_UNAVAILABLE');
+        const sdkCodes={'auth/network-request-failed':'MODULE_AUTH_NETWORK','auth/invalid-custom-token':'MODULE_AUTH_INVALID_TOKEN',
+          'auth/custom-token-mismatch':'MODULE_AUTH_PROJECT_MISMATCH','auth/user-disabled':'MODULE_AUTH_USER_DISABLED',
+          'auth/too-many-requests':'MODULE_AUTH_THROTTLED','auth/operation-not-allowed':'MODULE_AUTH_DISABLED'};
+        throw Object.assign(fail(/^MODULE_[A-Z_]+$/.test(error?.code || '') ? error.code : sdkCodes[error?.code]||'MODULE_SESSION_UNAVAILABLE'),{phase});
       }
     });
     const timeout = new Promise((_, reject) => {timer = setTimer(() => {
