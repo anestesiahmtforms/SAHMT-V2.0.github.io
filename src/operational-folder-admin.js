@@ -65,11 +65,11 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent}) {
    const ownActive=!policy.disabled?.includes(id);
    const effective=operationalFolderAllowed(policy,id);
    const state=effective?'Ativa':ownActive?'Desativada pela pasta principal':'Desativada';
-   const action=ownActive?'Desativar':'Ativar';
+   const action=ownActive?(effective?'Desativar':'Desativar também'):'Ativar';
    return `<li class="fi-folder-row">
     <div class="fi-folder-name"><strong>${title}</strong>${parents?`<small>${parents}</small>`:''}</div>
     <span class="fi-folder-state" data-state="${effective?'active':ownActive?'inherited':'disabled'}">${state}</span>
-    <button type="button" data-operational-folder="${id}" data-enable="${!ownActive}" aria-label="${action} ${title}" ${busy||pending?'disabled':''}>${action}</button>
+   <button type="button" data-operational-folder="${id}" data-enable="${!ownActive}" aria-label="${action} ${title}" ${busy||pending?'disabled':''}>${action}</button>
    </li>`;
   };
   const total=Object.keys(operationalFolders).length;
@@ -112,7 +112,9 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent}) {
    }
    inspection=null;
    message=result.pending?'Alguns serviços ainda não confirmaram. Use Retomar atualização.':'Atualização confirmada pelos serviços.';
-  }catch(error){message=error.code==='FOLDER_POLICY_CONFLICT'?'O controle mudou em outra sessão. Atualize a consulta e tente novamente.':'Não foi possível concluir a operação na Central FI.';}
+  }catch(error){message=error.code==='FOLDER_POLICY_CONFLICT'?'O controle mudou em outra sessão. Atualize a consulta e tente novamente.'
+   :error.code==='FOLDER_POLICY_INPUT'?'A Central FI ainda não reconhece esta pasta. Atualize o Worker de controle antes de alterar o estado.'
+   :'Não foi possível concluir a operação na Central FI.';}
   finally{
    busy=false;
    render(restoreFocus&&root.ownerDocument.activeElement===root.ownerDocument.body?id:null);

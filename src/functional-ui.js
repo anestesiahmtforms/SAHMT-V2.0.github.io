@@ -7,6 +7,7 @@ import {safeGoogleAuthCode} from './google-project-auth-core.js';
 import {refreshFunctionalOverview} from './functional-client.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import {callFunctionalSurvey} from './functional-survey-client.js';
+import {operationalContentAllowed} from './operational-folder-runtime.js';
 import './functional-ui.css';
 
 let activeFunctionalMountCleanup = null;
@@ -28,6 +29,22 @@ const sourceLabels = Object.freeze({
   vaccination: 'Vacinação',
   dosimetry: 'Dosimetria'
 });
+const sourceFolders = Object.freeze({
+  performance:'funcional/desempenho',
+  professionalRegistration:'funcional/cadastro-profissional',
+  epidemiological:'funcional/cadastro-epidemiologico',
+  fe:'funcional/pesquisas-institucionais',
+  climateSurvey:'funcional/pesquisas-institucionais/clima',
+  stressFatigue:'funcional/pesquisas-institucionais/estresse-fadiga',
+  biosafetyManual:'funcional/biosseguranca/manual',
+  vaccination:'funcional/biosseguranca/vacinacao',
+  dosimetry:'funcional/biosseguranca/dosimetria'
+});
+const surveyFolders = Object.freeze({
+  climate:'funcional/pesquisas-institucionais/clima',
+  stress:'funcional/pesquisas-institucionais/estresse-fadiga',
+  epidemiological:'funcional/cadastro-epidemiologico'
+});
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const authMessages=Object.freeze({
   AUTH_GOOGLE_IDENTITY_MISMATCH:'Escolha a mesma conta Google já autenticada no SAHMT.',
@@ -39,8 +56,9 @@ const authMessages=Object.freeze({
 });
 
 function sourceCards(sources) {
-  const keys = Object.keys(sources || {}).sort((a,b) => (sourceLabels[a] || a).localeCompare(sourceLabels[b] || b, 'pt-BR'));
-  if (!keys.length) return '<p class="empty-state">Os dados funcionais ainda não foram sincronizados para este usuário.</p>';
+  const keys = Object.keys(sources || {}).filter(key=>sourceFolders[key]&&operationalContentAllowed(sourceFolders[key]))
+    .sort((a,b) => (sourceLabels[a] || a).localeCompare(sourceLabels[b] || b, 'pt-BR'));
+  if (!keys.length) return '<p class="empty-state">Não há dados sincronizados nas pastas funcionais ativas para este usuário.</p>';
   const stateText = value => {
     if (value?.state === 'READY') return 'Dados sincronizados';
     if (value?.state === 'PREPARING') return 'Integração em preparação';
@@ -105,15 +123,18 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
         }catch{}
       }));
     }
+    const surveyButtons=[['climate','PESQUISA DE CLIMA ORGANIZACIONAL'],['stress','AVALIAÇÃO DE ESTRESSE E FADIGA'],['epidemiological','CADASTRO EPIDEMIOLÓGICO - SAHMT']]
+      .filter(([survey])=>operationalContentAllowed(surveyFolders[survey]));
+    const surveysEnabled=operationalContentAllowed('funcional/pesquisas-institucionais');
     paint('<section class="functional-page"><header><p class="eyebrow">ACESSO INDIVIDUAL</p><h2>Funcional</h2>'
       + '<p>Seu perfil é acessado pelo mesmo UID autenticado em FA.</p></header>'
       + (refreshFailed ? '<p class="empty-state" role="status">Não foi possível atualizar as fontes agora. Exibindo o último snapshot salvo, se disponível.</p>' : '')
       + (profile ? sourceCards(sources) : '<p class="empty-state">Aguardando os primeiros dados funcionais deste usuário.</p>')
-      + '<section class="functional-survey"><h3>Pesquisas institucionais</h3><p>As respostas enviadas por este módulo pertencem ao projeto FK.</p>'
-      + (import.meta.env.VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED === 'true'&&['EQUIPE','ADMINISTRADOR'].includes(group)
-        ? '<div class="functional-survey-actions"><button type="button" data-fk-survey="climate">PESQUISA DE CLIMA ORGANIZACIONAL</button><button type="button" data-fk-survey="stress">AVALIAÇÃO DE ESTRESSE E FADIGA</button><button type="button" data-fk-survey="epidemiological">CADASTRO EPIDEMIOLÓGICO - SAHMT</button></div><div data-fk-survey-frame></div>'
-        : ['EQUIPE','ADMINISTRADOR'].includes(group)?'<p class="empty-state" role="status">Os formulários estão sendo migrados para o armazenamento próprio do FK.</p>':'')
-      + '</section>'
+      + (surveysEnabled&&['EQUIPE','ADMINISTRADOR'].includes(group)?'<section class="functional-survey"><h3>Pesquisas institucionais</h3><p>As respostas enviadas por este módulo pertencem ao projeto FK.</p>'
+        + (import.meta.env.VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED === 'true'
+          ? '<div class="functional-survey-actions">'+surveyButtons.map(([survey,label])=>'<button type="button" data-fk-survey="'+survey+'">'+label+'</button>').join('')+'</div><div data-fk-survey-frame></div>'
+          : '<p class="empty-state" role="status">Os formulários estão sendo migrados para o armazenamento próprio do FK.</p>')
+        + '</section>':'')
       + '</section>');
     root.addEventListener('click', onSurveyClick);
   } catch {
@@ -127,7 +148,7 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
     const button=event.target.closest('[data-fk-survey]');
     if(!button||!current())return;
     const survey=button.dataset.fkSurvey;
-    if(!['climate','stress','epidemiological'].includes(survey))return;
+    if(!Object.hasOwn(surveyFolders,survey)||!operationalContentAllowed(surveyFolders[survey]))return;
     const host=root.querySelector('[data-fk-survey-frame]');
     if(!host)return;
     surveyCleanup?.();surveyCleanup=null;
