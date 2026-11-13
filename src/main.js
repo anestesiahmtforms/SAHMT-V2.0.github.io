@@ -1550,15 +1550,16 @@ async function loadModule(route) {
     return;
   }
   if(route==='functional'){
-    const content=document.querySelector('#module-content'),uid=session.user?.uid;
+    const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
     const [{getFunctionalAccess},{mountFunctionalModule},{auth}]=await Promise.all([
       import('./functional-access.js'),import('./functional-ui.js'),import('./firebase-auth.js')]);
+    if(generation!==evaluationModuleGeneration)return;
     const access=await getFunctionalAccess(session);
-    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid)return;
+    if(generation!==evaluationModuleGeneration||!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid)return;
     if(deployment.target!=='FA'||!access.allowed||import.meta.env.VITE_FK_FUNCTIONAL_ENABLED!=='true'){
       notice='O módulo Funcional está indisponível para este perfil ou ainda aguarda configuração.';navigate('management-hub');return;
     }
-    const isCurrent=()=>content.isConnected&&currentRoute()==='functional'&&session.status==='signed-in'
+    const isCurrent=()=>generation===evaluationModuleGeneration&&content.isConnected&&currentRoute()==='functional'&&session.status==='signed-in'
       &&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
     const cleanup=await mountFunctionalModule(content,{uid,faAuth:auth,group:access.group,isCurrent});
     if(isCurrent())cleanupCurrentModule=cleanup;else cleanup?.();

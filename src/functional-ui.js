@@ -7,6 +7,14 @@ import {bindSurveySession} from './survey-session-bridge.js';
 import {callFunctionalSurvey} from './functional-survey-client.js';
 import './functional-ui.css';
 
+let activeFunctionalMountCleanup = null;
+const waitWithTimeout = (promise, milliseconds, code) => {
+  let timer;
+  return Promise.race([Promise.resolve(promise), new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(code)), milliseconds);
+  })]).finally(() => clearTimeout(timer));
+};
+
 const sourceLabels = Object.freeze({
   performance: 'Desempenho - SAHMT',
   professionalRegistration: 'Cadastro Profissional - SAHMT',
@@ -53,33 +61,37 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
+    if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     surveyCleanup?.();
     root?.removeEventListener('click', onSurveyClick);
     bridge?.dispose();
     void signOutFunctionalProject(uid).catch(() => {});
   };
+  activeFunctionalMountCleanup?.();
+  activeFunctionalMountCleanup = cleanup;
   paint('<section class="functional-page"><h2>Funcional</h2><p role="status">Confirmando o acesso individual em FK…</p></section>');
   try {
     bridge = createFunctionalAuthBridge({enabled: true,
       endpoint: import.meta.env.VITE_FK_AUTH_BRIDGE_ENDPOINT,
       allowedOrigin: import.meta.env.VITE_FK_AUTH_ORIGIN,
       fetchImpl: globalThis.fetch?.bind(globalThis)});
-    await bridge.connect(faAuth);
+    await waitWithTimeout(bridge.connect(faAuth), 30000, 'FK_AUTH_CLIENT_TIMEOUT');
     if (!current()) return cleanup;
+    paint('<section class="functional-page"><h2>Funcional</h2><p role="status">Acesso confirmado. Carregando seu perfil funcional…</p></section>');
     let refreshFailed = false;
-    try { await refreshFunctionalOverview({faAuth,uid,isCurrent:current}); }
+    try { await waitWithTimeout(refreshFunctionalOverview({faAuth,uid,isCurrent:current}), 50000, 'FK_REFRESH_CLIENT_TIMEOUT'); }
     catch { refreshFailed = true; }
     if (!current()) return cleanup;
     const db = getFunctionalFirestore();
     if (!db) throw new Error('FK_FIRESTORE_UNAVAILABLE');
-    const snapshot = await getDocFromServer(doc(db, 'functionalProfiles', uid));
+    const snapshot = await waitWithTimeout(getDocFromServer(doc(db, 'functionalProfiles', uid)), 20000, 'FK_PROFILE_READ_TIMEOUT');
     if (!current()) return cleanup;
     const profile = snapshot.exists() ? snapshot.data() : null;
     const sources={...(profile?.sources||{})};
     if(profile){
     await Promise.all(['climate','stress','epidemiological'].map(async survey=>{
         try{
-          const participation=await getDocFromServer(doc(db,'surveyParticipation',uid+'_'+survey+'_2026'));
+          const participation=await waitWithTimeout(getDocFromServer(doc(db,'surveyParticipation',uid+'_'+survey+'_2026')),12000,'FK_PARTICIPATION_READ_TIMEOUT');
           const key=survey==='climate'?'climateSurvey':survey==='stress'?'stressFatigue':'epidemiological';
           sources[key]={state:'READY',data:{participated:participation.exists()}};
         }catch{}
@@ -97,6 +109,9 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
       + '</section>');
     root.addEventListener('click', onSurveyClick);
   } catch {
+    bridge?.dispose();
+    void signOutFunctionalProject(uid).catch(() => {});
+    if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     paint('<section class="functional-page"><h2>Funcional</h2><p class="empty-state" role="status">Não foi possível confirmar sua autorização em FA e abrir seu perfil individual em FK. Tente novamente mais tarde.</p></section>');
   }
   return cleanup;
