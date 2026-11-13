@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('../src/data-lite.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export ','');
 function setup({enabled=true,deny=false}={}){
  const calls=[],reads=[];
- const ctx=vm.createContext({assertOperationalContentAllowed(){},db:{project:'FA'},operationalModuleEnabled:station=>station==='FJ'&&enabled,
+ const ctx=vm.createContext({assertOnlineOperation(){},scheduleReadBackend:{},assertOperationalContentAllowed(){},db:{project:'FA'},operationalModuleEnabled:station=>station==='FJ'&&enabled,
   getOperationalModuleDatabase:async(station,uid)=>{calls.push({station,uid});if(deny)throw Error('MODULE_ACCESS_DENIED');return {project:'FJ'};},
   readThroughSafeCache:async options=>options.fetchOnline(),readSafeCache(){},writeSafeCache(){},readFreshSafeCache(){},listUnsettledOperations:async()=>[],
   collection:(database,name)=>({database,name}),query:(collection,...clauses)=>({collection,clauses}),where(){},orderBy(){},limit:n=>({limit:n}),

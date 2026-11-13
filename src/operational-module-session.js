@@ -44,7 +44,7 @@ export function createOperationalModuleSession({station, faAuth, targetAuth, sub
         assertLive();
         if (targetAuth.currentUser && targetAuth.currentUser.uid !== uid) await clearTarget();
         assertLive();
-        const faIdToken = await source.getIdToken(true); assertLive();
+        const faIdToken = await source.getIdToken(); assertLive();
         const credential = await exchange({faIdToken, faUid: uid, signal: controller.signal}); assertLive();
         if (credential?.uid !== uid || typeof credential.customToken !== 'string' || !credential.customToken ||
             credential.expiresIn !== 300) throw fail('MODULE_SESSION_INVALID');

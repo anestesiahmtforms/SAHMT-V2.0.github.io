@@ -6,6 +6,15 @@ import {isFirestoreCacheFallbackError, readThroughSafeCache} from './offline-cac
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
 import {projectPendingSchedule} from './offline-schedule-overlay.js';
 import {assertOperationalContentAllowed} from './operational-folder-runtime.js';
+import {scheduleReadBackend} from './schedule-read-backend.js';
+import {assertOnlineOperation} from './online-only.js';
+
+async function prepareScheduleRead(uid,independent) {
+  assertOnlineOperation();
+  const enabled=operationalModuleEnabled('FJ');
+  if(independent&&!enabled)throw Object.assign(new Error('Módulo Escala indisponível.'),{code:'MODULE_DISABLED'});
+  return {targetDb:enabled?await getOperationalModuleDatabase('FJ',uid):db,backend:enabled?scheduleReadBackend:undefined};
+}
 
 function mayUseOfflineCache(error) {
   return isFirestoreCacheFallbackError(error);
@@ -22,12 +31,9 @@ export async function readAppFeatures(uid) {
 
 export async function readSchedule(day, uid, {onRefresh, independent = false} = {}) {
   assertOperationalContentAllowed('operacao/escala');
-  assertOperationalContentAllowed('operacao/eventos');
-  assertOperationalContentAllowed('operacao/escala/ferias');
-  if(independent&&!operationalModuleEnabled('FJ'))throw Object.assign(new Error('Módulo Escala indisponível.'),{code:'MODULE_DISABLED'});
+  const {targetDb,backend}=await prepareScheduleRead(uid,independent);
   const project = async value => projectPendingSchedule(value, uid ? await listUnsettledOperations(uid) : [], {uid, day});
-  const value = await readThroughSafeCache({uid, kind: 'scheduleDays', id: day, localFirst: true, onRefresh: onRefresh ? value => {void project(value).then(onRefresh).catch(() => {});} : undefined, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
-    const targetDb = operationalModuleEnabled('FJ') ? await getOperationalModuleDatabase('FJ', uid) : db;
+  const value = await readThroughSafeCache({uid, kind: 'scheduleDays', id: day, localFirst: true, backend,onRefresh: onRefresh ? value => {void project(value).then(onRefresh).catch(() => {});} : undefined, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
     const snapshot = await getDoc(doc(targetDb, 'scheduleDays', day));
     if (!snapshot.exists()) return null;
     return {id: snapshot.id, ...snapshot.data()};
@@ -37,9 +43,8 @@ export async function readSchedule(day, uid, {onRefresh, independent = false} = 
 
 export async function listActiveContacts({uid, pageSize = 200, onRefresh, independent = false} = {}) {
   assertOperationalContentAllowed('operacao/pessoas');
-  if(independent&&!operationalModuleEnabled('FJ'))throw Object.assign(new Error('Módulo Eventos indisponível.'),{code:'MODULE_DISABLED'});
-  return readThroughSafeCache({uid, kind: 'contacts', id: 'active', localFirst: true, onRefresh, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
-    const targetDb = operationalModuleEnabled('FJ') ? await getOperationalModuleDatabase('FJ', uid) : db;
+  const {targetDb,backend}=await prepareScheduleRead(uid,independent);
+  return readThroughSafeCache({uid, kind: 'contacts', id: 'active', localFirst: true, backend,onRefresh, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
     const result = await getDocs(query(
       collection(targetDb, 'contacts'),
       where('active', '==', true),
@@ -54,8 +59,8 @@ export async function listVacationsForDate(day, {uid, pageSize = 100, onRefresh,
   assertOperationalContentAllowed('operacao/escala/ferias');
   if(independent&&!operationalModuleEnabled('FJ'))throw Object.assign(new Error('Módulo Escala indisponível.'),{code:'MODULE_DISABLED'});
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day || '')) throw new Error('Informe uma data válida para consultar as férias.');
-  return readThroughSafeCache({uid, kind: 'vacations', id: day, localFirst: true, onRefresh, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
-    const targetDb = operationalModuleEnabled('FJ') ? await getOperationalModuleDatabase('FJ', uid) : db;
+  const {targetDb,backend}=await prepareScheduleRead(uid,independent);
+  return readThroughSafeCache({uid, kind: 'vacations', id: day, localFirst: true, backend,onRefresh, readCache: readSafeCache, writeCache: writeSafeCache, mayFallback: mayUseOfflineCache, fetchOnline: async () => {
     const result = await getDocs(query(
       collection(targetDb, 'vacations'),
       where('active', '==', true),

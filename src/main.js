@@ -1218,7 +1218,8 @@ async function loadSchedule() {
         return;
       }
       if (!schedule && scheduleError) {
-        content.innerHTML = `${messages.join('')}<p class="empty-state">Não foi possível carregar a escala.</p>`;
+        content.innerHTML = `${messages.join('')}<p class="empty-state">Não foi possível carregar a escala agora.</p><button type="button" class="secondary-button" data-schedule-retry>Tentar novamente</button>`;
+        content.querySelector?.('[data-schedule-retry]')?.addEventListener('click',()=>void render());
         return;
       }
       if(!snapshotSaved&&!schedulePending&&!scheduleError&&!vacationsError&&vacationsReady&&session.user?.uid===homeUid&&currentRoute()==='schedule'){
@@ -1351,6 +1352,7 @@ function showSchedulePanel(id) {
   }
   if (!dialog.open) dialog.showModal();
   heading?.focus({preventScroll: true});
+  if(id==='event-launch-dialog'&&typeof loadEventEntryCatalog==='function')void loadEventEntryCatalog().catch(()=>{});
 }
 
 function finishScheduleEventSave(message) {
@@ -4979,6 +4981,8 @@ async function launchEventFromSchedule(day, position) {
   if (!canManageScheduleEvents()) return;
   const actorUid = session.user?.uid;
   const entryForm = document.querySelector('[data-module-form="events"]');
+  if(currentRoute()==='schedule'&&typeof loadEventEntryCatalog==='function')await loadEventEntryCatalog();
+  if(session.user?.uid!==actorUid||!canManageScheduleEvents()||!entryForm?.isConnected)return;
   const scheduleSigla = String(position.sigla || '').trim().toUpperCase();
   const scheduledSiglas = [...new Set((position.siglas?.length ? position.siglas : [scheduleSigla])
     .map((sigla) => String(sigla || '').trim().toUpperCase()).filter((sigla) => /^(?:[A-Z]{2}|L2)$/.test(sigla)))];
@@ -5359,7 +5363,6 @@ async function render() {
       bindScheduleEventPanels();
       await bindModuleForm('events');
       if (!current()) return;
-      void loadEventEntryCatalog();
       await loadSchedule();
     }
   } else {

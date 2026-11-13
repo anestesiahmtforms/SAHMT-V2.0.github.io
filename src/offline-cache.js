@@ -32,7 +32,7 @@ async function optionalCache(action) {
   }
 }
 
-export async function readThroughSafeCache({uid,kind,id,fetchOnline,localFirst=false,backend=operationalBackend}) {
+export async function readThroughSafeCache({uid,kind,id,fetchOnline,localFirst=false,onRefresh,backend=operationalBackend}) {
   if(isOfflineRuntimeForced()||globalThis.navigator?.onLine===false)throw Object.assign(new Error('Conecte-se ao servidor para consultar os dados.'),{code:'online-required'});
-  return localFirst?backend.run(`${uid||''}:${kind}:${id}`,fetchOnline):fetchOnline();
+  return localFirst?backend.run(`${uid||''}:${kind}:${id}`,fetchOnline,{onLateResult:(value,error)=>{if(!error)onRefresh?.(value);}}):fetchOnline();
 }

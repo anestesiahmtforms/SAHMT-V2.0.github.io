@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync(new URL('../src/data-lite.js',import.meta.url),'utf8').replace(/^import .*;\r?\n/gm,'').replaceAll('export ','');
 function fixture({enabled=true,deny=false}={}){
  const calls=[],reads=[];
- const ctx=vm.createContext({assertOperationalContentAllowed(){},db:{project:'FA'},operationalModuleEnabled:()=>enabled,
+ const ctx=vm.createContext({assertOnlineOperation(){},scheduleReadBackend:{},assertOperationalContentAllowed(){},db:{project:'FA'},operationalModuleEnabled:()=>enabled,
   getOperationalModuleDatabase:async(station,uid)=>{calls.push({station,uid});if(deny)throw Error('MODULE_ACCESS_DENIED');return {project:station};},
   readThroughSafeCache:async options=>options.fetchOnline(),readSafeCache(){},writeSafeCache(){},readFreshSafeCache(){},listUnsettledOperations:async()=>[],
   projectPendingSchedule:value=>value,doc:(database,...path)=>({database,path}),collection:(database,...path)=>({database,path}),query:(ref,...clauses)=>ref,where(){},orderBy(){},limit(){},
