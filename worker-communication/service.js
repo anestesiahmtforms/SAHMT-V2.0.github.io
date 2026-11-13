@@ -48,19 +48,19 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   return matches(m,localUid,p);
  }
  const paged=rows=>({items:rows.slice(0,PAGE_SIZE),cursor:rows.length>PAGE_SIZE?rows[PAGE_SIZE-1].id:null});
- async function saveMessage(input,a,{event=false}={}){
+ async function saveMessage(input,a,{event=false,release=false}={}){
   const key=input.id?id(input.id):uuid(),m=validateMessage(input.message,now());
-  if(!event&&key.startsWith('event-'))throw fail('COMM_INVALID_ID');
+  if((!event&&key.startsWith('event-'))||(!release&&key.startsWith('release-')))throw fail('COMM_INVALID_ID');
   if(!event&&m.audienceType==='USER'){const p=await store.get('users',m.audienceValue);if(!activeProfile(p)||isSystemOwnerEmail(p.email))throw fail('COMM_INVALID_AUDIENCE');}
   if((m.audienceType==='GROUP'&&!BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))||m.audienceType==='AREA'){const g=await store.get(m.audienceType==='GROUP'?'communicationGroups':'managementAreas',m.audienceValue);if(g?.active!==true)throw fail('COMM_INVALID_AUDIENCE');}
   if(input.source)throw fail('COMM_SOURCE_UNSUPPORTED');const source=null;
   const saved=await store.transaction(async tx=>{
    const old=await tx.get('communicationMessages',key),dispatch=await tx.get('communicationDispatches',key);
-   if(event&&old){
-    const sameNotice=old.status==='published'&&old.createdBy?.sourceUid===a.sourceUid&&
+   if((event||release)&&old){
+    const sameNotice=old.status==='published'&&(release||old.createdBy?.sourceUid===a.sourceUid)&&
      ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field]);
     if(!sameNotice)throw fail('COMM_CONFLICT',409);
-    const mayStart=dispatch?.status==='queueing'&&isCurrentMessage(old,now())&&
+    const mayStart=release&&dispatch?.status==='queueing'&&isCurrentMessage(old,now())&&
      (dispatch.enqueueStatus==='retry'||dispatch.enqueueStatus==='starting'&&dispatch.enqueueStartedAt<=now()-60000);
     const nextDispatch=mayStart?{...dispatch,enqueueStatus:'starting',enqueueStartedAt:now()}:dispatch;
     if(mayStart)tx.set('communicationDispatches',key,nextDispatch);
@@ -81,17 +81,17 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    const monthly=firstPublish?(await tx.get('communicationMetrics',month)||counters()):null;
    const record={...m,id:key,version:(old?.version||0)+1,createdAt:old?.createdAt||now(),createdBy:old?.createdBy||actorData(a),updatedAt:now(),updatedBy:actorData(a),firstPublishedAt:old?.firstPublishedAt||(firstPublish?now():null),source:source?.reference||old?.source||null};
    tx.set('communicationMessages',key,record);
-   const settings=await tx.get('communicationSettings','main');
-   const automaticDispatch=m.status==='published'&&settings?.pushEnabled===true?{id:key,messageId:key,title:m.title,category:m.category,audienceType:m.audienceType,audienceValue:m.audienceValue,author:actorData(a),createdAt:now(),status:'queueing',cursor:'',version:record.version,processed:0,accepted:0,failed:0,skipped:0,unknown:0,batches:0,pendingCount:1,automatic:true,...(event?{enqueueStatus:'starting',enqueueStartedAt:now()}:{})}:null;
+   const settings=release?await tx.get('communicationSettings','main'):null;
+   const automaticDispatch=release&&m.status==='published'&&settings?.pushEnabled===true?{id:key,messageId:key,title:m.title,category:m.category,audienceType:m.audienceType,audienceValue:m.audienceValue,author:actorData(a),createdAt:now(),status:'queueing',cursor:'',version:record.version,processed:0,accepted:0,failed:0,skipped:0,unknown:0,batches:0,pendingCount:1,automatic:true,enqueueStatus:'starting',enqueueStartedAt:now()}:null;
    if(automaticDispatch)tx.create('communicationDispatches',key,automaticDispatch);
    if(firstPublish)for(const [k,v]of [['total',total],[month,monthly]]){v.published++;v.categories[m.category]=(v.categories[m.category]||0)+1;tx.set('communicationMetrics',k,v);}
    if(firstPublish)tx.set('communicationPublicationBudgets',period.day,{published:published+1,at:now()});
    audit(tx,a,old?'MESSAGE_EDITED':'MESSAGE_CREATED',key,{version:record.version,status:m.status,record,automaticPush:Boolean(automaticDispatch)});return {message:record,dispatch:automaticDispatch,...(firstPublish?{publicationUsage:{used:published+1,limit:COMMUNICATION_LIMITS.dailyPublications,resetsAt:period.resetsAt}}:{})};
   });
-  if(event&&saved.dispatch){
+  if(release&&saved.dispatch){
    if(saved.alreadySent&&!saved.startPush){
     const pushPending=saved.dispatch.status==='queueing'&&saved.dispatch.enqueueStatus==='starting'&&isCurrentMessage(saved.message,now());
-    const pushQueued=saved.dispatch.enqueueStatus==='queued'||saved.dispatch.status!=='queueing';
+    const pushQueued=(!saved.dispatch.enqueueStatus||saved.dispatch.enqueueStatus==='queued')||saved.dispatch.status!=='queueing';
     return {...saved,pushPending,pushQueued};
    }
    let pushQueued=false;
@@ -102,8 +102,6 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    }).catch(()=>{});
    return {...saved,pushQueued,pushPending:!pushQueued};
   }
-  if(saved.alreadySent)return saved;
-  if(saved.dispatch){try{if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);await pushQueue.send({kind:'fanout',dispatchId:key,cursor:''});return {...saved,pushQueued:true};}catch{return {...saved,pushQueued:false};}}
   return {...saved,pushQueued:false};
  }
  function createEvent(input,a){
@@ -125,11 +123,10 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    if(!['COMM_CONFLICT','COMM_MESSAGE_LOCKED'].includes(error.code))throw error;
    const old=await store.get('communicationMessages',fixed.id);
    if(old?.status!=='published'||old.createdBy?.sourceUid!==a.sourceUid||old.title!==fixed.message.title||old.message!==fixed.message.message||old.audienceType!=='ALL'||old.category!=='AVISO URGENTE'||old.priority!=='URGENT')throw error;
-   const dispatch=await store.get('communicationDispatches',fixed.id);
-   return {message:old,dispatch,pushQueued:Boolean(dispatch),alreadySent:true};
+   return {message:old,dispatch:null,pushQueued:false,alreadySent:true};
   }
  }
- async function releaseNotice(input,a,ownProfile){
+ async function releaseNotice(input,a){
   if(!a.faUid)throw fail('COMM_SESSION_INVALID',401);
   const faProfile=await fa.get('users',id(a.faUid));
   if(faProfile?.uid!==a.faUid||faProfile.email?.toLowerCase()!==a.email||!scheduleReleaseIdentity(faProfile,a))throw fail('COMM_FORBIDDEN',403);
@@ -142,9 +139,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   const pushEligible=(await store.page('communicationDevices',{limit:1,filters:[['sourceUid',people[0].uid],['active',true]]})).length>0;
   const key=`release-${day}-${sigla}-${releaseAt}`;
   const remember=()=>store.transaction(async tx=>{const prior=await tx.get('communicationReleaseInboxes',people[0].uid);if(!prior||Number(prior.releaseAt)<releaseAt)tx.set('communicationReleaseInboxes',people[0].uid,{messageId:key,releaseAt});});
-  const old=await store.get('communicationMessages',key);
-  if(old?.status==='published'){await remember();const dispatch=await store.get('communicationDispatches',key);return {message:old,dispatch,pushEligible,pushQueued:Boolean(dispatch),pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true,alreadySent:true};}
-  const result=await saveMessage({id:key,version:0,message:{...RELEASE_NOTICE,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a);
+  const result=await saveMessage({id:key,version:0,message:{...RELEASE_NOTICE,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a,{release:true});
   await remember();return {...result,pushEligible,pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true};
  }
  async function device(input,a,enable){
@@ -194,6 +189,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
  }
  async function prepare(input,a){
   const key=id(input.id);
+  if(!key.startsWith('release-'))throw fail('COMM_PUSH_RELEASE_ONLY',403);
   return store.transaction(async tx=>{
    const m=await tx.get('communicationMessages',key),prior=await tx.get('communicationDispatches',key),settings=await tx.get('communicationSettings','main');
    if(!isCurrentMessage(m,now()))throw fail('COMM_NOT_CURRENT',409);
@@ -205,6 +201,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
  }
  async function batch(input,a){
   const key=id(input.id);
+  if(!key.startsWith('release-'))throw fail('COMM_PUSH_RELEASE_ONLY',403);
   if(input.confirmed!==true)throw fail('COMM_CONFIRMATION_REQUIRED');
   const d=await store.get('communicationDispatches',key);
   if(!d||d.status!=='ready')throw fail('COMM_DISPATCH_LOCKED',409);
@@ -299,7 +296,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    await store.transaction(async tx=>{
     const live=await tx.get('communicationDispatches',dispatchId),receipt=await tx.get('communicationPushDeliveries',receiptId);if(!live||receipt?.status==='done')return;
     const status=['accepted','failed','skipped','unknown'].includes(outcome.status)?outcome.status:'unknown',pendingCount=Math.max(0,live.pendingCount-1),total=await tx.get('communicationMetrics','total')||counters(),month=new Date(now()).toISOString().slice(0,7),monthly=await tx.get('communicationMetrics',month)||counters();
-    tx.set('communicationPushDeliveries',receiptId,{...receipt,status:'done',result:status,reason:outcome.reason||'',at:now()});
+    tx.set('communicationPushDeliveries',receiptId,{...receipt,status:'done',result:status,reason:outcome.reason||'',dispatchCreatedAt:live.createdAt??null,at:now()});
     tx.set('communicationDispatches',dispatchId,{...live,status:live.status==='queueing'?live.status:pendingCount?'processing':'completed',processed:live.processed+1,pendingCount,[status]:live[status]+1,updatedAt:now()});
     total[status]=(total[status]||0)+1;monthly[status]=(monthly[status]||0)+1;
     if(outcome.disable){const current=await tx.get('communicationDevices',deviceId);if(current?.active===true){tx.set('communicationDevices',deviceId,{...current,active:false,updatedAt:now()});total.devices=Math.max(0,total.devices-1);}}
@@ -308,7 +305,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return {done:true,status:outcome.status};
   }catch(error){await store.transaction(async tx=>{const receipt=await tx.get('communicationPushDeliveries',receiptId);if(receipt?.status==='processing')tx.set('communicationPushDeliveries',receiptId,{...receipt,status:'retry'});}).catch(()=>{});throw error;}
  }
- async function consumePush(input){if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input);throw fail('COMM_INVALID_INPUT');}
+ async function consumePush(input){if(typeof input?.dispatchId==='string'&&!input.dispatchId.startsWith('release-'))return {done:true};if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input);throw fail('COMM_INVALID_INPUT');}
  return {consumePush,async execute(action,input,a){
   if(!input||Array.isArray(input)||typeof input!=='object')throw fail('COMM_INVALID_INPUT');
   const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
@@ -332,7 +329,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    if(!m||!adminIdentity(a)&&(!isCurrentMessage(m,now())||!await audience(m,ownProfile,a.sourceUid)))throw fail('COMM_FORBIDDEN',403);
    return {message:m};
   }
-  if(action==='SCHEDULE_RELEASE_NOTICE')return releaseNotice(input,a,ownProfile);
+  if(action==='SCHEDULE_RELEASE_NOTICE')return releaseNotice(input,a);
   if(action==='CREATE_EVENT')return createEvent(input,a);
   if(action==='SAVE_MESSAGE')return operationalNoticeIdentity(a)?urgentNotice(input,a):saveMessage(input,a);
   if(action==='IMPORT_SOURCE')throw fail('COMM_SOURCE_UNSUPPORTED');

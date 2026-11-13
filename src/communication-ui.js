@@ -217,19 +217,14 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
         }
         sessionStorage.setItem(storageKey, payload.id);
       } catch {}
-      const result = await client.request('CREATE_EVENT', payload);
-      if (!result.pushPending) clearPendingId();
+      await client.request('CREATE_EVENT', payload);
+      clearPendingId();
       if (!active() || !form.isConnected) return;
-      if (result.pushPending) {
-        state.checkingPrevious = true;
-        form.elements.send.textContent = 'CONFIRMAR ENVIO';
-        return status('Evento publicado. Confirme o Push.');
-      }
       state.sent = true;
       state.pending = undefined;
       form.elements.send.textContent = 'ENVIADO';
       form.elements.send.dataset.sent = 'true';
-      status(result.pushQueued ? 'Evento enviado. Push na fila.' : 'Evento publicado na Home. Push sem confirmação.');
+      status('Evento publicado no app.');
     } catch (error) {
       if (!active() || !form.isConnected) return;
       const rejected = !needsGoogle(error) && [400, 403, 413, 429].includes(error.status);

@@ -14,7 +14,7 @@ test('fila entrega a todos os aparelhos mantendo cada execução dentro do orça
  const notice={id:'release-test',status:'published',title:'LIBERAÇÃO',message:'Você está Liberado!',category:'INFORMAÇÃO INSTITUCIONAL',audienceType:'USER',audienceValue:'fa-rl',publishAt:now-1000,expiresAt:now+86400000,version:1};
  put('communicationMessages/release-test',notice);
  put('communicationSettings/main',{pushEnabled:true});
- put('communicationDispatches/release-test',{id:'release-test',automatic:true,status:'processing',version:1,pendingCount:3,processed:0,accepted:0,failed:0,skipped:0,unknown:0});
+ put('communicationDispatches/release-test',{id:'release-test',automatic:true,createdAt:now,status:'processing',version:1,pendingCount:3,processed:0,accepted:0,failed:0,skipped:0,unknown:0});
  documents.set(root+'users/fa-rl',{uid:'fa-rl',email:'rl@example.test',active:true,access:true});
  const messages=[];
  for(let i=0;i<3;i++){put('communicationDevices/device-'+i,{uid:'ff-rl',sourceUid:'fa-rl',email:'rl@example.test',googleUid:'google-rl',active:true,updatedAt:now,token:'test-token-'+i});messages.push({body:{kind:'device',dispatchId:'release-test',deviceId:'device-'+i}});}
@@ -41,6 +41,8 @@ test('fila entrega a todos os aparelhos mantendo cada execução dentro do orça
  };
  try{
   const worker=createCommunicationWorker();
+  await worker.queue({messages:[{body:{kind:'fanout',dispatchId:'central-notice'},ack:()=>{},retry:()=>assert.fail('aviso da Central deve sair da fila sem envio')}]},env);
+  assert.deepEqual(accepted,[]);
   for(let offset=0;offset<messages.length;offset+=batchSize){
    calls=0;const acked=[],retried=[];
    const batch=messages.slice(offset,offset+batchSize).map((message,index)=>({...message,ack:()=>acked.push(index),retry:()=>retried.push(index)}));
@@ -51,9 +53,9 @@ test('fila entrega a todos os aparelhos mantendo cada execução dentro do orça
   const dispatch=documents.get(root+'communicationDispatches/release-test');assert.equal(dispatch.status,'completed');assert.equal(dispatch.accepted,3);assert.equal(dispatch.pendingCount,0);
   // Exercise the complete producer/consumer pipeline across multiple pages, not only prequeued devices.
   for(let i=3;i<7;i++)put('communicationDevices/device-'+i,{uid:'ff-rl',sourceUid:'fa-rl',email:'rl@example.test',googleUid:'google-rl',active:true,updatedAt:now,token:'test-token-'+i});
-  put('communicationMessages/urgent-fanout',{...notice,id:'urgent-fanout',audienceType:'ALL',audienceValue:''});
-  put('communicationDispatches/urgent-fanout',{id:'urgent-fanout',automatic:true,status:'queueing',version:1,pendingCount:1,processed:0,accepted:0,failed:0,skipped:0,unknown:0});
-  const waiting=[{kind:'fanout',dispatchId:'urgent-fanout',cursor:''}],retryDelays=[];
+  put('communicationMessages/release-fanout',{...notice,id:'release-fanout'});
+  put('communicationDispatches/release-fanout',{id:'release-fanout',automatic:true,createdAt:now,status:'queueing',version:1,pendingCount:1,processed:0,accepted:0,failed:0,skipped:0,unknown:0});
+  const waiting=[{kind:'fanout',dispatchId:'release-fanout',cursor:''}],retryDelays=[];
   env.COMMUNICATION_PUSH_QUEUE.sendBatch=async batch=>waiting.push(...batch.map(item=>item.body));
   while(waiting.length){
    calls=0;let acked=false;
@@ -61,7 +63,7 @@ test('fila entrega a todos os aparelhos mantendo cada execução dentro do orça
    assert.equal(acked,true,'o envio não deve aguardar o término de todas as páginas');assert.ok(calls<=44,'cada produtor e consumidor respeita o orçamento externo');
   }
   assert.deepEqual(retryDelays,[]);
-  const complete=documents.get(root+'communicationDispatches/urgent-fanout');assert.equal(complete.status,'completed');assert.equal(complete.accepted,7);assert.equal(complete.processed,7);assert.equal(complete.pendingCount,0);
+  const complete=documents.get(root+'communicationDispatches/release-fanout');assert.equal(complete.status,'completed');assert.equal(complete.accepted,7);assert.equal(complete.processed,7);assert.equal(complete.pendingCount,0);
   assert.deepEqual(accepted.slice(3),Array.from({length:7},(_,i)=>'test-token-'+i));
  }finally{globalThis.fetch=previousFetch;}
 });

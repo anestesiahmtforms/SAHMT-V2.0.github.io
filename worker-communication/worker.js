@@ -36,7 +36,7 @@ async function runtime(env,fetchImpl,buildService,actor,action){
  };
  const send=async(token,data)=>{
   await store.assertAvailable();
-  const r=await fetchImpl(`https://fcm.googleapis.com/v1/projects/${FF.projectId}/messages:send`,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+await getToken(),'Content-Type':'application/json'},body:JSON.stringify({message:{token,data:{...data,source:'SAHMT_FF'},webpush:{headers:{TTL:'3600',Urgency:'normal'}}}})});
+  const r=await fetchImpl(`https://fcm.googleapis.com/v1/projects/${FF.projectId}/messages:send`,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+await getToken(),'Content-Type':'application/json'},body:JSON.stringify({message:{token,data:{...data,source:'SAHMT_FF'},webpush:{headers:{TTL:'3600',Urgency:'high'}}}})});
   const d=await boundedJson(r,16384),code=d.error?.details?.find(x=>x['@type']==='type.googleapis.com/google.firebase.fcm.v1.FcmError')?.errorCode;
   if(r.ok&&typeof d.name==='string')return {status:'accepted',providerId:d.name};
   if(code==='UNREGISTERED')return {status:'failed',disable:true,reason:'UNREGISTERED'};

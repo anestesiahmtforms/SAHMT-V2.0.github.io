@@ -41,13 +41,13 @@ test('only the four verified emails grant administration, never local roles or p
  const f=fixture();for(const action of ['SAVE_MESSAGE','PREPARE','SEND_BATCH','DIRECTORY','GROUPS','HISTORY','AUDIT','METRICS','SETTINGS','SAVE_SETTINGS','IMPORT_SOURCE'])await assert.rejects(f.call(action,{}, {...person,role:'administrador_app',permissions:{admin:true}}),{code:'COMM_FORBIDDEN'});
  assert.equal(f.store.data.size,3);
 });
-test('publishing, editing with version check, audit and separate manual push',async()=>{
+test('publishing, editing and audit remain available without dispatching a Push',async()=>{
  const f=fixture(),m=await publish(f);assert.equal(f.sent.length,0);assert.equal((await f.call('METRICS')).total.published,1);
  assert.ok([...f.store.data.values()].some(x=>x.action==='MESSAGE_CREATED'&&x.uid===actor.uid&&x.email===actor.email&&x.at===NOW));
  await assert.rejects(f.call('SAVE_MESSAGE',{id:m.id,version:0,message:message()}),{code:'COMM_CONFLICT'});
- await f.call('PREPARE',{id:m.id});assert.equal(f.sent.length,0);
- await assert.rejects(f.call('SAVE_MESSAGE',{id:m.id,version:1,message:message()}),{code:'COMM_MESSAGE_LOCKED'});
- await assert.rejects(f.call('SEND_BATCH',{id:m.id,batches:0}),{code:'COMM_CONFIRMATION_REQUIRED'});
+ await assert.rejects(f.call('PREPARE',{id:m.id}),{code:'COMM_PUSH_RELEASE_ONLY'});
+ assert.equal((await f.call('SAVE_MESSAGE',{id:m.id,version:1,message:message()})).message.version,2);
+ await assert.rejects(f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true}),{code:'COMM_PUSH_RELEASE_ONLY'});
 });
 test('ordinary inbox and direct lookup enforce active audience, time and own identity',async()=>{
  const f=fixture(),m=await publish(f);await publish(f,{audienceValue:'another'}).catch(()=>{});
@@ -63,21 +63,26 @@ test('own device registration is idempotent and cannot steal another identity to
  await f.call('DISABLE_DEVICE',{token},person);assert.equal((await f.call('METRICS')).total.devices,0);
  assert.equal(JSON.stringify(await f.call('BOOTSTRAP',{},person)).includes(token),false);
 });
+async function seedRelease(f){
+ const m={...message(),id:'release-2026-11-03-AB-'+NOW,version:1};
+ f.store.data.set('communicationMessages/'+m.id,m);
+ return m;
+}
 test('concurrent send claims and HTTP retries cannot send the same device twice',async()=>{
- const f=fixture();await register(f);const m=await publish(f);await f.call('PREPARE',{id:m.id});
+ const f=fixture();await register(f);const m=await seedRelease(f);await f.call('PREPARE',{id:m.id});
  const results=await Promise.allSettled([f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true}),f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true})]);
  assert.equal(results.filter(r=>r.status==='fulfilled').length,1);assert.equal(f.sent.length,1);
  assert.equal(f.sent[0].data.title,m.title);assert.equal(f.sent[0].data.route,'home');
  assert.equal((await f.call('HISTORY')).items[0].accepted,1);await assert.rejects(f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true}),{code:'COMM_DISPATCH_LOCKED'});
 });
 test('expired token is disabled; disabled account, inactive source and unrelated audience are skipped',async()=>{
- const f=fixture();await register(f,person,'expired-'+'x'.repeat(80));const m=await publish(f);await f.call('PREPARE',{id:m.id});const r=await f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true});assert.equal(r.dispatch.failed,1);assert.equal((await f.call('METRICS')).total.devices,0);
- const g=fixture();await register(g);g.disableAccount();const n=await publish(g);await g.call('PREPARE',{id:n.id});await g.call('SEND_BATCH',{id:n.id,batches:0,confirmed:true});assert.equal(g.sent.length,0);
+ const f=fixture();await register(f,person,'expired-'+'x'.repeat(80));const m=await seedRelease(f);await f.call('PREPARE',{id:m.id});const r=await f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true});assert.equal(r.dispatch.failed,1);assert.equal((await f.call('METRICS')).total.devices,0);
+ const g=fixture();await register(g);g.disableAccount();const n=await seedRelease(g);await g.call('PREPARE',{id:n.id});await g.call('SEND_BATCH',{id:n.id,batches:0,confirmed:true});assert.equal(g.sent.length,0);
 });
 
 test('invalidated devices release their slot for a new device registration',async()=>{
  const f=fixture();for(let i=0;i<5;i++)await register(f,person,'expired-'+i+'x'.repeat(80));
- const m=await publish(f);await f.call('PREPARE',{id:m.id});await f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true});
+ const m=await seedRelease(f);await f.call('PREPARE',{id:m.id});await f.call('SEND_BATCH',{id:m.id,batches:0,confirmed:true});
  await register(f,person,'replacement-'+'x'.repeat(80));
  const recipient=await f.store.get('communicationRecipients',person.uid);
  assert.equal(recipient.deviceIds.length,3);

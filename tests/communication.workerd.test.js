@@ -51,18 +51,22 @@ test('actual Worker runtime: FF-only Auth, zero-billing check, FF-only persisten
   {const denial=await call('DIRECTORY',{},people[1]);assert.equal(denial.status,403,JSON.stringify(denial));}
   const device='synthetic-device-'+'x'.repeat(60);assert.equal((await call('REGISTER_DEVICE',{token:device},people[1])).status,200);
   const saved=await call('SAVE_MESSAGE',{version:0,message:{title:'Synthetic',message:'Never on lock screen',category:'COMUNICADO GERAL',priority:'NORMAL',audienceType:'USER',audienceValue:'fa-person',route:'management',status:'published',publishAt:Date.now()-1000,expiresAt:Date.now()+86400000}});assert.equal(saved.status,200,JSON.stringify(saved));const id=saved.body.message.id;
-  data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});assert.equal((await call('PREPARE',{id})).status,200);assert.equal(pushes.length,0);
+  data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});
+  assert.equal((await call('PREPARE',{id})).body.code,'COMM_PUSH_RELEASE_ONLY');
+  const releaseId='release-2026-11-03-AB-1';
+  data.set(roots.FF+'/communicationMessages/'+releaseId,{...saved.body.message,id:releaseId});
+  assert.equal((await call('PREPARE',{id:releaseId})).status,200);assert.equal(pushes.length,0);
   data.set(roots.FF+'/runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['comunicacao']});
   const writesBeforePause=writes.length;
-  const paused=await call('SEND_BATCH',{id,batches:0,confirmed:true});assert.equal(paused.status,403);assert.equal(paused.body.code,'COMM_FOLDER_DISABLED');assert.equal(pushes.length,0);assert.equal(writes.length,writesBeforePause);
+  const paused=await call('SEND_BATCH',{id:releaseId,batches:0,confirmed:true});assert.equal(paused.status,403);assert.equal(paused.body.code,'COMM_FOLDER_DISABLED');assert.equal(pushes.length,0);assert.equal(writes.length,writesBeforePause);
   assert.equal((await call('BOOTSTRAP',{},people[1])).status,403);
   data.delete(roots.FF+'/runtimePolicy/folders');
-  const sent=await call('SEND_BATCH',{id,batches:0,confirmed:true});assert.equal(sent.status,200,JSON.stringify(sent));assert.equal(sent.body.dispatch.accepted,1);assert.equal(pushes[0].message.token,device);assert.equal(pushes[0].message.data.route,'home');assert.equal(pushes[0].message.data.body,'Never on lock screen');
-  assert.equal((await call('SEND_BATCH',{id,batches:0,confirmed:true})).status,409);assert.equal(pushes.length,1);assert.ok(writes.length>0);assert.ok(writes.every(p=>p.startsWith(roots.FF+'/')));
+  const sent=await call('SEND_BATCH',{id:releaseId,batches:0,confirmed:true});assert.equal(sent.status,200,JSON.stringify(sent));assert.equal(sent.body.dispatch.accepted,1);assert.equal(pushes[0].message.token,device);assert.equal(pushes[0].message.data.route,'home');assert.equal(pushes[0].message.webpush.headers.Urgency,'high');assert.equal(pushes[0].message.data.body,'Never on lock screen');
+  assert.equal((await call('SEND_BATCH',{id:releaseId,batches:0,confirmed:true})).status,409);assert.equal(pushes.length,1);assert.ok(writes.length>0);assert.ok(writes.every(p=>p.startsWith(roots.FF+'/')));
   data.set(roots.FF+'/communicationSettings/main',{pushEnabled:false});
   const next=await call('SAVE_MESSAGE',{version:0,message:{...saved.body.message,title:'Primary account disabled'}});assert.equal(next.status,200);
   data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});
-  const nextId=next.body.message.id;await call('PREPARE',{id:nextId});disabledFf=true;
+  const nextId='release-2026-11-03-AB-2';data.set(roots.FF+'/communicationMessages/'+nextId,{...next.body.message,id:nextId});await call('PREPARE',{id:nextId});disabledFf=true;
   const denied=await call('SEND_BATCH',{id:nextId,batches:0,confirmed:true});assert.equal(denied.status,200);assert.equal(denied.body.dispatch.accepted,0);assert.equal(denied.body.dispatch.skipped,1);assert.equal(pushes.length,1,'disabled FA Auth cannot receive through active FF Auth');
  }finally{await mf.dispose();}
 });

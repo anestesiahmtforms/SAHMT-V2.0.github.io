@@ -38,10 +38,10 @@ test('a criação de evento respeita os públicos locais e o mesmo envio só pub
  }
  const input={id:'event-test',title:'Evento de teste',description:'Veja https://example.test/video',audience:'institutional-team'};
  const [first,again]=await Promise.all([f.call('CREATE_EVENT',input),f.call('CREATE_EVENT',input)]);
- assert.equal(first.message.id,input.id);assert.equal(again.alreadySent,true);assert.equal(f.queued.length,1);
+ assert.equal(first.message.id,input.id);assert.equal(again.alreadySent,true);assert.equal(f.queued.length,0);
  assert.equal((await f.call('INBOX',{},person)).items.length,1);
  assert.equal((await f.call('INBOX',{},other)).items.length,0);
- await f.deliver();assert.equal(f.sent.length,1);assert.match(f.sent[0].token,/^ff-person/);
+ await f.deliver();assert.equal(f.sent.length,0);
  await assert.rejects(f.call('CREATE_EVENT',{...input,audience:'ALL'}),{code:'COMM_CONFLICT'});
  await assert.rejects(f.call('CREATE_EVENT',{...input,id:'event-area',audience:'AREA'}),{code:'COMM_INVALID_AUDIENCE'});
  await assert.rejects(f.call('CREATE_EVENT',{...input,id:'event-denied'},other),{code:'COMM_FORBIDDEN'});
@@ -51,15 +51,13 @@ test('a criação de evento respeita os públicos locais e o mesmo envio só pub
  assert.equal(directory.items.find(user=>user.uid===person.sourceUid).institutionalGroup,'team');
 });
 
-test('uma fila indisponível pode ser recuperada pelo mesmo evento sem publicar de novo',async()=>{
- const f=fixture(),input={id:'event-recover',title:'Evento',description:'Teste',audience:'ALL'};
- const enqueue=f.queue.send;
+test('falha ao enfileirar uma liberação permite recuperar o mesmo despacho',async()=>{
+ const f=fixture(),enqueue=f.queue.send;
  f.queue.send=async()=>{throw Error('Fila indisponível');};
- const first=await f.call('CREATE_EVENT',input);
+ const first=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
  assert.equal(first.pushPending,true);
- assert.equal(f.queued.length,0);
  f.queue.send=enqueue;
- const recovered=await f.call('CREATE_EVENT',input);
+ const recovered=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
  assert.equal(recovered.alreadySent,true);
  assert.equal(recovered.pushQueued,true);
  assert.equal(f.queued.length,1);
@@ -92,7 +90,7 @@ test('servidor fixa categoria, prioridade e público e não duplica o aviso urge
  const f=fixture(),input=draft();Object.assign(input.message,{category:'COMUNICADO GERAL',priority:'NORMAL',audienceType:'USER',audienceValue:person.sourceUid,status:'draft',route:'management'});
  const first=await f.call('SAVE_MESSAGE',input),again=await f.call('SAVE_MESSAGE',input);
  assert.equal(first.message.category,'AVISO URGENTE');assert.equal(first.message.priority,'URGENT');assert.equal(first.message.audienceType,'ALL');assert.equal(first.message.audienceValue,'');assert.equal(first.message.status,'published');assert.equal(first.message.route,'home');
- assert.equal(first.pushQueued,true);assert.equal(again.alreadySent,true);assert.equal(f.queued.length,1);
+ assert.equal(first.pushQueued,false);assert.equal(again.alreadySent,true);assert.equal(f.queued.length,0);
  assert.equal((await f.call('INBOX',{},person)).items.length,1);
  f.store.data.get('users/'+other.sourceUid).access=false;
  await assert.rejects(f.call('INBOX',{},other),{code:'COMM_FORBIDDEN'});
@@ -114,7 +112,7 @@ test('liberação do Márcio mantém mensagem individual, texto exato, banner e 
 test('primeiros aparelhos recebem o aviso enquanto as outras páginas de destinatários são preparadas',async()=>{
  const f=fixture();
  for(let i=0;i<7;i++)f.store.data.set('communicationDevices/device-'+i,{id:'device-'+i,uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-'+i});
- const saved=await f.call('SAVE_MESSAGE',draft());
+ const saved=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
  await f.consume(f.queued.shift());
  assert.equal((await f.store.get('communicationDispatches',saved.message.id)).status,'queueing');
  await f.consume(f.queued.shift());
@@ -127,7 +125,7 @@ test('primeiros aparelhos recebem o aviso enquanto as outras páginas de destina
 test('consumidores podem terminar antes da resposta do produtor sem perder o saldo de pendências',async()=>{
  const f=fixture();
  for(let i=0;i<7;i++)f.store.data.set('communicationDevices/device-'+i,{id:'device-'+i,uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-'+i});
- const saved=await f.call('SAVE_MESSAGE',draft());
+ const saved=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
  f.queue.sendBatch=async batch=>{for(const item of batch)await f.consume(item.body);};
  await f.deliver();
  const dispatch=await f.store.get('communicationDispatches',saved.message.id);
@@ -138,7 +136,7 @@ test('falha de enfileiramento preserva a reserva e resposta perdida não duplica
  for(const count of [1,7])for(const acceptedBeforeFailure of [false,true]){
   const f=fixture();
   for(let i=0;i<count;i++)f.store.data.set('communicationDevices/device-'+i,{id:'device-'+i,uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-'+i});
-  const saved=await f.call('SAVE_MESSAGE',draft()),first=f.queued.shift(),enqueue=f.queue.sendBatch;
+  const saved=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),first=f.queued.shift(),enqueue=f.queue.sendBatch;
   f.queue.sendBatch=async batch=>{if(acceptedBeforeFailure)await enqueue(batch);throw Error('synthetic queue outage');};
   await assert.rejects(f.consume(first),/synthetic queue outage/);
   const pending=(await f.store.get('communicationDispatches',saved.message.id)).pendingCount;
@@ -153,7 +151,7 @@ test('falha de enfileiramento preserva a reserva e resposta perdida não duplica
 
 test('entrega antecipada exige reserva válida do aparelho e do próprio aviso',async()=>{
  const f=fixture();f.store.data.set('communicationDevices/device-0',{id:'device-0',uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-0'});
- const saved=await f.call('SAVE_MESSAGE',draft());
+ const saved=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
  for(const plan of [{reserved:false,dispatchId:saved.message.id,deviceIds:['device-0']},{reserved:true,dispatchId:'other-notice',deviceIds:['device-0']},{reserved:true,dispatchId:saved.message.id,deviceIds:['other-device']}]){
   f.store.data.set('communicationPushFanoutPages/invalid',plan);
   await assert.rejects(f.consume({kind:'device',dispatchId:saved.message.id,deviceId:'device-0',fanoutPageId:'invalid'}),{code:'COMM_QUEUE_RETRY'});
