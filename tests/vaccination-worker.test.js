@@ -84,9 +84,10 @@ test('real workerd routes keep own records private, admin reports protected and 
     assert.equal((await call('/v1/professional-documents','LIST_ADMIN',{context:'VACCINATION',year:2026})).status,403);
     data.set('runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['gestao/area-gestao-de-pessoas/biosseguranca/vacinacao']});
     calls.length=0;
-    assert.deepEqual(await call('/v1/vaccination','REPORT',{year:2026},'admin'),{status:403,result:{code:'VAC_FOLDER_DISABLED'}});
+    assert.equal((await call('/v1/vaccination','REPORT',{year:2026},'admin')).status,200);
+    calls.length=0;
     assert.deepEqual(await call('/v1/professional-documents','LIST_OWN',{context:'VACCINATION',year:2026}),{status:403,result:{code:'DOCUMENT_FOLDER_DISABLED'}});
-    assert.ok(calls.filter(path=>path.startsWith('firestore.googleapis.com')).every(path=>path.endsWith('/runtimePolicy/folders')));
+    assert.ok(calls.filter(path=>path.startsWith('firestore.googleapis.com')).every(path=>path.endsWith('/runtimePolicy/folders')||path.endsWith('/users/one')));
     assert.equal((await call('/v1/professional-documents','LIST_OWN',{context:'CERTIFICATES',year:2026})).status,200);
     const training=await call('/v1/training','LIST',{},'admin');assert.equal(training.status,200,JSON.stringify(training.result));assert.deepEqual(training.result.trainings,[]);
     assert.equal(calls.some(path=>path.startsWith('www.googleapis.com')||path.includes('userinfo')),false);

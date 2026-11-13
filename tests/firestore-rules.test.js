@@ -112,7 +112,7 @@ test('documentos novos exigem grupo confiável, módulo autorizado, perfil ativo
   await assertSucceeds(getDocs(collection(admin, 'scopedDocuments')));
   await setPolicy(['gestao/area-documents']);
   await assertFails(getDocs(list(['GENERAL'])));
-  await assertFails(getDoc(doc(admin, 'scopedDocuments', 'scoped-general-01')));
+  await assertSucceeds(getDoc(doc(admin, 'scopedDocuments', 'scoped-general-01')));
 });
 
 test('lista de e-mails é privada e identidade vem do token Google verificado, sem confiar no perfil', async () => {

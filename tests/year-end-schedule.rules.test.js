@@ -200,7 +200,7 @@ test('ordinary participants cannot fetch the full participation policy',async()=
   await assertFails(updateDoc(doc(context('one'),base+'/participation/one'),{sigla:'FR'}));
 });
 
-test('disabled year end folder denies direct data to both participants and administrators',async()=>{
+test('disabled year end folder denies participants and permits active administrators',async()=>{
  await env.withSecurityRulesDisabled(async context=>{
   await setDoc(doc(context.firestore(),'runtimePolicy','folders'),{schemaVersion:1,revision:2,disabled:['consultas']});
  });
@@ -209,4 +209,5 @@ test('disabled year end folder denies direct data to both participants and admin
   await assertFails(getDoc(doc(db,base+'/summary/totals')));
   await assertFails(getDoc(doc(db,base+'/registrations/'+uid)));
  }
+ await assertSucceeds(getDoc(doc(context('admin'),base+'/summary/totals')));
 });

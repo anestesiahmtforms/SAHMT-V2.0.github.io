@@ -31,9 +31,10 @@ test('even an administrator cannot write balances, awards, receipts or runtime f
  for(const user of [uid,'admin'])for(const name of ['fcPerformanceRuntime','fcPerformanceReference','fcPerformanceSummaries','fcPerformanceAwards','fcPerformanceLedger','fcPerformanceSourceReceipts'])await assertFails(setDoc(doc(google(user),name,user),{uid:user,category:'PERFORMANCE',points:999}));
 });
 
-test('FC folder blocks direct reads for members and administrators',async()=>{
+test('FC folder blocks direct reads for members while administrators can inspect runtime',async()=>{
  await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'runtimePolicy','folders'),{schemaVersion:1,revision:1,disabled:['desempenho/fc']}));
- for (const actor of [uid,'admin']) await assertFails(getDoc(doc(google(actor),'fcPerformanceRuntime','state')));
+ await assertFails(getDoc(doc(google(),'fcPerformanceRuntime','state')));
+ await assertSucceeds(getDoc(doc(google('admin'),'fcPerformanceRuntime','state')));
  await assertFails(getDocs(query(collection(google(),'fcPerformanceAwards'),where('uid','==',uid),where('category','==','PERFORMANCE'),limit(200))));
  await assertSucceeds(getDoc(doc(google(),'users',uid)));
 });

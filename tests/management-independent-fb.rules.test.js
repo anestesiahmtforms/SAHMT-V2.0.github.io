@@ -44,7 +44,7 @@ test('disabled management child blocks its documents while sibling and catalog r
  });
  for(const uid of ['member','admin']){
   const db=dbFor(uid);
-  await assertFails(getDoc(doc(db,'documents','quality')));
+  await (uid==='admin'?assertSucceeds:assertFails)(getDoc(doc(db,'documents','quality')));
   await assertSucceeds(getDoc(doc(db,'documents','finance')));
   await assertSucceeds(getDoc(doc(db,'managementAreas','area-gestao-da-qualidade')));
  }
