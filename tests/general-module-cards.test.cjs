@@ -38,7 +38,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     listLearningActivities: async (...args) => { queries.push({name: 'listLearningActivities', args}); return []; },
     listLearningActivityReceipts: async (...args) => { queries.push({name: 'listLearningActivityReceipts', args}); return []; }
   };
-  const context = vm.createContext({env:{BASE_URL:'/',VITE_FK_FUNCTIONAL_ENABLED:'true'},googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,operationalContentAllowed:()=>true,
+  const context = vm.createContext({env:{BASE_URL:'/',VITE_FK_FUNCTIONAL_ENABLED:'true'},googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',operationalRouteFolder:()=>null,
     session, appFeatures, secondaryDomainProjects,readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true, selectedManagementAreaId: '', route, evaluationModuleGeneration:0, cleanupCurrentModule:null,
     deployment:{target:'FA'}, htmlTrainingConfigured:false, climateSurveyEnabled:true,
     fdPerformanceEnabled:false,fePerformanceEnabled:false,communicationFeatureEnabled:false,communicationAdminSession:()=>false,

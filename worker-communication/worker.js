@@ -1,4 +1,4 @@
-import {FF,fail} from '../communication/domain.js';
+import {FF,fail,adminIdentity} from '../communication/domain.js';
 import {verifyCommunicationActor,serviceToken,assertFreeProject,boundedJson} from './google.js';
 import {createStore} from './store.js';
 import {createCommunicationService} from './service.js';
@@ -20,11 +20,11 @@ export function resolveScheduleSourceProject(env={}){
  if(project!=='FJ')throw fail('COMM_CONFIG_REQUIRED',503);
  return project;
 }
-async function runtime(env,fetchImpl,buildService){
+async function runtime(env,fetchImpl,buildService,actor,action){
  if(buildService)return buildService(env);
  const getToken=serviceToken(JSON.parse(env.FF_SERVICE_ACCOUNT_JSON||'null'),fetchImpl);
  await assertFreeProject(getToken,fetchImpl);
- const store=createStore({getToken,fetchImpl}),fa=createStore({getToken,fetchImpl,source:'FA'});
+ const store=createStore({getToken,fetchImpl,administrator:adminIdentity(actor)&&actor.email==='wx2064@gmail.com'&&['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','AUDIT','DIRECTORY','AREAS','SETTINGS','METRICS','USAGE'].includes(action)}),fa=createStore({getToken,fetchImpl,source:'FA'});
  const scheduleSource=createStore({getToken,fetchImpl,source:resolveScheduleSourceProject(env)});
  const recipientEnabled=async device=>{
   for(const [project,uid]of [[FF.projectId,device.uid]]){
@@ -61,7 +61,7 @@ export function createCommunicationWorker({verify=verifyCommunicationActor,build
     if(Number(request.headers.get('Content-Length'))>16384)throw fail('COMM_BODY_LIMIT',413);
     let body;try{body=await boundedJson(request,16384);}catch(e){throw e.code==='COMM_RESPONSE_LIMIT'?fail('COMM_BODY_LIMIT',413):fail('COMM_INVALID_INPUT');}
     if(!body||typeof body.action!=='string'||Object.keys(body).some(k=>!['action','input'].includes(k)))throw fail('COMM_INVALID_INPUT');
-    const fetchImpl=limitedFetch(body.action),actor=await verify(request,{fetchImpl,action:body.action}),service=await runtime(env,fetchImpl,buildService);
+    const fetchImpl=limitedFetch(body.action),actor=await verify(request,{fetchImpl,action:body.action}),service=await runtime(env,fetchImpl,buildService,actor,body.action);
     return json(await service.execute(body.action,body.input||{},actor));
    }catch(e){const code=/^COMM_[A-Z_]+$/.test(e.code||'')?e.code:'COMM_SERVICE_UNAVAILABLE',details=Object.fromEntries(['used','limit','resetsAt'].filter(key=>Number.isSafeInteger(e[key])&&e[key]>=0).map(key=>[key,e[key]]));return json({code,...details},[400,401,403,409,413,429,503].includes(e.status)?e.status:503);}
   },

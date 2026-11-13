@@ -133,3 +133,14 @@ test('trocar o documento original invalida a associação antiga de PDF', () => 
   assert.doesNotMatch(markup,/OldPdf_123456789/);
   assert.match(markup,/NewForm_123456789/);
 });
+
+test('inactive documents display their status in the viewer trigger and offer authorized editing', () => {
+  const item = {id:'inactive', title:'Protocolo', active:false, category:'Protocolos',
+    driveUrl:'https://drive.google.com/file/d/DriveFile_123456789/view'};
+  const administrator = renderManagementDocumentCard(item, {canEdit:true});
+  assert.match(administrator, /Documento inativo/);
+  assert.match(administrator, /data-material-inactive/);
+  assert.match(administrator, /Editar e reativar/);
+  assert.doesNotMatch(renderManagementDocumentCard(item), /data-document-edit/);
+  assert.doesNotMatch(renderManagementDocumentCard({...item, active:true}), /Documento inativo|data-material-inactive/);
+});

@@ -35,8 +35,8 @@ const block=`
     function surveyFolderOpen_(folder) {
       let path = /databases/$(database)/documents/runtimePolicy/folders;
       let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
-      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
-        policy.disabled is list && !policy.disabled.hasAny(['consultas', 'consultas/pesquisas', folder]);
+      return (memberCategoryActive_() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'administrador_app' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('permissions', {}).get('admin', false) == true)) || (policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['consultas', 'consultas/pesquisas', folder]));
     }
     function climateReader() { return request.auth != null && request.auth.token.get('climateReportReader', false) == true; }
     match /climateResponses/{id} {

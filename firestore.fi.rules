@@ -1,14 +1,14 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // FOLDER_READ_POLICY_V1: source-local read gate, including administrator reads.
+    // FOLDER_READ_POLICY_V1: source-local read gate, with an exception for active app administrators.
     // Missing control document preserves bootstrap behavior; malformed policy denies.
     function folderReadPolicyValid_(policy) {
       return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 && policy.disabled is list;
     }
     function folderReadAllowed_(ancestors) {
       let path = /databases/$(database)/documents/runtimePolicy/folders;
-      return !exists(path) || (folderReadPolicyValid_(get(path).data) && !get(path).data.disabled.hasAny(ancestors));
+      return (activeUser() && profile().get('uid', '') == request.auth.uid && (profile().get('role', '') == 'administrador_app' || profile().get('permissions', {}).get('admin', false) == true)) || (!exists(path) || (folderReadPolicyValid_(get(path).data) && !get(path).data.disabled.hasAny(ancestors)));
     }
     function signedIn() { return request.auth != null; }
     function moduleSession() {

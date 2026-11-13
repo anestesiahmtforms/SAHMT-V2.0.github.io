@@ -1,18 +1,35 @@
 import {deployment} from './deployment-context.js';
-import {initialOperationalFolderPolicy,operationalFolderAllowed,operationalRouteFolder} from './operational-folders.js';
+import {initialOperationalFolderPolicy,operationalFolderAllowed,operationalRouteFolder,operationalFolders} from './operational-folders.js';
+import {governanceSessionReady} from './governance-access.js';
 
 export const operationalFolderPolicyEnabled=['FA','FB'].includes(deployment.target)&&import.meta.env?.VITE_FOLDER_POLICY_ENABLED==='true';
 
 let owner='',policy=null,dispose,epoch=0;
+let administrator=false;
+export function setOperationalFolderSession(session) {
+ administrator=governanceSessionReady(session)&&session.accountMode!=='team'&&
+  (session.profile.role==='administrador_app'||session.profile.permissions?.admin===true);
+}
 const subscribers=new Set();
 export const operationalFolderPolicy=()=>policy;
 export function operationalFolderRouteAllowed(route) {
  const id=operationalRouteFolder(route);
- return !operationalFolderPolicyEnabled||!id||operationalFolderAllowed(policy,id);
+ return !id||operationalContentAllowed(id);
 }
 export function operationalContentAllowed(id) {
- return !operationalFolderPolicyEnabled||operationalFolderAllowed(policy,id);
+ return !operationalFolderPolicyEnabled||administrator||operationalFolderAllowed(policy,id);
 }
+export function operationalFolderNotice(id) {
+ if(!operationalFolderPolicyEnabled||!administrator||!Object.hasOwn(operationalFolders,id)||!policy)return '';
+ const blocker=id.split('/').map((_,index,parts)=>parts.slice(0,index+1).join('/')).find(folder=>policy.disabled.includes(folder));
+ if(!blocker)return '';
+ const direct=policy.disabled.includes(id);
+ const target=blocker;
+ const label=direct&&blocker===id?'Pasta inativa para os demais usuários.':'Subpasta inativa por causa da pasta principal.';
+ return '<aside class="notice folder-inactive-notice"><strong>'+label+'</strong> <a href="#/fi-control/'+
+  encodeURIComponent(target)+'">Reativar no Controle de Pastas</a></aside>';
+}
+
 export function assertOperationalContentAllowed(id) {
  if(!operationalContentAllowed(id))throw Object.assign(Error('Área desativada ou sem confirmação do servidor.'),{code:'FOLDER_DISABLED'});
 }

@@ -63,7 +63,7 @@ function renderMonthly(result){
  if(result.status!=='complete')return `<p role="status">${esc(({incomplete:'Ainda faltam dados consolidados desta competência. Não foram estimados valores ausentes.',disabled:'A síntese por IA aguarda configuração.',budget_exhausted:'O orçamento de IA disponível foi atingido.',running:'Esta análise já está em processamento.',lease_expired:'A janela desta execução terminou. Consulte as análises ou tente novamente.',failed:'Não foi possível gerar a análise. A última versão concluída foi preservada.'})[result.status]||'Nenhuma análise disponível.')}</p>`;
  const r=result.report;return `<article class="fi-monthly-report"><h3>${esc(result.period)} · Proposta para revisão</h3><p>${esc(r.summary)}</p><div class="fi-table-scroll"><table><thead><tr><th>Ação</th><th>Prioridade</th><th>Responsável sugerido</th><th>Prazo sugerido</th><th>Critério de sucesso</th></tr></thead><tbody>${r.actions.map(a=>`<tr><td>${esc(a.action)}</td><td>${esc(a.priority)}</td><td>${esc(a.ownerSuggested)}</td><td>${esc(a.dueSuggested)}</td><td>${esc(a.successMetric)}</td></tr>`).join('')}</tbody></table></div>${r.technicalRecommendations?.length?'<h4>Melhorias técnicas sugeridas</h4>'+r.technicalRecommendations.map(a=>`<p>${esc(a.proposal)}<br>Validação: ${esc(a.validation)}</p>`).join(''):''}</article>`;
 }
-export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{},profile={},pilot=false,searchOnly=false,folderAdmin=null}){
+export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{},profile={},pilot=false,searchOnly=false,folderAdmin=null,folderId}){
  host.innerHTML=renderFiControl({profile,pilot,searchOnly,showFolderAdmin:typeof folderAdmin==='function'});let disposed=false,searchGeneration=0,monthlyGeneration=0;
  const current=()=>!disposed&&isCurrent(),search=host.querySelector('[data-fi-search]'),status=host.querySelector('[data-fi-status]');
  const resultHost=host.querySelector('[data-fi-results]');
@@ -76,8 +76,9 @@ export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{
   resultHost.querySelectorAll('.fi-result')[firstNew]?.focus();
  });
  const folderHost=host.querySelector('[data-fi-folder-admin]');
- const cleanupFolders=folderHost?folderAdmin(folderHost,{request,isCurrent:current}):null;
+ const cleanupFolders=folderHost?folderAdmin(folderHost,{request,isCurrent:current,folderId}):null;
  const folderDialog=host.querySelector('[data-fi-folder-dialog]');
+ if(folderId&&folderDialog&&!folderDialog.open)folderDialog.showModal();
  host.querySelector('[data-fi-folder-open]')?.addEventListener('click',()=>{
   if(current()&&!folderDialog.open)folderDialog.showModal();
  });

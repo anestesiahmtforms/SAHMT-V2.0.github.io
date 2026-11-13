@@ -105,8 +105,8 @@ service cloud.firestore {
     function yearEndFolderOpen_() {
       let path = /databases/$(database)/documents/runtimePolicy/folders;
       let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
-      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
-        policy.disabled is list && !policy.disabled.hasAny(['consultas', 'consultas/escala-final-de-ano']);
+      return (memberCategoryActive_() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'administrador_app' || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('permissions', {}).get('admin', false) == true)) || (policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['consultas', 'consultas/escala-final-de-ano']));
     }
     match /yearEndSchedules/{cycle}/registrations/{uid} {
       allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && (yearEndAdmin() || (yearEndMember() && request.auth.uid == uid));

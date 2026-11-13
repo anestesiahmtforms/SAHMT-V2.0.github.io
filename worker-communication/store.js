@@ -3,12 +3,13 @@ import {encodeFields,decodeFields} from '../worker-training/firestore.js';
 import {FF,fail,id} from '../communication/domain.js';
 import {boundedJson} from './google.js';
 export {encodeFields,decodeFields};
-export function createStore({getToken,fetchImpl=fetch,source=null}){
+export function createStore({getToken,fetchImpl=fetch,source=null,administrator=false}){
  if(source&&!['FA','FJ'].includes(source))throw fail('COMM_CONFIG_REQUIRED',503);
  const project=source==='FA'?'sahmt-17a16':source==='FJ'?'sahmt-escala-fj':FF.projectId;
  const name=`projects/${project}/databases/${source?'(default)':FF.databaseId}/documents`,root='https://firestore.googleapis.com/v1/'+name;
  const checkCollection=c=>{id(c);if(source&&!(source==='FJ'?['scheduleDays']:['users','scheduleDays']).includes(c))throw fail('COMM_SOURCE_DENIED',403);};
  async function assertAvailable(collection){
+  if(administrator&&!source)return;
   if(source&&collection!=='scheduleDays')return;
   try{
    const r=await fetchImpl(root+'/runtimePolicy/folders',{method:'GET',headers:{Authorization:'Bearer '+await getToken()},redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(10000)});

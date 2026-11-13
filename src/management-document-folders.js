@@ -51,15 +51,17 @@ export function renderManagementDocumentCard(item, {canEdit = false, htmlTrainin
   const trainingAttributes=trainingId ? ' data-training-activity="'+escapeHtml(trainingId)+'" data-training-title="'+title+'" data-training-state="blue"' : '';
   const kind = /ORGANOGRAMA/.test(normalize(item.title) + ' ' + normalize(item.category))
     ? 'organization' : folderIconKind(managementDocumentFolder(item).folder);
-  const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + '</span>';
-  const edit = canEdit ? '<button class="secondary-button management-document-edit" type="button" data-document-edit="' + escapeHtml((item.documentCollection || 'documents') + '/' + item.id) + '" aria-label="Editar ' + title + '">' + managementDocumentIcon('edit') + '<span>Editar</span></button>' : '';
+  const inactive = item.active === false;
+  const status = inactive ? '<small class="document-inactive-label">Documento inativo</small>' : '';
+  const content = managementDocumentIcon(kind === 'folder' ? 'document' : kind) + '<span>' + title + status + '</span>';
+  const edit = canEdit ? '<button class="secondary-button management-document-edit" type="button" data-document-edit="' + escapeHtml((item.documentCollection || 'documents') + '/' + item.id) + '" aria-label="Editar ' + title + '">' + managementDocumentIcon('edit') + '<span>' + (inactive ? 'Editar e reativar' : 'Editar') + '</span></button>' : '';
   let href = '';
   try { const url = new URL(item.driveUrl); if (url.protocol === 'https:' && !url.username && !url.password) href = url.href; } catch {}
   const directTraining = managementDocumentFolder(item).folder === 'Diretrizes' && /^https:\/\/docs\.google\.com\/forms\//.test(href);
   const pdfTarget = !directTraining && item.materialPdfUrl && item.materialPdfSourceFileId === item.driveFileId
     ? googleMaterialPreview(item.materialPdfUrl) : null;
   const viewerTarget = pdfTarget || (href ? googleMaterialPreview(href) : null);
-  const viewer = viewerTarget ? '<button class="management-document-link management-document-premium training-state-button"'+trainingAttributes+' type="button" data-open-material-viewer data-material-return="management" data-material-url="' + escapeHtml(viewerTarget.previewUrl) + '" data-material-open-url="' + escapeHtml(viewerTarget.openUrl) + '" data-material-title="' + title + '">' + content + '</button>' : '';
+  const viewer = viewerTarget ? '<button class="management-document-link management-document-premium training-state-button"'+trainingAttributes+' type="button" data-open-material-viewer data-material-return="management"' + (inactive ? ' data-material-inactive' : '') + ' data-material-url="' + escapeHtml(viewerTarget.previewUrl) + '" data-material-open-url="' + escapeHtml(viewerTarget.openUrl) + '" data-material-title="' + title + '">' + content + '</button>' : '';
   const link = viewer || (href ? '<a class="management-document-link management-document-premium training-state-button"'+trainingAttributes+' href="' + escapeHtml(href) + '" target="_blank" rel="noopener noreferrer">' + content + '</a>'
     : '<button class="management-document-premium" type="button" disabled>' + content + '</button>');
   const training = pdfTarget && href && /^https:\/\/docs\.google\.com\/forms\//.test(href)

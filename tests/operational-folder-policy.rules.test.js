@@ -32,12 +32,12 @@ before(async () => {
     await environments[station].clearFirestore();
     if (['FA','FJ'].includes(station)) await seed(station,'fiAdministrativeCutover/current',{active:true});
     for (const uid of ['member','admin']) await seed(station,'users/'+uid,{uid,email:uid+'@example.test',displayName:uid,sigla:'AA',active:true,access:true,role:uid==='admin'?'administrador_app':'anestesiologista',permissions});
-    for (const path of targets[station]) await seed(station,path,{active:true,createdByUid:'member',uid:'member',signerUid:'member',anesthetistSigla:'AA',surgeonSigla:'AA'});
+    for (const path of targets[station]) await seed(station,path,{active:true,createdByUid:'member',memberSigla:'AA',uid:'member',signerUid:'member',anesthetistSigla:'AA',surgeonSigla:'AA'});
   }
 });
 after(async () => {for (const environment of Object.values(environments)) await environment.cleanup();});
 
-for (const station of Object.keys(projects)) test(station+' preserves bootstrap reads and blocks all operational reads for members and administrators', async () => {
+for (const station of Object.keys(projects)) test(station+' preserves bootstrap reads and blocks operational reads only for members', async () => {
   await removePolicy(station);
   for (const uid of ['member','admin']) {
     const db=database(station,uid);
@@ -46,11 +46,12 @@ for (const station of Object.keys(projects)) test(station+' preserves bootstrap 
   await seed(station,'runtimePolicy/folders',state(['operacao']));
   for (const uid of ['member','admin']) {
     const db=database(station,uid);
-    for (const path of targets[station]) await assertFails(getDoc(doc(db,path)));
+    for (const path of targets[station]) await (uid==='admin'?assertSucceeds:assertFails)(getDoc(doc(db,path)));
     await assertSucceeds(getDoc(doc(db,'users/'+uid)));
   }
   const firstCollection=targets[station][0].split('/')[0];
-  await assertFails(getDocs(collection(database(station,'admin'),firstCollection)));
+  if (['FA','FG'].includes(station)) await assertSucceeds(getDocs(collection(database(station,'admin'),firstCollection)));
+  await assertFails(getDocs(collection(database(station),firstCollection)));
   await seed(station,'runtimePolicy/folders',state([]));
   await assertSucceeds(getDoc(doc(database(station),targets[station][0])));
 });
@@ -59,7 +60,8 @@ test('malformed present policy denies reads, while additional publication metada
   for (const station of Object.keys(projects)) {
     for (const policy of [{}, {...state([]),schemaVersion:2}, {...state([]),revision:0}, {...state([]),revision:1.5}, {...state([]),disabled:{}}]) {
       await seed(station,'runtimePolicy/folders',policy);
-      await assertFails(getDoc(doc(database(station,'admin'),targets[station][0])));
+      await assertFails(getDoc(doc(database(station),targets[station][0])));
+      await assertSucceeds(getDoc(doc(database(station,'admin'),targets[station][0])));
     }
     await seed(station,'runtimePolicy/folders',{...state([]),pending:{revision:2}});
     await assertSucceeds(getDoc(doc(database(station),targets[station][0])));
@@ -90,7 +92,10 @@ test('individual domain paths block only their own content and histories', async
   for (const station of ['FA','FI','FJ']) {
     for (const [folder,paths] of [['operacao/eventos',['eventCatalogs/operational','events/e','events/e/history/1']],['operacao/pessoas',['contacts/AA','eventMembers/AA']],['operacao/etiquetas',['appConfig/labelStaff']]]) {
       await seed(station,'runtimePolicy/folders',state([folder]));
-      for (const path of paths) await assertFails(getDoc(doc(database(station,'admin'),path)));
+      for (const path of paths) {
+        await assertFails(getDoc(doc(database(station),path)));
+        await assertSucceeds(getDoc(doc(database(station,'admin'),path)));
+      }
     }
     await seed(station,'runtimePolicy/folders',state(['operacao/eventos-extra']));
     await assertSucceeds(getDoc(doc(database(station),'events/e')));

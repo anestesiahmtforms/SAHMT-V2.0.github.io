@@ -7,14 +7,9 @@ const runtimes=new WeakMap();
 function runtime(env){
  if(!runtimes.has(env)){
   const getAccessToken=vacationServiceToken({credentials:JSON.parse(env.FE_SERVICE_ACCOUNT_JSON)});
-  const service=createVacationService({store:createFirestoreStore({projectId:'outros-48120',getAccessToken})});
+  const store=createFirestoreStore({projectId:'outros-48120',getAccessToken});
   const check=()=>assertFeFolderReadable('consultas/ferias-2027',getAccessToken,null,'VACATIONS');
-  runtimes.set(env,{async execute(...args){
-   await check();
-   const result=await service.execute(...args);
-   await check();
-   return result;
-  }});
+  runtimes.set(env,createVacationService({store,checkAvailability:check}));
  }
  return runtimes.get(env);
 }

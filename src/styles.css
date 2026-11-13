@@ -2683,3 +2683,9 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 
 .schedule-siglas-grid .sigla-item .sigla-token.sigla-token--delay{border-color:#d69c98!important;background:linear-gradient(145deg,#fce8e6,#f0c4bf)!important;color:#7a322e!important;box-shadow:0 2px 0 #d8b1ad,0 5px 11px #854c471f!important;text-shadow:none}
 .sigla-token__delays{display:flex;justify-content:center;gap:.25em;line-height:1}.sigla-token__delay{font-size:.66em;font-weight:900}
+
+.folder-inactive-notice,.material-viewer-inactive,.document-inactive-label{background:#fff0c7;color:#583700;border-radius:8px;padding:.45rem .65rem}
+.folder-inactive-notice a{color:inherit;font-weight:700;text-decoration:underline}
+.document-inactive-label{display:inline-block;margin-inline-start:.45rem}
+.material-viewer-dialog--inactive[open]{grid-template-rows:auto minmax(0,1fr) auto}
+.material-viewer-inactive:not([hidden]){display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}

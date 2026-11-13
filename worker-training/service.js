@@ -54,8 +54,10 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
   async function authorize(tx, identity) {
     const profile = await tx.get('users', identity.uid);
     if (!profile || profile.active !== true || profile.access !== true || (profile.uid && profile.uid !== identity.uid)) fail('FORBIDDEN', 403);
-    const areaPolicy=await tx.get('runtimePolicy','folders');
-    if(areaPolicy!==null)assertFolderReadable(areaPolicy,'gestao/area-gestao-de-documentos');
+    if(!admin(profile)){
+      const areaPolicy=await tx.get('runtimePolicy','folders');
+      if(areaPolicy!==null)assertFolderReadable(areaPolicy,'gestao/area-gestao-de-documentos');
+    }
     const access = await tx.get('documentAccessEmails', identity.email);
     const settings=await tx.get('htmlTrainingSettings','folders');
     const folderAccess=settings===null?{version:0,disabled:[]}:parseTrainingFolderAccess(settings);

@@ -1,5 +1,5 @@
 import {homeScheduleCache} from './home-entry-cache.js';
-import {operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalContentAllowed, watchOperationalFolderPolicy} from './operational-folder-runtime.js';
+import {operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalContentAllowed, watchOperationalFolderPolicy, setOperationalFolderSession, operationalFolderNotice} from './operational-folder-runtime.js';
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
 import {isChecklistScienceOpen} from './checklist-science-clock.js';
 import {createAccountMode} from './account-mode.js';
@@ -8,6 +8,7 @@ import {fbPerformanceEnabled,fbPerformanceReleaseEnabled} from './fb-performance
 import {mountVaccinationEntry} from './vaccination-entry.js';
 import {discardLegacyOfflineData} from './discard-legacy-offline-data.js';
 import './styles.css';
+import {operationalRouteFolder, operationalFolders} from './operational-folders.js';
 import './home-layout.css';
 import './performance-ui.css';
 import './fc-performance.css';
@@ -1538,7 +1539,7 @@ async function loadModule(route) {
     if(!consultationsAllowed)try{consultationsAllowed=await readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub});}catch{}
     if(!content.isConnected||!currentHub())return;
     const initialPanel=location.hash.split('/')[2]||'home';
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,folderNotice:operationalFolderNotice,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent:()=>currentHub()&&isCurrent(),participantOnly});},
@@ -5181,6 +5182,7 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 async function render() {
+  if(typeof setOperationalFolderSession==='function')setOperationalFolderSession(session);
   const generation=++evaluationModuleGeneration,requestRoute=currentRoute();
   const current=()=>generation===evaluationModuleGeneration&&requestRoute===currentRoute();
   if(typeof watchOperationalFolderPolicy==='function'){
@@ -5247,7 +5249,11 @@ async function render() {
       const folderAdmin=!searchOnly&&!pilot&&serviceStatus?.folderManagement===true
         ? (await import('./operational-folder-admin.js')).mountOperationalFolderAdmin : null;
       if(!isCurrent())return;
-      cleanupCurrentModule=mountFiControl(host,{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot,searchOnly,folderAdmin});
+      const folderId=typeof operationalFolderNotice==='function'&&!searchOnly
+        ? Object.keys(operationalFolders).find(id=>encodeURIComponent(id)===location.hash.split('/')[2])
+        : undefined;
+      if(!isCurrent())return;
+      cleanupCurrentModule=mountFiControl(host,{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot,searchOnly,folderAdmin,folderId});
     }catch{if(isCurrent()){const host=document.querySelector('#fi-control-content');host.innerHTML='<p role="status">Não foi possível abrir esta tela.</p><button type="button" class="secondary-button">'+(searchOnly?'Voltar à Home':'Voltar à Governança')+'</button>';host.querySelector('button').addEventListener('click',()=>navigate(searchOnly?'home':'management-hub'));}}
     return;
   }
@@ -5323,6 +5329,11 @@ async function render() {
     if(!current()||session.status!=='signed-in'||!canOpenRestrictedModule(requestedRoute))return;
     app.innerHTML=renderQmentumShell({baseUrl:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',title:requestedRoute==='fg-performance'?'DESEMPENHO FG':requestedRoute==='fc-performance'?'DESEMPENHO FC':undefined});
   }else app.innerHTML = shellView();
+  if(!authLimited&&typeof operationalFolderNotice==='function'){
+    const folder=operationalRouteFolder(requestedRoute);
+    const folderNotice=folder?operationalFolderNotice(folder):'';
+    if(folderNotice)app.querySelector('main')?.insertAdjacentHTML('afterbegin',folderNotice);
+  }
   if(typeof syncHomeWelcomeMessage==='function')syncHomeWelcomeMessage();
   const profileReconnect=document.querySelector('[data-profile-reconnect]');
   if(profileReconnect)bindProfileRetryControl(profileReconnect);

@@ -12,9 +12,10 @@ for(const [id,title] of Object.entries(operationalFolders)){
 }
 const stationLabels={current:'Confirmado',prepared:'Preparado, aguardando liberação',missing:'Sem política',invalid:'Política inválida',behind:'Revisão anterior',different:'Política diferente',unavailable:'Indisponível'};
 
-export function mountOperationalFolderAdmin(root,{request,isCurrent}) {
+export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
  let policy=null,busy=false,message='',inspection=null,query='';
  let openGroups=new Set();
+ const selected=groups.get(folderId?.split('/')[0])?.find(folder=>folder.id===folderId);
  root.innerHTML=`<div class="fi-folder-tools">
   <p class="fi-folder-description" data-folder-description></p>
   <div class="fi-folder-actions">
@@ -50,7 +51,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent}) {
   query=fold(filter.value);
   const pending=!!policy?.pending;
   description.textContent=pending?'Atualização pendente. Retome a atualização para confirmar a mudança nos serviços.':
-   policy?'Uma pasta desativada também bloqueia o acesso às suas subpastas.':'Aguardando a confirmação do servidor.';
+   policy?'Pastas desativadas e suas subpastas continuam acessíveis no modo Administrador.':'Aguardando a confirmação do servidor.';
   initializeButton.hidden=policy?.revision!==0;
   resumeButton.hidden=!pending;
   for(const button of [inspectButton,initializeButton,resumeButton])button.disabled=busy;
@@ -123,6 +124,12 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent}) {
  const updateFilter=()=>render();
  filter.addEventListener('input',updateFilter);
  root.addEventListener('click',click);
- const stop=subscribeOperationalFolderPolicy(value=>{policy=value;render();});
+ if(selected)filter.value=selected.title;
+ let focusFolder=selected?.id;
+ const stop=subscribeOperationalFolderPolicy(value=>{
+  policy=value;
+  render(value?focusFolder:undefined);
+  if(value)focusFolder=undefined;
+ });
  return ()=>{stop();root.removeEventListener('click',click);filter.removeEventListener('input',updateFilter);};
 }

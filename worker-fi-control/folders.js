@@ -13,7 +13,7 @@ const mapped = {
 const aggregateFb = ['documents','scopedDocuments','activities','trainings','learningActivities'];
 const fingerprint = policy => policy===null ? null : JSON.stringify([policy.version??policy.revision,[...policy.disabled].sort()]);
 
-export function createFiFolderReader({readPolicy,readTrainingPolicy}) {
+export function createFiFolderReader({readPolicy,readTrainingPolicy,administrator=false}) {
  let policyPromise,trainingPromise;
  async function loadPolicy() {
   const policy=await readPolicy();
@@ -30,6 +30,7 @@ export function createFiFolderReader({readPolicy,readTrainingPolicy}) {
  const policy=()=>policyPromise??=loadPolicy();
  const training=()=>trainingPromise??=loadTraining();
  async function assertOpen(folder) {
+  if(administrator)return null;
   const value=await policy();
   if(value!==null)assertFolderReadable(value,folder);
   return value;
@@ -55,10 +56,10 @@ export function createFiFolderReader({readPolicy,readTrainingPolicy}) {
  }
  async function checkMonthly() {
   for(const folder of ['registros/qmentum','gestao'])await assertOpen(folder);
-  if((await policy())?.disabled.some(id=>id.startsWith('gestao/'))||(await training())?.disabled.length)throw fiError('FI_FOLDER_DISABLED',403);
+  if((!administrator&&(await policy())?.disabled.some(id=>id.startsWith('gestao/')))||(await training())?.disabled.length)throw fiError('FI_FOLDER_DISABLED',403);
  }
  return {
-  start:policy,
+  start:()=>administrator?null:policy(),
   assertOpen,
   checkHtmlLibrary,
   checkMonthly,

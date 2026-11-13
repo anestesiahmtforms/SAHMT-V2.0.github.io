@@ -4,8 +4,8 @@ ${begin}
     function fcPerformanceFolderOpen_() {
       let path = /databases/$(database)/documents/runtimePolicy/folders;
       let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
-      return policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
-        policy.disabled is list && !policy.disabled.hasAny(['desempenho', 'desempenho/fc', 'registros', 'registros/ocorrencias', 'registros/qmentum']);
+      return (activeUser() && profile().get('uid', '') == request.auth.uid && (profile().get('role', '') == 'administrador_app' || profile().get('permissions', {}).get('admin', false) == true)) || (policy.schemaVersion == 1 && policy.revision is int && policy.revision >= 1 &&
+        policy.disabled is list && !policy.disabled.hasAny(['desempenho', 'desempenho/fc', 'registros', 'registros/ocorrencias', 'registros/qmentum']));
     }
     function fcPerformanceMember_() {
       return activeUser() && request.auth.token.aud == 'indicadores---sahmt' &&

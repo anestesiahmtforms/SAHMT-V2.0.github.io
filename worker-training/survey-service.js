@@ -16,10 +16,10 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
     const assignment=await profileStore.get('userCategories',await institutionalAssignmentKey(email));
     const group=assignedInstitutionalGroup(assignment,{uid:identity.uid,email});
     if(!group)fail('SURVEY_GROUP_UNAVAILABLE',403);
-    return {affiliation:group,group:researchGroup(group)};
+    return {affiliation:group,group:researchGroup(group),administrator:profile.role==='administrador_app'||profile.permissions?.admin===true};
   }
   async function execute(action,input,identity){
-    if(action==='REPORT'&&exact(input,['survey','cycle'])&&input.survey==='epidemiological'&&input.cycle===CYCLE){if(!identity?.uid||identity.emailVerified!==true||identity.provider!=='google.com'||identity.email?.trim().toLowerCase()!==reportReaderEmail?.toLowerCase())fail('SURVEY_FORBIDDEN',403);const p=await profileStore.get('users',identity.uid);if(!p||p.uid!==identity.uid||p.email?.toLowerCase()!==identity.email.toLowerCase()||p.active!==true||p.access!==true||!(p.role==='administrador_app'||p.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);await checkSurvey(folders.epidemiological);const cycle=await responseStore.get('epidemiologicalCycles',CYCLE);const report=cycle?.status==='closed'?await responseStore.get('epidemiologicalReports',CYCLE):null;const fresh=await profileStore.get('users',identity.uid);if(!fresh||fresh.uid!==identity.uid||fresh.email?.toLowerCase()!==identity.email.toLowerCase()||fresh.active!==true||fresh.access!==true||!(fresh.role==='administrador_app'||fresh.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);await checkSurvey(folders.epidemiological);return {report:report?.grouping_version===2?report:null};}
+    if(action==='REPORT'&&exact(input,['survey','cycle'])&&input.survey==='epidemiological'&&input.cycle===CYCLE){if(!identity?.uid||identity.emailVerified!==true||identity.provider!=='google.com'||identity.email?.trim().toLowerCase()!==reportReaderEmail?.toLowerCase())fail('SURVEY_FORBIDDEN',403);const p=await profileStore.get('users',identity.uid);if(!p||p.uid!==identity.uid||p.email?.toLowerCase()!==identity.email.toLowerCase()||p.active!==true||p.access!==true||!(p.role==='administrador_app'||p.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);const cycle=await responseStore.get('epidemiologicalCycles',CYCLE);const report=cycle?.status==='closed'?await responseStore.get('epidemiologicalReports',CYCLE):null;const fresh=await profileStore.get('users',identity.uid);if(!fresh||fresh.uid!==identity.uid||fresh.email?.toLowerCase()!==identity.email.toLowerCase()||fresh.active!==true||fresh.access!==true||!(fresh.role==='administrador_app'||fresh.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);return {report:report?.grouping_version===2?report:null};}
     if(!['BOOTSTRAP','SUBMIT'].includes(action)||!exact(input,action==='BOOTSTRAP'?['survey','cycle']:['survey','cycle','response'])||!Object.hasOwn(kinds,input.survey)||input.cycle!==CYCLE)fail('SURVEY_INVALID_INPUT');
     const actorGroup=await authorize(identity),group=actorGroup.group,kind=kinds[input.survey],ledgerKey=`${identity.uid}_${input.survey}_${CYCLE}`;
     let response;
@@ -27,7 +27,7 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
       try {response=kind.validate({...input.response,group});}catch{fail('SURVEY_INVALID_INPUT');}
     }
     return responseStore.transaction(async tx=>{
-      await checkSurvey(folders[input.survey],tx);
+      if(!actorGroup.administrator)await checkSurvey(folders[input.survey],tx);
       const cycle=await tx.get(kind.cycleCollection,CYCLE);
       if(cycle?.status!=='open'&&!(input.survey==='epidemiological'&&action==='BOOTSTRAP'&&cycle?.status==='closed'))fail('SURVEY_CYCLE_CLOSED',409);
       const participation=await tx.get('surveyParticipation',ledgerKey);
@@ -38,6 +38,7 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
       if(await tx.get(kind.responseCollection,response.submission_id))fail('SURVEY_RESPONSE_ID_REUSED',409);
       const currentGroup=await authorize(identity);
       if(currentGroup.group!==group||currentGroup.affiliation!==actorGroup.affiliation)fail('SURVEY_GROUP_CHANGED',409);
+      if(actorGroup.administrator&&!currentGroup.administrator)await checkSurvey(folders[input.survey],tx);
       // The ledger has no answer reference, group or explicit time. Firestore
       // commit metadata and infrastructure logs can still correlate the writes.
       tx.create('surveyParticipation',ledgerKey,{uid:identity.uid,survey:input.survey,cycle:CYCLE,completed:true});

@@ -54,7 +54,20 @@ export function installMaterialViewer(root = document) {
   dialog.innerHTML = '<iframe title="Material de apoio para leitura" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin" scrolling="auto"></iframe><footer class="material-viewer-dialog__footer"><button type="button" class="secondary-button" data-material-viewer-close>FECHAR</button></footer>';
   document.body.append(dialog);
   const frame = dialog.querySelector('iframe'), back = dialog.querySelector('[data-material-viewer-close]');
+  const inactiveNotice = document.createElement('div');
+  inactiveNotice.className = 'material-viewer-inactive';
+  inactiveNotice.hidden = true;
+  inactiveNotice.innerHTML = '<strong>Documento inativo</strong><button type="button" class="secondary-button">Editar e reativar</button>';
+  dialog.prepend(inactiveNotice);
+  const edit = inactiveNotice.querySelector('button');
   let returnTrigger = null;
+  let editDocument = null;
+  edit.addEventListener('click', () => {
+    const action = editDocument;
+    returnTrigger = null;
+    close();
+    action?.click();
+  });
   const close = () => { if (dialog.open) dialog.close(); };
   const onClick = event => {
     if (event.target?.closest?.('[data-material-viewer-close]')) { close(); return; }
@@ -64,6 +77,11 @@ export function installMaterialViewer(root = document) {
     const target = googleMaterialPreview(trigger.dataset.materialUrl);
     if (!target || !dialog.showModal) return;
     returnTrigger = trigger.dataset.materialReturn === 'management' ? trigger : null;
+    const inactive = trigger.hasAttribute('data-material-inactive');
+    inactiveNotice.hidden = !inactive;
+    dialog.classList.toggle('material-viewer-dialog--inactive', inactive);
+    editDocument = inactive ? trigger.closest('.management-document-card')?.querySelector('[data-document-edit]') : null;
+    edit.hidden = !editDocument;
     back.textContent = returnTrigger ? 'VOLTAR' : 'FECHAR';
     frame.title = trigger.dataset.materialTitle || 'Material de apoio para leitura';
     frame.src = target.previewUrl + (target.previewUrl.includes('#') ? '' : '#toolbar=0&navpanes=0');
@@ -73,6 +91,7 @@ export function installMaterialViewer(root = document) {
   };
   const onClose = () => {
     frame.src = 'about:blank';
+    editDocument = null;
     const previous = returnTrigger; returnTrigger = null;
     if(previous?.isConnected)previous.focus?.({preventScroll: true});
   };

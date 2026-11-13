@@ -48,8 +48,13 @@ function dosimetryRuntime(env){const runtime=sharedRuntime(env);return runtime.d
 function manualRuntime(env){const runtime=sharedRuntime(env);return runtime.manual??=folderGuard(runtime,createBiosafetyManualService({store:runtime.store}),'MANUAL',biosafetyFolder+'/manual');}
 function registrationDriveRuntime(env){const runtime=sharedRuntime(env);if(!runtime.registrationDrive){let config;try{config=JSON.parse(env.REGISTRATION_DRIVE_CLIENT_JSON||'null');}catch{}runtime.registrationDrive=createRegistrationDrive({store:runtime.store,clientConfig:config,encryptionKey:env.REGISTRATION_DRIVE_KEY});}return runtime.registrationDrive;}
 function folderGuard(runtime,service,prefix,folder='consultas/cadastro-profissional') {
- async function check(folderId) {
+ async function check(folderId,identity) {
   try {
+   if(identity?.emailVerified===true&&identity.provider==='google.com'&&identity.uid){
+    const profile=await runtime.store.get('users',identity.uid);
+    if(profile?.uid===identity.uid&&profile.email?.toLowerCase()===identity.email?.toLowerCase()&&
+      profile.active===true&&profile.access===true&&(profile.role==='administrador_app'||profile.permissions?.admin===true))return;
+   }
    const policy=await runtime.store.get('runtimePolicy','folders');
    if(policy!==null)assertFolderReadable(policy,folderId);
   } catch(error) {
@@ -60,9 +65,9 @@ function folderGuard(runtime,service,prefix,folder='consultas/cadastro-profissio
  }
  return {async execute(...args){
   const folderId=typeof folder==='function'?folder(args[1]):folder;
-  await check(folderId);
+  await check(folderId,args[2]);
   const result=await service.execute(...args);
-  await check(folderId);
+  await check(folderId,args[2]);
   return result;
  }};
 }

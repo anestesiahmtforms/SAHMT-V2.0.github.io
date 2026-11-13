@@ -5,7 +5,7 @@ import {waitForGoogleProjectSession} from './google-project-auth-runtime.js';
 import {refreshFunctionalOverview} from './functional-client.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import {callFunctionalSurvey} from './functional-survey-client.js';
-import {operationalContentAllowed} from './operational-folder-runtime.js';
+import {operationalContentAllowed,operationalFolderNotice} from './operational-folder-runtime.js';
 import './functional-ui.css';
 
 let activeFunctionalMountCleanup = null;
@@ -58,7 +58,7 @@ function sourceCards(sources) {
   };
   return '<div class="functional-source-grid">' + keys.map(key => '<article class="functional-source-card"><h3>'
     + escapeHtml(sourceLabels[key] || key) + '</h3><p>' + escapeHtml(stateText(sources[key])) + '</p>'
-    + '<small>' + escapeHtml(sourceDetail(key,sources[key])) + '</small></article>').join('') + '</div>';
+    + '<small>' + escapeHtml(sourceDetail(key,sources[key])) + '</small>' + operationalFolderNotice(sourceFolders[key]) + '</article>').join('') + '</div>';
 }
 
 function sourceDetail(key,value) {
@@ -108,7 +108,7 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
       + '<div data-fk-sources>'+(profile ? sourceCards(sources) : '<p class="empty-state">Aguardando os primeiros dados funcionais deste usuário.</p>')+'</div><p data-fk-refresh-status role="status">Atualizando os dados em segundo plano…</p>'
       + (surveysEnabled&&['EQUIPE','ADMINISTRADOR'].includes(group)?'<section class="functional-survey"><h3>Pesquisas institucionais</h3><p>As respostas enviadas por este módulo pertencem ao projeto FK.</p>'
         + (import.meta.env.VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED === 'true'
-          ? '<div class="functional-survey-actions">'+surveyButtons.map(([survey,label])=>'<button type="button" data-fk-survey="'+survey+'">'+label+'</button>').join('')+'</div><div data-fk-survey-frame></div>'
+          ? '<div class="functional-survey-actions">'+surveyButtons.map(([survey,label])=>'<div><button type="button" data-fk-survey="'+survey+'">'+label+'</button>'+operationalFolderNotice(surveyFolders[survey])+'</div>').join('')+'</div><div data-fk-survey-frame></div>'
           : '<p class="empty-state" role="status">Os formulários estão sendo migrados para o armazenamento próprio do FK.</p>')
         + '</section>':'')
       + '</section>');
@@ -157,10 +157,12 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
     const host=root.querySelector('[data-fk-survey-frame]');
     if(!host)return;
     surveyCleanup?.();surveyCleanup=null;
+    const folderNotice=operationalFolderNotice(surveyFolders[survey]);
     if(survey==='epidemiological'){
       const panel=document.createElement('div');
       panel.className='functional-epidemiological-form';
-      host.replaceChildren(panel);
+      host.innerHTML=folderNotice;
+      host.append(panel);
       void import('./registration-ui.js').then(({mountInstitutionalRegistration})=>{
         if(!current()||!panel.isConnected)return;
         surveyCleanup=mountInstitutionalRegistration(panel,{kind:'epidemiological',isCurrent:current,
@@ -181,7 +183,8 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
     frame.title=survey==='climate'?'Pesquisa de clima organizacional':'Avaliação de estresse e fadiga';
     frame.referrerPolicy='no-referrer';
     frame.sandbox='allow-scripts allow-same-origin allow-forms';
-    host.replaceChildren(frame);
+    host.innerHTML=folderNotice;
+    host.append(frame);
     surveyCleanup=bindSurveySession(frame,{feOrigin:window.location.origin,
       perform:(action,response)=>callFunctionalSurvey({uid,faAuth,survey,action,response,isCurrent:current}),isCurrent:current});
     frame.src=new URL(survey==='stress'?'enquetes/stress.html':'enquetes/',window.location.href).href;

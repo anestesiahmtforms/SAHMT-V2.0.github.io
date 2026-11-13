@@ -37,7 +37,7 @@ function runtime(env,fetchImpl=fetch){
  const projections={FA:createFiStore({projectId:FI_PROJECTS.FA,getAccessToken,fetchImpl,allowedCollections:['users','accessRequests','appConfig']}),FJ:createFiStore({projectId:FI_PROJECTS.FJ,getAccessToken,fetchImpl,allowedCollections:['contacts','eventMembers']})};
  const trainingPolicy=createFiStore({projectId:FI_PROJECTS.FB,getAccessToken,fetchImpl,allowedCollections:['htmlTrainingSettings'],readOnly:true});
  const policyStore=createFiStore({projectId:FI_PROJECTS.FA,getAccessToken,fetchImpl,allowedCollections:['runtimePolicy'],readOnly:true});
- const folders=createFiFolderReader({readPolicy:()=>policyStore.get('runtimePolicy','folders'),readTrainingPolicy:()=>trainingPolicy.get('htmlTrainingSettings','folders')});
+ const folders=(administrator=false)=>createFiFolderReader({administrator,readPolicy:()=>policyStore.get('runtimePolicy','folders'),readTrainingPolicy:()=>trainingPolicy.get('htmlTrainingSettings','folders')});
  return {store,sources,projections,folders};
 }
 function folderPublisher(env,fetchImpl){
@@ -45,10 +45,10 @@ function folderPublisher(env,fetchImpl){
     return createFolderPolicyStore({getAccessToken:createServiceTokenProvider({credentials,fetchImpl:fetchImpl}),fetchImpl:fetchImpl});
 }
 export function createFiControlWorker({verifyActor,buildServices,buildFolderPublisher=folderPublisher,fetchImpl=fetch}={}){
- const createServices=buildServices||(async(env,rt,requestFetch,pilot)=>{
+ const createServices=buildServices||(async(env,rt,requestFetch,pilot,actor)=>{
   const settings=await rt.store.get('fiControlConfig','runtime');if(settings?.enabled!==true)throw fiError('FI_NOT_READY');
   const modelProvider=createOpenAIProvider({apiKey:env.FI_AI_ENABLED==='true'||pilot?env.OPENAI_API_KEY:undefined,fetchImpl:requestFetch});
-  const guard=rt.folders;
+  const guard=rt.folders(isAdmin(actor));
   const guardedModel={enabled:modelProvider.enabled,async generate(...args){await guard.recheck();return modelProvider.generate(...args);}};
   const monthlyBudgetMicros=pilot?Math.min(250000,pilot.monthlyBudgetMicros||0):settings.monthlyBudgetMicros;
   const admin=createFiAdminService({store:rt.store,projections:rt.projections});
@@ -142,7 +142,7 @@ export function createFiControlWorker({verifyActor,buildServices,buildFolderPubl
     const result=await publishFolderAvailability({store,actor:actor.uid,data:body.input});
     return json(result,result.pending?202:200);
    }
-   return json(await (await createServices(env,rt,requestFetch,pilot)).dispatch(actor,body.action,body.input));
+   return json(await (await createServices(env,rt,requestFetch,pilot,actor)).dispatch(actor,body.action,body.input));
   }catch(error){
    const code=/^[A-Z0-9_]{1,100}$/.test(error.code||error.message||'')?(error.code||error.message):'FI_UNAVAILABLE';
    const status=[400,401,403,404,409,413,429,503].includes(error.status)?error.status:code==='FORBIDDEN'?403:/INVALID|REQUIRED$/.test(code)?400:503;
@@ -153,8 +153,9 @@ export function createFiControlWorker({verifyActor,buildServices,buildFolderPubl
    if(env.FI_CONTROL_ENABLED!=='true')return;
    ctx.waitUntil((async()=>{
     const rt=runtime(env,boundedFetch(fetchImpl));
-    await rt.folders.checkHtmlLibrary();
-    await refreshFiCatalogue({source:rt.folders.wrap(rt.sources()).FB,target:rt.store,verifyPolicy:()=>rt.folders.recheck()});
+    const folders=rt.folders();
+    await folders.checkHtmlLibrary();
+    await refreshFiCatalogue({source:folders.wrap(rt.sources()).FB,target:rt.store,verifyPolicy:()=>folders.recheck()});
    })().catch(()=>console.error(JSON.stringify({code:'FI_CATALOGUE_REFRESH_FAILED'}))));
    return;
   }
