@@ -112,6 +112,8 @@ test('documentos novos exigem grupo confiável, módulo autorizado, perfil ativo
   await assertSucceeds(getDocs(collection(admin, 'scopedDocuments')));
   await setPolicy(['gestao/area-documents']);
   await assertFails(getDocs(list(['GENERAL'])));
+  await assertFails(getDoc(doc(admin, 'scopedDocuments', 'scoped-general-01')));
+  await seedProfiles([accessProfile('documents-admin', {admin: true, documentsManage: true})]);
   await assertSucceeds(getDoc(doc(admin, 'scopedDocuments', 'scoped-general-01')));
 });
 
