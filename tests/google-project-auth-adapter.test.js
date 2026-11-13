@@ -89,7 +89,7 @@ test('independent FB maintenance refreshes its own SDK session without initializ
  assert.equal((await runtime.maintainSessions()).status,'ready');assert.deepEqual(calls,[false]);assert.equal(await runtime.verifyTargetSession('FC'),false);
 });
 const entries=Object.fromEntries(['FA','FB','FC','FD','FE'].map(t=>[t,{acceptedGoogleClientIds:['source-client'],appName:'app-'+t,config:{projectId:t,appId:'id-'+t}}]));
-function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFailure,tokenRead,includeFf=false}={}){
+function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFailure,tokenRead,includeFf=false,includeFk=false,canConnectTarget}={}){
   const auth={target:'FA',currentUser:person()},apps=[],instances={FA:auth},calls=[],saved=new Map();
   const sdk={
     indexedDBLocalPersistence:'indexeddb',browserLocalPersistence:'local',inMemoryPersistence:'memory',browserPopupRedirectResolver:{},
@@ -121,10 +121,10 @@ function fixture({persisted={},verify,signin,popupFailure,restoration,logoutFail
       static credentialFromResult(result){return result.credential;}
     }
   };
-  const configuredEntries = includeFf ? { ...entries, FF: { appName: 'app-FF', config: { projectId: 'FF', appId: 'id-FF' } } } : entries;
+  const configuredEntries = {...entries,...(includeFf?{FF:{appName:'app-FF',config:{projectId:'FF',appId:'id-FF'}}}:{}),...(includeFk?{FK:{appName:'app-FK',config:{projectId:'FK',appId:'id-FK'}}}:{})};
   const runtime=createGoogleProjectAuthRuntime({sdk,auth,entries:configuredEntries,enabled:true,isOnline:()=>true,randomId:()=> 'installation',
     storage:{getItem:k=>saved.get(k),setItem:(k,v)=>saved.set(k,v)},requestUri:()=> 'https://fixture.example/',
-    restoreTimeoutMs:25,verifyDestination:async args=>{calls.push({kind:'preflight',target:args.entry.config.projectId});return verify?.(args);}});
+    restoreTimeoutMs:25,canConnectTarget,verifyDestination:async args=>{calls.push({kind:'preflight',target:args.entry.config.projectId});return verify?.(args);}});
   return {runtime,auth,instances,apps,calls,saved};
 }
 test('módulos FC reutilizam a sessão coordenada, incluindo bloqueio de outra identidade e saída global',async()=>{
@@ -263,4 +263,26 @@ test('configured FF shares Google sign-in, restoration and global sign-out', asy
   assert.equal(h.calls.filter(call => call.kind === 'signin' && call.target === 'FF').length, 1);
   await h.runtime.controller.signOutAll();
   assert.equal(h.instances.FF.currentUser, null);
+});
+
+
+test('FA login establishes FK same-UID session, reuses it on entry and clears it on global logout',async()=>{
+ const h=fixture({includeFk:true});await h.runtime.connectFromPrimarySignIn(credential,h.auth.currentUser);
+ assert.equal(h.runtime.controller.snapshot().targets.FK.status,'ready');assert.equal(h.instances.FK.currentUser.uid,h.auth.currentUser.uid);
+ assert.equal(await h.runtime.waitForTargetSession('FK'),true);
+ assert.equal(h.calls.filter(c=>c.kind==='signin'&&c.target==='FK').length,1);assert.equal(h.calls.some(c=>c.kind==='reauth'),false);
+ await h.runtime.controller.signOutAll();assert.equal(h.instances.FK.currentUser,null);
+});
+
+test('FA login excludes FK for an ineligible group without requesting credentials for FK',async()=>{
+ const h=fixture({includeFk:true,canConnectTarget:async target=>target!=='FK'});
+ await h.runtime.connectFromPrimarySignIn(credential,h.auth.currentUser);
+ assert.equal(h.runtime.controller.snapshot().complete,true);assert.equal(h.runtime.controller.snapshot().targets.FK.status,'excluded');
+ assert.equal(h.calls.some(c=>['signin','preflight'].includes(c.kind)&&c.target==='FK'),false);
+});
+
+test('unavailable FK eligibility never falls through to credential exchange',async()=>{
+ const h=fixture({includeFk:true,canConnectTarget:async target=>{if(target==='FK')throw {code:'AUTH_UNAVAILABLE'};return true;}});
+ await h.runtime.connectFromPrimarySignIn(credential,h.auth.currentUser);
+ assert.equal(h.runtime.controller.snapshot().targets.FK.status,'pending');assert.equal(h.calls.some(c=>c.kind==='signin'&&c.target==='FK'),false);
 });

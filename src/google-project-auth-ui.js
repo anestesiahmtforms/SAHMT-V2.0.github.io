@@ -15,11 +15,11 @@ const messages={AUTH_AUDIENCE_NOT_VERIFIED:'A compatibilidade Google deste proje
   AUTH_SOURCE_GOOGLE_LINK_REQUIRED:'Seu cadastro precisa ter a conta Google vinculada pelo administrador.'};
 
 /** This small panel never replaces the app, forms, report DOM or offline queues. */
-export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGoogleButton,isVisible=()=>true,document:doc=document,now=Date.now}={}){
+export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGoogleButton,isVisible=()=>true,autoOpen=false,document:doc=document,now=Date.now}={}){
   const panel=doc.createElement('section');panel.className='google-auth-update';panel.hidden=true;
   panel.setAttribute('aria-label','Atualização de acesso');
   const heading=doc.createElement('h2');heading.textContent='ATUALIZAR O APP';
-  const explanation=doc.createElement('p');explanation.textContent='Confirme sua conta Google para ativar o acesso automático.';
+  const explanation=doc.createElement('p');explanation.textContent='Confirme sua conta Google na entrada do SAHMT para recuperar os acessos automáticos aos módulos.';
   const list=doc.createElement('ul'),message=doc.createElement('p'),host=doc.createElement('div'),retry=doc.createElement('button');
   host.className='google-auth-button';message.setAttribute('role','status');
   retry.className='secondary-button';retry.textContent='TENTAR CARREGAR O GOOGLE NOVAMENTE';retry.hidden=true;
@@ -42,10 +42,10 @@ export function mountGoogleProjectAuthPanel({controller,confirm,getUser,createGo
   function paint(state=lastState,install=true){
     if(disposed)return;lastState=state;const user=getUser();
     if(lastUid!==user?.uid){lastError='';lastUid=user?.uid;}
-    panel.hidden=!opened||!isVisible()||!user||now()<GOOGLE_AUTH_START||state.complete||state.uid!==user.uid||state.busy&&!localBusy;
+    panel.hidden=!(opened||autoOpen)||!isVisible()||!user||now()<GOOGLE_AUTH_START||state.complete||state.uid!==user.uid||state.busy&&!localBusy;
     list.replaceChildren();for(const [target,value]of Object.entries(state.targets)){
       const item=doc.createElement('li');item.dataset.status=value.status;
-      const status={ready:'conectado',pending:'pendente',restoring:'restaurando',connecting:'conectando'}[value.status]||'pendente';
+      const status={ready:'conectado',excluded:'não se aplica ao seu grupo',pending:'pendente',restoring:'restaurando',connecting:'conectando'}[value.status]||'pendente';
       item.textContent=`${target} · ${labels[target]}: ${status}`;list.append(item);
     }
     const sourceBlocked=state.targets.FA?.code==='AUTH_SOURCE_GOOGLE_LINK_REQUIRED';

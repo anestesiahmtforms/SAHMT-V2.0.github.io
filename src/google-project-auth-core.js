@@ -10,12 +10,8 @@ export function sameGoogleIdentity(user, expected) {
   const identity = googleIdentity(user);
   return Boolean(expected && identity?.uid === expected.uid && identity.googleUid === expected.googleUid);
 }
-// FF was provisioned independently. Link by Google's immutable subject, never by UID equality.
-// Existing FA–FE identity contracts remain unchanged.
 export function sameProjectGoogleIdentity(target,user,expected) {
-  if(target!=='FF')return sameGoogleIdentity(user,expected);
-  const identity=googleIdentity(user);
-  return Boolean(expected?.googleUid&&identity?.uid&&identity.googleUid===expected.googleUid&&user.emailVerified===true);
+  return sameGoogleIdentity(user,expected);
 }
 export function safeGoogleAuthCode(error) {
   const code=String(error?.code || 'AUTH_UNAVAILABLE');
@@ -34,37 +30,48 @@ const fail=code=>Object.assign(new Error(code),{code});
 
 /** No Firestore, tokens, permissions or timer-based maintenance in this coordinator. */
 export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGETS,getPrimaryUser,restoreTarget,connectTarget,signOutTarget,
-  onState=()=>{},saveProgress=()=>{},isOnline=()=>true,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}) {
+  onState=()=>{},saveProgress=()=>{},isOnline=()=>true,canConnectTarget=async()=>true,sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms))}={}) {
   let generation=0,identity=null,sourceUid=null,running=null,runningIdentity=null,restoring=null,loggingOut=null;
   let states=Object.fromEntries(targets.map(target=>[target,{status:'pending',code:null}]));
   const listeners=new Set();
   const snapshot=()=>({release:GOOGLE_AUTH_RELEASE,uid:sourceUid,busy:Boolean(running||restoring||loggingOut),connecting:Boolean(running),signingOut:Boolean(loggingOut),
-    complete:targets.every(target=>states[target].status==='ready'),targets:structuredClone(states)});
+    complete:targets.every(target=>['ready','excluded'].includes(states[target].status)),targets:structuredClone(states)});
   function emit(){const value=snapshot();onState(value);for(const listener of listeners)listener(value);
     if(identity)try{saveProgress({release:GOOGLE_AUTH_RELEASE,uid:identity.uid,complete:value.complete,
       readyTargets:targets.filter(target=>states[target].status==='ready')});}catch{/* Optional UI progress must not fail Auth. */}}
   const current=(ticket,expected)=>ticket===generation&&sameGoogleIdentity(getPrimaryUser(),expected);
   const update=(target,value,ticket)=>{if(ticket===generation){states[target]=value;emit();}};
-  async function pool(items,work){let index=0;await Promise.all([0,1].map(async()=>{while(index<items.length){const item=items[index++];await work(item);}}));}
+  // Restore each destination independently; only credential exchanges share slots.
+  // A slow persisted session must not delay a new session in another project.
+  function connectionSlots(){let active=0;const waiting=[];return async work=>{
+    if(active>=2)await new Promise(resolve=>waiting.push(resolve));else active++;
+    try{return await work();}finally{const next=waiting.shift();if(next)next();else active--;}
+  };}
   function adopt(user){const next=googleIdentity(user);if((user?.uid||null)!==sourceUid||next?.uid!==identity?.uid||next?.googleUid!==identity?.googleUid){
     generation++;identity=next;sourceUid=user?.uid||null;states=Object.fromEntries(targets.map(t=>[t,{status:'pending',code:null}]));
   }return generation;}
-  async function scan(user){
-    const ticket=adopt(user),expected=identity;
-    if(!expected){emit();return snapshot();}
-    update(primary,{status:'ready',code:null},ticket);
-    // Restoration only reads existing SDK sessions. A slow project must not
-    // occupy the connection pool and hold up healthy destinations.
-    await Promise.all(targets.filter(t=>t!==primary).map(async target=>{
+  async function restoreOne(target,ticket,expected){
       if(!current(ticket,expected))return;
       if(states[target].status!=='ready')update(target,{status:'restoring',code:null},ticket);
-      try{const existing=await restoreTarget(target);
+      let eligible;
+      try{eligible=await canConnectTarget(target,getPrimaryUser());}
+      catch(error){update(target,{status:'pending',code:safeGoogleAuthCode(error)},ticket);return false;}
+      try{
+        if(!current(ticket,expected))return;
+        if(!eligible){await signOutTarget(target,{isCurrent:()=>current(ticket,expected)});update(target,{status:'excluded',code:null},ticket);return;}
+        const existing=await restoreTarget(target);
         if(!current(ticket,expected))return;
         if(existing&&!sameProjectGoogleIdentity(target,existing,expected)){
           await signOutTarget(target,{isCurrent:()=>current(ticket,expected)});update(target,{status:'pending',code:'AUTH_UID_MISMATCH'},ticket);
         }else update(target,{status:existing?'ready':'pending',code:null},ticket);
       }catch(error){update(target,{status:'pending',code:safeGoogleAuthCode(error)},ticket);}
-    }));
+      return true;
+  }
+  async function scan(user){
+    const ticket=adopt(user),expected=identity;
+    if(!expected){emit();return snapshot();}
+    update(primary,{status:'ready',code:null},ticket);
+    await Promise.all(targets.filter(t=>t!==primary).map(target=>restoreOne(target,ticket,expected)));
     return snapshot();
   }
   function restore(user=getPrimaryUser()) {
@@ -91,10 +98,13 @@ export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGET
     }
     const ticket=adopt(getPrimaryUser());
     const operation=(async()=>{
-      await restore(getPrimaryUser());
       if(!current(ticket,expected))throw fail('AUTH_ACCOUNT_CHANGED');
       update(primary,{status:'ready',code:null},ticket);
-      await pool(targets.filter(t=>t!==primary&&states[t].status!=='ready'),async target=>{
+      const slot=connectionSlots();
+      await Promise.all(targets.filter(t=>t!==primary).map(async target=>{
+        const eligible=await restoreOne(target,ticket,expected);
+        if(!eligible||!current(ticket,expected)||['ready','excluded'].includes(states[target].status))return;
+        return slot(async()=>{
         if(!current(ticket,expected))return;
         if(!isOnline()){update(target,{status:'pending',code:'AUTH_OFFLINE',phase:'connect'},ticket);return;}
         update(target,{status:'connecting',code:null},ticket);
@@ -112,7 +122,8 @@ export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGET
             update(target,{status:'pending',code,phase:'connect'},ticket);break;
           }
         }
-      });
+        });
+      }));
       return snapshot();
     })();
     running=operation;runningIdentity=expected;emit();
@@ -144,7 +155,7 @@ export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGET
     })();loggingOut=operation;emit();operation.finally(()=>{loggingOut=null;emit();}).catch(()=>{});return operation;
   }
   return Object.freeze({restore,connect,signOutAll,clearSecondaries,snapshot,
-    observeTarget(target,user){if(!identity||!sameGoogleIdentity(getPrimaryUser(),identity)||target===primary||!targets.includes(target))return;
+    observeTarget(target,user){if(!identity||!sameGoogleIdentity(getPrimaryUser(),identity)||target===primary||!targets.includes(target)||states[target].status==='excluded')return;
       states[target]=sameProjectGoogleIdentity(target,user,identity)?{status:'ready',code:null}:{status:'pending',code:user?'AUTH_UID_MISMATCH':null};emit();},
     subscribe(listener){listeners.add(listener);listener(snapshot());return()=>listeners.delete(listener);},
     invalidate(){generation++;identity=null;sourceUid=null;emit();}});

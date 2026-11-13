@@ -1,6 +1,6 @@
 import {operationalContentAllowed} from './operational-folder-runtime.js';
 import {auth} from './firebase-auth.js';
-import {getGoogleProjectAuth,waitForIsolatedFfSession,confirmIsolatedFfAccess,currentGoogleProjectIdentity,googleProjectClientId} from './google-project-auth-runtime.js';
+import {getGoogleProjectAuth,waitForGoogleProjectSession} from './google-project-auth-runtime.js';
 import {FF,fail} from '../communication/domain.js';
 import {rememberCommunicationDevicePushActive} from './communication-link.js';
 import {APP_VERSION} from './app-version.js';
@@ -10,7 +10,7 @@ const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
 const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','USAGE']);
 export async function prepareCommunicationSession({isCurrent=()=>true}={}){
  const current=()=>communicationEnabled&&isCurrent()&&document.visibilityState!=='hidden';
- return current()&&await waitForIsolatedFfSession({isCurrent:current})&&current();
+ return current()&&await waitForGoogleProjectSession('FF',{isCurrent:current})&&current();
 }
 export function createCommunicationClient({isCurrent=()=>true}={}){
  let disposed=false,presenceReported=false;const controllers=new Set(),widgets=new Set(),reads=new Map();
@@ -81,13 +81,12 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
  }
  async function connectGoogle(host,{onConnected,onError}){
   const live=()=>!disposed&&isCurrent()&&host.isConnected;
-  const {createGoogleProjectAuthGoogleButton}=await import('./google-project-auth-google-button.js');
   if(!live())return()=>{};
-  const widget=createGoogleProjectAuthGoogleButton({clientId:googleProjectClientId,getExpectedIdentity:currentGoogleProjectIdentity,onError,
-   onCredential:async credential=>{await confirmIsolatedFfAccess(credential,{isCurrent:current});if(!current())return;if(!await waitForIsolatedFfSession({isCurrent:current}))throw fail('COMM_SESSION_INVALID');if(current())await onConnected();}});
+  const link=document.createElement('a');link.href='#/offline';link.textContent='RECUPERAR ACESSO NA ENTRADA DO SAHMT';
+  const widget={dispose:()=>link.remove()};
   widgets.add(widget);
   const cleanup=()=>{widget.dispose();widgets.delete(widget);};
-  try{await widget.render(host);if(!live())cleanup();}catch(e){cleanup();throw e;}
+  host.replaceChildren(link);
   return cleanup;
  }
  return {request,enable,disable,connectGoogle,dispose(){disposed=true;reads.clear();for(const c of controllers)c.abort();for(const w of widgets)w.dispose();widgets.clear();document.removeEventListener('visibilitychange',suspend);}};

@@ -195,7 +195,8 @@ if (googleProjectAuthEnabled) {
       if(result.targets?.FB?.status==='ready'){const destination=consumeManagementReturn();if(destination){rememberModuleNavigation(deployment.fbBase);location.assign(deployment.fbBase+destination);}}
       return result;
     },getUser:()=>session.user,
-      isVisible:()=>currentRoute()==='offline'&&session.status==='signed-in',
+      autoOpen:deployment.target==='FA',
+      isVisible:()=>['home','offline','management-hub'].includes(currentRoute())&&session.status==='signed-in',
       createGoogleButton:callbacks=>google.createGoogleProjectAuthGoogleButton({...callbacks,clientId:runtime.googleProjectClientId,getExpectedIdentity:runtime.currentGoogleProjectIdentity})});
     if(currentRoute()==='offline'&&hasManagementReturn())googleAccessPanel.open();
   }).catch(()=>{});
@@ -1561,7 +1562,11 @@ async function loadModule(route) {
     }
     const isCurrent=()=>generation===evaluationModuleGeneration&&content.isConnected&&currentRoute()==='functional'&&session.status==='signed-in'
       &&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
-    const cleanup=await mountFunctionalModule(content,{uid,faAuth:auth,group:access.group,isCurrent});
+    const cleanup=await mountFunctionalModule(content,{uid,faAuth:auth,group:access.group,isCurrent,onSessionRequired:()=>{
+      if(!isCurrent())return;
+      notice='Confirme sua conta na entrada do SAHMT para recuperar o acesso automático aos módulos.';
+      navigate('offline');googleAccessPanel?.open();
+    }});
     if(isCurrent())cleanupCurrentModule=cleanup;else cleanup?.();
     return;
   }

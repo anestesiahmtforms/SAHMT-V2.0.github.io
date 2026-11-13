@@ -6,7 +6,7 @@ import {communicationLimitMessage} from './communication-usage.js';
 import './communication.css';
 
 const errors = {
-  COMM_SESSION_INVALID: 'Confirme sua conta Google e reabra a Central.',
+  COMM_SESSION_INVALID: 'Recupere o acesso na entrada do SAHMT e reabra a Central.',
   COMM_FORBIDDEN: 'Sua conta não tem autorização para esta ação.',
   COMM_INVALID_AUDIENCE: 'O destinatário não está disponível. Selecione novamente.',
   COMM_INVALID_INPUT: 'Confira o título, a descrição e o público.',
@@ -68,7 +68,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   function recoverGoogle() {
     directory = undefined;
     cleanupGoogle();
-    render('Conectar à Central de Comunicação', '<p>Confirme a mesma conta Google já aberta no SAHMT.</p><div data-comm-google></div>');
+    render('Acesso à Central de Comunicação', '<p>O acesso automático é coordenado pela entrada do SAHMT.</p><div data-comm-google></div>');
     const ticket = generation;
     const current = () => active() && generation === ticket;
     void client.connectGoogle(root.querySelector('[data-comm-google]'), {

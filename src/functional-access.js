@@ -5,6 +5,24 @@ import {assignedInstitutionalGroup} from './institutional-group.js';
 const ADMIN_EMAIL = 'wx2064@gmail.com';
 const MANAGER_EMAIL = 'marcio.henrique82@gmail.com';
 const normalizeEmail = value => String(value || '').trim().toLowerCase();
+const sessionEligibility = new WeakMap();
+
+/** Auth coordination uses the same FA eligibility check as the module menu. */
+export function functionalSessionEligible(user) {
+  if(!user?.uid)return Promise.resolve(false);
+  const prior=sessionEligibility.get(user);
+  if(prior&&Date.now()-prior.at<60000)return prior.promise;
+  const promise=(async()=>{
+    const snapshot=await getDocFromServer(doc(db,'users',user.uid));
+    const access=await getFunctionalAccess({status:'signed-in',user,profile:snapshot.exists()?snapshot.data():null});
+    if(access.allowed)return true;
+    if(['PROFILE_INACTIVE','GROUP_NOT_ALLOWED'].includes(access.code))return false;
+    throw Object.assign(new Error('AUTH_UNAVAILABLE'),{code:'AUTH_UNAVAILABLE'});
+  })();
+  const entry={at:Date.now(),promise};sessionEligibility.set(user,entry);
+  promise.catch(()=>{if(sessionEligibility.get(user)===entry)sessionEligibility.delete(user);});
+  return promise;
+}
 
 async function ownCategoryAssignment(user) {
   const email = normalizeEmail(user?.email);

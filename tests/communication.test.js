@@ -100,9 +100,10 @@ test('quota exhaustion fails closed; incomplete dispatch reconciliation never re
  const f=fixture();f.store.data.set('communicationBudgets/2026-11-03',{requests:2000});await assert.rejects(f.call('BOOTSTRAP'),{code:'COMM_DAILY_OPERATION_LIMIT'});
  const g=fixture();g.store.data.set('communicationDispatches/interrupted',{id:'interrupted',status:'processing',batchStartedAt:NOW-180000,batchId:'one',pendingCount:3,batches:1,cursor:'last',unknown:0,processed:0});const d=await g.call('RECONCILE',{id:'interrupted',confirmed:true});assert.equal(d.dispatch.unknown,3);assert.equal(d.dispatch.cursor,'last');assert.equal(g.sent.length,0);
 });
-test('FF identity tolerates a different Firebase UID only for the same verified Google subject',()=>{
+test('FF identity requires the same Firebase UID and Google subject as FA',()=>{
  const u={uid:'ff-different',emailVerified:true,providerData:[{providerId:'google.com',uid:'google-one'}]},e={uid:'fa-one',googleUid:'google-one'};
- assert.equal(sameProjectGoogleIdentity('FF',u,e),true);assert.equal(sameProjectGoogleIdentity('FC',u,e),false);assert.equal(sameProjectGoogleIdentity('FF',{...u,emailVerified:false},e),false);
+ assert.equal(sameProjectGoogleIdentity('FF',u,e),false);assert.equal(sameProjectGoogleIdentity('FC',u,e),false);
+ assert.equal(sameProjectGoogleIdentity('FF',{...u,uid:e.uid},e),true);
 });
 function jwt(project,uid='ff-one',email=ADMINS[0]){const seconds=NOW/1000;return 'Bearer '+Buffer.from('{"alg":"RS256"}').toString('base64url')+'.'+Buffer.from(JSON.stringify({aud:project,iss:'https://securetoken.google.com/'+project,sub:uid,email,email_verified:true,exp:seconds+3600,iat:seconds,auth_time:seconds,firebase:{sign_in_provider:'google.com',identities:{'google.com':['google-one']}}})).toString('base64url')+'.'+Buffer.alloc(256).toString('base64url');}
 test('server validates token with Google, rejects wrong project, revoked, unverified or forged identity',async()=>{

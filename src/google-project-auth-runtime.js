@@ -8,7 +8,8 @@ import {googleIdentity} from './google-project-auth-core.js';
 let storage;try{storage=globalThis.localStorage;}catch{}
 const runtime=createGoogleProjectAuthRuntime({sdk:{...firebaseApp,...firebaseAuth},auth,
   entries:GOOGLE_PROJECT_CONFIG,primary:deployment.target,enabled:googleProjectAuthEnabled,storage,
-  requestUri:()=>location.origin+import.meta.env.BASE_URL});
+  requestUri:()=>location.origin+import.meta.env.BASE_URL,
+  canConnectTarget:async(target,user)=>target!=='FK'||(await import('./functional-access.js')).functionalSessionEligible(user)});
 export const googleProjectAuth=runtime.controller;
 export const confirmGoogleProjectAccess=runtime.confirm;
 export const connectGoogleProjectsFromSignIn=runtime.connectFromPrimarySignIn;

@@ -5,7 +5,7 @@ import {waitForGoogleProjectSession} from './google-project-session.js';
 /** Firebase SDK dependency injection keeps production composition and local tests identical. */
 export function createGoogleProjectAuthRuntime({sdk,auth,entries,primary='FA',enabled=false,storage,
   randomId=()=>crypto.randomUUID(),isOnline=()=>globalThis.navigator?.onLine!==false,
-  requestUri=()=>location.origin+'/',restoreTimeoutMs=12000,verifyDestination=verifyExistingGoogleDestination}) {
+  requestUri=()=>location.origin+'/',restoreTimeoutMs=12000,verifyDestination=verifyExistingGoogleDestination,canConnectTarget=async()=>true}) {
   const {getApps,initializeApp,initializeAuth,getAuth,indexedDBLocalPersistence,browserLocalPersistence,inMemoryPersistence,
     signInWithCredential,signOut,GoogleAuthProvider,reauthenticateWithCredential,
     beforeAuthStateChanged,getAdditionalUserInfo,onAuthStateChanged,getIdTokenResult}=sdk;
@@ -60,7 +60,11 @@ async function ready(instance){let timer;
 const targets=[...GOOGLE_AUTH_TARGETS,...(entries.FF?['FF']:[]),...(primary==='FA'&&entries.FK?['FK']:[])];
 const progress=createGoogleAuthProgressStore(storage,randomId,targets);
 coordinator=createGoogleProjectAuth({primary,targets,getPrimaryUser:()=>auth.currentUser,
-  isOnline,saveProgress:progress.save,
+  isOnline,saveProgress:progress.save,canConnectTarget:async(target,user)=>{
+    let timer;
+    try{return await Promise.race([canConnectTarget(target,user),new Promise((_,reject)=>{timer=setTimeout(()=>reject(fail('AUTH_RESTORE_TIMEOUT')),restoreTimeoutMs);})]);}
+    finally{clearTimeout(timer);}
+  },
   restoreTarget:async target=>{const instance=targetAuth(target);await ready(instance);const user=instance.currentUser;if(user&&!await verifyTargetSession(target))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');return instance.currentUser;},
   signOutTarget:(target,{isCurrent=()=>true}={})=>withTargetLock(target,async()=>{
     if(!isCurrent())return;const instance=targetAuth(target);await signOut(instance);

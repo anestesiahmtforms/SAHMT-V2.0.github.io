@@ -32,6 +32,7 @@ test('missing FB session uses explicit Synchronization recovery and retains its 
 test('conexão secundária fica atrás da confirmação explícita do painel',()=>{
   assert.match(main,/createGoogleButton/);
   assert.match(main,/runtime\.confirmGoogleProjectAccess\(credential\)/);
-  assert.match(main,/isVisible:\(\)=>currentRoute\(\)==='offline'/);
+  assert.match(main,/autoOpen:deployment.target==='FA'/);
+  assert.match(main,/isVisible:\(\)=>\['home','offline','management-hub'\]/);
   assert.match(main,/if \(googleProjectAuthEnabled\)/);
 });
