@@ -34,7 +34,7 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false}={}){
  const root={isConnected:true,innerHTML:'',addEventListener(){},removeEventListener(){},querySelector:s=>s==='[data-fk-sources]'?sources:s==='[data-fk-refresh-status]'?status:null};
  const context=vm.createContext({setTimeout,clearTimeout,env:{VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED:'true'},
   getFunctionalAuth:()=>auth,getFunctionalFirestore:()=>({}),waitForGoogleProjectSession:async()=>connected,
-  refreshFunctionalOverview:refresh,operationalContentAllowed:()=>true,doc:(_db,...path)=>path.join('/'),
+  refreshFunctionalOverview:refresh,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
   getDocFromServer:async path=>{reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({sources:{professionalRegistration:{state:'READY',data:{record:true}}}})};}});
  vm.runInContext(source,context);
  return {root,sources,status,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,onSessionRequired:()=>recovery++}),recovery:()=>recovery};
