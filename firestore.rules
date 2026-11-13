@@ -458,10 +458,10 @@ service cloud.firestore {
     }
     function managementFolderOpen_(record) {
       let path = /databases/$(database)/documents/runtimePolicy/folders;
-      return (activeUser() && profile().get('uid', '') == request.auth.uid && (profile().get('role', '') == 'administrador_app' || profile().get('permissions', {}).get('admin', false) == true)) || (!exists(path) || (folderReadPolicyValid_(get(path).data) &&
-        (get(path).data.disabled.size() == 0 ||
-          (record.get('managementAreaId', '') != '' &&
-            !get(path).data.disabled.hasAny(['gestao', 'gestao/' + record.managementAreaId])))));
+      let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
+      return (folderReadPolicyValid_(policy) && policy.disabled.size() == 0) ||
+        isAdmin() || (folderReadPolicyValid_(policy) && record.get('managementAreaId', '') != '' &&
+          !policy.disabled.hasAny(['gestao', 'gestao/' + record.managementAreaId]));
     }
     match /managementAreas/{areaId} {
       function managementAccess() {
