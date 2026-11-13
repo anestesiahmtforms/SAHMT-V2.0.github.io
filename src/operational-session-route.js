@@ -5,8 +5,14 @@ const consumers = Object.freeze({
   FH: Object.freeze(['labels', 'admin']),
   FG: Object.freeze(['checklist', 'fg-performance'])
 });
+/** Recheck the actual route at use time; navigation events can be missed or delayed. */
+export function synchronizeOperationalSessionRoute({station,session,readRoute}) {
+  const active=Object.hasOwn(consumers,station)&&consumers[station].includes(readRoute());
+  void session.setActive(active).catch(()=>{});
+  return active;
+}
 export function bindOperationalSessionRoute({station, session, readRoute, subscribe}) {
-  const update = () => {void session.setActive(Object.hasOwn(consumers, station) && consumers[station].includes(readRoute())).catch(() => {});};
+  const update = () => synchronizeOperationalSessionRoute({station,session,readRoute});
   const stop = subscribe(update);
   update();
   return stop;

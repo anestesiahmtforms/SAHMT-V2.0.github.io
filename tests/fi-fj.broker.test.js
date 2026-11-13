@@ -50,21 +50,9 @@ test('denied exchanges close the response stream without exposing provider conte
   assert.equal(cancelled, true);
 });
 
-test('FJ provider failure still lets the server authorize the FA session, without a fabricated attestation',async()=>{
- for(const code of ['appCheck/recaptcha-error','app-check/token-request-timeout','appCheck/throttled']){
-  let called=0;
-  const exchange=createOperationalModuleExchange({station:'FJ',getAppCheckToken:async()=>{throw {code};},fetchImpl:async(url,options)=>{
-   called++;assert.equal(options.headers.Authorization,'Bearer synthetic-fa-proof');assert.equal(options.headers['X-Firebase-AppCheck'],undefined);return response('FJ');
-  }});
-  assert.equal((await exchange({faIdToken:'synthetic-fa-proof',faUid:'member'})).uid,'member');assert.equal(called,1);
+test('App Check failure never attempts the exchange in any module',async()=>{
+ for(const station of ['FI','FJ','FH','FG']){
+  let calls=0;const exchange=createOperationalModuleExchange({station,getAppCheckToken:async()=>{throw {code:'appCheck/recaptcha-error'};},fetchImpl:async()=>{calls++;return response(station);}});
+  await assert.rejects(exchange({faIdToken:'synthetic-fa-proof',faUid:'member'}),{code:'MODULE_SESSION_UNAVAILABLE'});assert.equal(calls,0);
  }
-});
-
-test('missing optional FJ attestation never bypasses a server denial or changes FI requirements',async()=>{
- let called=0;
- const options={getAppCheckToken:async()=>{throw {code:'appCheck/recaptcha-error'};},fetchImpl:async()=>{called++;return new Response(null,{status:403});}};
- await assert.rejects(createOperationalModuleExchange({station:'FJ',...options})({faIdToken:'synthetic-fa-proof',faUid:'member'}),{code:'MODULE_ACCESS_DENIED'});
- assert.equal(called,1);
- await assert.rejects(createOperationalModuleExchange({station:'FI',...options})({faIdToken:'synthetic-fa-proof',faUid:'member'}),{code:'MODULE_SESSION_UNAVAILABLE'});
- assert.equal(called,1);
 });

@@ -2,7 +2,7 @@ import {deployment} from './deployment-context.js';
 import {FIREBASE_PROJECTS, normalizeFirebaseWebConfig, resolveFirebaseProjectApp} from './firebase-projects.js';
 import {OPERATIONAL_MODULE_TARGETS, createOperationalModuleExchange} from './operational-module-broker.js';
 import {createOperationalModuleSession} from './operational-module-session.js';
-import {bindOperationalSessionRoute} from './operational-session-route.js';
+import {bindOperationalSessionRoute,synchronizeOperationalSessionRoute} from './operational-session-route.js';
 import {currentRoute} from './router.js';
 import {assertOperationalContentAllowed} from './operational-folder-runtime.js';
 
@@ -53,12 +53,19 @@ async function getInstance(station) {
   return instances.get(station);
 }
 
+function assertOperationalSessionRoute(station,instance) {
+  if(!synchronizeOperationalSessionRoute({station,session:instance.session,readRoute:currentRoute}))
+    throw Object.assign(new Error('MODULE_SESSION_INACTIVE'),{code:'MODULE_SESSION_INACTIVE'});
+}
+
 /** Failure to enter a migrated module never falls back to the FA database. */
 export async function getOperationalModuleDatabase(station, uid, {realtime = false} = {}) {
   const instance = await getInstance(station);
+  assertOperationalSessionRoute(station,instance);
   const expectedUid = uid || instance.faAuth.currentUser?.uid;
   await instance.session.ensure(expectedUid);
   const sdk = realtime ? await import('firebase/firestore') : await import('firebase/firestore/lite');
+  assertOperationalSessionRoute(station,instance);
   assertStationReadable(station);
   if (!instance.session.isActive() || instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser?.uid !== expectedUid)
     throw Object.assign(new Error('MODULE_SOURCE_SESSION_CHANGED'), {code: 'MODULE_SOURCE_SESSION_CHANGED'});
@@ -67,9 +74,11 @@ export async function getOperationalModuleDatabase(station, uid, {realtime = fal
 
 export async function getOperationalModuleIdToken(station, uid) {
   const instance = await getInstance(station);
+  assertOperationalSessionRoute(station,instance);
   const expectedUid = uid || instance.faAuth.currentUser?.uid;
   const user = await instance.session.ensure(expectedUid);
   const token = await user.getIdToken();
+  assertOperationalSessionRoute(station,instance);
   assertStationReadable(station);
   if (!instance.session.isActive() || instance.faAuth.currentUser?.uid !== expectedUid || instance.auth.currentUser !== user)
     throw Object.assign(new Error('MODULE_SOURCE_SESSION_CHANGED'), {code: 'MODULE_SOURCE_SESSION_CHANGED'});

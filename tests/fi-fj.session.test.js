@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createOperationalModuleSession} from '../src/operational-module-session.js';
-import {bindOperationalSessionRoute} from '../src/operational-session-route.js';
+import {bindOperationalSessionRoute,synchronizeOperationalSessionRoute} from '../src/operational-session-route.js';
+import vm from 'node:vm';
+import {readFileSync} from 'node:fs';
 
 function fixture({signInDelay, exchangeError, claimsOverride, station = 'FJ'} = {}) {
   let clock = 1800000000000, listener;
@@ -19,7 +21,7 @@ function fixture({signInDelay, exchangeError, claimsOverride, station = 'FJ'} = 
     signIn: async () => {
       calls.signIn++; const uid = faAuth.currentUser?.uid;
       if (signInDelay) await signInDelay;
-      const user = {uid, getIdTokenResult: async () => ({claims: {
+      const user = {uid, getIdToken:async()=> 'synthetic-module-proof',getIdTokenResult: async () => ({claims: {
         aud: projectId, sub: uid, sourceProjectId: 'sahmt-17a16', moduleStation: station,
         firebase: {sign_in_provider: 'custom'}, moduleLeaseExpiresAt: Math.floor(clock / 1000) + 300, ...claimsOverride
       }})};
@@ -204,5 +206,52 @@ test('Pessoas uses only FJ and leaving for Home stops its renewal',async()=>{
   assert.equal(f.calls.exchange,station==='FJ'?1:0);
   route='home';update();assert.equal(f.session.isActive(),false);assert.equal([...f.timers.values()].some(t=>t.delay===240000),false);
   stop();await f.session.dispose();
+ }
+});
+
+
+function accessBoundary(f,readRoute){
+ const file=readFileSync(new URL('../src/operational-module-firebase.js',import.meta.url),'utf8');
+ let code=file.slice(file.indexOf('function assertOperationalSessionRoute'),file.indexOf('export async function disposeOperationalModuleSessions'));
+ code=code.replaceAll('export async function','async function').replaceAll("await import('firebase/firestore')",'fakeSdk').replaceAll("await import('firebase/firestore/lite')",'fakeSdk');
+ const instance={session:f.session,faAuth:f.faAuth,auth:f.targetAuth,app:{projectId:'sahmt-escala-fj'}};
+ const context=vm.createContext({getInstance:async()=>instance,currentRoute:readRoute,synchronizeOperationalSessionRoute,
+  assertStationReadable(){},fakeSdk:{getFirestore:app=>app}});
+ vm.runInContext(code,context);return context;
+}
+
+test('cached FJ database access recovers after a route change with no hashchange notification',async()=>{
+ const f=fixture();let route='home';
+ const stop=bindOperationalSessionRoute({station:'FJ',session:f.session,readRoute:()=>route,subscribe:()=>()=>{}});
+ const access=accessBoundary(f,()=>route);assert.equal(f.session.isActive(),false);
+ route='schedule';
+ try{assert.equal((await access.getOperationalModuleDatabase('FJ','alice')).projectId,'sahmt-escala-fj');assert.equal(f.calls.exchange,1);}
+ finally{stop();await f.session.dispose();}
+});
+
+test('cached FJ token access recovers on reentry and still rejects Home without navigation notifications',async()=>{
+ const f=fixture();let route='schedule';const access=accessBoundary(f,()=>route);
+ await f.session.ensure('alice');await f.session.setActive(false);
+ try{
+  assert.equal(await access.getOperationalModuleIdToken('FJ','alice'),'synthetic-module-proof');assert.equal(f.calls.exchange,2);
+  route='home';await assert.rejects(access.getOperationalModuleDatabase('FJ','alice'),/MODULE_SESSION_INACTIVE/);
+  await assert.rejects(access.getOperationalModuleIdToken('FJ','alice'),/MODULE_SESSION_INACTIVE/);assert.equal(f.calls.exchange,2);
+ }finally{await f.session.dispose();}
+});
+
+
+test('silent departure while a module login is pending cannot return its database',async()=>{
+ let release,route='schedule';const f=fixture({signInDelay:new Promise(r=>release=r)}),access=accessBoundary(f,()=>route);
+ const reading=access.getOperationalModuleDatabase('FJ','alice');const rejected=assert.rejects(reading,/MODULE_SESSION_INACTIVE/);
+ for(let i=0;i<40&&!f.calls.signIn;i++)await Promise.resolve();assert.equal(f.calls.signIn,1);
+ route='home';release();await rejected;assert.equal(f.session.isActive(),false);await f.session.dispose();
+});
+
+test('route synchronization also recovers FH and FG without starting unrelated module sessions',async()=>{
+ for(const [station,route]of [['FH','labels'],['FG','checklist']]){
+  const f=fixture({station});await f.session.setActive(false);
+  const access=accessBoundary(f,()=>route);
+  try{assert.ok(await access.getOperationalModuleDatabase(station,'alice'));assert.equal(f.calls.exchange,1);}
+  finally{await f.session.dispose();}
  }
 });
