@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ADMINS} from '../communication/domain.js';
-import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE,releaseNoticeFeedback} from '../src/communication-operational-notices.js';
+import {operationalNoticeIdentity,urgentNoticeInput} from '../src/communication-operational-notices.js';
 import {createCommunicationService} from '../worker-communication/service.js';
 
 const NOW=Date.parse('2026-11-04T15:00:00Z');
@@ -66,19 +66,6 @@ test('uma fila indisponível pode ser recuperada pelo mesmo evento sem publicar 
  assert.equal(await f.store.countPublished(NOW-1000,NOW+1000),1);
 });
 
-test('FJ cutover validates the current FJ release and retains the FA operator identity and FF deduplication',async()=>{
- const fj=memory();fj.data.set('scheduleDays/2026-11-04',{highlights:{siglas:['AB'],releaseTimes:{AB:NOW-500}}});
- const f=fixture({scheduleSource:fj});
- // The old FA release deliberately differs. Only the new source may validate it.
- f.fa.data.get('scheduleDays/2026-11-04').highlights.releaseTimes.AB=NOW-5000;
- const first=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
- const second=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
- assert.equal(first.message.id,`release-2026-11-04-AB-${NOW-500}`);
- assert.equal(second.alreadySent,true);assert.equal(f.queued.length,1);
- fj.data.delete('scheduleDays/2026-11-04');
- await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),{code:'COMM_NOT_CURRENT'});
-});
-
 test('formulário fixo aplica somente ao email verificado do Márcio',()=>{
  assert.equal(operationalNoticeIdentity(operator),true);
  assert.equal(operationalNoticeIdentity({...operator,email:' MARCIO.HENRIQUE82@GMAIL.COM '}),true);
@@ -96,19 +83,6 @@ test('servidor fixa categoria, prioridade e público e não duplica o aviso urge
  assert.equal((await f.call('INBOX',{},person)).items.length,1);
  f.store.data.get('users/'+other.sourceUid).access=false;
  await assert.rejects(f.call('INBOX',{},other),{code:'COMM_FORBIDDEN'});
-});
-
-test('liberação do Márcio mantém mensagem individual, texto exato, banner e Push só ao destinatário',async()=>{
- const f=fixture();
- for(const actor of [person,other])await f.call('REGISTER_DEVICE',{token:actor.uid+'x'.repeat(70)},actor);
- const result=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
- assert.equal(result.message.title,'LIBERAÇÃO');assert.equal(result.message.message,'Você está Liberado! O SAHMT agradece por sua dedicação. BOM DESCANSO! 🤜🤛.');assert.equal(result.message.title,RELEASE_NOTICE.title);
- assert.equal(result.message.audienceType,'USER');assert.equal(result.message.audienceValue,person.sourceUid);assert.equal(result.message.route,'home');assert.equal(result.pushQueued,true);
- assert.equal((await f.call('INBOX',{},person)).items[0].id,result.message.id);
- assert.equal((await f.call('INBOX',{},other)).items.length,0);
- await assert.rejects(f.call('MESSAGE',{id:result.message.id},other),{code:'COMM_FORBIDDEN'});
- await f.deliver();assert.equal(f.sent.length,1);assert.equal(f.sent[0].token,person.uid+'x'.repeat(70));assert.equal(f.sent[0].data.title,RELEASE_NOTICE.title);assert.equal(f.sent[0].data.body,RELEASE_NOTICE.message);
- const again=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});assert.equal(again.alreadySent,true);assert.equal(f.queued.length,0);
 });
 
 test('primeiros aparelhos recebem o aviso enquanto as outras páginas de destinatários são preparadas',async()=>{
@@ -161,44 +135,11 @@ test('entrega antecipada exige reserva válida do aparelho e do próprio aviso',
  assert.equal(f.sent.length,0);
 });
 
-test('liberação exige permissão de escala, marca confirmada e destinatário ativo único',async()=>{
- const f=fixture();await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'},person),{code:'COMM_FORBIDDEN'});
- await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'CD'}),{code:'COMM_NOT_CURRENT'});
- f.store.data.get('users/'+other.sourceUid).sigla='AB';
- await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),{code:'COMM_INVALID_AUDIENCE'});
+test('liberação da escala e despachos antigos de liberação foram desativados',async()=>{
+ const f=fixture(),id='release-2026-11-04-AB-'+NOW;
+ await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),{code:'COMM_ACTION_RETIRED'});
+ for(const action of ['PREPARE','SEND_BATCH'])await assert.rejects(f.call(action,{id}),{code:'COMM_ACTION_RETIRED'});
+ for(const kind of ['fanout','device'])assert.deepEqual(await f.consume({kind,dispatchId:id}),{done:true});
  assert.equal(f.queued.length,0);
-});
-
-test('administradores por função ou permissão e Márcio podem publicar a liberação sem flag individual',async()=>{
- for(const profile of [{role:'administrador_app',permissions:{}},{role:'gestor',permissions:{admin:true}},{role:'gestor',permissions:{}}]){
-  const f=fixture(),actor=profile.role==='gestor'&&!profile.permissions.admin?operator:{...operator,email:'admin@example.test'};
-  Object.assign(f.fa.data.get('users/'+operator.sourceUid),profile,{email:actor.email});Object.assign(f.store.data.get('users/'+operator.sourceUid),profile,{email:actor.email});
-  const result=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'},actor);
-  assert.equal(result.message.audienceValue,person.sourceUid);
- }
- const f=fixture(), delegated={...operator,email:'gestor@example.test'};
- Object.assign(f.fa.data.get('users/'+operator.sourceUid),{role:'gestor',permissions:{scheduleWrite:true,eventsWrite:true,eventsManage:true},email:delegated.email});
- Object.assign(f.store.data.get('users/'+operator.sourceUid),{email:delegated.email});
- await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'},delegated),{code:'COMM_FORBIDDEN'});
- Object.assign(f.fa.data.get('users/'+operator.sourceUid),{email:operator.email,access:false});
- Object.assign(f.store.data.get('users/'+operator.sourceUid),{email:operator.email});
- await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),{code:'COMM_FORBIDDEN'});
-});
-
-test('liberação de RL aparece na primeira página da própria Home mesmo após muitos avisos de terceiros',async()=>{
- const f=fixture();f.store.data.get('users/'+person.sourceUid).sigla='RL';
- f.fa.data.set('scheduleDays/2026-11-04',{highlights:{siglas:['RL'],releaseTimes:{RL:NOW-1000}}});
- for(let i=0;i<100;i++){const id='a-'+String(i).padStart(3,'0');f.store.data.set('communicationMessages/'+id,{...draft().message,id,audienceType:'USER',audienceValue:other.sourceUid});}
- const result=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'RL'});
- assert.equal(result.pushEligible,false);
- const first=await f.call('INBOX',{},person);assert.equal(first.items.length,1);assert.equal(first.items[0].id,result.message.id);assert.ok(first.cursor);
- assert.equal((await f.call('INBOX',{},operator)).items.length,0);
-});
-
-test('confirmação distingue fila, ausência de aparelho, Push desativado e aceitação pelo FCM',()=>{
- assert.match(releaseNoticeFeedback({pushEnabled:true,pushEligible:true,pushQueued:true},'RL'),/fila de processamento; recebimento ainda não confirmado/);
- assert.match(releaseNoticeFeedback({pushEnabled:true,pushEligible:false,pushQueued:true},'RL'),/Nenhum aparelho com Push ativo/);
- assert.match(releaseNoticeFeedback({pushEnabled:false,pushQueued:false},'RL'),/Push está desativado/);
- assert.match(releaseNoticeFeedback({pushEnabled:true,pushEligible:true,dispatch:{status:'completed',accepted:1}},'RL'),/Push aceito pelo serviço/);
- assert.match(releaseNoticeFeedback({pushEnabled:true,pushEligible:true,dispatch:{status:'completed',failed:1,processed:1}},'RL'),/Push não foi confirmado/);
+ assert.equal(f.sent.length,0);
 });

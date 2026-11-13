@@ -40,7 +40,6 @@ export async function verifyPair(request,options){
  return {...ff,sourceUid:ff.uid,faUid:fa.uid};
 }
 export async function verifyCommunicationActor(request,options){
- if(options?.action==='SCHEDULE_RELEASE_NOTICE')return verifyPair(request,options);
  const ff=await verifyToken(request.headers.get('Authorization'),'FF',options);
  return {...ff,sourceUid:ff.uid};
 }

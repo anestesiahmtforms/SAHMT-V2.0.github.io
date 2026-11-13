@@ -37,7 +37,7 @@ import {isValidDateKey, localDateKey, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {scheduleReadFailure} from './schedule-read-error.js';
 import {formatScheduleReleaseTime, visibleScheduleReleaseSiglas} from './schedule-release.js';
-import {releaseNoticeFeedback, releaseNoticeError, scheduleReleaseIdentity} from './communication-operational-notices.js';
+import {scheduleReleaseIdentity} from './communication-operational-notices.js';
 import {scheduleDelayFromMarker} from './schedule-event-marker.js';
 import {openChecklistCamera} from './checklist-camera.js';
 import {checklistQrCrop, createChecklistQrConfirmation, decodeQrImageData, stationIsInDateRange, stationIsValidOn} from './checklist-qr.js';
@@ -1457,19 +1457,6 @@ function showScheduleContacts(contacts, context = {}) {
       });
       if (session.user?.uid !== actorUid) return;
       context.highlightedSiglas = updated.highlights?.siglas || [];
-      let releaseNoticeStatus = 'Liberação salva. A Central de Comunicação está desativada.';
-      if (marked && !updated.pendingFirestore && communicationFeatureEnabled) {
-        const {createCommunicationClient} = await import('./communication-client.js');
-        const commClient = createCommunicationClient({isCurrent: () => session.user?.uid === actorUid && scheduleReleaseIdentity(session.profile, session.user)});
-        try {
-          const result = await commClient.request('SCHEDULE_RELEASE_NOTICE', {day: context.date, sigla: button.dataset.releaseSigla});
-          releaseNoticeStatus = releaseNoticeFeedback(result, button.dataset.releaseSigla);
-        } catch (error) {
-          releaseNoticeStatus = releaseNoticeError(error);
-        } finally {
-          commClient.dispose();
-        }
-      }
       if (session.user?.uid !== actorUid || !content.isConnected) return;
       content.querySelectorAll('[data-release-sigla]').forEach((item) => {
         const itemMarked = context.highlightedSiglas.includes(String(item.dataset.releaseSigla || '').toUpperCase());
@@ -1481,7 +1468,7 @@ function showScheduleContacts(contacts, context = {}) {
       });
       if (status) status.textContent = updated.pendingFirestore
         ? 'Liberação salva neste aparelho; aguardando confirmação do Firestore.'
-        : marked ? releaseNoticeStatus : 'Liberação removida para esta data.';
+        : marked ? 'Liberação registrada na escala.' : 'Liberação removida para esta data.';
       context.onRelease?.();
     } catch {
       if (status && session.user?.uid === actorUid) status.textContent = 'Não foi possível salvar a liberação. Confira a conexão e sua permissão para editar a escala.';
