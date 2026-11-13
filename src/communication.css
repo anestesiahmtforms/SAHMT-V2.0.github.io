@@ -213,3 +213,11 @@
   height: 100%;
   min-height: 0;
 }
+
+.comm-inbox-shortcut {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.comm-inbox-shortcut svg { flex: none; }
