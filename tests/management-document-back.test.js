@@ -163,20 +163,33 @@ test('management document triggers identify their own return context', () => {
 test('shared viewer returns to the same management document and resets its label for other modules', t => {
   const previousDocument = globalThis.document;
   const events = new Map(), frame = {}, back = {textContent: 'FECHAR'};
+  const edit = {addEventListener: (name, callback) => events.set('edit-' + name, callback)};
+  const inactiveNotice = {querySelector: () => edit};
+  let edited = 0;
   let focus = 0;
-  const dialog = {open: false, setAttribute() {}, querySelector: selector => selector === 'iframe' ? frame : back,
+  const dialog = {open: false, prepend() {}, classList: {toggle() {}}, setAttribute() {}, querySelector: selector => selector === 'iframe' ? frame : back,
     addEventListener: (name, callback) => events.set(name, callback), removeEventListener() {},
     showModal() { this.open = true; }, close() { this.open = false; events.get('close')?.(); }, remove() {}};
-  const doc = {body: {append() {}}, getElementById: () => null, createElement: () => dialog,
+  const doc = {body: {append() {}}, getElementById: () => null, createElement: tag => tag === 'dialog' ? dialog : inactiveNotice,
     addEventListener: (name, callback) => events.set('root-' + name, callback), removeEventListener() {}};
   globalThis.document = doc;
   const dispose = installMaterialViewer(doc);
   t.after(() => { dispose(); globalThis.document = previousDocument; });
-  const trigger = {isConnected: true, dataset: {materialUrl: 'https://drive.google.com/file/d/Document_123456789/view', materialReturn: 'management'}, focus: () => focus++};
+  const trigger = {isConnected: true, dataset: {materialUrl: 'https://drive.google.com/file/d/Document_123456789/view', materialReturn: 'management'}, focus: () => focus++,
+    hasAttribute: name => name === 'data-material-inactive' && trigger.inactive === true,
+    closest: () => ({querySelector: () => ({click: () => edited++})})};
   const open = () => events.get('root-click')({target: {closest: selector => selector === '[data-open-material-viewer]' ? trigger : null}});
   open(); assert.equal(back.textContent, 'VOLTAR');
   events.get('root-click')({target: {closest: selector => selector === '[data-material-viewer-close]' ? back : null}});
   assert.equal(dialog.open, false); assert.equal(frame.src, 'about:blank'); assert.equal(focus, 1);
-  delete trigger.dataset.materialReturn; open(); assert.equal(back.textContent, 'FECHAR');
+  trigger.inactive = true; open();
+  assert.equal(inactiveNotice.hidden, false);
+  assert.equal(edit.hidden, false);
+  events.get('edit-click')();
+  assert.equal(dialog.open, false);
+  assert.equal(edited, 1);
+  trigger.inactive = false; delete trigger.dataset.materialReturn;
+  open(); assert.equal(back.textContent, 'FECHAR');
+  assert.equal(inactiveNotice.hidden, true);
 });
 
