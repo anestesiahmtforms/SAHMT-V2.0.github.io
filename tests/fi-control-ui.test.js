@@ -8,8 +8,9 @@ test('control center keeps administrative commands out of ordinary user view',()
  const adminSearch=renderFiControl({profile:{role:'administrador_app'},searchOnly:true});
  assert.doesNotMatch(adminSearch,/data-fi-nav="fi-control"/);
  assert.doesNotMatch(adminSearch,/data-fi-monthly/);
- const admin=renderFiControl({profile:{permissions:{admin:true}}});assert.ok(admin.includes('data-fi-monthly'));assert.ok(admin.includes('data-fi-nav="people"'));
- assert.doesNotMatch(admin,/data-fi-search/);
+ const admin=renderFiControl({profile:{permissions:{admin:true}}});assert.doesNotMatch(admin,/data-fi-monthly|Análise mensal/);assert.match(admin,/fi-control--center/);assert.ok(admin.includes('data-fi-nav="people"'));
+ assert.doesNotMatch(admin,/data-fi-search|Voltar à Governança/);
+ assert.match(admin,/<footer[^>]*><button[^>]*data-fi-nav="management-hub">Voltar<\/button><\/footer>/);
 });
 test('search view escapes source text and rejects external or script links',()=>{
  const result=renderFiResults({results:[{id:'1',title:'<script>bad</script>',snippet:'<img>',url:'javascript:alert(1)'},{id:'2',title:'Doc',snippet:'Descrição',url:'#/management'}],ai:{status:'disabled'}});

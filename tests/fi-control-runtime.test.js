@@ -35,7 +35,7 @@ test('FI leaves search open but denies administrative actions to delegated non-a
 test('pilot admits only its active administrator, rejects writes, and requires App Check',async()=>{
  const admin={...actor,profile:{...actor.profile,permissions:{admin:true}}};
  const settings={schemaVersion:1,uid:actor.uid,expiresAt:1001};
- assert.equal(pilotAccess(admin,settings,'monthly.generate',1000),true);
+ assert.equal(pilotAccess(admin,settings,'monthly.generate',1000),false);
  for(const [candidate,action,time] of [[actor,'search',1000],[{...admin,uid:'other'},'search',1000],[admin,'people.save',1000],[admin,'search',1001]])assert.equal(pilotAccess(candidate,settings,action,time),false);
  const worker=createFiControlWorker({verifyActor:()=>{throw Error('MUST_NOT_AUTH');},buildServices:()=>{throw Error('MUST_NOT_BUILD');}});
  const pilot=new Request('https://fi.test/v1/pilot',request());

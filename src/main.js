@@ -5243,7 +5243,7 @@ async function render() {
     if((!fiAdminControlEnabled&&(!pilot||searchOnly))||(!searchOnly&&!can('admin'))||session.accountMode==='team'||session.profile?.active!==true||session.profile?.access!==true){navigate('home');return;}
     if(deployment.target!=='FA'){navigate(requestedRoute);return;}
     const uid=session.user.uid,isCurrent=()=>current()&&session.status==='signed-in'&&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
-    app.innerHTML='<main class="main-content"><div id="fi-control-content"><p role="status">'+(searchOnly?'Abrindo a pesquisa…':'Abrindo a Central Administrativa…')+'</p></div></main>';
+    app.innerHTML='<main class="main-content'+(searchOnly?'':' fi-control-stage')+'"><div id="fi-control-content"><p role="status">'+(searchOnly?'Abrindo a pesquisa…':'Abrindo a Central Administrativa…')+'</p></div></main>';
     try{
       const [{mountFiControl},{fiControlRequest}]=await Promise.all([import('./fi-control-ui.js'),import('./fi-control-client.js'),import('./fi-control.css')]);
       if(!isCurrent())return;

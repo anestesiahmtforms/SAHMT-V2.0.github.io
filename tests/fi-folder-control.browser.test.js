@@ -51,7 +51,7 @@ test('the FI panel publishes independent parent and child settings through the W
     return route.fulfill({contentType:'text/javascript',body});
    }
    if(pathname==='/src/fi-control.css')return route.fulfill({contentType:'text/css',body:await readFile(new URL('../src/fi-control.css',import.meta.url),'utf8')});
-   return route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/src/fi-control.css"><style>*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif}</style><div id="fi"></div><script type="module">
+   return route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/src/fi-control.css"><style>*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif}</style><main class="fi-control-stage"><div id="fi"></div></main><script type="module">
     import {mountFiControl} from '/src/fi-control-ui.js';
     import {mountOperationalFolderAdmin} from '/src/operational-folder-admin.js';
     window.command=async(action,input)=>{
@@ -66,6 +66,11 @@ test('the FI panel publishes independent parent and child settings through the W
   });
   await page.goto(host);
   assert.equal(await page.getByRole('button',{name:'Voltar à Home'}).count(),0);
+  const center=page.locator('.fi-control--center');
+  const box=await center.boundingBox();
+  assert.ok(box.height<500&&Math.abs(box.y+box.height/2-340)<2);
+  assert.equal(await center.locator('.fi-control-center-footer button').innerText(),'Voltar');
+  assert.equal(await center.locator('.fi-control-navigation [data-fi-nav="management-hub"]').count(),0);
   await page.locator('[data-fi-folder-open]').click();
   const dialog=page.getByRole('dialog',{name:'Controle de pastas'});
   await dialog.waitFor();
@@ -90,7 +95,7 @@ test('the FI panel publishes independent parent and child settings through the W
   const toggle=id=>`[data-operational-folder="${id}"]`;
   await clickAndWait(toggle(parent));
   assert.equal(await dialog.getByText('Desativada pela pasta principal',{exact:true}).count(),1);
-  assert.equal(await page.locator(toggle(child)).textContent(),'Desativar');
+  assert.equal(await page.locator(toggle(child)).textContent(),'Desativar também');
   await clickAndWait(toggle(child));
   assert.equal(await page.locator(toggle(child)).textContent(),'Ativar');
   await clickAndWait(toggle(parent));
@@ -104,6 +109,9 @@ test('the FI panel publishes independent parent and child settings through the W
   await footer.click();
   assert.equal(await page.evaluate(()=>window.destination),'management-hub');
   assert.equal(await page.locator('dialog[open]').count(),0);
+  await page.reload();
+  await page.locator('.fi-control-center-footer button').click();
+  assert.equal(await page.evaluate(()=>window.destination),'management-hub');
  } finally {
   await browser.close();
  }

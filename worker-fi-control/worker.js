@@ -7,7 +7,6 @@ import {createFiStore,FI_PROJECTS,fiError} from './store.js';
 import {createFiActorVerifier,createFiServiceToken} from './identity.js';
 import {createFiAdminService} from './admin.js';
 import {createFiSearch} from './search.js';
-import {createMonthlyService} from './monthly.js';
 import {createOpenAIProvider} from './ai-provider.js';
 import {createFiSourceProvider,SOURCE_COLLECTIONS} from './sources.js';
 import {createFiReadBudget,createFiRequestQuota} from './read-budget.js';
@@ -16,7 +15,7 @@ import {refreshFiCatalogue} from './catalog-index.js';
 const origin='https://anestesiahmtforms.github.io';
 const isAdmin=actor=>actor.profile?.role==='administrador_app'||actor.profile?.permissions?.admin===true;
 const publicControlActions=new Set(['search','service.status']);
-const pilotActions=new Set(['search','monthly.generate','monthly.list','service.status']);
+const pilotActions=new Set(['search','service.status']);
 const adminReadActions=new Set(['people.list','admin.users.list','admin.requests.list','admin.categories.list','admin.features.get','updates.users','updates.read']);
 export const pilotAccess=(actor,settings,action,now=Date.now())=>isAdmin(actor)&&pilotActions.has(action)&&
  settings?.schemaVersion===1&&settings.uid===actor.uid&&Number.isSafeInteger(settings.expiresAt)&&settings.expiresAt>now;
@@ -49,8 +48,6 @@ export function createFiControlWorker({verifyActor,buildServices,buildFolderPubl
   const settings=await rt.store.get('fiControlConfig','runtime');if(settings?.enabled!==true)throw fiError('FI_NOT_READY');
   const modelProvider=createOpenAIProvider({apiKey:env.FI_AI_ENABLED==='true'||pilot?env.OPENAI_API_KEY:undefined,fetchImpl:requestFetch});
   const guard=rt.folders(isAdmin(actor));
-  const guardedModel={enabled:modelProvider.enabled,async generate(...args){await guard.recheck();return modelProvider.generate(...args);}};
-  const monthlyBudgetMicros=pilot?Math.min(250000,pilot.monthlyBudgetMicros||0):settings.monthlyBudgetMicros;
   const admin=createFiAdminService({store:rt.store,projections:rt.projections});
   const quota=createFiRequestQuota({store:rt.store});
   const readBudget=createFiReadBudget({store:rt.store,projectLimits:{[FI_PROJECTS.FB]:14000}});
@@ -82,23 +79,7 @@ export function createFiControlWorker({verifyActor,buildServices,buildFolderPubl
     await guard.recheck();
     return result;
    }
-   if(action==='monthly.generate'){
-    await guard.checkMonthly();
-    const result=await createMonthlyService({store:rt.store,sourceProvider:createFiSourceProvider({stores:guard.wrap(rt.sources())}),modelProvider:guardedModel,config:{monthlyBudgetMicros,dailyUserLimit:pilot?3:settings.dailyUserLimit}})(actor,input);
-    await guard.recheck();
-    return result;
-   }
-   if(action==='monthly.list'){
-    if(!isAdmin(actor))throw fiError('FI_FORBIDDEN',403);
-    await guard.checkMonthly();
-    const units=new Set(await createFiSourceProvider({stores:guard.wrap(rt.sources())}).monthlyAccess(actor));
-    const rows=(await rt.store.list('fiAiRuns',[{field:'status',op:'EQUAL',value:'complete'}],101))
-     .filter(row=>Array.isArray(row.units)&&row.units.length>0&&row.units.every(unit=>units.has(unit)))
-     .sort((a,b)=>b.period.localeCompare(a.period));
-    await guard.recheck();
-    return rows;
-   }
-   if(action==='service.status')return {station:'FI',purpose:'ADMINISTRATIVE_CONTROL_AND_AI',aiEnabled:modelProvider.enabled,monthlyEnabled:env.FI_MONTHLY_ENABLED==='true',pilot:!!pilot,...(isAdmin(actor)?{monthlyBudgetMicros:monthlyBudgetMicros||0,folderManagement:!pilot&&env.FI_FOLDER_MANAGEMENT_ENABLED==='true'}:{} )};
+   if(action==='service.status')return {station:'FI',purpose:'ADMINISTRATIVE_CONTROL_AND_AI',aiEnabled:modelProvider.enabled,monthlyEnabled:false,pilot:!!pilot,...(isAdmin(actor)?{folderManagement:!pilot&&env.FI_FOLDER_MANAGEMENT_ENABLED==='true'}:{} )};
    if(!adminReadActions.has(action)&&settings.adminWritesEnabled!==true)throw fiError('FI_ADMIN_CUTOVER_PENDING');
    if(action.startsWith('people.'))await guard.assertOpen('operacao/pessoas');
    const result=await admin.execute({actor,action,input});
@@ -109,7 +90,7 @@ export function createFiControlWorker({verifyActor,buildServices,buildFolderPubl
  return {async fetch(request,env){
   const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff',Vary:'Origin'},json=(data,status=200)=>Response.json(data,{status,headers});
   const url=new URL(request.url);
-  if(url.pathname==='/health'&&request.method==='GET')return json({station:'FI',projectId:FI_PROJECTS.FI,purpose:'ADMINISTRATIVE_CONTROL_AND_AI',controlEnabled:env.FI_CONTROL_ENABLED==='true',aiEnabled:env.FI_AI_ENABLED==='true'&&!!env.OPENAI_API_KEY,monthlyEnabled:env.FI_MONTHLY_ENABLED==='true',pilotEnabled:env.FI_PILOT_ENABLED==='true'});
+  if(url.pathname==='/health'&&request.method==='GET')return json({station:'FI',projectId:FI_PROJECTS.FI,purpose:'ADMINISTRATIVE_CONTROL_AND_AI',controlEnabled:env.FI_CONTROL_ENABLED==='true',aiEnabled:env.FI_AI_ENABLED==='true'&&!!env.OPENAI_API_KEY,monthlyEnabled:false,pilotEnabled:env.FI_PILOT_ENABLED==='true'});
   if(request.headers.get('Origin')!==origin)return json({code:'FI_ORIGIN_DENIED'},403);
   Object.assign(headers,{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'POST, OPTIONS','Access-Control-Allow-Headers':'Authorization, Content-Type, X-Firebase-AppCheck'});
   const pilotRoute=url.pathname==='/v1/pilot';
@@ -125,6 +106,7 @@ export function createFiControlWorker({verifyActor,buildServices,buildFolderPubl
    const body=await boundedJson(request,196608);
    if(!body||Array.isArray(body)||Object.keys(body).some(k=>!['action','input'].includes(k))||typeof body.action!=='string'||!/^[a-z][A-Za-z0-9.]{0,80}$/.test(body.action)||!body.input||Array.isArray(body.input)||typeof body.input!=='object')throw fiError('FI_INPUT_INVALID',400);
    if(!publicControlActions.has(body.action)&&!isAdmin(actor))throw fiError('FI_FORBIDDEN',403);
+   if(body.action==='monthly.generate'||body.action==='monthly.list')throw fiError('FI_NOT_FOUND',404);
    let pilot;
    if(pilotRoute){
     pilot=await rt.store.get('fiControlConfig','pilot');
@@ -159,16 +141,6 @@ export function createFiControlWorker({verifyActor,buildServices,buildFolderPubl
    })().catch(()=>console.error(JSON.stringify({code:'FI_CATALOGUE_REFRESH_FAILED'}))));
    return;
   }
-  if(env.FI_CONTROL_ENABLED!=='true'||env.FI_MONTHLY_ENABLED!=='true'||env.FI_AI_ENABLED!=='true'||!env.OPENAI_API_KEY||!env.FI_MONTHLY_ADMIN_UID)return;
-  ctx.waitUntil((async()=>{
-   const requestFetch=boundedFetch(fetchImpl),rt=runtime(env,requestFetch),uid=env.FI_MONTHLY_ADMIN_UID,link=await rt.store.get('fiAdminIdentityLinks',uid),local=link?.active===true?await rt.store.get('users',link.fiUid):null,managed=await rt.store.get('fiAdminUsers',uid),gate=await rt.sources().FA.get('users',uid);
-   if(managed&&(managed.uid!==uid||managed.email?.toLowerCase()!==link?.email?.toLowerCase()))throw fiError('FI_MONTHLY_ACTOR_DENIED',403);
-   const profile=local&&managed?{...local,...managed,uid:link.fiUid}:local;
-   if(!link||!profile||!gate||gate.uid!==uid||gate.active!==true||gate.access!==true||link.faUid!==uid||profile.uid!==link.fiUid||profile.active!==true||profile.access!==true||profile.email?.toLowerCase()!==link.email?.toLowerCase()||gate.email?.toLowerCase()!==link.email?.toLowerCase())throw fiError('FI_MONTHLY_ACTOR_DENIED',403);
-   const actor={uid,fiUid:link.fiUid,email:link.email,identityLink:link,profile,memberCategories:[]};if(!isAdmin(actor))throw fiError('FI_MONTHLY_ACTOR_DENIED',403);
-   const date=new Date(controller.scheduledTime||Date.now()),month=new Date(Date.UTC(date.getUTCFullYear(),date.getUTCMonth()-1,1)).toISOString().slice(0,7);
-   const result=await (await createServices(env,rt,requestFetch)).dispatch(actor,'monthly.generate',{period:month,requestId:'scheduled_'+month});console.log(JSON.stringify({code:'FI_MONTHLY_RUN',period:month,status:result.status}));
-  })().catch(()=>console.error(JSON.stringify({code:'FI_MONTHLY_FAILED'}))));
  }};
 }
 export default createFiControlWorker();
