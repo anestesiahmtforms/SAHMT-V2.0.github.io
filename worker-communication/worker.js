@@ -4,11 +4,13 @@ import {createStore} from './store.js';
 import {createCommunicationService} from './service.js';
 import {COMMUNICATION_LIMITS} from '../src/communication-usage.js';
 const ORIGIN='https://anestesiahmtforms.github.io';
-function limitedFetch(){let calls=0;return (url,options)=>{
+function limitedFetch(action){let calls=0;return (url,options)=>{
  const target=new URL(url),path=decodeURIComponent(target.pathname);
  if(target.hostname==='firestore.googleapis.com'){
   const ff=path.startsWith(`/v1/projects/${FF.projectId}/databases/${FF.databaseId}`);
-  if(!ff)throw fail('COMM_SOURCE_DENIED',403);
+  const fa=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-17a16\/databases\/\(default\)\/documents\/users\/[^/]+$/.test(path);
+  const fj=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-escala-fj\/databases\/\(default\)\/documents\/(?:scheduleDays\/[^/]+|runtimePolicy\/folders)$/.test(path);
+  if(!ff&&!fa&&!fj)throw fail('COMM_SOURCE_DENIED',403);
  }
  if(target.hostname==='identitytoolkit.googleapis.com'&&path.includes('/projects/')&&!path.startsWith(`/v1/projects/${FF.projectId}/`))throw fail('COMM_SOURCE_DENIED',403);
  if(++calls>COMMUNICATION_LIMITS.externalCalls)throw fail('COMM_OPERATION_WORK_LIMIT',429);return fetch(url,options);
@@ -22,7 +24,8 @@ async function runtime(env,fetchImpl,buildService,actor,action){
  if(buildService)return buildService(env);
  const getToken=serviceToken(JSON.parse(env.FF_SERVICE_ACCOUNT_JSON||'null'),fetchImpl);
  await assertFreeProject(getToken,fetchImpl);
- const store=createStore({getToken,fetchImpl,administrator:adminIdentity(actor)&&actor.email==='wx2064@gmail.com'&&['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','AUDIT','DIRECTORY','AREAS','SETTINGS','METRICS','USAGE'].includes(action)});
+ const store=createStore({getToken,fetchImpl,administrator:adminIdentity(actor)&&actor.email==='wx2064@gmail.com'&&['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','AUDIT','DIRECTORY','AREAS','SETTINGS','METRICS','USAGE'].includes(action)}),fa=createStore({getToken,fetchImpl,source:'FA'});
+ const scheduleSource=createStore({getToken,fetchImpl,source:resolveScheduleSourceProject(env)});
  const recipientEnabled=async device=>{
   for(const [project,uid]of [[FF.projectId,device.uid]]){
    const r=await fetchImpl(`https://identitytoolkit.googleapis.com/v1/projects/${project}/accounts:lookup`,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+await getToken(),'Content-Type':'application/json'},body:JSON.stringify({localId:[uid]})});
@@ -39,7 +42,7 @@ async function runtime(env,fetchImpl,buildService,actor,action){
   if(code==='UNREGISTERED')return {status:'failed',disable:true,reason:'UNREGISTERED'};
   return {status:'failed',reason:r.status===429?'PROVIDER_QUOTA':code==='SENDER_ID_MISMATCH'?'SENDER_ID_MISMATCH':'PROVIDER_REJECTED'};
  };
- const service=createCommunicationService({store,send,recipientEnabled,pushQueue:env.COMMUNICATION_PUSH_QUEUE});
+ const service=createCommunicationService({store,fa,scheduleSource,send,recipientEnabled,pushQueue:env.COMMUNICATION_PUSH_QUEUE});
  return {async execute(...args){await store.assertAvailable();const result=await service.execute(...args);await store.assertAvailable();return result;},async consumePush(...args){await store.assertAvailable();return service.consumePush(...args);}};
 }
 export function createCommunicationWorker({verify=verifyCommunicationActor,buildService}={}){
@@ -58,10 +61,9 @@ export function createCommunicationWorker({verify=verifyCommunicationActor,build
     if(Number(request.headers.get('Content-Length'))>16384)throw fail('COMM_BODY_LIMIT',413);
     let body;try{body=await boundedJson(request,16384);}catch(e){throw e.code==='COMM_RESPONSE_LIMIT'?fail('COMM_BODY_LIMIT',413):fail('COMM_INVALID_INPUT');}
     if(!body||typeof body.action!=='string'||Object.keys(body).some(k=>!['action','input'].includes(k)))throw fail('COMM_INVALID_INPUT');
-    if(body.action==='SCHEDULE_RELEASE_NOTICE')return json({code:'COMM_ACTION_RETIRED'},410);
-    const fetchImpl=limitedFetch(),actor=await verify(request,{fetchImpl,action:body.action}),service=await runtime(env,fetchImpl,buildService,actor,body.action);
+    const fetchImpl=limitedFetch(body.action),actor=await verify(request,{fetchImpl,action:body.action}),service=await runtime(env,fetchImpl,buildService,actor,body.action);
     return json(await service.execute(body.action,body.input||{},actor));
-   }catch(e){const code=/^COMM_[A-Z_]+$/.test(e.code||'')?e.code:'COMM_SERVICE_UNAVAILABLE',details=Object.fromEntries(['used','limit','resetsAt'].filter(key=>Number.isSafeInteger(e[key])&&e[key]>=0).map(key=>[key,e[key]]));return json({code,...details},[400,401,403,409,410,413,429,503].includes(e.status)?e.status:503);}
+   }catch(e){const code=/^COMM_[A-Z_]+$/.test(e.code||'')?e.code:'COMM_SERVICE_UNAVAILABLE',details=Object.fromEntries(['used','limit','resetsAt'].filter(key=>Number.isSafeInteger(e[key])&&e[key]>=0).map(key=>[key,e[key]]));return json({code,...details},[400,401,403,409,413,429,503].includes(e.status)?e.status:503);}
   },
   async queue(batch,env){
    if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true'){for(const message of batch.messages)message.retry({delaySeconds:30});return;}

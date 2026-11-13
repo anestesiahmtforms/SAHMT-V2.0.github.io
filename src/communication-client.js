@@ -34,6 +34,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   try{
    const ffToken=await target.getIdToken();
    const headers={Authorization:'Bearer '+ffToken,'Content-Type':'application/json'};
+   if(action==='SCHEDULE_RELEASE_NOTICE')headers['X-SAHMT-FA-Authorization']='Bearer '+await source.getIdToken();
    if(!presenceReported&&['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action)){
     try{const {installationId,appDisplayMode,devicePlatform}=await import('./app-updates-targeted.js');const displayMode=appDisplayMode();input={...input,installation:{deviceId:installationId(localStorage,globalThis.crypto,displayMode),displayMode,platform:devicePlatform(),appVersion:APP_VERSION,loadedRelease:Number(import.meta.env.VITE_APP_RELEASE)||0}};}catch{}
    }
