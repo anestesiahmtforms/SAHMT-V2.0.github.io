@@ -1,7 +1,9 @@
 import {doc, getDocFromServer} from 'firebase/firestore';
 import {getFunctionalFirestore} from './functional-firebase.js';
-import {signOutFunctionalProject} from './functional-firebase.js';
-import {createFunctionalAuthBridge} from './functional-auth-bridge.js';
+import {getFunctionalAuth} from './functional-firebase.js';
+import {confirmGoogleProjectAccess,currentGoogleProjectIdentity,googleProjectClientId,getGoogleProjectAuth,waitForGoogleProjectSession} from './google-project-auth-runtime.js';
+import {createGoogleProjectAuthGoogleButton} from './google-project-auth-google-button.js';
+import {safeGoogleAuthCode} from './google-project-auth-core.js';
 import {refreshFunctionalOverview} from './functional-client.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import {callFunctionalSurvey} from './functional-survey-client.js';
@@ -27,6 +29,14 @@ const sourceLabels = Object.freeze({
   dosimetry: 'Dosimetria'
 });
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+const authMessages=Object.freeze({
+  AUTH_GOOGLE_IDENTITY_MISMATCH:'Escolha a mesma conta Google já autenticada no SAHMT.',
+  AUTH_EXISTING_ACCOUNT_REQUIRED:'A conta Google ainda não está habilitada no FK. Solicite a conferência ao administrador.',
+  AUTH_UID_MISMATCH:'A conta do FK não corresponde ao mesmo UID do SAHMT.',
+  AUTH_CONFIGURATION_REQUIRED:'A autenticação Google do FK ainda não está configurada.',
+  'auth/unauthorized-domain':'O domínio do SAHMT ainda não está autorizado no FK.',
+  'auth/network-request-failed':'Sem conexão com a internet. Tente novamente.'
+});
 
 function sourceCards(sources) {
   const keys = Object.keys(sources || {}).sort((a,b) => (sourceLabels[a] || a).localeCompare(sourceLabels[b] || b, 'pt-BR'));
@@ -55,27 +65,25 @@ function sourceDetail(key,value) {
 export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', isCurrent = () => true} = {}) {
   let disposed = false;
   let surveyCleanup;
+  let googleButton;
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
-  let bridge;
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     surveyCleanup?.();
+    googleButton?.dispose();googleButton=null;
     root?.removeEventListener('click', onSurveyClick);
-    bridge?.dispose();
-    void signOutFunctionalProject(uid).catch(() => {});
   };
   activeFunctionalMountCleanup?.();
   activeFunctionalMountCleanup = cleanup;
   paint('<section class="functional-page"><h2>Funcional</h2><p role="status">Confirmando o acesso individual em FK…</p></section>');
   try {
-    bridge = createFunctionalAuthBridge({enabled: true,
-      endpoint: import.meta.env.VITE_FK_AUTH_BRIDGE_ENDPOINT,
-      allowedOrigin: import.meta.env.VITE_FK_AUTH_ORIGIN,
-      fetchImpl: globalThis.fetch?.bind(globalThis)});
-    await waitWithTimeout(bridge.connect(faAuth), 30000, 'FK_AUTH_CLIENT_TIMEOUT');
+    const fkAuth=getFunctionalAuth();
+    let connected=await waitWithTimeout(waitForGoogleProjectSession('FK',{isCurrent:current}),30000,'FK_AUTH_CLIENT_TIMEOUT');
+    if(!connected&&current())connected=await waitWithTimeout(connectFunctionalGoogle(root,fkAuth,uid,current,paint,value=>{googleButton=value;}),120000,'FK_AUTH_CONFIRM_TIMEOUT');
+    if(!connected||fkAuth?.currentUser?.uid!==uid)throw new Error('FK_AUTH_UID_MISMATCH');
     if (!current()) return cleanup;
     paint('<section class="functional-page"><h2>Funcional</h2><p role="status">Acesso confirmado. Carregando seu perfil funcional…</p></section>');
     let refreshFailed = false;
@@ -109,8 +117,7 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
       + '</section>');
     root.addEventListener('click', onSurveyClick);
   } catch {
-    bridge?.dispose();
-    void signOutFunctionalProject(uid).catch(() => {});
+    googleButton?.dispose();googleButton=null;
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     paint('<section class="functional-page"><h2>Funcional</h2><p class="empty-state" role="status">Não foi possível confirmar sua autorização em FA e abrir seu perfil individual em FK. Tente novamente mais tarde.</p></section>');
   }
@@ -153,4 +160,37 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
       perform:(action,response)=>callFunctionalSurvey({uid,faAuth,survey,action,response,isCurrent:current}),isCurrent:current});
     frame.src=new URL(survey==='stress'?'enquetes/stress.html':'enquetes/',window.location.href).href;
   }
+}
+
+function connectFunctionalGoogle(root,fkAuth,uid,isCurrent,paint,setWidget){
+  return new Promise(resolve=>{
+    let settled=false;
+    let widget=null;
+    const dispose=()=>{widget?.dispose();widget=null;setWidget(null);};
+    const finish=value=>{if(settled)return;settled=true;dispose();resolve(value);};
+    paint('<section class="functional-page"><h2>Funcional</h2><p>Para abrir o FK com o mesmo UID, confirme a conta Google já autenticada no SAHMT.</p><div class="functional-google-auth" role="group" aria-label="Confirmar conta Google para o FK"></div><p class="functional-google-auth-status" role="status">Aguardando sua confirmação Google…</p></section>');
+    if(!isCurrent()||!fkAuth){finish(false);return;}
+    const host=root.querySelector('.functional-google-auth');
+    const status=root.querySelector('.functional-google-auth-status');
+    if(!host||!status){finish(false);return;}
+    try{
+      widget=createGoogleProjectAuthGoogleButton({clientId:googleProjectClientId,
+        getExpectedIdentity:currentGoogleProjectIdentity,
+        onCredential:async credential=>{
+          try{
+            await confirmGoogleProjectAccess(credential);
+            const ready=await waitForGoogleProjectSession('FK',{isCurrent});
+            finish(Boolean(ready&&isCurrent()&&fkAuth.currentUser?.uid===uid));
+          }catch(error){if(isCurrent()&&status.isConnected)status.textContent=authMessages[safeGoogleAuthCode(error)]||'Não foi possível conectar ao FK. Confira se selecionou a mesma conta Google.';}
+        },
+        onLoading:busy=>{if(isCurrent()&&status.isConnected)status.textContent=busy?'Confirmando a conta Google…':'Aguardando sua confirmação Google…';},
+        onError:error=>{if(isCurrent()&&status.isConnected)status.textContent=authMessages[safeGoogleAuthCode(error)]||'Não foi possível confirmar a conta Google. Tente novamente.';}
+      });
+      setWidget({dispose});
+      widget.render(host).catch(error=>{
+        if(isCurrent()&&status.isConnected)status.textContent=authMessages[safeGoogleAuthCode(error)]||'O botão Google não pôde ser carregado.';
+      });
+    }catch(error){status.textContent=authMessages[safeGoogleAuthCode(error)]||'A autenticação Google do FK não pôde ser preparada.';}
+    setTimeout(()=>finish(false),120000);
+  });
 }

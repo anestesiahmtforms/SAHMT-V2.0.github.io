@@ -7,7 +7,8 @@ export function assertGoogleProjectAuthRelease({enabled,entries,target='FA',lega
   if(target!=='FA')throw new Error('GOOGLE_AUTH_ENTRY_MUST_BE_FA');
   const sourceClients=entries?.FA?.acceptedGoogleClientIds||[];
   if(!sourceClients.length)throw new Error('GOOGLE_AUTH_SOURCE_CLIENT_MISSING');
-  for(const target of entries?.FF?[...projects,'FF']:projects){
+  const targets=[...projects,...(entries?.FF?['FF']:[]),...(target==='FA'&&entries?.FK?['FK']:[])];
+  for(const target of targets){
     const entry=entries?.[target];
     if(!entry?.config?.appId||!entry.config.projectId||!entry.googleEnabled)
       throw new Error(`GOOGLE_AUTH_CONFIGURATION_REQUIRED_${target}`);

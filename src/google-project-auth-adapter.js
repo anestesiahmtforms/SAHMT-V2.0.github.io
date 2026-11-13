@@ -57,7 +57,7 @@ function targetAuth(target){
 async function ready(instance){let timer;
   try{await Promise.race([instance.authStateReady?.(),new Promise((_,reject)=>{timer=setTimeout(()=>reject(fail('AUTH_RESTORE_TIMEOUT')),restoreTimeoutMs);})]);}
   finally{clearTimeout(timer);}}
-const targets=entries.FF?[...GOOGLE_AUTH_TARGETS,'FF']:GOOGLE_AUTH_TARGETS;
+const targets=[...GOOGLE_AUTH_TARGETS,...(entries.FF?['FF']:[]),...(primary==='FA'&&entries.FK?['FK']:[])];
 const progress=createGoogleAuthProgressStore(storage,randomId,targets);
 coordinator=createGoogleProjectAuth({primary,targets,getPrimaryUser:()=>auth.currentUser,
   isOnline,saveProgress:progress.save,

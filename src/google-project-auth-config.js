@@ -109,6 +109,24 @@ export const GOOGLE_PROJECT_CONFIG = Object.freeze({
       "1072832154794-lb4cu9dcg3q49t60dadp9cc5m6h7dhai.apps.googleusercontent.com"
     ],
     "credentialExchangeVerified": true
+  },
+  "FK": {
+    "label": "Funcional",
+    "appName": "sahmt-functional-fk",
+    "config": {
+      "apiKey": "AIzaSyAFlbjIqKzfwEnZgyMOIveNsp4I4Wbf7QM",
+      "authDomain": "sahmt-funcional-fk.firebaseapp.com",
+      "projectId": "sahmt-funcional-fk",
+      "storageBucket": "sahmt-funcional-fk.firebasestorage.app",
+      "messagingSenderId": "894041426340",
+      "appId": "1:894041426340:web:4ff8538196ca1634f2d931"
+    },
+    "googleEnabled": true,
+    "acceptedGoogleClientIds": [
+      "1072832154794-lb4cu9dcg3q49t60dadp9cc5m6h7dhai.apps.googleusercontent.com"
+    ],
+    "credentialExchangeVerified": true,
+    "clientSignupDisabled": true
   }
 });
 

@@ -9,6 +9,6 @@ Dedicated Cloudflare Worker for FK only. It validates the exact FA-to-FK broker 
 - `FK_HMAC_SECRET` is a Cloudflare secret and must match the Apps Script `FK_HMAC_SECRET` Script Property. Never commit the value.
 - Deploy only with the Wrangler account for the FK Cloudflare account (`735b93b5ee83e7b713a494ca297a1812`). This Worker is independent of `sahmt-auth-broker`.
 
-The endpoint `/v1/management/session` bridges the existing FA session to the same UID in FK. `/v1/functional/refresh` saves the user's own functional overview to FK. `/v1/functional/survey` forwards climate, stress/fatigue, and epidemiological submissions to the FK Apps Script, which validates the FA identity and EQUIPE group before writing create-only records to FK Firestore. FE and FB data stores are not queried by this survey path.
+FK authentication now uses the same existing Google identity and UID through Firebase Auth. This Worker does not issue or exchange login tokens. `/v1/functional/refresh` saves the user's own functional overview to FK. `/v1/functional/survey` forwards climate, stress/fatigue, and epidemiological submissions to the FK Apps Script, which validates the FA identity and EQUIPE group before writing create-only records to FK Firestore. FE and FB data stores are not queried by this survey path.
 
 The session endpoint accepts only target project `sahmt-funcional-fk` and source project `sahmt-17a16`.

@@ -1,5 +1,5 @@
 import {GOOGLE_AUTH_START,safeGoogleAuthCode} from './google-project-auth-core.js';
-const labels={FA:'SAHMT',FB:'Gestão',FC:'Registros',FD:'Indicadores',FE:'Enquetes/Consultas',FF:'Comunicação'};
+const labels={FA:'SAHMT',FB:'Gestão',FC:'Registros',FD:'Indicadores',FE:'Enquetes/Consultas',FF:'Comunicação',FK:'Funcional'};
 const messages={AUTH_AUDIENCE_NOT_VERIFIED:'A compatibilidade Google deste projeto precisa ser confirmada.',
   AUTH_GOOGLE_SESSION_REQUIRED:'Confirme sua conta Google para restaurar o acesso ao módulo.',
   AUTH_CONFIGURATION_REQUIRED:'Configuração deste projeto ainda pendente.',

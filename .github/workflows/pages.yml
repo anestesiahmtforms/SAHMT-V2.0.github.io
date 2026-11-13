@@ -190,7 +190,6 @@ jobs:
           VITE_FE_PERFORMANCE_ENABLED: ${{ vars.VITE_FE_PERFORMANCE_ENABLED || 'true' }}
           VITE_FK_FUNCTIONAL_ENABLED: 'true'
           VITE_FK_AUTH_ORIGIN: 'https://sahmt-functional-auth-fk.sahmt-v2.workers.dev'
-          VITE_FK_AUTH_BRIDGE_ENDPOINT: 'https://sahmt-functional-auth-fk.sahmt-v2.workers.dev/v1/management/session'
           VITE_FK_REFRESH_ENDPOINT: 'https://sahmt-functional-auth-fk.sahmt-v2.workers.dev/v1/functional/refresh'
           VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED: 'true'
           VITE_FK_SURVEY_ENDPOINT: 'https://sahmt-functional-auth-fk.sahmt-v2.workers.dev/v1/functional/survey'

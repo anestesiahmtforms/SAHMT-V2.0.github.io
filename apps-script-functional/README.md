@@ -1,6 +1,6 @@
 # Apps Script FK
 
-Standalone gateway project for `sahmt-funcional-fk`. It bridges an active FA ID token to the same UID in FK and writes only to FK Firestore. Survey submissions are authenticated and HMAC-signed by the FK Cloudflare Worker before they reach this web app.
+Standalone gateway project for `sahmt-funcional-fk`. Browser login uses the existing Google account in the FA and the same Google identity/UID in FK Firebase Auth. This Apps Script does not issue or exchange Firebase login tokens. It validates FA identity and team membership for snapshots and surveys, then writes only to FK Firestore. Survey submissions are HMAC-signed by the FK Cloudflare Worker before they reach this web app.
 
 ## Project and deployment
 
@@ -11,10 +11,10 @@ Standalone gateway project for `sahmt-funcional-fk`. It bridges an active FA ID 
 
 ## Required access
 
-The Apps Script owner needs only `iam.serviceAccounts.signJwt` on `fk-functional-token-signer@sahmt-funcional-fk.iam.gserviceaccount.com`. Firestore writes use that service account through a short-lived OAuth token; grant it only `datastore.entities.create` and `datastore.entities.update` on FK. The script reads only the FA identity/category documents using the current FA ID token; it has no server credential for reading other project databases. Functional profile sources such as professional registration, performance, and biosafety stay `PREPARING` until their migration is defined. Performance remains independent in each instance; FK does not read its ledgers/events or accept performance batches. Do not restore a cross-project reader or source publisher without approving a future transfer process.
+The Apps Script owner needs only `iam.serviceAccounts.signJwt` on `fk-functional-token-signer@sahmt-funcional-fk.iam.gserviceaccount.com` to obtain a short-lived OAuth token for its narrow Firestore writer. This service-account assertion is only backend Firestore authorization; Firebase user login does not use JWT or custom tokens. Grant the writer only `datastore.entities.create` and `datastore.entities.update` on FK. The script reads only FA identity/category documents using the current FA ID token; it has no server credential for reading other project databases. Functional profile sources such as professional registration, performance, and biosafety stay `PREPARING` until their migration is defined. Performance remains independent in each instance; FK does not read its ledgers/events or accept performance batches. Do not restore a cross-project reader or source publisher without approving a future transfer process.
 
 The manifest scopes are used for external requests, FK Firestore writes, and short-lived JWT signing. This gateway does not create Google service-account keys.
 
 ## Sync and deploy
 
-From this directory, authenticate `clasp` as the FK owner, then run `clasp push`. In Apps Script, save and update the existing Web App deployment so the published URL remains the one configured in the Worker. Confirm the deployment executes as the FK owner and retains the HMAC Script Property. Do not enable the Pages survey flag until this deployment is live.
+From this directory, authenticate `clasp` as the FK owner, then run `clasp push`. In Apps Script, update the existing Web App deployment so the published URL remains the one configured in the Worker. Confirm it runs as the FK owner and retains the HMAC Script Property.

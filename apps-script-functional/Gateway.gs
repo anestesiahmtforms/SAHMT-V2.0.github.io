@@ -1,12 +1,10 @@
-/** Standalone FK writer and FA-authorized same-UID token bridge. */
+/** Standalone FK writer and FA-authorized functional snapshot gateway. */
 var FK_PROJECT_ = 'sahmt-funcional-fk';
 var FA_PROJECT_ = 'sahmt-17a16';
 var FA_API_KEY_ = 'AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA';
-var FK_API_KEY_ = 'AIzaSyAFlbjIqKzfwEnZgyMOIveNsp4I4Wbf7QM';
 var FK_SIGNER_ = 'fk-functional-token-signer@sahmt-funcional-fk.iam.gserviceaccount.com';
 var FK_ALLOWED_SOURCES_ = ['performance','professionalRegistration','epidemiological','fe','climateSurvey',
   'stressFatigue','biosafetyManual','vaccination','dosimetry'];
-var FK_AUTH_AUDIENCE_ = 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit';
 var FK_ADMIN_EMAIL_ = 'wx2064@gmail.com';
 var FK_MANAGER_EMAIL_ = 'marcio.henrique82@gmail.com';
 
@@ -14,7 +12,6 @@ function doPost(event) {
   try {
     var envelope = JSON.parse((event && event.postData && event.postData.contents) || '{}');
     var payload = verifyEnvelope_(envelope);
-    if (payload.action === 'AUTH_SESSION') return json_(authorizeFaUser_(payload.faIdToken));
     if (payload.action === 'SYNC_OVERVIEW') return json_(syncOwnOverview_(payload.faIdToken));
     if (payload.action === 'FUNCTIONAL_SURVEY_SUBMIT') return json_(submitFunctionalSurvey_(payload));
     throw new Error('FK_ACTION_INVALID');
@@ -23,8 +20,7 @@ function doPost(event) {
   }
 }
 
-function authorizeFaUser_(idToken, issueToken) {
-  if (issueToken === undefined) issueToken = true;
+function authorizeFaUser_(idToken) {
   if (typeof idToken !== 'string' || idToken.length < 100 || idToken.length > 10000) throw new Error('FK_AUTH_DENIED');
   var identityResponse = UrlFetchApp.fetch('https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=' + FA_API_KEY_, {
     method: 'post', contentType: 'application/json', payload: JSON.stringify({ idToken: idToken }), muteHttpExceptions: true
@@ -40,19 +36,19 @@ function authorizeFaUser_(idToken, issueToken) {
   if (!profile || profile.uid !== uid || normalizeEmail_(profile.email) !== email || profile.active !== true || profile.access !== true)
     throw new Error('FK_AUTH_DENIED');
 
-  var claims, group;
+  var permissions, group;
   if (email === FK_ADMIN_EMAIL_) {
     group = 'ADMINISTRADOR';
-    claims = { functionalEmail:email, functionalRole:'ADMIN', functionalGroup:group, functionalPermissions:FK_ALLOWED_SOURCES_ };
+    permissions = FK_ALLOWED_SOURCES_;
   } else if (email === FK_MANAGER_EMAIL_ && profile.role === 'gestor') {
     group = 'GESTOR';
-    var permissions = profile.permissions || {};
+    var managerPermissions = profile.permissions || {};
     var allowed = [];
-    if (permissions.managementIndicatorsRead === true || permissions.managementRead === true) allowed.push('performance');
-    if (permissions.peopleManage === true || permissions.usersManage === true) {
+    if (managerPermissions.managementIndicatorsRead === true || managerPermissions.managementRead === true) allowed.push('performance');
+    if (managerPermissions.peopleManage === true || managerPermissions.usersManage === true) {
       allowed.push('professionalRegistration', 'epidemiological', 'biosafetyManual');
     }
-    claims = { functionalEmail:email, functionalRole:'GESTOR', functionalGroup:group, functionalPermissions:allowed };
+    permissions = allowed;
   } else {
     var categoryId = sha256Hex_(JSON.stringify(email));
     var assignment = readFaDocument_(idToken, 'userCategories/' + categoryId);
@@ -66,16 +62,15 @@ function authorizeFaUser_(idToken, issueToken) {
       || affiliations.length !== 1 || affiliations[0] !== 'EFETIVO')
       throw new Error('FK_AUTH_DENIED');
     group = 'EQUIPE';
-    claims = { functionalEmail:email, functionalRole:'MEMBER', functionalGroup:group, functionalPermissions:[] };
+    permissions = [];
   }
-  return {code:'FK_AUTH_READY', uid:uid, email:email, group:group, permissions:claims.functionalPermissions,
-    ...(issueToken ? {customToken:createFkCustomToken_(uid, claims)} : {})};
+  return {code:'FK_AUTH_READY', uid:uid, email:email, group:group, permissions:permissions};
 }
 
 function submitFunctionalSurvey_(payload) {
   var allowed = payload && ['climate','stress','epidemiological'].indexOf(payload.survey) !== -1;
   if (!allowed || payload.cycle !== '2026' || typeof payload.faIdToken !== 'string') throw new Error('FK_SURVEY_INPUT_INVALID');
-  var access = authorizeFaUser_(payload.faIdToken, false);
+  var access = authorizeFaUser_(payload.faIdToken);
   if (access.group !== 'EQUIPE' && access.group !== 'ADMINISTRADOR') throw new Error('FK_SURVEY_ACCESS_DENIED');
   var response = validateFunctionalSurveyResponse_(payload.survey, payload.response);
   var uid = access.uid, survey = payload.survey, cycle = payload.cycle;
@@ -245,29 +240,33 @@ function readFaDocument_(idToken, path) {
   return decodeFirestoreFields_(document.fields || {});
 }
 
-function createFkCustomToken_(uid, claims) {
-  var now = Math.floor(Date.now() / 1000);
-  var jwtPayload = {iss:FK_SIGNER_, sub:FK_SIGNER_, aud:FK_AUTH_AUDIENCE_, iat:now, exp:now + 3600, uid:uid, claims:claims};
-  var customToken = signFkJwt_(jwtPayload);
-  var exchanged = UrlFetchApp.fetch('https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=' + FK_API_KEY_, {
-    method:'post', contentType:'application/json', payload:JSON.stringify({token:customToken, returnSecureToken:true}), muteHttpExceptions:true
-  });
-  if (exchanged.getResponseCode() !== 200) throw new Error('FK_AUTH_SIGNING_FAILED');
-  var session = JSON.parse(exchanged.getContentText());
-  if (session.localId !== uid || typeof session.idToken !== 'string') throw new Error('FK_AUTH_SIGNING_FAILED');
-  return customToken;
-}
-
 function signFkJwt_(payload) {
   var signUrl = 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/'
     + encodeURIComponent(FK_SIGNER_) + ':signJwt';
-  var signed = UrlFetchApp.fetch(signUrl, {method:'post', contentType:'application/json',
-    headers:{Authorization:'Bearer ' + ScriptApp.getOAuthToken()},
-    payload:JSON.stringify({payload:JSON.stringify(payload)}), muteHttpExceptions:true});
-  if (signed.getResponseCode() !== 200) throw new Error('FK_AUTH_SIGNING_FAILED');
+  var signed;
+  try {
+    signed = UrlFetchApp.fetch(signUrl, {method:'post', contentType:'application/json',
+      headers:{Authorization:'Bearer ' + ScriptApp.getOAuthToken()},
+      payload:JSON.stringify({payload:JSON.stringify(payload)}), muteHttpExceptions:true});
+  } catch (_) {
+    throw new Error('FK_AUTH_SIGNING_UNAVAILABLE');
+  }
+  var signingCode = signed.getResponseCode();
+  if (signingCode !== 200) {
+    var reason = 'UNKNOWN';
+    try {
+      var errorBody = JSON.parse(signed.getContentText()).error || {};
+      var details = Array.isArray(errorBody.details) ? errorBody.details : [];
+      var legacy = Array.isArray(errorBody.errors) ? errorBody.errors : [];
+      var info = details.filter(function(item) { return item && item['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo'; })[0];
+      reason = (info && info.reason) || (legacy[0] && legacy[0].reason) || errorBody.status || reason;
+    } catch (_) {}
+    reason = String(reason).toUpperCase().replace(/[^A-Z0-9_]/g, '_').slice(0, 64) || 'UNKNOWN';
+    throw new Error('FK_AUTH_SIGNING_HTTP_' + signingCode + '_' + reason);
+  }
   var signedJwt = JSON.parse(signed.getContentText()).signedJwt;
   if (typeof signedJwt !== 'string' || signedJwt.length < 100 || signedJwt.length > 12000)
-    throw new Error('FK_AUTH_SIGNING_FAILED');
+    throw new Error('FK_AUTH_SIGNING_RESPONSE_INVALID');
   return signedJwt;
 }
 

@@ -1,5 +1,3 @@
-const FA_PROJECT = 'sahmt-17a16';
-const FK_PROJECT = 'sahmt-funcional-fk';
 const MAX_BODY = 20000;
 const hex = bytes => [...new Uint8Array(bytes)].map(value => value.toString(16).padStart(2, '0')).join('');
 
@@ -29,7 +27,7 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
     const headers = cors(origin, env || {});
     const url = new URL(request.url);
     const route = url.pathname;
-    if (!['/v1/management/session','/v1/functional/refresh','/v1/functional/survey'].includes(route)) return Response.json({code:'NOT_FOUND'}, {status:404,headers});
+    if (!['/v1/functional/refresh','/v1/functional/survey'].includes(route)) return Response.json({code:'NOT_FOUND'}, {status:404,headers});
     if (request.method === 'OPTIONS') return new Response(null, {status:origin === env.FK_AUTH_ORIGIN ? 204 : 403,headers});
     if (request.method !== 'POST' || origin !== env.FK_AUTH_ORIGIN) return Response.json({code:'REQUEST_REJECTED'}, {status:403,headers});
     if (!env.APPS_SCRIPT_URL || !env.FK_HMAC_SECRET || env.FK_HMAC_SECRET.length < 32)
@@ -87,34 +85,7 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
         return Response.json({schemaVersion:1,uid:result.uid,snapshot:result.snapshot},{status:200,headers});
       } catch { return Response.json({code:'SYNC_UNAVAILABLE'}, {status:503,headers}); }
     }
-    if (!input || Object.keys(input).length !== 3 || input.sourceProjectId !== FA_PROJECT
-      || !input.targetProjectIds || Object.keys(input.targetProjectIds).length !== 1 || input.targetProjectIds.FK !== FK_PROJECT
-      || !validToken
-      )
-      return Response.json({code:'REQUEST_INVALID'}, {status:400,headers});
-    try {
-      const payload = {action:'AUTH_SESSION', faIdToken:input.faIdToken};
-      input.faIdToken = '';
-      const body = await signedEnvelope(payload, env.FK_HMAC_SECRET, clock());
-      payload.faIdToken = '';
-      const response = await fetchImpl(env.APPS_SCRIPT_URL, {method:'POST', headers:{'Content-Type':'application/json'},
-        body, redirect:'follow', signal:AbortSignal.timeout(25000)});
-      if (!response.ok) throw new Error('UPSTREAM_REJECTED');
-      const text = await response.text();
-      if (text.length > 16000) throw new Error('UPSTREAM_RESPONSE_INVALID');
-      let result; try { result = JSON.parse(text); } catch { throw new Error('UPSTREAM_RESPONSE_INVALID'); }
-      if (result.code !== 'FK_AUTH_READY' || typeof result.uid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(result.uid)
-        || typeof result.customToken !== 'string'
-        || result.customToken.length < 100 || result.customToken.length > 12000
-        || !['EQUIPE','ADMINISTRADOR','GESTOR'].includes(result.group))
-        return Response.json({code:'AUTH_DENIED'}, {status:403,headers});
-      const reply = {schemaVersion:1, sourceProjectId:FA_PROJECT, faUid:result.uid,
-        targets:{FK:{projectId:FK_PROJECT,status:'READY',uid:result.uid,customToken:result.customToken}}};
-      result.customToken = '';
-      return Response.json(reply, {status:200,headers});
-    } catch {
-      return Response.json({code:'AUTH_UNAVAILABLE'}, {status:503,headers});
-    }
+    return Response.json({code:'NOT_FOUND'}, {status:404,headers});
   }});
 }
 
