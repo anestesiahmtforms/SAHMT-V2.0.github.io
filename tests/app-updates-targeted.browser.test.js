@@ -38,7 +38,7 @@ test('iPhone/Android command panel targets all or one user and confirms two devi
         };
         const admin=await open(200,'Android');await admin.locator('#open-command').click();await admin.getByText('Pessoa de teste',{exact:true}).waitFor();
         const early=await open(200,'Android');await early.evaluate(()=>window.openSession('member'));await early.waitForFunction(()=>window.savedDevice);
-        await admin.getByText('Atualizado',{exact:true}).waitFor();assert.match(await admin.locator('[data-panel-list]').innerText(),/Sem exigência ativa/);assert.ok((await admin.locator('[data-panel-list]').innerText()).includes('Versão recebida: '+APP_VERSION));
+        await admin.getByText('Atualizado',{exact:true}).waitFor();assert.match(await admin.locator('[data-panel-list]').innerText(),/Sem exigência ativa/);assert.ok((await admin.locator('[data-panel-list]').innerText()).includes('Versão instalada: '+APP_VERSION));
         const earlyId=await early.evaluate(()=>window.savedDevice.deviceId);await early.close();devices.delete(target+':member:'+earlyId);await admin.getByText('Atualizado',{exact:true}).waitFor({state:'detached'});
         await admin.locator('[data-panel-all]').click();await admin.locator('[data-all-send]:enabled').waitFor();
         assert.match(await admin.locator('[data-all-preview]').innerText(),/2 usuário/);

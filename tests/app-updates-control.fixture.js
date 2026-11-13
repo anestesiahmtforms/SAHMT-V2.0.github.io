@@ -24,7 +24,7 @@ async function api(action,input={}){
   if(!response.ok)throw Error('unavailable');return response.json();
 }
 const fixturePanel=async()=>({openAppUpdatePanel:options=>openRealPanel({...options,readRelease:async()=>200,services:{
-  listAppUpdateUsers:()=>api('users'),readUserAppUpdates:(_,uid)=>api('read',{uid}),
+  listAppUpdateUsers:()=>api('users'),listMemberCategoryAssignments:()=>api('categories'),readUserAppUpdates:(_,uid)=>api('read',{uid}),
   requestUserAppUpdate:(_,uid,minimumRelease)=>api('request',{uids:[uid],minimumRelease}),
   cancelUserAppUpdate:(_,uid)=>api('cancel',{uid}),sendAppUpdateBatch:(_,uids,minimumRelease)=>api('request',{uids,minimumRelease})
 }})});

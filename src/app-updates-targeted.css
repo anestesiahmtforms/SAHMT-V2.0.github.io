@@ -9,3 +9,45 @@
 .app-device-row{display:grid;gap:5px;border-top:1px solid #173b5033;padding:12px 0;overflow-wrap:anywhere}
 .app-update-user{display:grid;gap:8px;border:1px solid #173b5033;border-radius:14px;padding:14px;margin:14px 0;overflow-wrap:anywhere}
 .app-updates-command{width:min(94vw,840px)}
+
+.fi-admin-dialog.app-updates-command[open] > .fi-admin-dialog__body {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  overflow: hidden;
+}
+.app-updates-command__controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+.app-updates-command__controls label,
+.app-updates-command__controls [data-panel-status] { grid-column: 1 / -1; }
+.app-updates-command__controls [data-panel-status] { margin: 0; }
+.app-updates-command__controls input { font-size: 16px; }
+.app-updates-command [data-panel-list] {
+  min-height: 0;
+  padding-inline: 2px 8px;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-color: #527489 #e5ecef;
+}
+.app-updates-command [data-update-group] > h3 {
+  position: sticky;
+  top: 0;
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: #e5ecef;
+  color: #173b50;
+}
+.app-updates-command .app-update-user { margin: 8px 0 14px; }
+.app-updates-command .app-update-user[hidden] { display: none; }
+.app-updates-command .app-update-user p { margin: 4px 0; }
+
+@media (max-height: 480px) {
+  .fi-admin-dialog.app-updates-command[open] > header,
+  .fi-admin-dialog.app-updates-command[open] > .fi-admin-dialog__body { padding-block: 6px; }
+  .fi-admin-dialog.app-updates-command[open] > header p { display: none; }
+}
