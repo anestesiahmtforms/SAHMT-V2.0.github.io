@@ -41,9 +41,9 @@ service cloud.firestore {
       let path = /databases/$(database)/documents/runtimePolicy/folders;
       let policy = exists(path) ? get(path).data : {'schemaVersion': 1, 'revision': 1, 'disabled': []};
       let disabled = policy.disabled;
-      return (activeUser() && profile().get('uid', '') == request.auth.uid && (profile().get('role', '') == 'administrador_app' || profile().get('permissions', {}).get('admin', false) == true)) || (folderReadPolicyValid_(policy) && !disabled.hasAny(['operacao', 'operacao/escala']) &&
+      return !exists(path) || (folderReadPolicyValid_(policy) && !disabled.hasAny(['operacao', 'operacao/escala']) &&
         (!disabled.hasAny(['operacao/eventos']) || resource.data.get('highlights', {}).get('events', []).size() == 0) &&
-        (!disabled.hasAny(['operacao/escala/ferias']) || resource.data.get('vacationLabel', '') == ''));
+        (!disabled.hasAny(['operacao/escala/ferias']) || resource.data.get('vacationLabel', '') == '')) || isAdmin();
     }
     function signedIn() { return request.auth != null; }
     function profilePath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
