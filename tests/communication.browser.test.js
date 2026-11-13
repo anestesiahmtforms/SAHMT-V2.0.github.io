@@ -26,6 +26,7 @@ test('o formulário compacto agrupa destinatários e confirma um único envio',a
    assert.deepEqual(await recipient.locator('optgroup').evaluateAll(groups=>groups.map(group=>[group.label,group.textContent])),[['EQUIPE','Pessoa da Equipe'],['RESIDENTES','Pessoa Residente'],['SUBSTITUTOS','Pessoa Substituta']]);
    await send.evaluate(button=>{button.click();button.click();button.closest('dialog').dispatchEvent(new Event('cancel',{cancelable:true}));});
    const sent=form.getByRole('button',{name:'ENVIADO',exact:true});await sent.waitFor();
+   await page.getByText('Evento publicado no app.',{exact:true}).waitFor();
    assert.equal(await sent.isDisabled(),true);
    assert.equal(beforeColor,'rgb(169, 41, 40)');
    assert.equal(await sent.evaluate(button=>getComputedStyle(button).backgroundColor),'rgb(23, 98, 62)');
@@ -63,7 +64,7 @@ test('ao reabrir após resposta perdida, o mesmo conteúdo retoma o ID original'
 });
 test('ordinary users see own inbox only; Governance hides administrative card entirely',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
- try{const page=await browser.newPage();await page.goto(url+'?common');await open(page,'MENSAGENS RECEBIDAS');assert.equal(await page.locator('[data-view]').count(),0);assert.equal(await page.locator('[data-enable]').count(),1);assert.equal(await page.evaluate(()=>window.calls.some(c=>['DIRECTORY','GROUPS','MESSAGES'].includes(c.action))),false);
+ try{const page=await browser.newPage();await page.goto(url+'?common');await page.getByRole('button',{name:'ATIVAR NOTIFICAÇÕES DE LIBERAÇÃO'}).waitFor();assert.equal(await page.locator('[data-view]').count(),0);assert.equal(await page.locator('[data-enable]').count(),1);assert.equal(await page.evaluate(()=>window.calls.some(c=>['DIRECTORY','GROUPS','MESSAGES'].includes(c.action))),false);
   await page.goto(url+'?common&hub');await page.locator('dialog[open]').waitFor();assert.equal(await page.getByRole('button',{name:'CENTRAL DE COMUNICAÇÃO',exact:true}).count(),0);
   await page.goto(url+'?hub');await open(page,'CENTRAL DE COMUNICAÇÃO');await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();assert.equal(await page.locator('.comm-menu button').count(),1);
  }finally{await browser.close();}

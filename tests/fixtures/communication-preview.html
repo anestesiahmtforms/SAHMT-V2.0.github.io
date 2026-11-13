@@ -14,12 +14,12 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=docu
    await new Promise(resolve=>setTimeout(resolve,80));
    if(params.has('lost-response')&&window.calls.filter(call=>call.action==='CREATE_EVENT').length===1)throw Error('Resposta perdida');
    const m={id:input.id,title:input.title,message:input.description,publishAt:Date.now(),category:'COMUNICADO GERAL'};records.splice(0,records.length,m);
-   return {message:m,dispatch:{status:'queueing'},pushQueued:true};
+   return {message:m,pushQueued:false};
  }
  if(action==='MESSAGE')return {message:records[0]};
  throw Error('Unexpected synthetic operation '+action);
 }};
 const root=document.querySelector('#root');
-const mount=host=>mountCommunication(host,{client,adminMode:admin,appSession:{user:{uid:'fixture-user'}},onBack:()=>{if(params.has('hub'))host.closest('dialog').querySelector('[data-hub-back]').click();else host.textContent='Voltou para Governança';}});
+const mount=host=>mountCommunication(host,{client,adminMode:admin,appSession:{user:{uid:'fixture-user',email:admin?'wx2064@gmail.com':'person@example.test'}},onBack:()=>{if(params.has('hub'))host.closest('dialog').querySelector('[data-hub-back]').click();else host.textContent='Voltou para Governança';}});
 if(params.has('hub'))mountManagementHub(root,{communicationAllowed:admin,access:{groups:true,performance:true,records:true,results:true,surveys:true},isSurveySessionCurrent:()=>true,openCommunication:async host=>mount(host),onExit(){},onNavigate(){}});else mount(root);
 </script></html>

@@ -248,7 +248,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
       const data = await client.request('INBOX', {recent: true, cursor});
       if (!active() || generation !== ticket) return;
       const cards = data.items.map(item => `<article class="comm-card"><h3>${esc(item.title)}</h3><p>${esc(item.category)} · ${new Date(item.publishAt).toLocaleString('pt-BR')}</p><p>${esc(item.message.slice(0, 200))}${item.message.length > 200 ? '…' : ''}</p><button type="button" data-message="${esc(item.id)}">LER AVISO</button></article>`).join('');
-      render('CENTRAL DE COMUNICAÇÃO', `${cards || '<p class="comm-empty">Nenhuma mensagem recebida.</p>'}${data.cursor ? `<button type="button" data-next="${esc(data.cursor)}">PRÓXIMAS MENSAGENS</button>` : ''}`, {inbox: true});
+      render('CENTRAL DE COMUNICAÇÃO', `${cards || '<p class="comm-empty">Nenhuma mensagem recebida.</p>'}${data.cursor ? `<button type="button" data-next="${esc(data.cursor)}">PRÓXIMAS MENSAGENS</button>` : ''}<div class="comm-actions"><button type="button" data-enable>ATIVAR NOTIFICAÇÕES DE LIBERAÇÃO</button><button type="button" data-disable>DESATIVAR NESTE APARELHO</button></div>`, {inbox: true});
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();
@@ -302,7 +302,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     try {
       if (permission) await client.enable(permission);
       else await client.disable();
-      if (active() && generation === ticket) status(permission ? 'Notificações habilitadas neste aparelho.' : 'Notificações desativadas neste aparelho.');
+      if (active() && generation === ticket) status(permission ? 'Notificações de liberação habilitadas neste aparelho.' : 'Notificações desativadas neste aparelho.');
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();
