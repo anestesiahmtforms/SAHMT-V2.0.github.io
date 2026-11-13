@@ -23,11 +23,9 @@ export function operationalFolderNotice(id) {
  if(!operationalFolderPolicyEnabled||!administrator||!Object.hasOwn(operationalFolders,id)||!policy)return '';
  const blocker=id.split('/').map((_,index,parts)=>parts.slice(0,index+1).join('/')).find(folder=>policy.disabled.includes(folder));
  if(!blocker)return '';
- const direct=policy.disabled.includes(id);
- const target=blocker;
- const label=direct&&blocker===id?'Pasta inativa para os demais usuários.':'Subpasta inativa por causa da pasta principal.';
- return '<aside class="notice folder-inactive-notice"><strong>'+label+'</strong> <a href="#/fi-control/'+
-  encodeURIComponent(target)+'">Reativar no Controle de Pastas</a></aside>';
+ const label=blocker===id?'Pasta inativa para os demais usuários.':'Subpasta inativa por causa da pasta principal.';
+ return '<aside class="notice folder-inactive-notice"><strong>'+label+'</strong> <a href="'+(deployment.target==='FB'?deployment.faBase:'')+'#/fi-control/'+
+  encodeURIComponent(blocker)+'">Reativar no Controle de Pastas</a></aside>';
 }
 
 export function assertOperationalContentAllowed(id) {

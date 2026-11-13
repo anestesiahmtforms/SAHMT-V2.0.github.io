@@ -66,6 +66,7 @@ export const consolidatedPerformanceFolders = Object.freeze([
 
 const routes = Object.freeze({
  communications:'comunicacao',
+ management:'gestao',
  functional:'funcional',
  occurrences:'registros/ocorrencias',
  qmentum:'registros/qmentum',
