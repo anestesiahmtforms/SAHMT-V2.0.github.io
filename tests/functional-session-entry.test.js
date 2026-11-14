@@ -40,9 +40,9 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false}={}){
  return {root,sources,status,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,onSessionRequired:()=>recovery++}),recovery:()=>recovery};
 }
 
-test('FK renders its profile and forms before a slow refresh resolves',async()=>{
+test('FK renders its profile before a slow refresh resolves',async()=>{
  const gate=deferred(),f=ui({refresh:()=>gate.promise});const cleanup=await f.run();
- assert.match(f.root.innerHTML,/data-fk-survey="climate"/);assert.match(f.root.innerHTML,/Dados sincronizados/);
+ assert.doesNotMatch(f.root.innerHTML,/data-fk-survey|Pesquisas institucionais/);assert.match(f.root.innerHTML,/Dados sincronizados/);
  assert.equal(f.root.innerHTML.match(/data-fk-source="([^"]+)"/)?.[1],'performance');
  assert.match(f.root.innerHTML,/aria-expanded="false"/);
  assert.doesNotMatch(f.root.innerHTML,/ACESSO INDIVIDUAL|SAHMT/);
@@ -54,12 +54,12 @@ test('missing FK session returns to central FA recovery without an individual Go
  assert.doesNotMatch(f.root.innerHTML,/functional-google-auth/);cleanup();
 });
 
-test('a first user with no readable snapshot can open forms while generation runs',async()=>{
+test('a first user without a readable snapshot can see Desempenho while generation runs',async()=>{
  const gate=deferred(),f=ui({initialReadFails:true,refresh:()=>gate.promise}),cleanup=await f.run();
- assert.match(f.root.innerHTML,/data-fk-survey="climate"/);cleanup();gate.resolve();
+ assert.match(f.root.innerHTML,/data-fk-source="performance"/);cleanup();gate.resolve();
 });
 
 test('refresh failure preserves the functional screen and reports stale sources',async()=>{
  const f=ui({refresh:async()=>{throw Error('unavailable');}}),cleanup=await f.run();await turn();
- assert.match(f.status.textContent,/não puderam ser atualizadas/);assert.match(f.root.innerHTML,/data-fk-survey="climate"/);cleanup();
+ assert.match(f.status.textContent,/não puderam ser atualizadas/);assert.doesNotMatch(f.root.innerHTML,/data-fk-survey|Pesquisas institucionais/);cleanup();
 });

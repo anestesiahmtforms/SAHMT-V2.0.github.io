@@ -45,8 +45,7 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
 }
 .functional-dialog > footer button { width: 100%; min-height: 44px; }
 .functional-page { display: grid; gap: 14px; }
-.functional-source-grid,
-.functional-survey-actions { display: grid; gap: 12px; }
+.functional-source-grid { display: grid; gap: 12px; }
 .functional-tile {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr) auto;
@@ -90,14 +89,3 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
 }
 .functional-source-detail p, .functional-status { margin: 0; }
 .functional-status:empty { display: none; }
-.functional-survey h3 { margin: 5px 0 12px; font-size: 1rem; }
-.functional-survey-frame {
-  display: block;
-  width: 100%;
-  min-height: min(70dvh, 760px);
-  margin-top: 12px;
-  border: 1px solid #d8e2e6;
-  border-radius: 12px;
-  background: #fff;
-}
-.functional-epidemiological-form { padding: 12px; background: #fff; }
