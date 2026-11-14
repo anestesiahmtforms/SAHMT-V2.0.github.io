@@ -51,6 +51,15 @@ test('a criação de evento respeita os públicos locais e o mesmo envio só pub
  assert.equal(directory.items.find(user=>user.uid===person.sourceUid).institutionalGroup,'team');
 });
 
+test('aviso de liberação rejeita as escalas anterior e posterior mesmo quando já marcadas',async()=>{
+ const f=fixture();
+ for(const day of ['2026-11-03','2026-11-05']){
+  f.fa.data.set('scheduleDays/'+day,{highlights:{siglas:['AB'],releaseTimes:{AB:NOW-1000}}});
+  await assert.rejects(f.call('SCHEDULE_RELEASE_NOTICE',{day,sigla:'AB'}),{code:'COMM_NOT_CURRENT'});
+ }
+ assert.equal(f.queued.length,0);
+});
+
 test('falha ao enfileirar uma liberação permite recuperar o mesmo despacho',async()=>{
  const f=fixture(),enqueue=f.queue.send;
  f.queue.send=async()=>{throw Error('Fila indisponível');};

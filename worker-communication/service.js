@@ -1,3 +1,4 @@
+import {localDateKey} from '../src/schedule-date.js';
 import {createHash} from 'node:crypto';
 import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMessage,matches,PAGE_SIZE,BATCH_SIZE,CATEGORIES,safePreview,automaticNoticePreview,BUILTIN_GROUPS} from '../communication/domain.js';
 import {assignedInstitutionalGroup} from '../src/institutional-group.js';
@@ -132,6 +133,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(faProfile?.uid!==a.faUid||faProfile.email?.toLowerCase()!==a.email||!scheduleReleaseIdentity(faProfile,a))throw fail('COMM_FORBIDDEN',403);
   const day=String(input.day||''),sigla=String(input.sigla||'').trim().toUpperCase();
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day)||! /^(?:[A-Z]{2}|L2)$/.test(sigla))throw fail('COMM_INVALID_INPUT');
+  if(day!==localDateKey(new Date(now())))throw fail('COMM_NOT_CURRENT',409);
   const schedule=await scheduleSource.get('scheduleDays',day),releaseAt=Number(schedule?.highlights?.releaseTimes?.[sigla]);
   if(!schedule||!Array.isArray(schedule.highlights?.siglas)||!schedule.highlights.siglas.includes(sigla)||!Number.isSafeInteger(releaseAt)||releaseAt<=0||releaseAt>now()+60000)throw fail('COMM_NOT_CURRENT',409);
   const people=await store.page('users',{limit:2,filters:[['sigla',sigla],['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});

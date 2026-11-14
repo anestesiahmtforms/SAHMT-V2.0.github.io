@@ -43,6 +43,13 @@ service cloud.firestore {
     }
     function actorIsSelf() { return signedIn() && request.resource.data.createdByUid == request.auth.uid; }
     function updateActorIsSelf() { return signedIn() && request.resource.data.updatedByUid == request.auth.uid; }
+    function paddedDayPart(value) {
+      return value < 10 ? '0' + string(value) : string(value);
+    }
+    function serverSaoPauloDay() {
+      let localTime = request.time - duration.value(3, 'h');
+      return string(localTime.year()) + '-' + paddedDayPart(localTime.month()) + '-' + paddedDayPart(localTime.day());
+    }
     function canOperateSchedule() {
       return signedIn() && request.auth.token.get('faEmailVerified', false) == true &&
         (isAdmin() || (activeUser() && profile().get('email', '').lower() == 'marcio.henrique82@gmail.com'));
@@ -56,7 +63,7 @@ service cloud.firestore {
         let oldHighlights = resource.data.get('highlights', {});
         let newHighlights = request.resource.data.get('highlights', {});
         return canOperateSchedule() && updateActorIsSelf() &&
-          scheduleId.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+          scheduleId == serverSaoPauloDay() &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['highlights', 'updatedByUid', 'updatedAt', 'version']) &&
           request.resource.data.id == resource.data.id && request.resource.data.date == resource.data.date &&
           request.resource.data.positions == resource.data.positions &&

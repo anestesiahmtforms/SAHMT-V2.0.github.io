@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {initializeTestEnvironment, assertSucceeds, assertFails} from '@firebase/rules-unit-testing';
 import {collection, doc, getDocs, setDoc, getDoc, updateDoc, writeBatch, serverTimestamp} from 'firebase/firestore';
+import {localDateKey,shiftDateKey} from '../src/schedule-date.js';
 import {fiEmulatorPort,assertFiEmulator} from './helpers/fi-emulator-address.js';
 
 const projects = {FI: 'sahmt-operacional-fi', FJ: 'sahmt-escala-fj'};
@@ -121,10 +122,15 @@ test('FJ common users cannot launch events even with a legacy eventsWrite grant'
 });
 
 test('FJ preserves release highlights and blocks direct event-marker injection', async () => {
-  const reference = doc(db('FJ', 'admin'), 'scheduleDays/2026-11-06');
+  const today=localDateKey();
+  for(const day of [-1,0,1].map(offset=>shiftDateKey(today,offset))){
+    await seed('FJ','scheduleDays/'+day,{id:day,date:day,positions:[{position:1,sigla:'AA'}],highlights:{siglas:[],events:[],releaseTimes:{}},version:1});
+  }
+  const reference = doc(db('FJ', 'admin'), 'scheduleDays/'+today);
   const release = uid => ({'highlights.siglas': ['AA'], 'highlights.releaseTimes': {AA: 1800000000000},
     updatedByUid: uid, updatedAt: serverTimestamp(), version: 2});
   await assertFails(updateDoc(doc(db('FJ'), reference.path), release('member')));
+  for(const offset of [-1,1])await assertFails(updateDoc(doc(db('FJ','admin'),'scheduleDays/'+shiftDateKey(today,offset)),release('admin')));
   await assertSucceeds(updateDoc(reference, release('admin')));
   await assertFails(updateDoc(reference, {'highlights.events': ['EVENTO:AA:AA:forged'],
     updatedByUid: 'admin', updatedAt: serverTimestamp(), version: 3}));

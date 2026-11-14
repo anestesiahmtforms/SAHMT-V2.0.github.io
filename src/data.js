@@ -16,6 +16,7 @@ import {parseCatalogValues, validateEventCatalog} from './event-catalog.js';
 import {normalizeDriveDocumentUrl} from './drive-document.js';
 import {mayQueueOffline, stageOperationalWrite} from './record-write.js';
 import {syncOccurrenceOperation} from './occurrence-outbox-sync.js';
+import {localDateKey} from './schedule-date.js';
 import {updateScheduleReleaseState, updateScheduleReleaseTimes} from './schedule-release.js';
 import {runKeyedTask} from './keyed-task.js';
 import {DEFAULT_APP_FEATURES, normalizeAppFeatures} from './feature-flags.js';
@@ -74,6 +75,7 @@ export async function readSchedule(day, uid) {
 export async function setScheduleSiglaRelease(day,sigla,marked,{groupSiglas=[],tokenSigla=sigla,uid}={}) {
   assertOnlineOperation();
   if(!/^\d{4}-\d{2}-\d{2}$/.test(day||'')||typeof marked!=='boolean'||!uid)throw new Error('Não foi possível identificar a marcação da escala.');
+  if(day!==localDateKey())throw new Error('A liberação está disponível apenas na escala de hoje.');
   const operation={day,sigla,marked,groupSiglas,tokenSigla,occurredAt:Date.now()};
   try{return await withOperationalDeadline(()=>applyScheduleSiglaRelease(operation,uid));}
   catch(error){throw unconfirmedWrite(error,scheduleReleaseRequestId(uid,operation));}
@@ -85,6 +87,7 @@ async function applyScheduleSiglaRelease(operation, uid) {
   const protectVersion = Boolean(import.meta.env.VITE_OPERATIONAL_CHANNEL_ENDPOINT);
   const reference = doc(db, 'scheduleDays', operation.day);
   const updated = await runTransaction(db, async (transaction) => {
+    if(operation.day!==localDateKey())throw new Error('A liberação está disponível apenas na escala de hoje.');
     const snapshot = await transaction.get(reference);
     if (!snapshot.exists()) throw new Error('A escala deste dia não está publicada.');
     const schedule = snapshot.data();

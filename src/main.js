@@ -1431,18 +1431,24 @@ function showScheduleContacts(contacts, context = {}) {
   const content = document.querySelector('#schedule-contact-details');
   if (!dialog || !content) return;
   const siglaLabel = context.sigla || '';
+  const releaseToday = context.date === localDateKey();
   const records = contacts.filter((contact, index, all) => all.findIndex((item) => item.sigla === contact.sigla) === index);
   const cards = records.map((contact) => {
     const links = contactActionLinks(contact);
     const actions = `${links.whatsApp ? `<a class="contact-action" href="${escapeHtml(links.whatsApp)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}${links.phone ? `<a class="contact-action" href="tel:${links.phone}">Ligar</a>` : ''}${links.email ? `<a class="contact-action" href="mailto:${encodeURIComponent(links.email)}">Enviar e-mail</a>` : ''}`;
     const released = (context.highlightedSiglas || []).includes(String(contact.sigla || '').toUpperCase());
-    const release = context.canRelease ? `<button class="contact-action schedule-release${released ? ' is-released' : ''}" type="button" data-release-sigla="${escapeHtml(contact.sigla)}" aria-pressed="${released}" aria-label="${released ? 'Cancelar liberação de' : 'Liberar'} ${escapeHtml(contact.name)}">${released ? 'CANCELAR LIBERAÇÃO' : 'LIBERAR'}</button>` : '';
+    const release = context.canRelease ? `<button class="contact-action schedule-release${released ? ' is-released' : ''}" type="button" data-release-sigla="${escapeHtml(contact.sigla)}"${releaseToday ? '' : ' disabled title="Disponível apenas na escala de hoje"'} aria-pressed="${released}" aria-label="${released ? 'Cancelar liberação de' : 'Liberar'} ${escapeHtml(contact.name)}">${released ? 'CANCELAR LIBERAÇÃO' : 'LIBERAR'}</button>` : '';
     return `<article class="schedule-contact-record">${records.length > 1 ? `<h4>${escapeHtml(contact.name)}</h4>` : ''}<div class="contact-detail-actions">${actions}${release}</div></article>`;
   }).join('');
   content.innerHTML = `<h3 id="schedule-contact-heading">${records.length > 1 ? 'Contatos vinculados' : escapeHtml(records[0]?.name || 'Contato')}</h3><p class="schedule-release-status" data-release-status role="status" aria-live="polite"></p>${cards || '<p class="empty-state">Nenhum contato encontrado para esta sigla.</p>'}`;
   content.querySelectorAll('[data-release-sigla]').forEach((button) => button.addEventListener('click', async () => {
     const status = content.querySelector('[data-release-status]');
     if (!scheduleReleaseIdentity(session.profile, session.user)) return;
+    if (context.date !== localDateKey()) {
+      button.disabled = true;
+      if (status) status.textContent = 'A liberação está disponível apenas na escala de hoje.';
+      return;
+    }
     const actorUid = session.user.uid;
     const marked = button.getAttribute('aria-pressed') !== 'true';
     button.disabled = true;
@@ -1487,7 +1493,7 @@ function showScheduleContacts(contacts, context = {}) {
     } catch {
       if (status && session.user?.uid === actorUid) status.textContent = 'Não foi possível salvar a liberação. Confira a conexão e sua permissão para editar a escala.';
     } finally {
-      button.disabled = false;
+      button.disabled = context.date !== localDateKey();
     }
   }));
   if (currentRoute() === 'schedule') {
