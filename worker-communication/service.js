@@ -322,7 +322,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(action==='INBOX'){
    const recent=input.recent===true;
    const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:5,...(recent?{publishedBefore:now()}:{filters:[['status','published']]})}),items=[];
-   if(!input.cursor){const pointer=await store.get('communicationReleaseInboxes',a.sourceUid);if(pointer?.messageId){const release=await store.get('communicationMessages',id(pointer.messageId));if(release?.audienceType==='USER'&&release.audienceValue===a.sourceUid&&isCurrentMessage(release,now()))items.push(release);}}
+   if(!input.cursor&&!(recent&&input.chronological===true)){const pointer=await store.get('communicationReleaseInboxes',a.sourceUid);if(pointer?.messageId){const release=await store.get('communicationMessages',id(pointer.messageId));if(release?.audienceType==='USER'&&release.audienceValue===a.sourceUid&&isCurrentMessage(release,now()))items.push(release);}}
    for(const m of rows)if(!items.some(item=>item.id===m.id)&&isCurrentMessage(m,now())&&await audience(m,ownProfile,a.sourceUid))items.push(m);
    const last=rows.at(-1);
    return {items,cursor:rows.length===5?(recent?`${last.publishAt}|${last.id}`:last.id):null};

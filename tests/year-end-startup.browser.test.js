@@ -115,13 +115,13 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   assert.equal(await page.locator('.startup-logo img').count(),1);assert.equal((await page.locator('.startup-logo').textContent()).trim(),'');
   assert.equal(await page.locator('.year-end-startup').isVisible(),false);
   preview.releaseAuthentication();await page.locator('.app-shell--home [data-route="schedule"]').waitFor();
-  assert.equal(await page.locator('[data-app-version]').textContent(),APP_VERSION);
+  assert.equal(await page.locator('.home-logo-stage [data-app-version]').textContent(),APP_VERSION);
   const versionLayout=await page.evaluate(()=>{
     const rect=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {top:r.top,bottom:r.bottom,right:r.right,left:r.left};};
-    return {badge:rect('[data-app-version]'),header:rect('.identity-card'),name:rect('.identity-card__user-row')};
+    return {badge:rect('[data-app-version]'),stage:rect('.home-logo-stage')};
   });
-  assert.ok(versionLayout.badge.top>=versionLayout.header.top&&versionLayout.badge.right<=versionLayout.header.right&&versionLayout.header.right-versionLayout.badge.right<20);
-  assert.ok(versionLayout.badge.bottom<=versionLayout.name.bottom&&versionLayout.badge.top<versionLayout.name.top);
+  assert.ok(versionLayout.badge.right<=versionLayout.stage.right&&versionLayout.stage.right-versionLayout.badge.right<12);
+  assert.ok(versionLayout.badge.bottom<=versionLayout.stage.bottom&&versionLayout.stage.bottom-versionLayout.badge.bottom<12);
   assert.equal(await page.locator('.startup-logo').count(),0,'authentication closes the logo without a timed animation');
   assert.equal(await page.locator('.year-end-startup').isVisible(),false,'the Home does not fetch FE campaign status');
   await page.waitForTimeout(500);assert.deepEqual(preview.requests,[],'Home startup must not call the FE Worker');

@@ -1,4 +1,4 @@
-import {BUILTIN_GROUPS, ROUTES, adminIdentity} from '../communication/domain.js';
+import {BUILTIN_GROUPS, adminIdentity} from '../communication/domain.js';
 import {communicationEntryFromSession} from './communication-entry.js';
 import {communicationSenderRole} from './communication-operational-notices.js';
 import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-text.js';
@@ -279,12 +279,11 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     }
   }
 
-  function receivedCard(message) {
+  function receivedCard(message, open = false) {
     const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
       `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
-    const legacyRoute = !message.id.startsWith('event-') && ROUTES.includes(message.route) ? `<a href="#/${esc(message.route)}">ABRIR PÁGINA NO APP</a>` : '';
     const date = new Date(message.publishAt).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'});
-    return `<article class="comm-card"><header><h3>${esc(message.title)}</h3><p>${esc(message.category)} · ${esc(date)}</p></header><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}</article>`;
+    return `<details class="comm-card"${open?' open':''}><summary><h3>${esc(message.title)}</h3><span class="comm-received-date">${esc(date)} · ${esc(message.category)}</span></summary><div class="comm-received-body"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}</div></details>`;
   }
 
   function inbox() {
@@ -300,7 +299,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
       inboxObserver?.unobserve(end);
       end.textContent = 'Carregando mensagens…';
       try {
-        const page = await client.request('INBOX', {recent: true, cursor});
+        const page = await client.request('INBOX', {recent: true, chronological: true, cursor});
         if (!active() || generation !== ticket) return;
         for (const message of page.items) {
           if (seen.has(message.id)) continue;
@@ -332,7 +331,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     try {
       const {message} = await client.request('MESSAGE', {id: decodeURIComponent(key)});
       if (!active() || generation !== ticket) return;
-      render('MENSAGENS RECEBIDAS', receivedCard(message), {inbox: true});
+      render('MENSAGENS RECEBIDAS', receivedCard(message, true), {inbox: true});
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();

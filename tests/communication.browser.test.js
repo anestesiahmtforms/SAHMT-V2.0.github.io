@@ -97,21 +97,25 @@ test('o administrador e o gestor podem abrir o histórico e consultar os dois re
  }finally{await browser.close();}
 });
 
-test('mensagens recebidas exibem o texto completo e carregam mais na rolagem do modal',async()=>{
+test('mensagens recebidas ficam compactas, expandem o texto e carregam mais na rolagem',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{
   const page=await browser.newPage({viewport:{width:390,height:640}});
   await page.goto(url+'?common&received-pages');
   const dialog=page.getByRole('dialog',{name:'Mensagens recebidas'});
   await dialog.getByRole('heading',{name:'Primeiro aviso'}).waitFor();
-  assert.equal(await dialog.getByRole('button').count(),1);
-  assert.match(await dialog.locator('.comm-message').first().innerText(),/Fim do texto/);
+  const first=dialog.locator('.comm-card').first();
+  assert.ok((await first.boundingBox()).height<75);
+  assert.equal(await first.locator('.comm-message').isVisible(),false);
+  await first.locator('summary').click();
+  assert.equal(await dialog.getByRole('link',{name:'ABRIR PÁGINA NO APP'}).count(),0);
+  assert.match(await first.locator('.comm-message').innerText(),/Fim do texto/);
   assert.equal(await dialog.getByRole('link',{name:'https://example.test/aviso'}).getAttribute('href'),'https://example.test/aviso');
   const back=dialog.getByRole('button',{name:'VOLTAR PARA HOME'});
   const before=await back.boundingBox();
   await dialog.locator('.comm-content').evaluate(node=>{node.scrollTop=node.scrollHeight;});
   await dialog.getByRole('heading',{name:'Segundo aviso'}).waitFor();
-  assert.equal(await dialog.getByRole('heading',{name:'Primeiro aviso'}).count(),1);
+  assert.deepEqual(await dialog.locator('.comm-card h3').allTextContents(),['Primeiro aviso','Segundo aviso']);
   assert.deepEqual(await back.boundingBox(),before);
  }finally{await browser.close();}
 });

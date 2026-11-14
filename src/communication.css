@@ -284,18 +284,36 @@
 }
 .communication--received .comm-card {
   border: 1px solid #b2c9d3;
-  border-inline-start: 5px solid #27647e;
+  border-inline-start: 3px solid #27647e;
+  border-radius: 9px;
   background: #fff;
-  box-shadow: 0 3px 10px #13344916;
+  margin: 0 0 6px;
+  padding: 0;
 }
-.communication--received .comm-card header {
-  padding-bottom: 8px;
-  border-bottom: 1px solid #dce8ed;
+.communication--received .comm-card summary {
+  min-height: 44px;
+  padding: 5px 9px;
+  cursor: pointer;
 }
-.communication--received .comm-card header p {
+.communication--received .comm-card summary:focus-visible {
+  outline: 2px solid #27647e;
+  outline-offset: 1px;
+}
+.communication--received .comm-card h3 {
+  display: inline;
   margin: 0;
-  color: #456173;
-  font-size: .82rem;
+  font-size: .94rem;
 }
-.communication--received .comm-message { overflow-wrap: anywhere; }
+.comm-received-date {
+  display: block;
+  margin-inline-start: 16px;
+  color: #456173;
+  font-size: .76rem;
+  line-height: 1.35;
+}
+.comm-received-body {
+  border-top: 1px solid #dce8ed;
+  padding: 7px 9px 8px;
+}
+.communication--received .comm-message { margin: 0; overflow-wrap: anywhere; }
 .communication--received [data-received-end] { min-height: 1px; margin: 0; }

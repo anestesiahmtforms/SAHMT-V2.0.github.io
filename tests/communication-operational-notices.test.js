@@ -202,6 +202,25 @@ test('liberação de RL aparece na primeira página da própria Home mesmo após
  assert.equal((await f.call('INBOX',{},operator)).items.length,0);
 });
 
+test('a caixa cronológica mantém a liberação na posição da consulta por data',async()=>{
+ const f=fixture();
+ const newest={...draft().message,id:'event-new',publishAt:NOW};
+ const release={...draft().message,id:'release-old',publishAt:NOW-60000,audienceType:'USER',audienceValue:person.sourceUid};
+ const older={...draft().message,id:'event-old',publishAt:NOW-120000};
+ f.store.data.set('communicationReleaseInboxes/'+person.sourceUid,{messageId:release.id});
+ f.store.data.set('communicationMessages/'+release.id,release);
+ const page=f.store.page;
+ f.store.page=async(collection,options)=>{
+  if(collection!=='communicationMessages')return page(collection,options);
+  assert.equal(options.publishedBefore,NOW);
+  return [newest,release,older];
+ };
+ const inbox=await f.call('INBOX',{recent:true,chronological:true},person);
+ assert.deepEqual(inbox.items.map(message=>message.id),[newest.id,release.id,older.id]);
+ const home=await f.call('INBOX',{recent:true},person);
+ assert.equal(home.items[0].id,release.id);
+});
+
 test('confirmação distingue fila, ausência de aparelho, Push desativado e aceitação pelo FCM',()=>{
  assert.match(releaseNoticeFeedback({pushEnabled:true,pushEligible:true,pushQueued:true},'RL'),/fila de processamento; recebimento ainda não confirmado/);
  assert.match(releaseNoticeFeedback({pushEnabled:true,pushEligible:false,pushQueued:true},'RL'),/Nenhum aparelho com Push ativo/);
