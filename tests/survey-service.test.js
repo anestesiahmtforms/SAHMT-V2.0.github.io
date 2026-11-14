@@ -7,7 +7,7 @@ import {VERSION as climateVersion} from '../climate-domain/schema.js';
 import {VERSION as stressVersion,QUESTIONS} from '../stress-domain/schema.js';
 const identity={uid:'synthetic-one',email:'one@example.invalid',emailVerified:true,provider:'google.com'};
 const response=(kind,id='a'.repeat(32))=>({survey_cycle:'2026',survey_version:kind==='climate'?climateVersion:stressVersion,submission_id:id,group:'substitute',...(kind==='climate'?{consent:true,answers:{Q01:4},comments:{O01:'Synthetic comment'}}:{answers:Object.fromEntries(QUESTIONS.map(q=>[q.id,2]))})});
-async function fixture(category='EFETIVO'){const profiles=vaccinationMemoryStore(),responses=vaccinationMemoryStore();profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});profiles.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:[category]});for(const kind of ['climate','stress'])responses.seed(kind+'Cycles','2026',{status:'open'});return {profiles,responses,service:createSurveyService({profileStore:profiles,responseStore:responses,uuid:()=> 'b'.repeat(32)})};}
+async function fixture(category='EFETIVO'){const profiles=vaccinationMemoryStore(),responses=vaccinationMemoryStore();profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});profiles.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:[category]});responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:'2026-10-01T00:00:00Z'});for(const kind of ['climate','stress'])responses.seed(kind+'Cycles','2026',{status:'open'});return {profiles,responses,service:createSurveyService({profileStore:profiles,responseStore:responses,performanceEnabled:true,uuid:()=> 'b'.repeat(32)})};}
 const input=(kind,id)=>({survey:kind,cycle:'2026',response:response(kind,id)});
 test('one account gets one response per survey/cycle; participation data contains no answer identifier or group',async()=>{
  const {service,responses}=await fixture();
@@ -30,23 +30,29 @@ test('concurrent submissions with distinct random IDs commit a single ledger and
 });
 test('FE awards one point for an accepted participation without copying survey answers',async()=>{
  const f=await fixture(),clock=Date.parse('2026-10-28T12:00:00Z');
- const service=createSurveyService({profileStore:f.profiles,responseStore:f.responses,now:()=>clock,uuid:()=> 'b'.repeat(32)});
+ const service=createSurveyService({profileStore:f.profiles,responseStore:f.responses,performanceEnabled:true,now:()=>clock,uuid:()=> 'b'.repeat(32)});
  assert.deepEqual(await service.execute('SUBMIT',input('climate'),identity),{accepted:true,alreadyResponded:false});
- const events=await f.responses.list('feFunctionalPerformanceEvents');
+ const events=await f.responses.list('fePerformanceAwards');
  assert.equal(events.length,1);assert.equal(events[0].uid,identity.uid);assert.equal(events[0].points,1);assert.equal(events[0].survey,'climate');
- assert.equal(events[0].affiliation,'team');assert.equal(Object.hasOwn(events[0],'answers'),false);assert.equal(Object.hasOwn(events[0],'comments'),false);assert.equal(Object.hasOwn(events[0],'responseId'),false);
+ assert.equal((await f.responses.get('fePerformanceSummaries',identity.uid)).total,1);assert.equal(Object.hasOwn(events[0],'answers'),false);assert.equal(Object.hasOwn(events[0],'comments'),false);assert.equal(Object.hasOwn(events[0],'responseId'),false);
 });
 test('FE source events keep the original time and do not duplicate a participation',async()=>{
  const f=await fixture(),clock=Date.parse('2026-10-28T12:00:00Z');
- const service=createSurveyService({profileStore:f.profiles,responseStore:f.responses,now:()=>clock,uuid:()=> 'b'.repeat(32)});
+ const service=createSurveyService({profileStore:f.profiles,responseStore:f.responses,performanceEnabled:true,now:()=>clock,uuid:()=> 'b'.repeat(32)});
  await service.execute('SUBMIT',input('climate'),identity);
- const events=await f.responses.list('feFunctionalPerformanceEvents');assert.equal(events.length,1);assert.equal(events[0].createdAt,clock);
+ const events=await f.responses.list('fePerformanceAwards');assert.equal(events.length,1);assert.equal(events[0].createdAt,clock);
  const retry=input('climate','c'.repeat(32));await service.execute('SUBMIT',retry,identity);
- assert.equal((await f.responses.list('feFunctionalPerformanceEvents')).length,1);
+ assert.equal((await f.responses.list('fePerformanceAwards')).length,1);
 });
-test('legacy performance reads are rejected by the survey service',async()=>{
- const {service}=await fixture();
- await assert.rejects(service.execute('GET_PERFORMANCE',{},identity),error=>error.code==='SURVEY_INVALID_INPUT');
+test('FE performance returns only the signed-in participant’s local awards',async()=>{
+ const {service,responses}=await fixture();
+ responses.seed('fePerformanceAwards','other_stress_2026',{uid:'other',category:'PERFORMANCE',points:1,survey:'stress'});
+ await service.execute('SUBMIT',input('climate'),identity);
+ const result=await service.execute('GET_PERFORMANCE',{},identity);
+ assert.equal(result.status,'READY');
+ assert.equal(result.summary.total,1);
+ assert.deepEqual(result.awards.map(a=>a.uid),[identity.uid]);
+ await assert.rejects(service.execute('GET_PERFORMANCE',{uid:'other'},identity),{code:'SURVEY_INVALID_INPUT'});
 });
 test('invalid identity, schema, closed cycle or revoked profile cannot consume a participation slot',async()=>{
  for(const patch of [{emailVerified:false},{provider:'password'},{uid:'../bad'},{email:'other@example.invalid'}]){const f=await fixture();await assert.rejects(f.service.execute('SUBMIT',input('stress'),{...identity,...patch}));assert.equal((await f.responses.list('surveyParticipation')).length,0);}
@@ -63,22 +69,22 @@ test('FE folder pause preserves participation and points for retry without readi
  const responseStore={...responses,transaction:fn=>responses.transaction(tx=>fn({
   ...tx,get:(collection,id)=>{reads.push(collection);return tx.get(collection,id);}
  }))};
- const service=createSurveyService({profileStore:profiles,responseStore,now:()=>clock,
+ const service=createSurveyService({profileStore:profiles,responseStore,performanceEnabled:true,now:()=>clock,
   checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,()=>assert.fail('Unexpected standalone read'),tx)});
  await assert.rejects(service.execute('SUBMIT',input('stress'),identity),{code:'SURVEY_FOLDER_DISABLED'});
- assert.equal(reads.includes('feFunctionalPerformanceEvents'),false);
+ assert.equal(reads.includes('fePerformanceAwards'),false);
  assert.equal((await responses.list('surveyParticipation')).length,0);
  assert.equal((await responses.list('stressResponses')).length,0);
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:2,disabled:[]});
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:false});
- assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
+ assert.equal((await responses.list('fePerformanceAwards')).length,1);
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:3,disabled:['consultas']});
  await assert.rejects(service.execute('SUBMIT',input('stress'),identity),{code:'SURVEY_FOLDER_DISABLED'});
  assert.equal((await responses.list('surveyParticipation')).length,1);
- assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
+ assert.equal((await responses.list('fePerformanceAwards')).length,1);
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:4,disabled:[]});
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:true});
- assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
+ assert.equal((await responses.list('fePerformanceAwards')).length,1);
 });
 
 test('FE institutional research admits verified active users in every institutional group',async()=>{

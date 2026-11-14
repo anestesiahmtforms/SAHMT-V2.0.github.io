@@ -6,12 +6,13 @@ export async function callInstitutionalSurvey({uid,isCurrent,survey,action,respo
   if(!valid())throw Error('SURVEY_SESSION_CHANGED');
   const token=await auth.currentUser.getIdToken();
   if(!valid())throw Error('SURVEY_SESSION_CHANGED');
-  if(!['BOOTSTRAP','SUBMIT'].includes(action))throw Error('SURVEY_ACTION_INVALID');
-  const input={survey,cycle:'2026',...(action==='SUBMIT'?{response}:{})};
+  if(!['BOOTSTRAP','SUBMIT','GET_PERFORMANCE'].includes(action))throw Error('SURVEY_ACTION_INVALID');
+  const input=action==='GET_PERFORMANCE'?{}:{survey,cycle:'2026',...(action==='SUBMIT'?{response}:{})};
   const result=await fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',signal:AbortSignal.timeout(20000),body:JSON.stringify({action,input})});
   if(!valid())throw Error('SURVEY_SESSION_CHANGED');
   if(!result.ok){await result.body?.cancel();throw Error('SURVEY_UNAVAILABLE');}
   const data=await result.json();
+  if(action==='GET_PERFORMANCE')return data;
   // Reply to the FE frame with this closed shape only; never auth data.
   if(data.group==='substitute')data.group='team';
   if(action==='BOOTSTRAP'&&['team','resident'].includes(data.group)&&typeof data.alreadyResponded==='boolean')return {group:data.group,alreadyResponded:data.alreadyResponded};

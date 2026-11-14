@@ -18,6 +18,7 @@ function buildSurveyService(env){
   runtimes.set(env,createSurveyService({profileStore,
    responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken}),
    checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,getAccessToken,tx),
+   performanceEnabled:true,checkPerformance:()=>assertFeFolderReadable('desempenho/fe',getAccessToken),
    reportReaderEmail:env.REPORT_READER_EMAIL}));
  }
  return runtimes.get(env);
