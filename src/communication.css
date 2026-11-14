@@ -218,9 +218,38 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
 }
-.comm-inbox-shortcut svg { flex: none; }
+.comm-inbox-shortcut__icon {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #b66612;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #fff0b5, #f2ad48);
+  color: #562b12;
+  box-shadow: 0 2px 5px #562b1238;
+}
+.comm-inbox-shortcut__icon::after {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #fff7e3;
+  border-radius: 2px;
+  background: #9b4224;
+  content: '';
+  transform: rotate(45deg) scale(.7);
+  opacity: .85;
+}
+.comm-inbox-shortcut:is(:hover, :focus-visible) .comm-inbox-shortcut__icon {
+  background: linear-gradient(145deg, #fff6d1, #f9c56c);
+  box-shadow: 0 0 0 3px #f6d896;
+}
 
 .communication--sent > .comm-content {
   overflow-y: scroll;
