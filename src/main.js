@@ -81,6 +81,7 @@ import {installTargetedAppUpdates} from './app-updates-targeted.js';
 import {APP_VERSION} from './app-version.js';
 import {getDailyHomeWelcomeMessage,millisecondsUntilHomeWelcomeChange} from './home-welcome.js';
 import './app-updates-targeted.css';
+import './functional-ui.css';
 import {renderFiAdminDialog, mountFiAdminDialog} from './fi-admin-dialog.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {communicationFeatureEnabled,communicationAdminSession} from './communication-link.js';
@@ -1086,6 +1087,7 @@ function actionForm(route) {
 
 function shellView() {
   const route = currentRoute();
+  if(route==='functional'&&session.status==='signed-in')return '<main><dialog class="functional-dialog" id="functional-dialog" aria-labelledby="functional-title"><header><h1 id="functional-title" tabindex="-1" autofocus>FUNCIONAL</h1></header><div id="module-content" class="functional-dialog-content"><p role="status">Abrindo seu perfil funcional…</p></div><footer><button type="button" class="secondary-button" data-route="management-hub">Voltar à Governança</button></footer></dialog></main>';
   if(route==='year-end-schedule'&&session.status==='signed-in')return '<main class="year-end-entry" id="module-content"><p role="status">Preparando a escala…</p></main>';
   if(['people','admin'].includes(route)&&session.status==='signed-in')return renderFiAdminDialog({
     title:labels[route][0],displayName:session.profile?.displayName||session.user.displayName||'Usuário',
@@ -5361,6 +5363,11 @@ async function render() {
       button.removeAttribute('data-route');button.textContent='VOLTAR';
       button.addEventListener('click',()=>navigate('management'));
     });
+  }
+  const functionalDialog=requestedRoute==='functional'&&!authLimited?document.querySelector('#functional-dialog'):null;
+  if(functionalDialog){
+    functionalDialog.addEventListener('cancel',event=>{event.preventDefault();navigate('management-hub');});
+    functionalDialog.showModal();
   }
   const fiAdminDialog=document.querySelector('[data-fi-admin-dialog]');
   if(!authLimited&&fiAdminDialog)cleanupCurrentModule=mountFiAdminDialog(fiAdminDialog,{isCurrent:current,onExit:()=>navigate('fi-control')});

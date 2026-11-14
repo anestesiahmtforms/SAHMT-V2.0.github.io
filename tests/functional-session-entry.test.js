@@ -43,6 +43,9 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false}={}){
 test('FK renders its profile and forms before a slow refresh resolves',async()=>{
  const gate=deferred(),f=ui({refresh:()=>gate.promise});const cleanup=await f.run();
  assert.match(f.root.innerHTML,/data-fk-survey="climate"/);assert.match(f.root.innerHTML,/Dados sincronizados/);
+ assert.equal(f.root.innerHTML.match(/data-fk-source="([^"]+)"/)?.[1],'performance');
+ assert.match(f.root.innerHTML,/aria-expanded="false"/);
+ assert.doesNotMatch(f.root.innerHTML,/ACESSO INDIVIDUAL|SAHMT/);
  cleanup();gate.resolve();await turn();assert.equal(f.sources.innerHTML,'');
 });
 

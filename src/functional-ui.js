@@ -6,7 +6,6 @@ import {refreshFunctionalOverview} from './functional-client.js';
 import {bindSurveySession} from './survey-session-bridge.js';
 import {callFunctionalSurvey} from './functional-survey-client.js';
 import {operationalContentAllowed,operationalFolderNotice} from './operational-folder-runtime.js';
-import './functional-ui.css';
 
 let activeFunctionalMountCleanup = null;
 const waitWithTimeout = (promise, milliseconds, code) => {
@@ -17,9 +16,9 @@ const waitWithTimeout = (promise, milliseconds, code) => {
 };
 
 const sourceLabels = Object.freeze({
-  performance: 'Desempenho - SAHMT',
-  professionalRegistration: 'Cadastro Profissional - SAHMT',
-  epidemiological: 'Cadastro Epidemiológico - SAHMT',
+  performance: 'Desempenho',
+  professionalRegistration: 'Cadastro Profissional',
+  epidemiological: 'Cadastro Epidemiológico',
   fe: 'Enquetes e Consultas institucionais',
   climateSurvey: 'Pesquisa de Clima Organizacional',
   stressFatigue: 'Avaliação de Estresse e Fadiga',
@@ -45,24 +44,32 @@ const surveyFolders = Object.freeze({
 });
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 
-function sourceCards(sources) {
-  const keys = Object.keys(sources || {}).filter(key=>sourceFolders[key]&&operationalContentAllowed(sourceFolders[key]))
-    .sort((a,b) => (sourceLabels[a] || a).localeCompare(sourceLabels[b] || b, 'pt-BR'));
-  if (!keys.length) return '<p class="empty-state">Não há dados sincronizados nas pastas funcionais ativas para este usuário.</p>';
-  const stateText = value => {
-    if (value?.state === 'READY') return 'Dados sincronizados';
-    if (value?.state === 'PREPARING') return 'Integração em preparação';
-    if (value?.state === 'SESSION_REQUIRED') return 'Autenticação necessária';
-    if (value?.state === 'UNAVAILABLE') return 'Fonte temporariamente indisponível';
-    return 'Status não informado';
-  };
-  return '<div class="functional-source-grid">' + keys.map(key => '<article class="functional-source-card"><h3>'
-    + escapeHtml(sourceLabels[key] || key) + '</h3><p>' + escapeHtml(stateText(sources[key])) + '</p>'
-    + '<small>' + escapeHtml(sourceDetail(key,sources[key])) + '</small>' + operationalFolderNotice(sourceFolders[key]) + '</article>').join('') + '</div>';
+const sourceIcons = {
+  performance: 'M4 20h16M7 16v-4m5 4V8m5 8V4',
+  professionalRegistration: 'M5 4h14v16H5zM8 9h8m-8 4h8m-8 4h5',
+  biosafetyManual: 'M12 3l7 3v5c0 4-3 7-7 10-4-3-7-6-7-10V6zM9 12l2 2 4-4',
+  vaccination: 'M12 5v14M5 12h14',
+  dosimetry: 'M4 13h4l2-6 4 10 2-4h4',
+};
+const sourceIcon = key => '<svg class="functional-tile-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="'+(sourceIcons[key]||sourceIcons.professionalRegistration)+'"/></svg>';
+
+function sourceCards(sources, expanded) {
+  const entries = {performance:{state:'PREPARING'}, ...sources};
+  const keys = Object.keys(entries).filter(key=>sourceFolders[key]&&operationalContentAllowed(sourceFolders[key]))
+    .sort((a,b) => Number(b==='performance') - Number(a==='performance') || sourceLabels[a].localeCompare(sourceLabels[b], 'pt-BR'));
+  const states = {READY:'Dados sincronizados', PREPARING:'Em preparação', SESSION_REQUIRED:'Autenticação necessária', UNAVAILABLE:'Temporariamente indisponível'};
+  if (!keys.length) return '<p class="empty-state">Nenhuma pasta funcional está disponível.</p>';
+  return '<div class="functional-source-grid">' + keys.map(key => {
+    const value = entries[key], open = expanded.has(key);
+    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-controls="fk-source-'+key+'" aria-expanded="'+open+'">'
+      + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong><small>'+escapeHtml(states[value?.state]||'Status não informado')+'</small></span>'
+      + '<span class="functional-chevron" aria-hidden="true">›</span></button><div class="functional-source-detail" id="fk-source-'+key+'"'+(open?'':' hidden')+'>'
+      + '<p>'+escapeHtml(sourceDetail(key,value))+'</p></div>'+operationalFolderNotice(sourceFolders[key])+'</div>';
+  }).join('') + '</div>';
 }
 
 function sourceDetail(key,value) {
-  if(value?.state==='PREPARING')return 'A origem ainda não foi migrada para FK.';
+  if(value?.state==='PREPARING')return key==='performance'?'A consulta será disponibilizada quando a integração de desempenho for definida.':'A integração desta pasta está em preparação.';
   if(value?.state!=='READY')return 'Nenhum dado individual foi confirmado nesta atualização.';
   if(key==='professionalRegistration')return value.data?.record?'Cadastro profissional localizado.':'Nenhum cadastro profissional individual localizado.';
   if(['climateSurvey','stressFatigue','epidemiological'].includes(key))return value.data?.participated?'Participação registrada; respostas não são exibidas.':'Sem participação registrada para o ciclo consultado.';
@@ -73,6 +80,7 @@ function sourceDetail(key,value) {
 export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', isCurrent = () => true, onSessionRequired = () => {}} = {}) {
   let disposed = false;
   let surveyCleanup;
+  const expanded = new Set();
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
   const cleanup = () => {
@@ -80,18 +88,18 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
     disposed = true;
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     surveyCleanup?.();
-    root?.removeEventListener('click', onSurveyClick);
+    root?.removeEventListener('click', onFunctionalClick);
   };
   activeFunctionalMountCleanup?.();
   activeFunctionalMountCleanup = cleanup;
-  paint('<section class="functional-page"><h2>Funcional</h2><p role="status">Confirmando o acesso individual em FK…</p></section>');
+  paint('<section class="functional-page"><p role="status">Confirmando o acesso individual em FK…</p></section>');
   try {
     const fkAuth=getFunctionalAuth();
     const connected=await waitWithTimeout(waitForGoogleProjectSession('FK',{isCurrent:current}),30000,'FK_AUTH_CLIENT_TIMEOUT');
     if(!connected){if(current())onSessionRequired();return cleanup;}
     if(fkAuth?.currentUser?.uid!==uid)throw new Error('FK_AUTH_UID_MISMATCH');
     if (!current()) return cleanup;
-    paint('<section class="functional-page"><h2>Funcional</h2><p role="status">Acesso confirmado. Carregando seu perfil funcional…</p></section>');
+    paint('<section class="functional-page"><p role="status">Acesso confirmado. Carregando seu perfil funcional…</p></section>');
     const db = getFunctionalFirestore();
     if (!db) throw new Error('FK_FIRESTORE_UNAVAILABLE');
     // The first snapshot may not exist yet (rules reject reads of absent documents).
@@ -100,23 +108,22 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
     if (!current()) return cleanup;
     const profile = snapshot?.exists() ? snapshot.data() : null;
     const sources={...(profile?.sources||{})};
-    const surveyButtons=[['climate','PESQUISA DE CLIMA ORGANIZACIONAL'],['stress','AVALIAÇÃO DE ESTRESSE E FADIGA'],['epidemiological','CADASTRO EPIDEMIOLÓGICO - SAHMT']]
+    const surveyButtons=[['climate','PESQUISA DE CLIMA ORGANIZACIONAL'],['stress','AVALIAÇÃO DE ESTRESSE E FADIGA'],['epidemiological','CADASTRO EPIDEMIOLÓGICO']]
       .filter(([survey])=>operationalContentAllowed(surveyFolders[survey]));
     const surveysEnabled=operationalContentAllowed('funcional/pesquisas-institucionais');
-    paint('<section class="functional-page"><header><p class="eyebrow">ACESSO INDIVIDUAL</p><h2>Funcional</h2>'
-      + '<p>Seu perfil é acessado pelo mesmo UID autenticado em FA.</p></header>'
-      + '<div data-fk-sources>'+(profile ? sourceCards(sources) : '<p class="empty-state">Aguardando os primeiros dados funcionais deste usuário.</p>')+'</div><p data-fk-refresh-status role="status">Atualizando os dados em segundo plano…</p>'
-      + (surveysEnabled&&['EQUIPE','ADMINISTRADOR'].includes(group)?'<section class="functional-survey"><h3>Pesquisas institucionais</h3><p>As respostas enviadas por este módulo pertencem ao projeto FK.</p>'
+    paint('<section class="functional-page"><div data-fk-sources>'+sourceCards(sources,expanded)+'</div>'
+      + '<p class="functional-status" data-fk-refresh-status role="status">Atualizando seus dados…</p>'
+      + (surveysEnabled&&['EQUIPE','ADMINISTRADOR'].includes(group)?'<section class="functional-survey"><h3>Pesquisas institucionais</h3>'
         + (import.meta.env.VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED === 'true'
-          ? '<div class="functional-survey-actions">'+surveyButtons.map(([survey,label])=>'<div><button type="button" data-fk-survey="'+survey+'">'+label+'</button>'+operationalFolderNotice(surveyFolders[survey])+'</div>').join('')+'</div><div data-fk-survey-frame></div>'
+          ? '<div class="functional-survey-actions">'+surveyButtons.map(([survey,label])=>'<div><button class="functional-tile" type="button" data-fk-survey="'+survey+ '">'+sourceIcon(survey)+'<span><strong>'+label+'</strong></span><span class="functional-chevron" aria-hidden="true">›</span></button>'+operationalFolderNotice(surveyFolders[survey])+'</div>').join('')+'</div><div data-fk-survey-frame></div>'
           : '<p class="empty-state" role="status">Os formulários estão sendo migrados para o armazenamento próprio do FK.</p>')
         + '</section>':'')
       + '</section>');
-    root.addEventListener('click', onSurveyClick);
+    root.addEventListener('click', onFunctionalClick);
     void updateOverview(db,sources);
   } catch {
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
-    paint('<section class="functional-page"><h2>Funcional</h2><p class="empty-state" role="status">Não foi possível confirmar sua autorização em FA e abrir seu perfil individual em FK. Tente novamente mais tarde.</p></section>');
+    paint('<section class="functional-page"><p class="empty-state" role="status">Não foi possível confirmar sua autorização em FA e abrir seu perfil individual em FK. Tente novamente mais tarde.</p></section>');
   }
   return cleanup;
 
@@ -144,12 +151,27 @@ export async function mountFunctionalModule(root, {uid, faAuth, group='EQUIPE', 
     if(!current())return;
     Object.assign(sources,participationSources);
     const host=root.querySelector('[data-fk-sources]');
-    if(host)host.innerHTML=sourceCards(sources);
+    if(host){
+      const focused = host.ownerDocument?.activeElement?.dataset.fkSource;
+      host.innerHTML=sourceCards(sources,expanded);
+      if(focused)host.querySelector('[data-fk-source="'+focused+'"]')?.focus({preventScroll:true});
+    }
     const status=root.querySelector('[data-fk-refresh-status]');
     if(status)status.textContent=refreshFailed?'As fontes não puderam ser atualizadas agora. Os últimos dados disponíveis permanecem exibidos.':'';
   }
 
-  function onSurveyClick(event) {
+  function onFunctionalClick(event) {
+    const sourceButton = event.target.closest('[data-fk-source]');
+    if(sourceButton && current()){
+      const key = sourceButton.dataset.fkSource;
+      const detail = root.querySelector('#fk-source-'+key);
+      if(!detail)return;
+      const open = !expanded.has(key);
+      if(open)expanded.add(key);else expanded.delete(key);
+      sourceButton.setAttribute('aria-expanded',String(open));
+      detail.hidden = !open;
+      return;
+    }
     const button=event.target.closest('[data-fk-survey]');
     if(!button||!current())return;
     const survey=button.dataset.fkSurvey;
