@@ -106,6 +106,6 @@ test('FE shows only surveys to common profiles and the other four entries to tea
  assert.equal((common.body.innerHTML.match(/data-hub-item=/g)||[]).length,1);
  assert.match(common.body.innerHTML,/PESQUISAS INSTITUCIONAIS/);
  for(const panel of ['professional','epidemiological','yearEnd','vacations2027'])assert.equal(hub(publicAccess,panel).dialog.dataset.panel,'home');
- const team=hub({...publicAccess,surveys:true,yearEndSchedule:true,vacations2027:true},'surveys');
+ const team=hub({...publicAccess,surveys:true,epidemiological:true,yearEndSchedule:true,vacations2027:true},'surveys');
  assert.equal((team.body.innerHTML.match(/data-hub-item=/g)||[]).length,5);
 });

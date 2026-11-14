@@ -78,11 +78,12 @@ function harness({route='management',target='FB',session=authorized()}={}){
     labels:{management:['Grupos de Gestão'],training:['Desempenho'],'management-hub':['Governança']},
     managementUtilityCards:()=>'',can:permission=>session.profile?.role==='administrador_app'||session.profile?.permissions?.[permission]===true,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
     mountHub:(content,options)=>{mounts.push(options.initialPanel);mountOptions.push(options);return ()=>{};},
+    fakeEffectiveTeamMember:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,
     fakeFunctionalAccess:async()=>({allowed:true,group:session.profile?.role==='administrador_app'?null:'EQUIPE'})
   });
   const code=(router+'\n'+cards+'\n'+occurrencePermission+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
     .replaceAll('import.meta.env','env').replace("import('./management-hub.js')",'Promise.resolve({mountManagementHub:mountHub})')
-    .replace("import('./functional-access.js')",'Promise.resolve({getFunctionalAccess:fakeFunctionalAccess})');
+    .replace("import('./functional-access.js')",'Promise.resolve({getFunctionalAccess:fakeFunctionalAccess,isEffectiveTeamMember:fakeEffectiveTeamMember})');
   vm.runInContext(code,ctx);
   return {ctx,app,assignments,mounts,mountOptions,loaded,render:()=>ctx.render()};
 }
@@ -126,7 +127,7 @@ test('FA blocks Governance for an unverified common user before mounting any pan
 test('FA directs verified team members to FK without granting the other Governance panels',async()=>{
   const session=authorized();session.profile.role='anestesiologista';session.user={...session.user,emailVerified:true,email:'team@example.invalid'};session.profile.memberCategories=['EFETIVO'];session.profile.email=session.user.email;
   const h=harness({target:'FA',route:'management-hub',session});await h.render();
-  assert.equal(canUseYearEndSchedule(session),true);assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;assert.equal(access.indicatorResults,undefined);for(const key of ['groups','records'])assert.equal(access[key],false);for(const key of ['functional','yearEndSchedule','vacations2027','results','institutionalSurveys','surveys'])assert.equal(access[key],true);assert.equal(access.sahmtPerformance,undefined);
+  assert.equal(canUseYearEndSchedule(session),true);assert.equal(h.ctx.location.hash,'#/management-hub');assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;assert.equal(access.indicatorResults,undefined);for(const key of ['groups','records'])assert.equal(access[key],false);for(const key of ['functional','yearEndSchedule','vacations2027','results','institutionalSurveys','surveys','epidemiological'])assert.equal(access[key],true);assert.equal(access.sahmtPerformance,undefined);
 });
 for(const status of ['blocked','signed-out'])test(`FA does not mount Governance for ${status}`,async()=>{
   const h=harness({target:'FA',route:'management-hub',session:{...authorized(),status}});await h.render();
@@ -141,8 +142,8 @@ test('Etiquetas retains its HOME footer and original route',async()=>{
   assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.assignments,[]);
 });
 
-test('residents and substitutes can open Governance with access only to institutional surveys in FE',async()=>{for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027'])assert.equal(access[key],false);assert.equal(access.institutionalSurveys,true);}});
-test('administrators retain every Governance destination without requiring team affiliation',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','occurrences','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);});
+test('residents and substitutes can open Governance with access only to institutional surveys in FE',async()=>{for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','epidemiological'])assert.equal(access[key],false);assert.equal(access.institutionalSurveys,true);}});
+test('administrators outside the team retain Governance access with the epidemiological form restricted',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','occurrences','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);assert.equal(access.epidemiological,false);});
 
 test('administrator opens Occurrences with registration enabled while the general feature is disabled',async()=>{
  const session=authorized(),content={isConnected:true,innerHTML:''},opened=[];
