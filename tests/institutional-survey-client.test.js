@@ -6,3 +6,9 @@ test('legacy performance reads are rejected before any network request',async()=
  await assert.rejects(callInstitutionalSurvey({uid:'fe-user',isCurrent:()=>true,action:'GET_PERFORMANCE',authClient:fixture.auth,fetchImpl:fixture.fetchImpl}),e=>e.message==='SURVEY_ACTION_INVALID');
  assert.equal(fixture.requests.length,0);
 });
+
+test('FE climate and stress use the FE Worker directly with the existing FA session',async()=>{
+ const f=setup({group:'resident',alreadyResponded:false});
+ for(const survey of ['climate','stress'])await callInstitutionalSurvey({uid:'fe-user',isCurrent:()=>true,survey,action:'BOOTSTRAP',authClient:f.auth,fetchImpl:f.fetchImpl});
+ assert.ok(f.requests.every(r=>new URL(r.url).host==='sahmt-fe-surveys.anestesiahmtforms5.workers.dev'));
+});

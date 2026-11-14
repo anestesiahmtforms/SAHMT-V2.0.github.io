@@ -7,7 +7,7 @@ import {VERSION as climateVersion} from '../climate-domain/schema.js';
 import {VERSION as stressVersion,QUESTIONS} from '../stress-domain/schema.js';
 const identity={uid:'synthetic-one',email:'one@example.invalid',emailVerified:true,provider:'google.com'};
 const response=(kind,id='a'.repeat(32))=>({survey_cycle:'2026',survey_version:kind==='climate'?climateVersion:stressVersion,submission_id:id,group:'substitute',...(kind==='climate'?{consent:true,answers:{Q01:4},comments:{O01:'Synthetic comment'}}:{answers:Object.fromEntries(QUESTIONS.map(q=>[q.id,2]))})});
-async function fixture(){const profiles=vaccinationMemoryStore(),responses=vaccinationMemoryStore();profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});profiles.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:['EFETIVO']});for(const kind of ['climate','stress'])responses.seed(kind+'Cycles','2026',{status:'open'});return {profiles,responses,service:createSurveyService({profileStore:profiles,responseStore:responses,uuid:()=> 'b'.repeat(32)})};}
+async function fixture(category='EFETIVO'){const profiles=vaccinationMemoryStore(),responses=vaccinationMemoryStore();profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});profiles.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:[category]});for(const kind of ['climate','stress'])responses.seed(kind+'Cycles','2026',{status:'open'});return {profiles,responses,service:createSurveyService({profileStore:profiles,responseStore:responses,uuid:()=> 'b'.repeat(32)})};}
 const input=(kind,id)=>({survey:kind,cycle:'2026',response:response(kind,id)});
 test('one account gets one response per survey/cycle; participation data contains no answer identifier or group',async()=>{
  const {service,responses}=await fixture();
@@ -79,4 +79,14 @@ test('FE folder pause preserves participation and points for retry without readi
  responses.seed('runtimePolicy','folders',{schemaVersion:1,revision:4,disabled:[]});
  assert.deepEqual(await service.execute('SUBMIT',input('stress'),identity),{accepted:true,alreadyResponded:true});
  assert.equal((await responses.list('feFunctionalPerformanceEvents')).length,1);
+});
+
+test('FE institutional research admits verified active users in every institutional group',async()=>{
+ for(const [category,group] of [['EFETIVO','team'],['RESIDENTE_1','resident'],['RESIDENTE_2','resident'],['RESIDENTE_3','resident'],['SUBSTITUTO','team']]){
+  const {service}=await fixture(category);
+  for(const survey of ['climate','stress']){
+   assert.deepEqual(await service.execute('BOOTSTRAP',{survey,cycle:'2026'},identity),{group,alreadyResponded:false});
+   assert.deepEqual(await service.execute('SUBMIT',input(survey),identity),{accepted:true,alreadyResponded:false});
+  }
+ }
 });

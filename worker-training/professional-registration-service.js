@@ -3,9 +3,11 @@ import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} fro
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 export const registrationAdmin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
-export async function registrationActor(store,identity,{admin=false}={}){
+export async function registrationActor(store,identity,{admin=false,team=false}={}){
  if(!identity?.uid||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(identity.uid)||identity.provider!=='google.com'||identity.emailVerified!==true||!/^\S+@\S+\.\S+$/.test(identity.email||''))fail('REGISTRATION_UNAUTHENTICATED',401);
- const p=await store.get('users',identity.uid);if(!p||p.uid!==identity.uid||p.email?.trim().toLowerCase()!==identity.email.trim().toLowerCase()||p.active!==true||p.access!==true||admin&&!registrationAdmin(p))fail('REGISTRATION_FORBIDDEN',403);return p;
+ const p=await store.get('users',identity.uid);if(!p||p.uid!==identity.uid||p.email?.trim().toLowerCase()!==identity.email.trim().toLowerCase()||p.active!==true||p.access!==true||admin&&!registrationAdmin(p))fail('REGISTRATION_FORBIDDEN',403);
+ if(team&&!registrationAdmin(p)){const assignment=await store.get('userCategories',await institutionalAssignmentKey(identity.email));if(assignedInstitutionalGroup(assignment,identity)!=='team')fail('REGISTRATION_FORBIDDEN',403);}
+ return p;
 }
 export function createProfessionalRegistrationService({store,drive,now=Date.now}={}){
  return {async execute(action,input,identity){
@@ -20,6 +22,7 @@ export function createProfessionalRegistrationService({store,drive,now=Date.now}
   let answers;if(action==='SAVE'){if(input.truth!==true||!Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<0)fail('REGISTRATION_INVALID_INPUT');answers=validateProfessionalAnswers(input.answers);}
   const result=await store.transaction(async tx=>{
    const current=await registrationActor(tx,identity),assignment=await tx.get('userCategories',await institutionalAssignmentKey(identity.email)),affiliation=assignedInstitutionalGroup(assignment,identity),group=researchGroup(affiliation),record=await tx.get('professionalRegistrations',ownId);
+   if(affiliation!=='team'&&!registrationAdmin(current))fail('REGISTRATION_FORBIDDEN',403);
    if(record&&(record.uid!==identity.uid||record.email!==identity.email.toLowerCase()||record.cycle!==REGISTRATION_CYCLE||!Number.isSafeInteger(record.version)))fail('REGISTRATION_UNAVAILABLE',503);
    if(action==='BOOTSTRAP')return {record,isAdmin:registrationAdmin(current),profile:{email:identity.email.toLowerCase(),displayName:current.displayName||current.name||'',group}};
    if(!group||/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(identity.email))fail('REGISTRATION_GROUP_UNAVAILABLE',422);

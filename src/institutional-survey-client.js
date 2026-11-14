@@ -1,4 +1,4 @@
-const endpoint='https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/institutional-surveys';
+const endpoint='https://sahmt-fe-surveys.anestesiahmtforms5.workers.dev/v1/institutional-surveys';
 export async function callInstitutionalSurvey({uid,isCurrent,survey,action,response,authClient,fetchImpl=fetch}) {
   const auth=authClient||(await import('./firebase-auth.js')).auth;
   await auth?.authStateReady();
