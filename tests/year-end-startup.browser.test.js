@@ -29,6 +29,7 @@ test('the owner can switch between administrator and team views without replacin
   await page.waitForFunction(()=>location.hash==='#/home');
   await assertTeamConsultations(page);
   await page.evaluate(()=>location.hash='#/management-hub/surveys');
+  await page.getByRole('button',{name:'ACESSO RESTRITO',exact:true}).click();
   await page.getByRole('button',{name:'ESCALA DE FÉRIAS 2027',exact:true}).click();
   await page.locator('.vacations-2027').waitFor();
   assert.equal(await page.locator('[data-vac-admin]').count(),0);
