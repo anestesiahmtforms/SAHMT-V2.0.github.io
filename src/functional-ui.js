@@ -40,19 +40,18 @@ const sourceIcons = {
 };
 const sourceIcon = key => '<svg class="functional-tile-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="'+(sourceIcons[key]||sourceIcons.professionalRegistration)+'"/></svg>';
 
-function sourceCards(sources, expanded) {
+function sourceCards(sources) {
   const entries = {performance:{state:'PREPARING'}, ...sources};
   const keys = Object.keys(entries).filter(key=>sourceFolders[key]&&operationalContentAllowed(sourceFolders[key]))
     .sort((a,b) => Number(b==='performance') - Number(a==='performance') || sourceLabels[a].localeCompare(sourceLabels[b], 'pt-BR'));
   const states = {READY:'Dados sincronizados', PREPARING:'Em preparação', SESSION_REQUIRED:'Autenticação necessária', UNAVAILABLE:'Temporariamente indisponível'};
   if (!keys.length) return '<p class="empty-state">Nenhuma pasta funcional está disponível.</p>';
   return '<div class="functional-source-grid">' + keys.map(key => {
-    const value = entries[key], open = expanded.has(key);
-    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-controls="fk-source-'+key+'" aria-expanded="'+open+'">'
+    const value = entries[key];
+    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail">'
       + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong><small>'+escapeHtml(states[value?.state]||'Status não informado')+'</small></span>'
-      + '<span class="functional-chevron" aria-hidden="true">›</span></button><div class="functional-source-detail" id="fk-source-'+key+'"'+(open?'':' hidden')+'>'
-      + (key==='performance'&&value?.state==='READY'?performanceDetail(value.data):'<p>'+escapeHtml(sourceDetail(key,value))+'</p>')
-      + '</div>'+operationalFolderNotice(sourceFolders[key])+'</div>';
+      + '<span class="functional-chevron" aria-hidden="true">›</span></button>'
+      + operationalFolderNotice(sourceFolders[key])+'</div>';
   }).join('') + '</div>';
 }
 
@@ -89,7 +88,7 @@ function sourceDetail(key,value) {
 export async function mountFunctionalModule(root, {uid, displayName = '', faAuth, administrator = false, isCurrent = () => true, onSessionRequired = () => {}} = {}) {
   let disposed = false;
   let stopAuth = () => {};
-  const expanded = new Set();
+  let detailDialog, openSource = '', visibleSources = null;
   let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = '', ownPerformance = {state:'PREPARING'};
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const ownSession = () => current() && getFunctionalAuth()?.currentUser?.uid === uid;
@@ -97,6 +96,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
+    if(detailDialog?.open)detailDialog.close();
     stopAuth();
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     root?.removeEventListener('click', onFunctionalClick);
@@ -130,10 +130,22 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       + '<div id="fk-team-picker" data-fk-picker hidden><label for="fk-team-subject">Integrante da Equipe</label>'
       + '<select id="fk-team-subject" data-fk-subject disabled><option value="">Meu perfil</option></select><p data-fk-team-status role="status"></p></div>'
       + '</div>':'';
-    paint('<section class="functional-page">'+selector+'<header class="functional-person"><h2 data-fk-owner>'+escapeHtml(displayName||'Meu perfil')+'</h2>'
-      + '<p class="functional-recognition" data-fk-recognition hidden></p></header><div data-fk-sources>'+sourceCards(ownSources,expanded)+'</div>'
+    visibleSources=ownSources;
+    paint('<section class="functional-page"><header class="functional-person"><h2 data-fk-owner>'+escapeHtml(displayName||'Meu perfil')+'</h2>'
+      + '<p class="functional-recognition" data-fk-recognition hidden></p></header>'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
       + '<p class="functional-status" data-fk-refresh-status role="status">'+ownStatus+'</p>'
-      + '</section>');
+      + '</section><dialog class="functional-detail" id="fk-detail" aria-labelledby="fk-detail-title">'
+      + '<header><span class="functional-detail-icon" data-fk-detail-icon></span><h2 id="fk-detail-title" tabindex="-1" autofocus></h2></header>'
+      + '<div class="functional-detail-body" data-fk-detail-body></div>'
+      + '<footer><form method="dialog"><button class="functional-detail-back" type="submit">Voltar</button></form></footer></dialog>');
+    detailDialog=root.querySelector('#fk-detail');
+    detailDialog?.addEventListener('close',()=>{
+      if(detailDialog.open)return;
+      const key=openSource;
+      openSource='';
+      detailDialog.querySelector('[data-fk-detail-body]').replaceChildren();
+      if(key&&ownSession())root.querySelector('[data-fk-source="'+key+'"]')?.focus({preventScroll:true});
+    });
     root.addEventListener('click', onFunctionalClick);
     if(administrator)root.addEventListener('change', onSubjectChange);
     void updateOverview(db);
@@ -176,14 +188,30 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   }
 
   function renderOverview(sources,statusText) {
+    visibleSources=sources;
     const host=root.querySelector('[data-fk-sources]');
     if(host){
       const focused = host.ownerDocument?.activeElement?.dataset.fkSource;
-      host.innerHTML=sources?sourceCards(sources,expanded):'';
+      host.innerHTML=sources?sourceCards(sources):'';
       if(focused)host.querySelector('[data-fk-source="'+focused+'"]')?.focus({preventScroll:true});
     }
     const status=root.querySelector('[data-fk-refresh-status]');
     if(status)status.textContent=statusText;
+    if(detailDialog?.open){
+      if(!hasSource(openSource))detailDialog.close();
+      else renderSourceDetail();
+    }
+  }
+
+  function hasSource(key) {
+    return visibleSources&&Object.hasOwn(sourceFolders,key)&&
+      (key==='performance'||Object.hasOwn(visibleSources,key))&&operationalContentAllowed(sourceFolders[key]);
+  }
+
+  function renderSourceDetail(){
+    const value=visibleSources[openSource]??{state:'PREPARING'};
+    detailDialog.querySelector('[data-fk-detail-body]').innerHTML=openSource==='performance'&&value.state==='READY'
+      ?performanceDetail(value.data):'<p>'+escapeHtml(sourceDetail(openSource,value))+'</p>';
   }
 
   function showRecognition(message) {
@@ -226,7 +254,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     if(value&&!member)return;
     const revision=++subjectRevision;
     selection=value;
-    expanded.clear();
+    if(detailDialog?.open)detailDialog.close();
     root.querySelector('[data-fk-owner]').textContent=member?.name||displayName||'Meu perfil';
     showRecognition(member?'':ownRecognition);
     if(!member){renderOverview(ownSources,ownStatus);return;}
@@ -251,13 +279,12 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     const sourceButton = event.target.closest('[data-fk-source]');
     if(sourceButton && ownSession()){
       const key = sourceButton.dataset.fkSource;
-      const detail = root.querySelector('#fk-source-'+key);
-      if(!detail)return;
-      const open = !expanded.has(key);
-      if(open)expanded.add(key);else expanded.delete(key);
-      sourceButton.setAttribute('aria-expanded',String(open));
-      detail.hidden = !open;
-      return;
+      if(!detailDialog||detailDialog.open||!hasSource(key))return;
+      openSource=key;
+      detailDialog.querySelector('#fk-detail-title').textContent=sourceLabels[key];
+      detailDialog.querySelector('[data-fk-detail-icon]').innerHTML=sourceIcon(key);
+      renderSourceDetail();
+      detailDialog.showModal();
     }
   }
 }

@@ -33,8 +33,12 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUi
  let recovery=0,reads=0,authChanged;
  const listeners=new Map(),recognition={hidden:true},teamStatus={},select={disabled:true,focus(){}},owner={};
  const picker={hidden:true,querySelector:s=>s==='[data-fk-subject]'?select:teamStatus};
- const button={setAttribute(){}};
- const hosts={'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker};
+ const button={setAttribute(){},focus(){}},detailBody={innerHTML:'',replaceChildren(){this.innerHTML='';}},detailTitle={},detailIcon={};
+ const detail={open:false,showModal(){this.open=true;},close(){this.open=false;this.onClose?.();},
+  addEventListener(key,fn){if(key==='close')this.onClose=fn;},
+  querySelector:key=>({'[data-fk-detail-body]':detailBody,'#fk-detail-title':detailTitle,'[data-fk-detail-icon]':detailIcon})[key]};
+ const openSource=key=>listeners.get('click')({target:{closest:s=>s==='[data-fk-source]'?{dataset:{fkSource:key}}:null}});
+ const hosts={'#fk-detail':detail,'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker};
  const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s]};
  const openPicker=()=>listeners.get('click')({target:{closest:s=>s==='[data-fk-team]'?button:null}});
  const choose=value=>listeners.get('change')({target:{value,matches:s=>s==='[data-fk-subject]'}});
@@ -45,14 +49,14 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUi
   refreshFunctionalOverview:refresh,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
   getDocFromServer:async path=>{if(path.startsWith('functionalRecognition'))return {exists:()=>true,data:()=>({uid:person.uid,message:'Mensagem própria'})};reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}}}})};}});
  vm.runInContext(source,context);
- return {root,sources,status,owner,recognition,select,openPicker,choose,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
+ return {root,sources,status,owner,recognition,select,openPicker,choose,detail,detailBody,detailTitle,openSource,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
 }
 
 test('FK renders its profile before a slow refresh resolves',async()=>{
  const gate=deferred(),f=ui({refresh:()=>gate.promise});const cleanup=await f.run();
  assert.doesNotMatch(f.root.innerHTML,/data-fk-team|data-fk-survey|Pesquisas institucionais/);assert.match(f.root.innerHTML,/Dados sincronizados/);
  assert.equal(f.root.innerHTML.match(/data-fk-source="([^"]+)"/)?.[1],'performance');
- assert.match(f.root.innerHTML,/aria-expanded="false"/);
+ assert.match(f.root.innerHTML,/aria-haspopup="dialog"/);
  assert.doesNotMatch(f.root.innerHTML,/ACESSO INDIVIDUAL|SAHMT/);
  cleanup();gate.resolve();await turn();assert.equal(f.sources.innerHTML,'');
 });
@@ -75,9 +79,14 @@ test('administrator selection clears the previous profile and ignores responses 
   assert.equal(f.owner.textContent,'Bia');assert.equal(f.recognition.textContent,'Mensagem da Bia');assert.match(f.sources.innerHTML,/Vacinação/);
   ana.resolve({snapshot:{uid:'ana',sources:{dosimetry:{state:'READY'}}},recognition:'Mensagem da Ana'});
   own.resolve();await first;await turn();
-  assert.match(f.sources.innerHTML,/PONTOS TOTAIS ADQUIRIDOS[\s\S]*12,5[\s\S]*data-tone="high">81%[\s\S]*Margens de avaliação/);
+  f.openSource('performance');
+  assert.equal(f.detail.open,true);
+  assert.equal(f.detailTitle.textContent,'Desempenho');
+  assert.match(f.detailBody.innerHTML,/PONTOS TOTAIS ADQUIRIDOS[\s\S]*12,5[\s\S]*data-tone="high">81%[\s\S]*Margens de avaliação/);
   assert.match(f.sources.innerHTML,/Vacinação/);assert.doesNotMatch(f.sources.innerHTML,/Dosimetria|Cadastro Profissional/);
   assert.equal(f.recognition.textContent,'Mensagem da Bia');
+  f.detail.close();
+  assert.equal(f.detailBody.innerHTML,'');
   await f.choose('');assert.equal(f.owner.textContent,'Pessoa autenticada');assert.equal(f.recognition.textContent,'Mensagem própria');assert.match(f.sources.innerHTML,/Cadastro Profissional/);
  }finally{cleanup();}
 });

@@ -1087,7 +1087,7 @@ function actionForm(route) {
 
 function shellView() {
   const route = currentRoute();
-  if(route==='functional'&&session.status==='signed-in')return '<main><dialog class="functional-dialog" id="functional-dialog" aria-labelledby="functional-title"><header><h1 id="functional-title" tabindex="-1" autofocus>FUNCIONAL</h1></header><div id="module-content" class="functional-dialog-content"><p role="status">Abrindo seu perfil funcional…</p></div><footer><button type="button" class="secondary-button" data-route="management-hub">Voltar à Governança</button></footer></dialog></main>';
+  if(route==='functional'&&session.status==='signed-in')return '<main><dialog class="functional-dialog" id="functional-dialog" aria-labelledby="functional-title"><header><h1 id="functional-title" tabindex="-1" autofocus>DADOS FUNCIONAIS</h1></header><div id="module-content" class="functional-dialog-content"><p role="status">Abrindo seu perfil funcional…</p></div><footer><button type="button" class="secondary-button" data-route="management-hub">Voltar à Governança</button></footer></dialog></main>';
   if(route==='year-end-schedule'&&session.status==='signed-in')return '<main class="year-end-entry" id="module-content"><p role="status">Preparando a escala…</p></main>';
   if(['people','admin'].includes(route)&&session.status==='signed-in')return renderFiAdminDialog({
     title:labels[route][0],displayName:session.profile?.displayName||session.user.displayName||'Usuário',
