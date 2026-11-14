@@ -4,7 +4,8 @@ compatibility_date = "2026-11-10"
 workers_dev = true
 
 [triggers]
-crons = ["17 * * * *"]
+# Cloudflare runs Cron Triggers in UTC. Sunday 02:50 UTC is Saturday 23:50 in Brasília.
+crons = ["50 2 * * SUN"]
 
 [vars]
 FK_AUTH_ORIGIN = "https://anestesiahmtforms.github.io"

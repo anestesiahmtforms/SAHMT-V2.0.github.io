@@ -6,6 +6,23 @@ import {createFunctionalAuthWorker} from '../worker-functional-auth/worker.js';
 
 const source=readFileSync(new URL('../apps-script-functional/Gateway.gs',import.meta.url),'utf8');
 
+test('FK consolidates only when the weekly trigger fires',async()=>{
+ const config=readFileSync(new URL('../worker-functional-auth/wrangler.toml',import.meta.url),'utf8');
+ const weekly=config.match(/^crons = \["([^"]+)"\]$/m)?.[1];
+ assert.equal(weekly,'50 2 * * SUN');
+ let calls=0;
+ const worker=createFunctionalAuthWorker({fetchImpl:async(_url,{body})=>{
+  calls++;
+  assert.equal(JSON.parse(JSON.parse(body).payload).action,'SYNC_TEAM_PERFORMANCE');
+  return Response.json({code:'FK_PERFORMANCE_SYNCED'});
+ }});
+ const env={FK_HMAC_SECRET:'x'.repeat(32),APPS_SCRIPT_URL:'https://example.test/script'};
+ await worker.scheduled({cron:'17 * * * *'},env);
+ assert.equal(calls,0);
+ await worker.scheduled({cron:weekly},env);
+ assert.equal(calls,1);
+});
+
 test('FK administrative lookup checks the actor and active effective assignment before reading a single profile',()=>{
  const requests=[];
  const env={UrlFetchApp:{fetchAll(input){return input.map(({url,...options})=>this.fetch(url,options));},fetch(url,options){

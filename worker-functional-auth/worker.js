@@ -1,4 +1,5 @@
 const MAX_BODY = 20000;
+const PERFORMANCE_CRON = '50 2 * * SUN';
 const hex = bytes => [...new Uint8Array(bytes)].map(value => value.toString(16).padStart(2, '0')).join('');
 
 function cors(origin, env) {
@@ -22,7 +23,8 @@ async function signedEnvelope(payload, secret, now = Date.now(), nonce = crypto.
 }
 
 export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now} = {}) {
-  return Object.freeze({async scheduled(_event, env) {
+  return Object.freeze({async scheduled(event, env) {
+    if (event.cron !== PERFORMANCE_CRON) return;
     const body=await signedEnvelope({action:'SYNC_TEAM_PERFORMANCE'},env.FK_HMAC_SECRET,clock());
     const response=await fetchImpl(env.APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'application/json'},body,redirect:'follow',signal:AbortSignal.timeout(45000)});
     if(!response.ok)throw Error('FK_PERFORMANCE_SYNC_UNAVAILABLE');
