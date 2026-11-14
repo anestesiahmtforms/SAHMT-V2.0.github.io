@@ -1,0 +1,12 @@
+name = "sahmt-html-training"
+account_id = "679464db2379db8562b62ae982f30471"
+main = "worker-fb.js"
+compatibility_date = "2026-10-13"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+HTML_TRAINING_ENABLED = "true"
+HTML_TRAINING_READING_REQUIRED = "true"
+FB_WEB_API_KEY = "AIzaSyBYzRB28_ashHrVe7AXsUDvLWc4N2Cj-y8"
+# FB_TRAINING_SERVICE_ACCOUNT_JSON is configured as a Worker secret.

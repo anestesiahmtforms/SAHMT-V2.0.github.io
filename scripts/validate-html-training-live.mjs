@@ -8,18 +8,13 @@ import {verifyTrainingIdentity} from '../worker-training/google-auth.js';
 import {firebaseFbConfig} from '../src/firebase-config-fb.js';
 
 const port=9031,origin=`http://localhost:${port}`,nonce=randomBytes(32).toString('hex'),base='/validation/'+nonce;
-const endpoint='https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/training';
+const endpoint='https://sahmt-html-training.anestesiahmtforms2.workers.dev/v1/training';
 const remoteOrigin='https://anestesiahmtforms.github.io';
 const readOnly=new Set(['LIST','OPEN','CONTENT','EDIT','AUDIT_LIST','SCORE']);
 const manifest=JSON.parse(await fs.readFile('.local-preview/html-training-import/manifest.private.json','utf8'));
 const reportPath='.local-preview/html-training-live-verification.json';
 const hash=value=>createHash('sha256').update(JSON.stringify(value)).digest('hex');
 let running=false,completed=false;
-function deploy(enabled){return new Promise((resolve,reject)=>{
- const child=spawn(process.execPath,['node_modules/wrangler/bin/wrangler.js','deploy','--config','worker-training/wrangler.toml','--var','HTML_TRAINING_ENABLED:'+enabled],{
-  env:{...process.env,CLOUDFLARE_ACCOUNT_ID:'1851e9f4cd5f026371beaa2c5a85f1b8',WRANGLER_SEND_METRICS:'false',WRANGLER_LOG:'error',WRANGLER_LOG_PATH:'.local-preview/wrangler-training-validation.log'},stdio:'ignore'});
- child.on('error',()=>reject(Error('VALIDATION_DEPLOY_START_FAILED')));child.on('close',code=>code===0?resolve():reject(Error('VALIDATION_DEPLOY_FAILED')));
-});}
 async function remote(action,input,authorization,requestOrigin=remoteOrigin){
  const response=await fetch(endpoint,{method:'POST',headers:{Origin:requestOrigin,'Content-Type':'application/json',...(authorization?{Authorization:authorization}:{})},
   body:JSON.stringify({action,input}),redirect:'error',cache:'no-store',signal:AbortSignal.timeout(30000)});
@@ -43,7 +38,7 @@ async function validate(authorization,identity){
   const foreign=await remote('LIST',{},authorization,'https://untrusted.example');check(foreign.status===403,'FOREIGN_ORIGIN_DENIED');
   const list=await remote('LIST',{},authorization);check(list.status===200,'AUTHENTICATED_CATALOG');
   check(list.headers.get('Cache-Control')==='no-store','NO_STORE');
-  check(list.data.trainings?.length===manifest.trainings.length&&list.data.trainings.every(t=>t.status==='DRAFT'),'ALL_MATERIALS_DRAFT');
+  check(list.data.trainings?.length>=manifest.trainings.length&&list.data.trainings.some(t=>t.status==='PUBLISHED'),'PUBLISHED_MATERIALS_AVAILABLE');
   check(!JSON.stringify(list.data).includes('correctOptionId'),'CATALOG_NO_ANSWER_KEY');
   const audit=manifest.trainings.find(t=>t.auditSchema);
   const largest=[...manifest.trainings].sort((a,b)=>Buffer.byteLength(JSON.stringify(b.sections))-Buffer.byteLength(JSON.stringify(a.sections)))[0];
@@ -58,12 +53,9 @@ async function validate(authorization,identity){
   const audits=await remote('AUDIT_LIST',{trainingId:audit.trainingId},authorization);check(audits.status===200&&Array.isArray(audits.data.audits),'ADMIN_AUDIT_LIST');
   const score=await remote('SCORE',{},authorization);check(score.status===200&&score.data.score.uid===identity.uid,'OWN_PERFORMANCE_READ');
   report.trainings=list.data.trainings.length;report.verified=true;report.serviceEnabled=true;
-  const configPath='worker-training/wrangler.toml';
-  const config=await fs.readFile(configPath,'utf8');await fs.writeFile(configPath,config.replace('HTML_TRAINING_ENABLED = "false"','HTML_TRAINING_ENABLED = "true"'));
   completed=true;
  }catch(error){
   report.error=error.message;
-  if(activated){try{await deploy(false);report.serviceEnabled=false;report.rolledBack=true;}catch{report.rollbackRequired=true;}}
   throw Object.assign(error,{report});
  }finally{
   report.completedAt=new Date().toISOString();await fs.writeFile(reportPath,JSON.stringify(report,null,2)+'\n');
@@ -83,7 +75,7 @@ server.middlewares.use(async(req,res,next)=>{
  if(req.headers.host!==`localhost:${port}`||!req.url.startsWith(base))return send({code:'VALIDATION_NOT_FOUND'},404);
  if(req.method==='GET'&&req.url===base){
   res.setHeader('Content-Type','text/html; charset=utf-8');
-  return res.end(`<!doctype html><html lang="pt-BR"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Validação de treinamentos FB</title><style>body{font:16px/1.6 system-ui;color:#183e48;background:#f4f7f6;margin:0;padding:24px}main{max-width:1100px;margin:auto}header{background:white;border-radius:16px;padding:24px;margin-bottom:24px}h1{line-height:1.2}button{border:0;background:#126578;color:white;padding:14px 22px;border-radius:8px;font:inherit;cursor:pointer}button:disabled{opacity:.6}.success{background:#e1f4e8;padding:16px}.error{background:#ffe6df;padding:16px}</style><main><header><h1>Validar treinamentos de FB</h1><p>Entre com uma conta administradora já cadastrada em FB. O teste confere os rascunhos e o serviço; nenhuma avaliação ou pontuação será gravada.</p><button id="login">Entrar com Google e validar</button><p id="status" role="status">Aguardando seu login. Esta sessão de teste fica somente na memória.</p></header><div id="reader"></div></main><script type="application/json" id="validation-config">${JSON.stringify({base,nonce})}</script><script type="module" src="/tools/html-training-validation.js"></script></html>`);
+  return res.end(`<!doctype html><html lang="pt-BR"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Validação de treinamentos FB</title><style>body{font:16px/1.6 system-ui;color:#183e48;background:#f4f7f6;margin:0;padding:24px}main{max-width:1100px;margin:auto}header{background:white;border-radius:16px;padding:24px;margin-bottom:24px}h1{line-height:1.2}button{border:0;background:#126578;color:white;padding:14px 22px;border-radius:8px;font:inherit;cursor:pointer}button:disabled{opacity:.6}.success{background:#e1f4e8;padding:16px}.error{background:#ffe6df;padding:16px}</style><main><header><h1>Validar treinamentos de FB</h1><p>Entre com uma conta administradora já cadastrada em FB. O teste confere o catálogo publicado sem gravar avaliações ou pontuação.</p><button id="login">Entrar com Google e validar</button><p id="status" role="status">Aguardando seu login. Esta sessão de teste fica somente na memória.</p></header><div id="reader"></div></main><script type="application/json" id="validation-config">${JSON.stringify({base,nonce})}</script><script type="module" src="/tools/html-training-validation.js"></script></html>`);
  }
  if(req.method!=='POST'||req.headers.origin!==origin||req.headers['x-validation-nonce']!==nonce)return send({code:'VALIDATION_REQUEST_DENIED'},403);
  try{

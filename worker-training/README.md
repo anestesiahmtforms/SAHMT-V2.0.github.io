@@ -32,7 +32,11 @@ O importador exige a conta CLI `anestesiahmtforms2@gmail.com`, confere as regras
 Uma nova execução preserva materiais já importados. Conflitos são recusados; não há exclusão ou sobrescrita de dados anteriores.
 Pacote e relatórios ficam exclusivamente em `.local-preview/`, ignorada pelo Git.
 
-## Publicação pendente
+## Publicação do Worker de treinamentos em FB
+
+O endpoint de treinamentos é `https://sahmt-html-training.anestesiahmtforms2.workers.dev/v1/training`. O build de produção aponta para o Worker na conta Cloudflare de FB, com o catálogo e a pontuação no Firestore `sahmt-gestao-5ae66`. Para atualizar seu código, use `npx wrangler deploy --config worker-training/wrangler.fb.toml` com a conta `anestesiahmtforms2@gmail.com`. O secret do Worker já está configurado.
+
+### Histórico da primeira publicação
 
 1. OAuth do Wrangler confirmado na conta Cloudflare existente, incluindo `workers_scripts:write`; account ID `1851e9f4cd5f026371beaa2c5a85f1b8`.
 2. Identidade de serviço exclusiva de FB preparada. Nunca usar uma chave de FA nem colocar credenciais no cliente/Git.
@@ -41,9 +45,9 @@ Pacote e relatórios ficam exclusivamente em `.local-preview/`, ignorada pelo Gi
 5. Configurar o endereço completo `/v1/training` em `VITE_HTML_TRAINING_ENDPOINT` no build; publicar a integração somente após validação.
 6. Implementar e testar atualização de Docs com controle de revisão e preservação de imagens antes de habilitar sincronização das referências. Até lá, manter o estado pendente visível.
 
-Para validação assistida sem controlar o navegador do usuário, `node scripts/validate-html-training-live.mjs` abre um servidor temporário em `localhost:9031` (domínio já autorizado em FB). O usuário entra com Google em uma sessão Firebase de memória. O servidor exige perfil administrador ativo, testa somente leituras e reverte a ativação do serviço se algum teste falhar. A tela permite conferir o catálogo/editor e bloqueia gravações no servidor. Relatório e URL temporária ficam somente em `.local-preview/`. Esse utilitário não é parte do fluxo público do PWA.
+Para validação assistida sem controlar o navegador do usuário, `node scripts/validate-html-training-live.mjs` abre um servidor temporário em `localhost:9031` (domínio já autorizado em FB). O usuário entra com Google em uma sessão Firebase de memória. O servidor exige perfil administrador ativo, testa somente leituras no Worker de FB. A tela permite conferir o catálogo/editor e bloqueia gravações no servidor. Relatório e URL temporária ficam somente em `.local-preview/`. Esse utilitário não é parte do fluxo público do PWA.
 
-O script `scripts/deploy-html-training-service.mjs` faz apenas conferências por padrão. O usuário autorizou especificamente identidade, função IAM, vínculo, chave persistente e secret após o bloqueio inicial da revisão automática; a aplicação foi concluída em 25/10. A primeira chave foi revogada após uma falha inicial de leitura; a segunda foi validada e guardada no secret. A função tem somente `datastore.databases.get` e `datastore.entities.create/get/list/update`, sem exclusão, IAM ou alteração de regras. O OAuth de runtime solicita apenas o escopo `datastore`; o acesso ao Drive exige implementação e autorização próprias. Não repetir provisionamento de chave para atualizar somente código: usar o deploy normal do Wrangler, que preserva secrets.
+O script `scripts/deploy-html-training-service.mjs` confere a conta de FB e as regras publicadas. A função da identidade de serviço permite `datastore.databases.get` e `datastore.entities.create/get/list/update`. O OAuth de runtime solicita o escopo `datastore`.
 
 Rascunhos não são visíveis aos participantes. Os materiais publicados respeitam seus grupos de acesso existentes. O banco completo e gabaritos nunca são enviados ao leitor.
 Somente gestor designado e administrador acessam editor e auditorias. A conclusão da auditoria não concede pontos de treinamento.
@@ -54,4 +58,4 @@ O código oferece `SET_FOLDER_ACCESS` para administradores ativos em FB. A opera
 
 O frontend mostra um botão Ativar/Desativar abaixo de cada livro apenas quando LIST retorna `canManageFolders: true`. Assim, a interface nova é compatível com a versão anterior do serviço e não oferece um controle sem suporte no servidor.
 
-Para disponibilizar a função em produção é necessário publicar o Worker atualizado na conta existente, com uma sessão Wrangler autenticada: `npx wrangler deploy --config worker-training/wrangler.toml`. Esse deploy reutiliza os secrets existentes; não executar novamente o provisionamento de chaves/IAM.
+A configuração de publicação de Treinamentos é `worker-training/wrangler.fb.toml`.

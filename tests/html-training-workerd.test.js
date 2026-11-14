@@ -14,7 +14,7 @@ test('production training bundle authenticates and reads its catalog in workerd'
  const root=`projects/${project}/databases/(default)/documents`;
  const training={id:'draft',title:'Runtime draft',category:'Protocols',audienceGroup:'GENERAL',managerUid:'',status:'DRAFT',version:1,sectionCount:1,maxScore:5};
  const calls=[];
- const bundle=await build({entryPoints:['worker-training/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
+ const bundle=await build({entryPoints:['worker-training/worker-fb.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
  const mf=new Miniflare(convertV4MiniflareOptions({name:'training',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],
   bindings:{HTML_TRAINING_ENABLED:'true',FB_WEB_API_KEY:'synthetic-key',FB_TRAINING_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},
   outboundService:async request=>{
@@ -42,6 +42,9 @@ test('production training bundle authenticates and reads its catalog in workerd'
    assert.fail('Unexpected outbound path: '+url.pathname);
   }}));
  try{
+  const isolated=await mf.dispatchFetch('https://training.test/v1/institutional-surveys');
+  assert.equal(isolated.status,404);
+  assert.equal(calls.length,0);
   const response=await mf.dispatchFetch('https://training.test/v1/training',{method:'POST',headers:{Origin:'https://anestesiahmtforms.github.io',Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({action:'LIST',input:{}})});
   const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));assert.equal(result.trainings[0].title,'Runtime draft');
   assert.ok(calls.some(path=>path.endsWith(':runQuery')));assert.equal(calls.some(path=>path.endsWith(':commit')),false);
