@@ -75,8 +75,12 @@ async function assertTeamConsultations(page){
  await page.evaluate(()=>location.hash='#/management-hub/surveys');await page.locator('.management-hub-dialog[data-panel="surveys"]').waitFor();
  const dialog=page.locator('.management-hub-dialog');
  const items=dialog.locator('[data-hub-item]');
- assert.equal(await items.count(),5);
- for(const title of ['ESCALA FINAL DE ANO','ESCALA DE FÉRIAS 2027','PESQUISAS INSTITUCIONAIS','CADASTRO PROFISSIONAL','CADASTRO EPIDEMIOLÓGICO']){
+ assert.equal(await items.count(),2);
+ assert.equal(await items.filter({hasText:'ACESSO GERAL'}).isEnabled(),true);
+ await items.filter({hasText:'ACESSO RESTRITO'}).click();
+ await page.locator('.management-hub-dialog[data-panel="institutional"]').waitFor();
+ assert.equal(await items.count(),4);
+ for(const title of ['ESCALA FINAL DE ANO','ESCALA DE FÉRIAS 2027','CADASTRO PROFISSIONAL','CADASTRO EPIDEMIOLÓGICO']){
   assert.equal(await items.filter({hasText:title}).isEnabled(),true,title);
  }
  await page.evaluate(()=>location.hash='#/home');await page.locator('.app-shell--home [data-route="schedule"]').waitFor();assert.equal(await page.locator('.management-hub-dialog').count(),0);
@@ -174,7 +178,8 @@ test('temporary team banner opens a compact fixed form; only administrators see 
    await consultations.waitFor();
    const items=consultations.locator('[data-hub-item]');
    assert.equal(await items.count(),1);
-   assert.equal(await items.filter({hasText:'PESQUISAS INSTITUCIONAIS'}).isEnabled(),true);
+   assert.equal(await items.filter({hasText:'ACESSO GERAL'}).isEnabled(),true);
+   assert.equal(await items.filter({hasText:'ACESSO RESTRITO'}).count(),0);
   }
   assert.deepEqual(errors,[]);
  }catch(error){console.log('Year-end startup browser failure:',error.message);await mkdir('.local-preview',{recursive:true});await page?.screenshot({path:`.local-preview/year-end-startup-failure-${safari?'webkit':'chromium'}.png`,fullPage:true}).catch(()=>{});throw error;}
