@@ -16,7 +16,7 @@ const message=(extra={})=>({title:'Comunicado de teste',message:'Mensagem instit
 function memory(){
  const data=new Map();let lock=Promise.resolve();
  const get=async(c,k)=>structuredClone(data.get(c+'/'+k)||null);
- const page=async(c,{cursor='',limit=20,filters=[],fields}={})=>[...data].filter(([k,v])=>k.startsWith(c+'/')&&k.split('/')[1]>cursor&&filters.every(([f,val])=>v[f]===val)).sort(([a],[b])=>a.localeCompare(b)).slice(0,limit).map(([key,v])=>({...structuredClone(fields?Object.fromEntries(fields.filter(f=>f in v).map(f=>[f,v[f]])):v),id:key.split('/')[1]}));
+ const page=async(c,{cursor='',limit=20,filters=[],fields,publishedBefore}={})=>[...data].filter(([k,v])=>k.startsWith(c+'/')&&k.split('/')[1]>cursor&&(publishedBefore===undefined||v.status==='published'&&v.publishAt<=publishedBefore)&&filters.every(([f,val])=>v[f]===val)).sort(([a],[b])=>a.localeCompare(b)).slice(0,limit).map(([key,v])=>({...structuredClone(fields?Object.fromEntries(fields.filter(f=>f in v).map(f=>[f,v[f]])):v),id:key.split('/')[1]}));
  const countPublished=async(start,end)=>[...data].filter(([key,v])=>key.startsWith('communicationMessages/')&&v.firstPublishedAt>=start&&v.firstPublishedAt<end).length;
  const transaction=work=>{const run=lock.then(async()=>{const writes=[];const result=await work({get,countPublished,set:(c,k,v)=>writes.push([c+'/'+k,v]),create:(c,k,v)=>{assert.equal(data.has(c+'/'+k),false);writes.push([c+'/'+k,v]);}});for(const [k,v]of writes)data.set(k,structuredClone(v));return result;});lock=run.catch(()=>{});return run;};
  return {data,get,page,countPublished,transaction,getMany:(c,keys)=>Promise.all(keys.map(k=>get(c,k)))};
@@ -38,9 +38,23 @@ async function publish(f,extra={}){
 test('only the four verified emails grant administration, never local roles or permissions',async()=>{
  assert.equal(ADMINS.length,4);for(const email of ADMINS)assert.equal(adminIdentity({email,emailVerified:true}),true);
  assert.equal(adminIdentity({email:ADMINS[0],emailVerified:false}),false);
- const f=fixture();for(const action of ['SAVE_MESSAGE','PREPARE','SEND_BATCH','DIRECTORY','GROUPS','HISTORY','AUDIT','METRICS','SETTINGS','SAVE_SETTINGS','IMPORT_SOURCE'])await assert.rejects(f.call(action,{}, {...person,role:'administrador_app',permissions:{admin:true}}),{code:'COMM_FORBIDDEN'});
+ const f=fixture();for(const action of ['SAVE_MESSAGE','PREPARE','SEND_BATCH','DIRECTORY','GROUPS','HISTORY','SENT_MESSAGES','AUDIT','METRICS','SETTINGS','SAVE_SETTINGS','IMPORT_SOURCE'])await assert.rejects(f.call(action,{}, {...person,role:'administrador_app',permissions:{admin:true}}),{code:'COMM_FORBIDDEN'});
  assert.equal(f.store.data.size,3);
 });
+test('sent history shows both authorized senders and excludes drafts and other authors',async()=>{
+ const f=fixture();
+ const manager={...actor,uid:'ff-manager',sourceUid:'fa-manager',email:ADMINS[3]};
+ f.store.data.set('users/'+manager.sourceUid,{uid:manager.sourceUid,email:manager.email,active:true,access:true});
+ const entries=[['admin',actor],['manager',manager],['other',person],['draft',actor]];
+ for(const [key,sender] of entries)f.store.data.set('communicationMessages/'+key,message({status:key==='draft'?'draft':'published',createdBy:{email:sender.email}}));
+ for(const sender of [actor,manager]){
+  const {items}=await f.call('SENT_MESSAGES',{},sender);
+  assert.deepEqual(items.map(item=>[item.id,item.sender]),[['admin','Administrador'],['manager','Gestor operacional']]);
+  assert.ok(items.every(item=>item.audienceValue===''));
+ }
+ await assert.rejects(f.call('SENT_MESSAGES',{}, {...actor,email:ADMINS[1]}),{code:'COMM_FORBIDDEN'});
+});
+
 test('publishing, editing and audit remain available without dispatching a Push',async()=>{
  const f=fixture(),m=await publish(f);assert.equal(f.sent.length,0);assert.equal((await f.call('METRICS')).total.published,1);
  assert.ok([...f.store.data.values()].some(x=>x.action==='MESSAGE_CREATED'&&x.uid===actor.uid&&x.email===actor.email&&x.at===NOW));

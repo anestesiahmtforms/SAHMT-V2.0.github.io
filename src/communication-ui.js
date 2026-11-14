@@ -1,6 +1,6 @@
 import {BUILTIN_GROUPS, ROUTES, adminIdentity} from '../communication/domain.js';
 import {communicationEntryFromSession} from './communication-entry.js';
-import {operationalNoticeIdentity} from './communication-operational-notices.js';
+import {communicationSenderRole} from './communication-operational-notices.js';
 import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-text.js';
 import {communicationLimitMessage} from './communication-usage.js';
 import './communication.css';
@@ -25,10 +25,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   let directory;
   const active = () => !disposed && isCurrent();
   const dialog = root.closest('.management-hub-dialog');
-  const canCreateEvents = adminMode && (
-    (adminIdentity(appSession?.user) && String(appSession?.user?.email || '').trim().toLowerCase() === 'wx2064@gmail.com') ||
-    operationalNoticeIdentity(appSession?.user)
-  );
+  const canCreateEvents = adminMode && adminIdentity(appSession?.user) && Boolean(communicationSenderRole(appSession.user.email));
 
   async function pendingEventKey(payload) {
     const uid = appSession?.user?.uid;
@@ -39,17 +36,17 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     return `sahmt-ff-pending-event:${uid}:${hash}`;
   }
 
-  function render(title, content, {compose = false, menu = false, inbox = false} = {}) {
+  function render(title, content, {compose = false, menu = false, inbox = false, sent = false} = {}) {
     generation++;
     root.classList.add('communication');
     root.classList.toggle('communication--compose', compose);
     root.classList.toggle('communication--menu', menu);
     root.classList.toggle('communication--inbox', inbox);
     const hubHeading = dialog?.querySelector('#management-hub-title');
-    if (hubHeading) hubHeading.textContent = compose ? 'CRIAR E ENVIAR EVENTO' : 'CENTRAL DE COMUNICAÇÃO';
+    if (hubHeading) hubHeading.textContent = compose ? 'CRIAR E ENVIAR EVENTO' : sent ? title : 'CENTRAL DE COMUNICAÇÃO';
     const heading = inbox && hubHeading || (menu || compose) && hubHeading ? '' : `<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
     const navigation = compose ? '<button type="button" data-home>CENTRAL DE COMUNICAÇÃO</button><button type="button" data-back>VOLTAR</button>' :
-      inbox ? '<button type="button" data-back>VOLTAR PARA HOME</button>' : '';
+      sent ? '<button type="button" data-home>VOLTAR À CENTRAL</button>' : inbox ? '<button type="button" data-back>VOLTAR PARA HOME</button>' : '';
     root.innerHTML = `${heading}<section class="comm-content">${content}</section><div class="comm-status" role="status" aria-live="polite"></div>${navigation ? `<footer class="comm-actions">${navigation}</footer>` : ''}`;
     (root.querySelector('h2') || hubHeading)?.focus({preventScroll: true});
   }
@@ -88,7 +85,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   function adminMenu() {
     composeState = undefined;
     if (canCreateEvents) {
-      render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button></div>', {menu: true});
+      render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button><button type="button" data-sent-messages>MENSAGENS ENVIADAS</button></div>', {menu: true});
       return;
     }
     void inbox();
@@ -241,6 +238,38 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     }
   }
 
+  async function loadSentMessages(cursor = '') {
+    if (!canCreateEvents) return;
+    if (!cursor) render('MENSAGENS ENVIADAS', '<div data-sent-list></div><button type="button" data-sent-next hidden>CARREGAR MAIS</button>', {inbox: true, sent: true});
+    const ticket = generation;
+    const list = root.querySelector('[data-sent-list]');
+    const more = root.querySelector('[data-sent-next]');
+    more.disabled = true;
+    status('Carregando mensagens enviadas…');
+    try {
+      const page = await client.request('SENT_MESSAGES', {cursor});
+      if (!active() || generation !== ticket) return;
+      const cards = page.items.map(item => {
+        const audience = audienceOptions.find(option => option.id === (item.audienceType === 'GROUP' ? item.audienceValue : item.audienceType))?.name;
+        return `<details class="comm-card"><summary><strong>${esc(item.title)}</strong></summary><p>${esc([item.sender, new Date(item.publishAt).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'}), audience].filter(Boolean).join(' · '))}</p><p class="comm-message">${linkedNoticeText(item.message)}</p></details>`;
+      }).join('');
+      list.insertAdjacentHTML('beforeend', cards);
+      more.dataset.sentNext = page.cursor || '';
+      more.textContent = 'CARREGAR MAIS';
+      more.hidden = !page.cursor;
+      status(list.children.length || page.cursor ? '' : 'Nenhuma mensagem enviada.');
+    } catch (error) {
+      if (!active() || generation !== ticket) return;
+      if (needsGoogle(error)) return recoverGoogle();
+      more.dataset.sentNext = cursor;
+      more.textContent = 'TENTAR NOVAMENTE';
+      more.hidden = false;
+      report(error, 'Não foi possível carregar as mensagens enviadas.');
+    } finally {
+      more.disabled = false;
+    }
+  }
+
   async function inbox(cursor = '') {
     render('CENTRAL DE COMUNICAÇÃO', '<p>Carregando mensagens…</p>', {inbox: true});
     const ticket = generation;
@@ -317,6 +346,8 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     if (!button || button.disabled || button.type === 'submit') return;
     if (button.hasAttribute('data-back')) return onBack();
     if (button.hasAttribute('data-home')) return canCreateEvents ? adminMenu() : void inbox();
+    if (button.hasAttribute('data-sent-messages')) return void loadSentMessages();
+    if (button.hasAttribute('data-sent-next')) return void loadSentMessages(button.dataset.sentNext);
     if (button.hasAttribute('data-create-event')) return eventForm();
     if (button.dataset.next) return void inbox(button.dataset.next);
     if (button.dataset.message) return void detail(button.dataset.message);

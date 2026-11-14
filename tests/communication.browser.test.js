@@ -66,6 +66,25 @@ test('ordinary users see own inbox only; Governance hides administrative card en
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{const page=await browser.newPage();await page.goto(url+'?common');await page.getByRole('button',{name:'ATIVAR NOTIFICAÇÕES DE LIBERAÇÃO'}).waitFor();assert.equal(await page.locator('[data-view]').count(),0);assert.equal(await page.locator('[data-enable]').count(),1);assert.equal(await page.evaluate(()=>window.calls.some(c=>['DIRECTORY','GROUPS','MESSAGES'].includes(c.action))),false);
   await page.goto(url+'?common&hub');await page.locator('dialog[open]').waitFor();assert.equal(await page.getByRole('button',{name:'CENTRAL DE COMUNICAÇÃO',exact:true}).count(),0);
-  await page.goto(url+'?hub');await open(page,'CENTRAL DE COMUNICAÇÃO');await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();assert.equal(await page.locator('.comm-menu button').count(),1);
+  await page.goto(url+'?hub');await open(page,'CENTRAL DE COMUNICAÇÃO');await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();assert.equal(await page.locator('.comm-menu button').count(),2);
+ }finally{await browser.close();}
+});
+
+test('o administrador e o gestor podem abrir o histórico e consultar os dois remetentes',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage({viewport:{width:390,height:844}});
+  for(const params of ['hub','hub&manager']){
+   await page.goto(url+'?'+params);
+   await open(page,'CENTRAL DE COMUNICAÇÃO');
+   await open(page,'MENSAGENS ENVIADAS');
+   await page.getByText('Aviso do gestor',{exact:true}).click();
+   await page.getByText(/Gestor operacional/).waitFor();
+   await open(page,'CARREGAR MAIS');
+   await page.getByText('Aviso do administrador',{exact:true}).click();
+   await page.getByText(/^Administrador/).waitFor();
+   await open(page,'VOLTAR À CENTRAL');
+   await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();
+  }
  }finally{await browser.close();}
 });

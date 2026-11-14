@@ -7,7 +7,7 @@ import {APP_VERSION} from './app-version.js';
 export const communicationEnabled=import.meta.env.VITE_COMMUNICATION_FF_ENABLED==='true';
 const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
-const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','USAGE']);
+const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','USAGE']);
 export async function prepareCommunicationSession({isCurrent=()=>true}={}){
  const current=()=>communicationEnabled&&isCurrent()&&document.visibilityState!=='hidden';
  return current()&&await waitForGoogleProjectSession('FF',{isCurrent:current})&&current();

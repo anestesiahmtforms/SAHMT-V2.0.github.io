@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMessage,matches,PAGE_SIZE,BATCH_SIZE,CATEGORIES,safePreview,automaticNoticePreview,BUILTIN_GROUPS} from '../communication/domain.js';
 import {assignedInstitutionalGroup} from '../src/institutional-group.js';
-import {operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE,scheduleReleaseIdentity} from '../src/communication-operational-notices.js';
+import {communicationSenderRole,operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE,scheduleReleaseIdentity} from '../src/communication-operational-notices.js';
 import {COMMUNICATION_LIMITS,communicationUsagePeriod} from '../src/communication-usage.js';
 import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
@@ -15,7 +15,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   const p=rows[0];if(rows.length!==1||!activeProfile(p)||typeof p.uid!=='string'||p.uid!==p.id||p.email!==email||p.ffUid&&p.ffUid!==uid)throw fail('COMM_FORBIDDEN',403);
   return p;
  };
- const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
+ const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
  const quota=(code,used,limit,resetsAt)=>Object.assign(fail(code,429),{used,limit,...(resetsAt?{resetsAt}:{})});
  async function admit(a,action){
   const {day,resetsAt}=communicationUsagePeriod(now()),minute=Math.floor(now()/60000),key=digest(a.uid);
@@ -310,6 +310,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(!input||Array.isArray(input)||typeof input!=='object')throw fail('COMM_INVALID_INPUT');
   const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
   if(!regular.has(action))admin(a);
+  if(action==='SENT_MESSAGES'&&!communicationSenderRole(a.email))throw fail('COMM_FORBIDDEN',403);
   // Validate authorization before accessing directory, rate records or messages.
   const ownProfile=await profile(a.uid,a.email);a={...a,sourceUid:ownProfile.uid};await admit(a,action);
   if(['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action))await presence(input.installation,a);
@@ -323,6 +324,15 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    for(const m of rows)if(!items.some(item=>item.id===m.id)&&isCurrentMessage(m,now())&&await audience(m,ownProfile,a.sourceUid))items.push(m);
    const last=rows.at(-1);
    return {items,cursor:rows.length===5?(recent?`${last.publishAt}|${last.id}`:last.id):null};
+  }
+  if(action==='SENT_MESSAGES'){
+   const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:PAGE_SIZE,publishedBefore:now()});
+   const items=rows.flatMap(m=>{
+    const sender=communicationSenderRole(m.createdBy?.email);
+    return sender?[{id:m.id,title:m.title,message:m.message,category:m.category,publishAt:m.publishAt,audienceType:m.audienceType,audienceValue:m.audienceType==='GROUP'?m.audienceValue:'',sender}]:[];
+   });
+   const last=rows.at(-1);
+   return {items,cursor:rows.length===PAGE_SIZE?`${last.publishAt}|${last.id}`:null};
   }
   if(action==='MESSAGE'){
    const m=await store.get('communicationMessages',id(input.id));

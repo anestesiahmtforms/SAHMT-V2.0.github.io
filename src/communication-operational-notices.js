@@ -2,6 +2,12 @@ import {activeProfile,adminIdentity,fail,id,text} from '../communication/domain.
 import {communicationLimitMessage} from './communication-usage.js';
 
 export const operationalNoticeIdentity=user=>adminIdentity(user)&&String(user.email).trim().toLowerCase()==='marcio.henrique82@gmail.com';
+export function communicationSenderRole(email){
+ const address=String(email||'').trim().toLowerCase();
+ if(address==='wx2064@gmail.com')return 'Administrador';
+ if(address==='marcio.henrique82@gmail.com')return 'Gestor operacional';
+ return '';
+}
 export const RELEASE_NOTICE=Object.freeze({title:'LIBERAÇÃO',message:'Você está Liberado! O SAHMT agradece por sua dedicação. BOM DESCANSO! 🤜🤛.'});
 
 export const scheduleReleaseIdentity=(profile,user)=>activeProfile(profile)&&user?.emailVerified===true&&(profile.role==='administrador_app'||profile.permissions?.admin===true||operationalNoticeIdentity(user));

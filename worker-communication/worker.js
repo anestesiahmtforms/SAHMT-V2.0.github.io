@@ -24,7 +24,7 @@ async function runtime(env,fetchImpl,buildService,actor,action){
  if(buildService)return buildService(env);
  const getToken=serviceToken(JSON.parse(env.FF_SERVICE_ACCOUNT_JSON||'null'),fetchImpl);
  await assertFreeProject(getToken,fetchImpl);
- const store=createStore({getToken,fetchImpl,administrator:adminIdentity(actor)&&actor.email==='wx2064@gmail.com'&&['BOOTSTRAP','INBOX','MESSAGE','MESSAGES','GROUPS','HISTORY','AUDIT','DIRECTORY','AREAS','SETTINGS','METRICS','USAGE'].includes(action)}),fa=createStore({getToken,fetchImpl,source:'FA'});
+ const store=createStore({getToken,fetchImpl,administrator:adminIdentity(actor)&&actor.email==='wx2064@gmail.com'&&['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','MESSAGES','GROUPS','HISTORY','AUDIT','DIRECTORY','AREAS','SETTINGS','METRICS','USAGE'].includes(action)}),fa=createStore({getToken,fetchImpl,source:'FA'});
  const scheduleSource=createStore({getToken,fetchImpl,source:resolveScheduleSourceProject(env)});
  const recipientEnabled=async device=>{
   for(const [project,uid]of [[FF.projectId,device.uid]]){
