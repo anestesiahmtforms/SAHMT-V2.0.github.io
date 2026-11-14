@@ -1,13 +1,13 @@
 import test from 'node:test';import assert from 'node:assert/strict';import vm from 'node:vm';import {readFileSync} from 'node:fs';
 import {scheduleReadFailure} from '../src/schedule-read-error.js';
-import {isValidDateKey} from '../src/schedule-date.js';
+import {isValidDateKey, scheduleTodayWeekday} from '../src/schedule-date.js';
 const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 const code=source.slice(source.indexOf('async function loadSchedule()'),source.indexOf('function showScheduleContacts(')).replace("import('./data-lite.js')",'Promise.resolve(data)');
 const tick=()=>new Promise(r=>setImmediate(r));
 function fixture(hash='#/schedule'){let route='schedule',reads=0;const saved=[],content={innerHTML:'',isConnected:true,querySelectorAll:()=>[]},date={value:'',isConnected:true,addEventListener(){}},buttons={addEventListener(){}};
  const ctx=vm.createContext({scheduleReadFailure,escapeHtml:String,session:{status:'signed-in',user:{uid:'one'}},cleanupCurrentModule:null,Date,Map,Promise,globalThis:{},currentRoute:()=>route,
   homeScheduleCache:{write:(...args)=>saved.push(args),clear:()=>saved.push('clear')},document:{querySelector:id=>id==='#schedule-content'?content:id==='#schedule-date'?date:buttons},localDateKey:()=> '2026-11-08',
-  location:{hash},isValidDateKey,readCachedSchedule:async()=>null,can:()=>false,buildScheduleView:()=>({positions:[]}),fitSchedulePositionGrid(){},bindEventSupportButton(){},canManageScheduleEvents:()=>false,
+  location:{hash},isValidDateKey,scheduleTodayWeekday,readCachedSchedule:async()=>null,can:()=>false,buildScheduleView:()=>({positions:[]}),fitSchedulePositionGrid(){},bindEventSupportButton(){},canManageScheduleEvents:()=>false,
   data:{readSchedule:async()=>{reads++;return {positions:['AB']};},listActiveContacts:async()=>[],listVacationsForDate:async()=>[]}});
  vm.runInContext(code,ctx);return {ctx,content,saved,setRoute:v=>route=v,reads:()=>reads};}
 test('explicit schedule opens remote module and stores only its complete successful result',async()=>{const h=fixture();await h.ctx.loadSchedule();await tick();await tick();assert.equal(h.reads(),1);assert.equal(h.saved.length,1);assert.equal(h.saved[0][0],'one');assert.equal(h.saved[0][1],'2026-11-08');assert.equal(h.saved[0][2].schedule.positions[0],'AB');});
