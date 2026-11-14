@@ -3,7 +3,7 @@ import {collection, doc, getDoc, getDocs, query, where} from 'firebase/firestore
 
 export function openFjPerformance(uid, isCurrent, onClose) {
   const dialog = document.createElement('dialog');
-  dialog.className = 'event-dialog';
+  dialog.className = 'evaluation-dialog';
   dialog.innerHTML = '<h2 id="fj-performance-title">DESEMPENHO FJ</h2><div data-fj-result style="max-height:65dvh;overflow:auto"><p role="status">Carregando pontuação…</p></div><form method="dialog"><button class="secondary-button" type="submit">VOLTAR</button></form>';
   dialog.setAttribute('aria-labelledby','fj-performance-title');
   dialog.addEventListener('close', () => {dialog.remove(); onClose();}, {once:true});

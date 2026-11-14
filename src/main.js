@@ -72,6 +72,7 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 
 import {deployment} from './deployment-context.js';
+const fjPerformanceEnabled = import.meta.env.VITE_FJ_PERFORMANCE_ENABLED === 'true';
 const htmlTrainingConfigured = Boolean(import.meta.env.VITE_HTML_TRAINING_ENDPOINT);
 import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,rememberModuleNavigation} from './module-navigation.js';
 import {repairAppFiles, staleModuleFailure} from './app-repair.js';
@@ -1111,7 +1112,7 @@ function shellView() {
   const view = ['home','schedule'].includes(route) ? `<section class="content-grid">
       ${route === 'schedule' ? `<article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button"><span>Hoje</span><small>${scheduleTodayWeekday()}</small></button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
-        ${import.meta.env.VITE_FJ_PERFORMANCE_ENABLED==='true'?'<button type="button" class="secondary-button" data-fj-performance>DESEMPENHO FJ</button><p role="status" data-fj-performance-notice hidden></p>':''}
+        ${typeof fjPerformanceEnabled!=='undefined'&&fjPerformanceEnabled?'<button type="button" class="secondary-button" data-fj-performance>DESEMPENHO FJ</button><p role="status" data-fj-performance-notice hidden></p>':''}
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
 
       </article>` : ''}
