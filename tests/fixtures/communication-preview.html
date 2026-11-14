@@ -10,6 +10,12 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=docu
    {items:[{uid:'ff-resident',displayName:'Pessoa Residente',institutionalGroup:'resident'},{uid:'ff-substitute',displayName:'Pessoa Substituta',institutionalGroup:'substitute'}],cursor:null} :
    {items:[{uid:'ff-person',displayName:'Pessoa da Equipe',institutionalGroup:'team'}],cursor:'ff-person'};
  if(action==='SENT_MESSAGES')return input.cursor?{items:[{id:'two',title:'Aviso do administrador',message:'Comunicado geral',sender:'Administrador',publishAt:Date.now(),audienceType:'ALL'}],cursor:null}:{items:[{id:'one',title:'Aviso do gestor',message:'Texto do gestor '.repeat(150),sender:'Gestor operacional',publishAt:Date.now(),audienceType:'GROUP',audienceValue:'institutional-team'}],cursor:'next'};
+ if(action==='INBOX'&&params.has('received-pages')){
+   const notice={id:'received-one',title:'Primeiro aviso',message:'Texto longo '.repeat(175)+'Fim do texto https://example.test/aviso',category:'COMUNICADO GERAL',publishAt:Date.now()};
+   if(!input.cursor)return {items:[notice],cursor:'second'};
+   if(input.cursor==='second')return {items:[notice],cursor:'third'};
+   return {items:[{...notice,id:'received-two',title:'Segundo aviso',message:'Mensagem seguinte'}],cursor:null};
+ }
  if(action==='INBOX')return {items:records,cursor:null};
  if(action==='CREATE_EVENT'){
    await new Promise(resolve=>setTimeout(resolve,80));

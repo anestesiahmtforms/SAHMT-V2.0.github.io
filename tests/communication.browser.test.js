@@ -6,7 +6,7 @@ const open=(p,name)=>p.getByRole('button',{name,exact:true}).click();
 
 test('missing FF session replaces loading with Google recovery and retries only bootstrap',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
- try{const page=await browser.newPage();await page.goto(url+'?common&needs-google');await open(page,'Confirmar Google (teste)');await page.locator('[data-enable]').waitFor();assert.equal(await page.getByText('Confirmando acesso no servidor FF…',{exact:true}).count(),0);assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='BOOTSTRAP').length),2);assert.equal(await page.evaluate(()=>window.calls.some(c=>['SAVE_MESSAGE','SEND_BATCH','REGISTER_DEVICE'].includes(c.action))),false);}finally{await browser.close();}
+ try{const page=await browser.newPage();await page.goto(url+'?common&needs-google');await open(page,'Confirmar Google (teste)');await page.getByText('Nenhuma mensagem recebida.').waitFor();assert.equal(await page.getByText('Confirmando acesso no servidor FF…',{exact:true}).count(),0);assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='BOOTSTRAP').length),2);assert.equal(await page.evaluate(()=>window.calls.some(c=>['SAVE_MESSAGE','SEND_BATCH','REGISTER_DEVICE'].includes(c.action))),false);}finally{await browser.close();}
 });
 test('o formulário compacto agrupa destinatários e confirma um único envio',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
@@ -66,7 +66,7 @@ test('ao reabrir após resposta perdida, o mesmo conteúdo retoma o ID original'
 });
 test('ordinary users see own inbox only; Governance hides administrative card entirely',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
- try{const page=await browser.newPage();await page.goto(url+'?common');await page.getByRole('button',{name:'ATIVAR NOTIFICAÇÕES DE LIBERAÇÃO'}).waitFor();assert.equal(await page.locator('[data-view]').count(),0);assert.equal(await page.locator('[data-enable]').count(),1);assert.equal(await page.evaluate(()=>window.calls.some(c=>['DIRECTORY','GROUPS','MESSAGES'].includes(c.action))),false);
+ try{const page=await browser.newPage();await page.goto(url+'?common');await page.getByRole('dialog',{name:'Mensagens recebidas'}).waitFor();assert.equal(await page.locator('[data-view],[data-enable],[data-disable]').count(),0);assert.equal(await page.evaluate(()=>window.calls.some(c=>['DIRECTORY','GROUPS','MESSAGES'].includes(c.action))),false);
   await page.goto(url+'?common&hub');await page.locator('dialog[open]').waitFor();assert.equal(await page.getByRole('button',{name:'CENTRAL DE COMUNICAÇÃO',exact:true}).count(),0);
   await page.goto(url+'?hub');await open(page,'CENTRAL DE COMUNICAÇÃO');await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();assert.equal(await page.locator('.comm-menu button').count(),2);
  }finally{await browser.close();}
@@ -94,5 +94,24 @@ test('o administrador e o gestor podem abrir o histórico e consultar os dois re
    await back.click();
    await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();
   }
+ }finally{await browser.close();}
+});
+
+test('mensagens recebidas exibem o texto completo e carregam mais na rolagem do modal',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage({viewport:{width:390,height:640}});
+  await page.goto(url+'?common&received-pages');
+  const dialog=page.getByRole('dialog',{name:'Mensagens recebidas'});
+  await dialog.getByRole('heading',{name:'Primeiro aviso'}).waitFor();
+  assert.equal(await dialog.getByRole('button').count(),1);
+  assert.match(await dialog.locator('.comm-message').first().innerText(),/Fim do texto/);
+  assert.equal(await dialog.getByRole('link',{name:'https://example.test/aviso'}).getAttribute('href'),'https://example.test/aviso');
+  const back=dialog.getByRole('button',{name:'VOLTAR PARA HOME'});
+  const before=await back.boundingBox();
+  await dialog.locator('.comm-content').evaluate(node=>{node.scrollTop=node.scrollHeight;});
+  await dialog.getByRole('heading',{name:'Segundo aviso'}).waitFor();
+  assert.equal(await dialog.getByRole('heading',{name:'Primeiro aviso'}).count(),1);
+  assert.deepEqual(await back.boundingBox(),before);
  }finally{await browser.close();}
 });

@@ -229,3 +229,44 @@
 .communication--sent .comm-card summary {
   cursor: pointer;
 }
+
+.comm-received-dialog[open] {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(calc(100% - 20px), 760px);
+  height: min(calc(100dvh - 20px), 740px);
+  max-width: none;
+  max-height: none;
+  margin: auto;
+  padding: 12px;
+  border: 1px solid #e7d7af;
+  border-radius: 20px;
+  background: #e6edf0;
+  overflow: hidden;
+  color: #143854;
+}
+.comm-received-dialog::backdrop { background: #061c32b8; }
+.communication--received > .comm-content {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  background: #eef3f5;
+}
+.communication--received .comm-card {
+  border: 1px solid #b2c9d3;
+  border-inline-start: 5px solid #27647e;
+  background: #fff;
+  box-shadow: 0 3px 10px #13344916;
+}
+.communication--received .comm-card header {
+  padding-bottom: 8px;
+  border-bottom: 1px solid #dce8ed;
+}
+.communication--received .comm-card header p {
+  margin: 0;
+  color: #456173;
+  font-size: .82rem;
+}
+.communication--received .comm-message { overflow-wrap: anywhere; }
+.communication--received [data-received-end] { min-height: 1px; margin: 0; }

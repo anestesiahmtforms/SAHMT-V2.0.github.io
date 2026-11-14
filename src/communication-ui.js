@@ -10,14 +10,20 @@ const errors = {
   COMM_FORBIDDEN: 'Sua conta não tem autorização para esta ação.',
   COMM_INVALID_AUDIENCE: 'O destinatário não está disponível. Selecione novamente.',
   COMM_INVALID_INPUT: 'Confira o título, a descrição e o público.',
-  COMM_PUSH_UNSUPPORTED: 'Push indisponível neste aparelho. No iPhone, abra o app instalado na tela inicial.',
-  COMM_PUSH_PERMISSION: 'Autorize as notificações nas configurações do aparelho ou navegador.',
-  COMM_DEVICE_LIMIT: 'Limite de cinco dispositivos ativos por usuário.',
 };
 const needsGoogle = error => ['COMM_SESSION_INVALID', 'COMM_IDENTITY_MISMATCH'].includes(error.code);
 const audienceOptions = [{id: 'ALL', name: 'TODOS'}, ...BUILTIN_GROUPS, {id: 'USER', name: 'INDIVIDUAL'}];
 
-export function mountCommunication(root, {client, adminMode = false, appSession = null, isCurrent = () => true, onBack = () => {}} = {}) {
+export function mountCommunication(host, {client, adminMode = false, appSession = null, isCurrent = () => true, onBack = () => {}} = {}) {
+  const inboxDialog = adminMode ? null : host.ownerDocument.createElement('dialog');
+  if (inboxDialog) {
+    inboxDialog.className = 'comm-received-dialog';
+    inboxDialog.setAttribute('aria-label', 'Mensagens recebidas');
+    host.replaceChildren(inboxDialog);
+    inboxDialog.showModal();
+  }
+  const root = inboxDialog || host;
+  let inboxObserver;
   let disposed = false;
   let generation = 0;
   let cleanupGoogle = () => {};
@@ -37,12 +43,14 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   }
 
   function render(title, content, {compose = false, menu = false, inbox = false, sent = false} = {}) {
+    inboxObserver?.disconnect();
     generation++;
     root.classList.add('communication');
     root.classList.toggle('communication--compose', compose);
     root.classList.toggle('communication--menu', menu);
     root.classList.toggle('communication--inbox', inbox);
     root.classList.toggle('communication--sent', sent);
+    root.classList.toggle('communication--received', inbox && !sent);
     const hubHeading = dialog?.querySelector('#management-hub-title');
     if (hubHeading) hubHeading.textContent = compose ? 'CRIAR E ENVIAR EVENTO' : sent ? title : 'CENTRAL DE COMUNICAÇÃO';
     const heading = inbox && hubHeading || (menu || compose) && hubHeading ? '' : `<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
@@ -271,32 +279,60 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     }
   }
 
-  async function inbox(cursor = '') {
-    render('CENTRAL DE COMUNICAÇÃO', '<p>Carregando mensagens…</p>', {inbox: true});
+  function receivedCard(message) {
+    const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
+      `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
+    const legacyRoute = !message.id.startsWith('event-') && ROUTES.includes(message.route) ? `<a href="#/${esc(message.route)}">ABRIR PÁGINA NO APP</a>` : '';
+    const date = new Date(message.publishAt).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'});
+    return `<article class="comm-card"><header><h3>${esc(message.title)}</h3><p>${esc(message.category)} · ${esc(date)}</p></header><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}</article>`;
+  }
+
+  function inbox() {
+    render('MENSAGENS RECEBIDAS', '<div data-received-list></div><p data-received-end role="status"></p>', {inbox: true});
     const ticket = generation;
-    try {
-      const data = await client.request('INBOX', {recent: true, cursor});
-      if (!active() || generation !== ticket) return;
-      const cards = data.items.map(item => `<article class="comm-card"><h3>${esc(item.title)}</h3><p>${esc(item.category)} · ${new Date(item.publishAt).toLocaleString('pt-BR')}</p><p>${esc(item.message.slice(0, 200))}${item.message.length > 200 ? '…' : ''}</p><button type="button" data-message="${esc(item.id)}">LER AVISO</button></article>`).join('');
-      render('CENTRAL DE COMUNICAÇÃO', `${cards || '<p class="comm-empty">Nenhuma mensagem recebida.</p>'}${data.cursor ? `<button type="button" data-next="${esc(data.cursor)}">PRÓXIMAS MENSAGENS</button>` : ''}<div class="comm-actions"><button type="button" data-enable>ATIVAR NOTIFICAÇÕES DE LIBERAÇÃO</button><button type="button" data-disable>DESATIVAR NESTE APARELHO</button></div>`, {inbox: true});
-    } catch (error) {
-      if (!active() || generation !== ticket) return;
-      if (needsGoogle(error)) return recoverGoogle();
-      root.querySelector('.comm-content').replaceChildren();
-      report(error);
-    }
+    const list = root.querySelector('[data-received-list]');
+    const end = root.querySelector('[data-received-end]');
+    const seen = new Set();
+    let cursor = '', loading = false;
+    const loadNext = async () => {
+      if (loading || cursor === null || !active() || generation !== ticket) return;
+      loading = true;
+      inboxObserver?.unobserve(end);
+      end.textContent = 'Carregando mensagens…';
+      try {
+        const page = await client.request('INBOX', {recent: true, cursor});
+        if (!active() || generation !== ticket) return;
+        for (const message of page.items) {
+          if (seen.has(message.id)) continue;
+          seen.add(message.id);
+          list.insertAdjacentHTML('beforeend', receivedCard(message));
+        }
+        if (page.cursor && page.cursor === cursor) throw Error('COMM_CURSOR_REPEATED');
+        cursor = page.cursor || null;
+        end.textContent = !seen.size && cursor === null ? 'Nenhuma mensagem recebida.' : '';
+        if (cursor !== null) inboxObserver.observe(end);
+      } catch (error) {
+        if (!active() || generation !== ticket) return;
+        if (needsGoogle(error)) return recoverGoogle();
+        end.textContent = '';
+        report(error, 'Não foi possível carregar as mensagens. Reabra a caixa de entrada para tentar novamente.');
+      } finally {
+        loading = false;
+      }
+    };
+    inboxObserver = new IntersectionObserver(entries => {
+      if (entries.some(entry => entry.isIntersecting)) void loadNext();
+    }, {root: list.parentElement, rootMargin: '0px 0px 120px 0px'});
+    void loadNext();
   }
 
   async function detail(key) {
-    render('CENTRAL DE COMUNICAÇÃO', '<p>Carregando aviso…</p>', {inbox: true});
+    render('MENSAGENS RECEBIDAS', '<p>Carregando aviso…</p>', {inbox: true});
     const ticket = generation;
     try {
       const {message} = await client.request('MESSAGE', {id: decodeURIComponent(key)});
       if (!active() || generation !== ticket) return;
-      const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
-        `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
-      const legacyRoute = !message.id.startsWith('event-') && ROUTES.includes(message.route) ? `<a href="#/${esc(message.route)}">ABRIR PÁGINA NO APP</a>` : '';
-      render('CENTRAL DE COMUNICAÇÃO', `<article class="comm-card"><h3>${esc(message.title)}</h3><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}${legacyRoute}</article>`, {inbox: true});
+      render('MENSAGENS RECEBIDAS', receivedCard(message), {inbox: true});
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();
@@ -326,22 +362,6 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     }
   }
 
-  async function toggleDevice(button, permission) {
-    const ticket = generation;
-    button.disabled = true;
-    try {
-      if (permission) await client.enable(permission);
-      else await client.disable();
-      if (active() && generation === ticket) status(permission ? 'Notificações de liberação habilitadas neste aparelho.' : 'Notificações desativadas neste aparelho.');
-    } catch (error) {
-      if (!active() || generation !== ticket) return;
-      if (needsGoogle(error)) return recoverGoogle();
-      report(error);
-    } finally {
-      if (active() && generation === ticket) button.disabled = false;
-    }
-  }
-
   function click(event) {
     const button = event.target.closest('button');
     if (!button || button.disabled || button.type === 'submit') return;
@@ -350,13 +370,6 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     if (button.hasAttribute('data-sent-messages')) return void loadSentMessages();
     if (button.hasAttribute('data-sent-next')) return void loadSentMessages(button.dataset.sentNext);
     if (button.hasAttribute('data-create-event')) return eventForm();
-    if (button.dataset.next) return void inbox(button.dataset.next);
-    if (button.dataset.message) return void detail(button.dataset.message);
-    if (button.hasAttribute('data-enable')) {
-      const permission = 'Notification' in window ? Notification.requestPermission() : Promise.resolve('denied');
-      return void toggleDevice(button, permission);
-    }
-    if (button.hasAttribute('data-disable')) void toggleDevice(button);
   }
 
   function submit(event) {
@@ -378,6 +391,7 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     event.stopImmediatePropagation();
   }
 
+  inboxDialog?.addEventListener('cancel', event => {event.preventDefault(); onBack();});
   root.addEventListener('click', click);
   root.addEventListener('submit', submit);
   root.addEventListener('change', change);
@@ -386,12 +400,14 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
   else void bootstrap();
   return () => {
     disposed = true;
+    inboxObserver?.disconnect();
     cleanupGoogle();
     client.dispose();
     root.removeEventListener('click', click);
     root.removeEventListener('submit', submit);
     root.removeEventListener('change', change);
     dialog?.removeEventListener('cancel', cancelWhileSending, true);
-    root.replaceChildren();
+    if (inboxDialog) {inboxDialog.close(); inboxDialog.remove();}
+    else root.replaceChildren();
   };
 }
