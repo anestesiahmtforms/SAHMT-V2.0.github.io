@@ -2,6 +2,7 @@ import {createHmac, timingSafeEqual} from 'node:crypto';
 import {Buffer} from 'node:buffer';
 import {boundedJson, fail} from './identity.js';
 import {normalizeProjectionEvent, planEventProjection} from './projection-plan.js';
+import {reconcileFjPerformance} from './fj-performance.js';
 import {decodeFields} from '../worker-training/firestore.js';
 import {assertProjectionFoldersReadable,projectionPolicyError} from './folder-policy.js';
 
@@ -54,7 +55,7 @@ export async function applyEventProjection(event, store) {
   });
 }
 
-export async function drainEventProjections({station, store, secret, fetchImpl = fetch} = {}) {
+export async function drainEventProjections({station, store, secret, fetchImpl = fetch, scoreFj = false} = {}) {
   try{await assertProjectionFoldersReadable(store);}
   catch(error){if(error.code==='DOMAIN_FOLDER_DISABLED')return {station,completed:0,failed:0,paused:true};throw error;}
   if (station === 'FI') requireSecret(secret);

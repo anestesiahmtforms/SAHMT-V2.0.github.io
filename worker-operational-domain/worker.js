@@ -14,7 +14,7 @@ export function createOperationalDomainWorker({verify = verifyFaSession, createS
     if (env.MODULE_CUTOVER_ACTIVE !== 'true') return;
     if (DOMAIN_PROJECTS[env.MODULE_STATION] !== env.MODULE_PROJECT_ID) throw fail('DOMAIN_CONFIG_REQUIRED');
     ctx.waitUntil(drainEventProjections({station: env.MODULE_STATION, store: storeFor(env),
-      secret: env.EVENT_PROJECTION_SHARED_SECRET, fetchImpl}).then(result => console.log(JSON.stringify({code: 'DOMAIN_PROJECTION_DRAIN', ...result}))));
+      secret: env.EVENT_PROJECTION_SHARED_SECRET, scoreFj: env.FJ_PERFORMANCE_ENABLED === 'true', fetchImpl}).then(result => console.log(JSON.stringify({code: 'DOMAIN_PROJECTION_DRAIN', ...result}))));
   }, async fetch(request, env) {
     const station = env.MODULE_STATION, projectId = DOMAIN_PROJECTS[station];
     const headers = {'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', Vary: 'Origin'};

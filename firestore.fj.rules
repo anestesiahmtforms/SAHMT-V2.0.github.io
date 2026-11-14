@@ -141,6 +141,16 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['payers', 'creditors', 'updatedByUid', 'updatedAt', 'version']));
       allow delete: if false;
     }
+    match /fjPerformanceSummaries/{uid} {
+      allow get: if moduleSession() && activeUser() && request.auth.uid == uid &&
+        folderReadAllowed_(['operacao', 'operacao/escala', 'operacao/eventos']);
+      allow list, write: if false;
+    }
+    match /fjPerformanceLedger/{eventId} {
+      allow read: if moduleSession() && activeUser() && resource.data.uid == request.auth.uid &&
+        folderReadAllowed_(['operacao', 'operacao/escala', 'operacao/eventos']);
+      allow write: if false;
+    }
     match /events/{eventId} {
       function eventCatalogContains(field, value) {
         let path = /databases/$(database)/documents/eventCatalogs/operational;

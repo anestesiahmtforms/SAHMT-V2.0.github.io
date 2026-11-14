@@ -6,8 +6,10 @@ export function createModuleStore({station, getAccessToken, fetchImpl = fetch} =
   if (!projectId || typeof getAccessToken !== 'function') throw fail('DOMAIN_STORE_CONFIG_INVALID');
   const prefix = `projects/${projectId}/databases/(default)/documents`, root = 'https://firestore.googleapis.com/v1/' + prefix;
   const readable = station === 'FI' ? ['events', 'eventProjectionOutbox', 'operationalSheetArchives'] : ['scheduleDays', 'eventProjections', 'events', 'eventProjectionOutbox', 'operationalSheetArchives'];
+  const fjPerformanceCollections = ['fjPerformanceLedger', 'fjPerformanceSummaries'];
+  if (station === 'FJ') readable.push('contacts', ...fjPerformanceCollections);
   const name = (collection, id) => {
-    if (!(readable.includes(collection)||collection==='runtimePolicy'&&id==='folders') || !/^[A-Za-z0-9_-]{1,180}$/.test(id || '')) throw fail('DOMAIN_STORE_PATH_DENIED', 400);
+    if (!(readable.includes(collection)||collection==='runtimePolicy'&&id==='folders') || (!/^[A-Za-z0-9_.@+:%-]{1,180}$/.test(id || '') || ['.','..'].includes(id))) throw fail('DOMAIN_STORE_PATH_DENIED', 400);
     return prefix + '/' + collection + '/' + id;
   };
   async function request(path, body) {
@@ -50,6 +52,22 @@ export function createModuleStore({station, getAccessToken, fetchImpl = fetch} =
       const transform = field => [{fieldPath: field, setToServerValue: 'REQUEST_TIME'}];
       try {
         const result = await callback({get: (collection, id) => get(collection, id, transactionId),
+          async findFjUsers(email) {
+            if (station !== 'FJ') throw fail('DOMAIN_STORE_PATH_DENIED', 403);
+            const result = await request(':runQuery', {transaction: transactionId, structuredQuery: {
+              from: [{collectionId:'users'}], where: {fieldFilter: {field:{fieldPath:'email'}, op:'EQUAL', value:{stringValue:email}}}, limit:2
+            }});
+            if (!Array.isArray(result) || result.some(row => row.error)) throw fail('DOMAIN_STORE_RESPONSE_INVALID');
+            return result.filter(row => row.document).map(({document}) => {
+              const id = document.name.split('/').at(-1);
+              if (document.name !== prefix + '/users/' + id) throw fail('DOMAIN_STORE_RESPONSE_INVALID');
+              return {id, data:decodeFields(document.fields || {})};
+            });
+          },
+          setFjPerformance(collection, id, value) {
+            if (station !== 'FJ' || !fjPerformanceCollections.includes(collection)) throw fail('DOMAIN_STORE_PATH_DENIED', 403);
+            writes.push({update:{name:name(collection,id),fields:encodeFields(value)}, updateTransforms:transform('updatedAt')});
+          },
           setProjection(id, value) {
             if (station !== 'FJ') throw fail('DOMAIN_STORE_PATH_DENIED', 403);
             writes.push({update: {name: name('eventProjections', id), fields: encodeFields(value)}, updateTransforms: transform('updatedAt')});
