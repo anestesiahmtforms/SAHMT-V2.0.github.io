@@ -161,7 +161,6 @@ jobs:
           VITE_FI_ADMIN_ENABLED: ${{ vars.VITE_FI_ADMIN_ENABLED || 'false' }}
           VITE_FI_PILOT_ENABLED: ${{ vars.VITE_FI_PILOT_ENABLED || 'false' }}
           VITE_FJ_SCHEDULE_ENABLED: 'true'
-          VITE_FJ_PERFORMANCE_ENABLED: 'true'
           VITE_FH_LABELS_ENABLED: 'true'
           VITE_FG_CHECKLIST_ENABLED: 'true'
           VITE_COMMUNICATION_FF_ENABLED: 'true'

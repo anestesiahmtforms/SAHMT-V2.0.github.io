@@ -72,7 +72,6 @@ import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdminEnabled, firstLoginCohortForDisplay} from './management-first-login-cohort.js';
 
 import {deployment} from './deployment-context.js';
-const fjPerformanceEnabled = import.meta.env.VITE_FJ_PERFORMANCE_ENABLED === 'true';
 const htmlTrainingConfigured = Boolean(import.meta.env.VITE_HTML_TRAINING_ENDPOINT);
 import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,rememberModuleNavigation} from './module-navigation.js';
 import {repairAppFiles, staleModuleFailure} from './app-repair.js';
@@ -1112,7 +1111,6 @@ function shellView() {
   const view = ['home','schedule'].includes(route) ? `<section class="content-grid">
       ${route === 'schedule' ? `<article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
         <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button"><span>Hoje</span><small>${scheduleTodayWeekday()}</small></button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
-        ${typeof fjPerformanceEnabled!=='undefined'&&fjPerformanceEnabled?'<button type="button" class="secondary-button" data-fj-performance>DESEMPENHO FJ</button><p role="status" data-fj-performance-notice hidden></p>':''}
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
 
       </article>` : ''}
@@ -1327,20 +1325,7 @@ async function loadSchedule() {
   });
   dateInput.addEventListener('change', render);
   dateInput.addEventListener('sahmt-shared-refresh',()=>{if(!scheduleCurrent())return;const uid=homeUid,day=dateInput.value;void readCachedSchedule(uid,day).then(value=>{if(value&&scheduleCurrent()&&dateInput.isConnected&&dateInput.value===day)renderSchedule(value,day,vacationsCache.get(day)?.items||[],contacts);});});
-  let performanceDialog;
-  document.querySelector('[data-fj-performance]')?.addEventListener('click', async () => {
-    try {
-      const {openFjPerformance} = await import('./fj-performance-ui.js');
-      if (scheduleCurrent() && !performanceDialog) performanceDialog = openFjPerformance(homeUid, scheduleCurrent, () => {performanceDialog = null;});
-    } catch {
-      const feedback = document.querySelector('[data-fj-performance-notice]');
-      if (scheduleCurrent() && feedback) {
-        feedback.hidden = false;
-        feedback.textContent = 'Não foi possível abrir o Desempenho FJ.';
-      }
-    }
-  });
-  const cleanup = () => {disposed = true; performanceDialog?.close(); requestSequence++; scheduleMemberChoice?.(null); scheduleMemberChoice = null;};
+  const cleanup = () => {disposed = true; requestSequence++; scheduleMemberChoice?.(null); scheduleMemberChoice = null;};
   cleanup.suspend = () => {suspended = true; needsServerResume = true; requestSequence++; contactsRequest = null;};
   cleanup.resumeLocal = () => {
     if (disposed || !suspended || !content.isConnected || session.user?.uid !== homeUid) return;
