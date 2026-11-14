@@ -5313,7 +5313,7 @@ async function render() {
   if(!authLimited&&requestedRoute==='year-end-schedule')yearEndStartup.setSession(session);
   // A pending profile is not an authorization denial. Keep the requested route
   // in the restricted shell until the profile can grant or deny access.
-  if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)&&canUseVacationModule(session)&&!['surveys','vacations2027'].includes(location.hash.split('/')[2])){navigate('management-hub',{panel:'surveys'});return;}
+  if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)&&canUseVacationModule(session)&&!['surveys','vacations2027','institutional','general','climateForm','stressForm'].includes(location.hash.split('/')[2])){navigate('management-hub',{panel:'surveys'});return;}
   if(!authLimited&&requestedRoute==='management-hub'&&!canUseGovernanceHub(session)&&!canUseVacationModule(session)){
     notice='Governança está temporariamente indisponível para este perfil.';
     navigate('home');return;

@@ -14,7 +14,7 @@ test('responsive survey: conditional modules, mandatory answers, privacy, exact 
   });
   await new Promise(done => server.listen(0, '127.0.0.1', done));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const returnURL = 'https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/management-hub/institutional';
+  const returnURL = 'https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/management-hub/general';
   const browser = await chromium.launch({channel: 'msedge', headless: true});
   try {
     for (const width of [320, 390, 768, 1440]) {

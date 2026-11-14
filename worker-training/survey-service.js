@@ -1,4 +1,4 @@
-import {validateEpidemiologicalSubmission,REGISTRATION_CYCLE} from '../src/registration-domain.js';
+import {validateCompleteEpidemiologicalSubmission} from '../src/registration-domain.js';
 import {validateCompleteSubmission as climateInput,VERSION as climateVersion,CYCLE} from '../climate-domain/schema.js';
 import {validateCompleteSubmission as stressInput,VERSION as stressVersion} from '../stress-domain/schema.js';
 import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} from '../src/institutional-group.js';
@@ -7,7 +7,7 @@ const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 const validId=id=>typeof id==='string'&&/^[a-f0-9]{32}$/.test(id);
 const folders={climate:'consultas/pesquisas/clima',stress:'consultas/pesquisas/estresse',epidemiological:'consultas/epidemiologico'};
-const kinds={epidemiological:{cycleCollection:'epidemiologicalCycles',responseCollection:'epidemiologicalResponses',version:'1.0',validate:validateEpidemiologicalSubmission},climate:{cycleCollection:'climateCycles',responseCollection:'climateResponses',version:climateVersion,validate:climateInput},stress:{cycleCollection:'stressCycles',responseCollection:'stressResponses',version:stressVersion,validate:stressInput}};
+const kinds={epidemiological:{cycleCollection:'epidemiologicalCycles',responseCollection:'epidemiologicalResponses',version:'1.0',validate:validateCompleteEpidemiologicalSubmission},climate:{cycleCollection:'climateCycles',responseCollection:'climateResponses',version:climateVersion,validate:climateInput},stress:{cycleCollection:'stressCycles',responseCollection:'stressResponses',version:stressVersion,validate:stressInput}};
 function performanceActive(runtime,at){
  const effectiveFrom=typeof runtime?.effectiveFrom==='number'?runtime.effectiveFrom:Date.parse(runtime?.effectiveFrom);
  return runtime?.schemaVersion===1&&runtime.projectId==='outros-48120'&&runtime.enabled===true&&Number.isFinite(effectiveFrom)&&at>=effectiveFrom;

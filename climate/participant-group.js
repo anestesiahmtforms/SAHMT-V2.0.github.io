@@ -1,6 +1,6 @@
 import {callParticipantSurvey} from './participant-session.js';
 export const identifyInstitutionalGroup=()=>callParticipantSurvey({action:'BOOTSTRAP'});
-export function mountParticipantGate(host,consentPanel,onIdentified,{identify=identifyInstitutionalGroup}={}) {
+export function mountParticipantGate(host,consentPanel,onIdentified,{identify=identifyInstitutionalGroup,privacy}={}) {
  consentPanel.hidden=true;
  host.innerHTML='<p role="status" aria-live="polite">Preparando a pesquisa com seu cadastro do app…</p>';
  void (async()=>{
@@ -9,7 +9,9 @@ export function mountParticipantGate(host,consentPanel,onIdentified,{identify=id
    if(!host.isConnected)return;
    const label={team:'Equipe',resident:'Residentes'}[group];
    host.classList.add('participant-group-notice');
-   host.innerHTML='<p class="participant-group-label">Você acessou pelo grupo:</p><h2>'+label+'</h2><p>Seus dados pessoais não serão exibidos neste ambiente. Os resultados são apresentados apenas de forma agregada por grupo. O controle de participação fica separado das respostas para impedir duplicidades.</p><p role="status" aria-live="polite"></p>';
+   host.innerHTML='<p class="participant-group-label">Você acessou pelo grupo:</p><h2>'+label+'</h2><div data-survey-privacy></div><p role="status" aria-live="polite"></p>';
+   host.querySelector('[data-survey-privacy]').innerHTML=privacy||'<p>Seus dados pessoais não serão exibidos neste ambiente. Os resultados são apresentados apenas de forma agregada por grupo. O controle de participação fica separado das respostas para impedir duplicidades.</p>';
+   if(state.closed){host.querySelector('[role=status]').textContent='Este ciclo está encerrado.';return;}
    if(state.alreadyResponded===true){host.querySelector('[role=status]').textContent='Você já participou desta pesquisa neste ciclo. Não é possível enviar outra resposta.';return;}
    if(state.alreadyResponded!==false)throw Error('REGISTRY_UNAVAILABLE');onIdentified(group);consentPanel.hidden=false;
   } catch(error) {

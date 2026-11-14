@@ -1,6 +1,6 @@
 export const SURVEY_APP_ORIGIN='https://anestesiahmtforms.github.io';
 export const SURVEY_FE_ORIGIN='https://outros-48120.web.app';
-export const INSTITUTIONAL_SURVEYS_URL=SURVEY_APP_ORIGIN+'/SAHMT-V2.0.github.io/#/management-hub/institutional';
+export const INSTITUTIONAL_SURVEYS_URL=SURVEY_APP_ORIGIN+'/SAHMT-V2.0.github.io/#/management-hub/general';
 const VIEW='SAHMT_SURVEY_VIEW_V1';
 export function notifySurveyHost(view,appWindow=window){
  if(appWindow.parent!==appWindow)appWindow.parent.postMessage({type:VIEW,view},SURVEY_APP_ORIGIN);

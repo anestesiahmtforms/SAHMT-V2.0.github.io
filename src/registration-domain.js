@@ -59,6 +59,12 @@ export function validateProfessionalAnswers(input){
  if(out.lattes){let url;try{url=new URL(out.lattes);}catch{error('REGISTRATION_INVALID_LATTES');}if(!['https:','http:'].includes(url.protocol)||url.hostname!=='lattes.cnpq.br'||url.username||url.password)error('REGISTRATION_INVALID_LATTES');}if(out.outsideWork!=='YES')out.outsideWorkDetails='';return out;
 }
 export function bmiBand(weight,height){const w=Number(String(weight).replace(',','.')),h=Number(String(height).replace(',','.'));if(!Number.isFinite(w)||!Number.isFinite(h)||w<10||w>500||h<50||h>250)return null;const value=w/(h/100)**2;return {value:Math.round(value*10)/10,band:value<18.5?'LOW':value<25?'MID':value<30?'UPPER':value<35?'B30':value<40?'B35':'B40'};}
+export function validateCompleteEpidemiologicalSubmission(input){
+ const response=validateEpidemiologicalSubmission(input);
+ if(!EPIDEMIOLOGICAL_FIELDS.every(f=>f.type==='checks'?response.answers[f.id].length>0:response.answers[f.id]!=='NI')||!response.comments)
+  error('EPIDEMIOLOGICAL_INCOMPLETE');
+ return response;
+}
 export function validateEpidemiologicalSubmission(input){
  const keys=['survey_cycle','survey_version','submission_id','group','consent','answers','comments'];if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!keys.includes(k))||input.survey_cycle!==REGISTRATION_CYCLE||input.survey_version!=='1.0'||input.consent!==true||!/^[a-f0-9]{32}$/.test(input.submission_id)||!['team','resident'].includes(input.group))error('EPIDEMIOLOGICAL_INVALID_INPUT');
  if(!input.answers||typeof input.answers!=='object'||Array.isArray(input.answers)||Object.keys(input.answers).some(k=>!EPIDEMIOLOGICAL_FIELDS.some(f=>f.id===k)))error('EPIDEMIOLOGICAL_INVALID_INPUT');const answers={};let answered=0;

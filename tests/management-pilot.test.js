@@ -11,22 +11,22 @@ function hub(access={},initialPanel='home',syncStatusElement=null,climateEnabled
  const navigations=[],ctx=vm.createContext({consolidatedPerformanceFolders:['desempenho/sahmt'],operationalContentAllowed:()=>true});vm.runInContext(readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/^export /gm,''),ctx);ctx.mountManagementHub(root,{access,initialPanel,syncStatusElement,climateEnabled,onExit(){navigations.push('home');},onNavigate:route=>navigations.push(route)});return {dialog,body,handlers,navigations,heading,headingIcon,root,back,syncHost};
 }
 test('FA institutional survey entry embeds the fixed FE destinations without identity URL parameters',()=>{
- const released=hub({institutionalSurveys:true},'institutional',null,true);assert.match(released.body.innerHTML,/data-survey-panel="climateForm"/);assert.match(released.body.innerHTML,/data-survey-panel="stressForm"/);assert.doesNotMatch(released.body.innerHTML,/href=|uid=|email=|token=/);assert.match(released.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);assert.match(released.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
- assert.doesNotMatch(hub({institutionalSurveys:true},'institutional',null,false).body.innerHTML,/data-survey-panel=/);
+ const released=hub({institutionalSurveys:true},'general',null,true);assert.match(released.body.innerHTML,/data-survey-panel="climateForm"/);assert.match(released.body.innerHTML,/data-survey-panel="stressForm"/);assert.doesNotMatch(released.body.innerHTML,/href=|uid=|email=|token=/);assert.match(released.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);assert.match(released.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
+ assert.doesNotMatch(hub({institutionalSurveys:true},'general',null,false).body.innerHTML,/data-survey-panel=/);
 });
 test('FE performance is available only inside FE institutional surveys',()=>{
  const source=readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8');
  const metadata=source.slice(source.indexOf('const panels='),source.indexOf('// Surveys reuse'));
  const panels=vm.runInNewContext(metadata+';panels');
  assert.equal(panels.fdPerformance,undefined);
- assert.equal(panels.fePerformance.parent,'institutional');
+ assert.equal(panels.fePerformance.parent,'general');
  assert.equal(panels.sahmtPerformance,undefined);
  assert.equal(panels.home.items.some(item=>['fdPerformance','fePerformance'].includes(item.panel)),false);
  assert.equal(panels.surveys.items.some(item=>item.label==='Desempenho FE'&&item.panel==='fePerformance'),false);
  assert.equal(panels.records.items.some(item=>['fdPerformance','fePerformance'].includes(item.panel)),false);
  assert.doesNotMatch(hub({surveys:true},'surveys').body.innerHTML,/Desempenho FE/);
  assert.doesNotMatch(hub({surveys:true,fePerformance:true},'surveys').body.innerHTML,/Desempenho FE/);
- assert.match(hub({institutionalSurveys:true,fePerformance:true},'institutional',null,true).body.innerHTML,/DESEMPENHO FE/);
+ assert.match(hub({institutionalSurveys:true,fePerformance:true},'general',null,true).body.innerHTML,/DESEMPENHO FE/);
  for(const name of ['fdPerformance','fePerformance'])assert.equal(hub({},name).dialog.dataset.panel,'home');
 });
 
@@ -63,10 +63,10 @@ test('Governance keeps the live synchronization control visible in its modal hea
 
 test('institutional surveys open from their menu button and return to surveys',()=>{
  const h=hub({institutionalSurveys:true},'surveys',null,true);
- assert.match(h.body.innerHTML,/PESQUISAS INSTITUCIONAIS/);
+ assert.match(h.body.innerHTML,/ACESSO GERAL/);
  assert.doesNotMatch(h.body.innerHTML,/href=/);
- h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});
- assert.equal(h.dialog.dataset.panel,'institutional');
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'1'}}):null}});
+ assert.equal(h.dialog.dataset.panel,'general');
  assert.match(h.body.innerHTML,/data-survey-panel="stressForm"/);
  h.handlers['back-click']();
  assert.equal(h.dialog.dataset.panel,'surveys');
@@ -83,10 +83,10 @@ test('schedule access opens its menu while other survey panels retain their prev
  const h=hub({yearEndSchedule:true},'home');
  assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,3);
  h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'4'}}):null}});
- assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/management-hub-button--festive/);
+ assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ACESSO RESTRITO/);
  assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,1);
  h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});
- assert.equal(h.dialog.dataset.panel,'surveys');
+ assert.equal(h.dialog.dataset.panel,'institutional');assert.match(h.body.innerHTML,/ESCALA FINAL DE ANO/);assert.match(h.body.innerHTML,/management-hub-button--festive/);
 });
 
 test('performance buttons are absent when their administrator access is denied',()=>{
@@ -97,16 +97,19 @@ test('performance buttons are absent when their administrator access is denied',
 });
 
 test('vacation-only access opens FE without allowing survey forms or performance',()=>{
- const h=hub({vacations2027:true},'surveys');assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ESCALA DE FÉRIAS 2027/);assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,1);assert.doesNotMatch(h.body.innerHTML,/Desempenho FE/);
- for(const panel of ['professional','epidemiological','climateForm','institutional','results','records'])assert.equal(hub({vacations2027:true},panel).dialog.dataset.panel,'home');
+ const h=hub({vacations2027:true},'surveys');assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ACESSO RESTRITO/);assert.match(hub({vacations2027:true},'institutional').body.innerHTML,/ESCALA DE FÉRIAS 2027/);assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,1);assert.doesNotMatch(h.body.innerHTML,/Desempenho FE/);
+ for(const panel of ['professional','epidemiological','climateForm','general','results','records'])assert.equal(hub({vacations2027:true},panel).dialog.dataset.panel,'home');
 });
 
 test('FE shows only surveys to common profiles and the other four entries to team profiles',()=>{
  const publicAccess={institutionalSurveys:true};
  const common=hub(publicAccess,'surveys');
  assert.equal((common.body.innerHTML.match(/data-hub-item=/g)||[]).length,1);
- assert.match(common.body.innerHTML,/PESQUISAS INSTITUCIONAIS/);
+ assert.match(common.body.innerHTML,/ACESSO GERAL/);
  for(const panel of ['professional','epidemiological','yearEnd','vacations2027'])assert.equal(hub(publicAccess,panel).dialog.dataset.panel,'home');
  const team=hub({...publicAccess,surveys:true,epidemiological:true,yearEndSchedule:true,vacations2027:true},'surveys');
- assert.equal((team.body.innerHTML.match(/data-hub-item=/g)||[]).length,5);
+ assert.equal((team.body.innerHTML.match(/data-hub-item=/g)||[]).length,2);
+ const restricted=hub({...publicAccess,surveys:true,epidemiological:true,yearEndSchedule:true,vacations2027:true},'institutional');
+ assert.equal((restricted.body.innerHTML.match(/data-hub-item=/g)||[]).length,4);
+ assert.doesNotMatch(restricted.body.innerHTML,/PESQUISA DE CLIMA/);
 });

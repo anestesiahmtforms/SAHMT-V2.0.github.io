@@ -2,8 +2,9 @@ import {mountParticipantGate} from './participant-group.js';
 import {INSTITUTIONAL_SURVEYS_URL, notifySurveyHost} from '../src/survey-session-bridge.js';
 import './survey-flow.css';
 
-export function mountSurveyFlow(app, {title, questions, onGroup, readResponse, submit}) {
-  const embedded = window.parent !== window;
+export function mountSurveyFlow(app, {title, questions, identify, privacy, extraIntro='', onGroup, readResponse, submit, onComplete}) {
+  const inApp = typeof onComplete === 'function';
+  const embedded = !inApp && window.parent !== window;
   if (embedded) {
     document.documentElement.classList.add('survey-embedded');
     notifySurveyHost('intro');
@@ -17,7 +18,8 @@ export function mountSurveyFlow(app, {title, questions, onGroup, readResponse, s
         <label class="consent"><input type="checkbox" name="consent"> Li as informações e concordo em participar voluntariamente.</label>
         <button class="primary" type="button" data-start disabled>Iniciar Pesquisa</button>
       </div>
-      ${embedded ? '' : `<footer class="survey-footer"><a href="${INSTITUTIONAL_SURVEYS_URL}">Voltar</a></footer>`}
+      ${extraIntro}
+      ${embedded || inApp ? '' : `<footer class="survey-footer"><a href="${INSTITUTIONAL_SURVEYS_URL}">Voltar</a></footer>`}
     </section>
     <dialog class="survey-questions" aria-labelledby="questions-title">
       <form>
@@ -43,7 +45,7 @@ export function mountSurveyFlow(app, {title, questions, onGroup, readResponse, s
   const send = form.querySelector('[type=submit]');
   let pendingResponse, sending = false, completed = false;
 
-  mountParticipantGate(gate, consentPanel, group => onGroup?.(group, form));
+  mountParticipantGate(gate, consentPanel, group => onGroup?.(group, form), {identify,privacy});
   consent.addEventListener('change', () => { start.disabled = !consent.checked; });
   start.addEventListener('click', () => {
     if (!consent.checked || completed) return;
@@ -72,7 +74,7 @@ export function mountSurveyFlow(app, {title, questions, onGroup, readResponse, s
         return;
       }
       try {
-        pendingResponse = readResponse(new FormData(form));
+        pendingResponse = readResponse(new FormData(form),form);
       } catch (error) {
         status.textContent = error.message;
         return;
@@ -86,7 +88,8 @@ export function mountSurveyFlow(app, {title, questions, onGroup, readResponse, s
       if (receipt?.accepted !== true) throw Error('NOT_ACCEPTED');
       completed = true;
       status.textContent = receipt.alreadyResponded ? 'Sua participação já estava registrada.' : 'Resposta recebida. Obrigado pela participação!';
-      if (embedded) notifySurveyHost('complete');
+      if (inApp) onComplete();
+      else if (embedded) notifySurveyHost('complete');
       else window.location.replace(INSTITUTIONAL_SURVEYS_URL);
     } catch (error) {
       const rejected = error.message === 'NOT_ACCEPTED';
