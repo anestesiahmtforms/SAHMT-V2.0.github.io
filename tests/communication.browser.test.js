@@ -36,7 +36,8 @@ test('o formulário compacto agrupa destinatários e confirma um único envio',a
     return {fixed:getComputedStyle(dialog).position,overflow:getComputedStyle(body).overflowY,clipped:footer.getBoundingClientRect().bottom>body.getBoundingClientRect().bottom,wide:body.scrollWidth>body.clientWidth};
    });
    assert.deepEqual(fit,{fixed:'fixed',overflow:'hidden',clipped:false,wide:false},`${width}x${height}`);
-   await open(page,'CENTRAL DE COMUNICAÇÃO');await open(page,'CRIAR E ENVIAR EVENTO');await open(page,'VOLTAR');
+   assert.equal(await page.locator('.communication--compose footer button').count(),1);
+   await open(page,'VOLTAR');
    await page.locator('dialog[data-panel=home]').waitFor();
   }
   assert.deepEqual(errors,[]);
@@ -56,6 +57,7 @@ test('ao reabrir após resposta perdida, o mesmo conteúdo retoma o ID original'
   };
   await fill();await page.getByRole('button',{name:'CONFIRMAR ENVIO'}).waitFor();
   assert.equal(await page.locator('.communication--compose').evaluate(element=>element.getBoundingClientRect().bottom<=element.closest('[data-hub-body]').getBoundingClientRect().bottom),true);
+  await open(page,'VOLTAR');
   await open(page,'CENTRAL DE COMUNICAÇÃO');
   await fill();await page.getByRole('button',{name:'ENVIADO'}).waitFor();
   const ids=await page.evaluate(()=>window.calls.filter(call=>call.action==='CREATE_EVENT').map(call=>call.input.id));
@@ -83,7 +85,13 @@ test('o administrador e o gestor podem abrir o histórico e consultar os dois re
    await open(page,'CARREGAR MAIS');
    await page.getByText('Aviso do administrador',{exact:true}).click();
    await page.getByText(/^Administrador/).waitFor();
-   await open(page,'VOLTAR À CENTRAL');
+   const dialog=page.getByRole('dialog',{name:'MENSAGENS ENVIADAS'});
+   const back=dialog.getByRole('button',{name:'VOLTAR',exact:true});
+   const before=await back.boundingBox();
+   const scroll=await dialog.locator('.comm-content').evaluate(node=>{node.scrollTop=node.scrollHeight;return node.scrollTop;});
+   assert.ok(scroll>0);
+   assert.deepEqual(await back.boundingBox(),before);
+   await back.click();
    await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();
   }
  }finally{await browser.close();}

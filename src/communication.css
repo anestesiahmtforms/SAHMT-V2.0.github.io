@@ -79,7 +79,7 @@
 }
 .communication--compose textarea { height: clamp(64px, 17dvh, 132px); resize: none; }
 .comm-event-audience, .communication--compose .comm-actions { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 8px; }
-.communication--compose .comm-actions { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); margin: 8px 0 0; }
+.communication--compose .comm-actions { grid-template-columns: minmax(0, 1fr); margin: 8px 0 0; }
 .communication--compose .comm-actions button { min-height: 44px; padding: 6px; font-size: .75rem; line-height: 1.2; }
 .communication--compose button.comm-send-button {
   min-height: 44px;
@@ -221,3 +221,11 @@
   gap: 8px;
 }
 .comm-inbox-shortcut svg { flex: none; }
+
+.communication--sent > .comm-content {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+.communication--sent .comm-card summary {
+  cursor: pointer;
+}

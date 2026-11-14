@@ -9,7 +9,7 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=docu
  if(action==='DIRECTORY')return input.cursor ?
    {items:[{uid:'ff-resident',displayName:'Pessoa Residente',institutionalGroup:'resident'},{uid:'ff-substitute',displayName:'Pessoa Substituta',institutionalGroup:'substitute'}],cursor:null} :
    {items:[{uid:'ff-person',displayName:'Pessoa da Equipe',institutionalGroup:'team'}],cursor:'ff-person'};
- if(action==='SENT_MESSAGES')return input.cursor?{items:[{id:'two',title:'Aviso do administrador',message:'Comunicado geral',sender:'Administrador',publishAt:Date.now(),audienceType:'ALL'}],cursor:null}:{items:[{id:'one',title:'Aviso do gestor',message:'Texto do gestor',sender:'Gestor operacional',publishAt:Date.now(),audienceType:'GROUP',audienceValue:'institutional-team'}],cursor:'next'};
+ if(action==='SENT_MESSAGES')return input.cursor?{items:[{id:'two',title:'Aviso do administrador',message:'Comunicado geral',sender:'Administrador',publishAt:Date.now(),audienceType:'ALL'}],cursor:null}:{items:[{id:'one',title:'Aviso do gestor',message:'Texto do gestor '.repeat(150),sender:'Gestor operacional',publishAt:Date.now(),audienceType:'GROUP',audienceValue:'institutional-team'}],cursor:'next'};
  if(action==='INBOX')return {items:records,cursor:null};
  if(action==='CREATE_EVENT'){
    await new Promise(resolve=>setTimeout(resolve,80));

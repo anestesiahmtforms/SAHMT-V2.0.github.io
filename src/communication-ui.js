@@ -42,11 +42,12 @@ export function mountCommunication(root, {client, adminMode = false, appSession 
     root.classList.toggle('communication--compose', compose);
     root.classList.toggle('communication--menu', menu);
     root.classList.toggle('communication--inbox', inbox);
+    root.classList.toggle('communication--sent', sent);
     const hubHeading = dialog?.querySelector('#management-hub-title');
     if (hubHeading) hubHeading.textContent = compose ? 'CRIAR E ENVIAR EVENTO' : sent ? title : 'CENTRAL DE COMUNICAÇÃO';
     const heading = inbox && hubHeading || (menu || compose) && hubHeading ? '' : `<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
-    const navigation = compose ? '<button type="button" data-home>CENTRAL DE COMUNICAÇÃO</button><button type="button" data-back>VOLTAR</button>' :
-      sent ? '<button type="button" data-home>VOLTAR À CENTRAL</button>' : inbox ? '<button type="button" data-back>VOLTAR PARA HOME</button>' : '';
+    const navigation = compose ? '<button type="button" data-back>VOLTAR</button>' :
+      sent ? '<button type="button" data-home>VOLTAR</button>' : inbox ? '<button type="button" data-back>VOLTAR PARA HOME</button>' : '';
     root.innerHTML = `${heading}<section class="comm-content">${content}</section><div class="comm-status" role="status" aria-live="polite"></div>${navigation ? `<footer class="comm-actions">${navigation}</footer>` : ''}`;
     (root.querySelector('h2') || hubHeading)?.focus({preventScroll: true});
   }
