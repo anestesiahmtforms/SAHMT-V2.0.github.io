@@ -8,6 +8,7 @@
  "workers_dev":true,
  "vars":{
   "INSTITUTIONAL_SURVEYS_ENABLED":"true",
+  "REPORT_READER_EMAIL":"wx2064@gmail.com",
   "FA_WEB_API_KEY":"AIzaSyDg7plEPhaIieyDP3z462gxG9cY_OQCzvA"
  },
  "observability":{"enabled":false}

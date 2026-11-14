@@ -1,6 +1,6 @@
 // Only installed shells need this bridge. Updated shells call FC directly.
 export const FC_COMPAT_ORIGIN = 'https://sahmt-fc-integration.anestesiahmtforms3.workers.dev';
-const paths = new Set(['/v1/qmentum/write', '/v1/qmentum/prints', '/v1/evaluation/occurrence']);
+const paths = new Set(['/v1/qmentum/write', '/v1/qmentum/prints']);
 const allowedOrigin = 'https://anestesiahmtforms.github.io';
 const reply = (code, status, origin) => Response.json({code}, {status, headers:{
   'Cache-Control':'no-store', 'X-Content-Type-Options':'nosniff',
@@ -15,6 +15,8 @@ const reply = (code, status, origin) => Response.json({code}, {status, headers:{
 export function withFcCompatibility(central, {fetchImpl = globalThis.fetch} = {}) {
   return {async fetch(request, env, context) {
     const url = new URL(request.url);
+    if (url.pathname === '/v1/evaluation/occurrence')
+      return reply('OCCURRENCE_SCORING_RETIRED_IN_FA', 410, request.headers.get('Origin'));
     if (env?.FC_COMPAT_FORWARD_ENABLED !== 'true' || !paths.has(url.pathname))
       return central.fetch(request, env, context);
     const origin = request.headers.get('Origin');

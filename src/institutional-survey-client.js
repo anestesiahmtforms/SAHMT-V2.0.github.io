@@ -1,4 +1,4 @@
-const endpoint='https://sahmt-fe-surveys.anestesiahmtforms5.workers.dev/v1/institutional-surveys';
+export const feSurveyEndpoint='https://sahmt-fe-surveys.anestesiahmtforms5.workers.dev/v1/institutional-surveys';
 export async function callInstitutionalSurvey({uid,isCurrent,survey,action,response,authClient,fetchImpl=fetch}) {
   const auth=authClient||(await import('./firebase-auth.js')).auth;
   await auth?.authStateReady();
@@ -8,7 +8,7 @@ export async function callInstitutionalSurvey({uid,isCurrent,survey,action,respo
   if(!valid())throw Error('SURVEY_SESSION_CHANGED');
   if(!['BOOTSTRAP','SUBMIT','GET_PERFORMANCE'].includes(action))throw Error('SURVEY_ACTION_INVALID');
   const input=action==='GET_PERFORMANCE'?{}:{survey,cycle:'2026',...(action==='SUBMIT'?{response}:{})};
-  const result=await fetchImpl(endpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',signal:AbortSignal.timeout(20000),body:JSON.stringify({action,input})});
+  const result=await fetchImpl(feSurveyEndpoint,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},credentials:'omit',referrerPolicy:'no-referrer',cache:'no-store',signal:AbortSignal.timeout(20000),body:JSON.stringify({action,input})});
   if(!valid())throw Error('SURVEY_SESSION_CHANGED');
   if(!result.ok){await result.body?.cancel();throw Error('SURVEY_UNAVAILABLE');}
   const data=await result.json();

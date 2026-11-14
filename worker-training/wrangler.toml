@@ -6,7 +6,6 @@ compatibility_flags = ["nodejs_compat"]
 workers_dev = true
 
 [vars]
-FE_STATION_FORWARD_ENABLED = "true"
 PROFESSIONAL_REGISTRATION_ENABLED = "true"
 BIOSAFETY_MANUAL_ENABLED = "true"
 DOSIMETRY_ENABLED = "true"

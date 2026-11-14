@@ -18,9 +18,9 @@ export async function notifyOccurrenceScore({id, uid, auth, isCurrent = () => tr
 }
 export async function notifyConfiguredOccurrenceScore(options,{env=import.meta.env||{}}={}) {
   if(env.VITE_OCCURRENCE_SCORING_ENABLED!=='true')return {code:'OCCURRENCE_SCORING_DISABLED'};
-  const origin=env.VITE_FIREBASE_PROJECT_AUTH_ALLOWED_ORIGIN;
+  if(env.VITE_FC_INTEGRATION_ENABLED!=='true')return {code:'OCCURRENCE_SCORE_CONFIG_INVALID'};
   let endpoint,allowedOrigin;
-  try{endpoint=fcIntegrationEndpoint('/v1/evaluation/occurrence',{env,fallback:origin?origin+'/v1/evaluation/occurrence':''});allowedOrigin=new URL(endpoint).origin;}
+  try{endpoint=fcIntegrationEndpoint('/v1/evaluation/occurrence',{env});allowedOrigin=new URL(endpoint).origin;}
   catch{return {code:'OCCURRENCE_SCORE_CONFIG_INVALID'};}
   return notifyOccurrenceScore({...options,enabled:true,allowedOrigin,endpoint});
 }

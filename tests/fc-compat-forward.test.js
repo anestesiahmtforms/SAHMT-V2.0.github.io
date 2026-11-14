@@ -4,7 +4,7 @@ import {withFcCompatibility, FC_COMPAT_ORIGIN} from '../worker-management-auth/f
 import {createFcIntegrationWorker} from '../worker-fc-integration/worker.js';
 
 const origin = 'https://anestesiahmtforms.github.io';
-const paths = ['/v1/qmentum/write', '/v1/qmentum/prints', '/v1/evaluation/occurrence'];
+const paths = ['/v1/qmentum/write', '/v1/qmentum/prints'];
 const env = {FC_COMPAT_FORWARD_ENABLED:'true', FC_COMPAT_PRINTS_READY:'true'};
 const req = (path, options={}) => new Request('https://central.example.test' + path, {
   method:'POST', headers:{Origin:origin, Authorization:'Bearer synthetic-fixture', 'Content-Type':'application/json'}, body:'{"fixture":true}', ...options
@@ -21,7 +21,7 @@ test('disabled compatibility and every non-FC route use the original module unch
   }
 });
 
-test('the three cached routes retain bearer, body, CORS and upstream errors at the fixed FC origin', async () => {
+test('the cached QMENTUM routes retain bearer, body, CORS and upstream errors at the fixed FC origin', async () => {
   for (const path of paths) {
     let call;
     const worker = withFcCompatibility({fetch(){throw Error('central must not execute');}}, {fetchImpl:async (url, options) => {
@@ -110,4 +110,14 @@ test('a cached client still reaches FC bearer validation before any privileged b
   }), env);
   assert.equal(unapproved.status, 403);
   assert.equal(proofs, 1);
+});
+
+test('FA refuses occurrence scoring before the central module or FC can be called', async () => {
+ const unexpected=()=>assert.fail('Retired scoring must not reach another service');
+ const worker=withFcCompatibility({fetch:unexpected},{fetchImpl:unexpected});
+ for(const settings of [env,{}]){
+  const response=await worker.fetch(req('/v1/evaluation/occurrence'),settings);
+  assert.equal(response.status,410);
+  assert.equal((await response.json()).code,'OCCURRENCE_SCORING_RETIRED_IN_FA');
+ }
 });

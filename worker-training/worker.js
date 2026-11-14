@@ -13,7 +13,6 @@ import {createDriveClient} from './drive.js';
 import {Buffer} from 'node:buffer';
 import {createSurveyService} from './survey-service.js';
 import {createYearEndStatusService} from './year-end-status-service.js';
-import {stationAwareWorker} from '../worker-station-forwarding/forward.js';
 
 const origins=['https://anestesiahmtforms.github.io'];
 const fail=(code,status)=>Object.assign(new Error(code),{code,status});
@@ -138,4 +137,14 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
   }
  }};
 }
-export default stationAwareWorker(createTrainingWorker(),'FE');
+const legacyWorker = createTrainingWorker();
+export default {
+ fetch(request,env,context){
+  if(new URL(request.url).pathname==='/v1/institutional-surveys'){
+   const origin=request.headers.get('Origin');
+   return Response.json({code:'SURVEY_RETIRED_IN_FA'},{status:410,headers:{'Cache-Control':'no-store',Vary:'Origin',
+    ...(origins.includes(origin)?{'Access-Control-Allow-Origin':origin}:{})}});
+  }
+  return legacyWorker.fetch(request,env,context);
+ }
+};
