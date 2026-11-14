@@ -17,7 +17,7 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
     const group=assignedInstitutionalGroup(assignment,{uid:identity.uid,email});
     if(!group)fail('SURVEY_GROUP_UNAVAILABLE',403);
     const administrator=profile.role==='administrador_app'||profile.permissions?.admin===true;
-    if(survey==='epidemiological'&&group!=='team'&&!administrator)fail('SURVEY_FORBIDDEN',403);
+    if(survey==='epidemiological'&&group!=='team')fail('SURVEY_FORBIDDEN',403);
     return {affiliation:group,group:researchGroup(group),administrator};
   }
   async function execute(action,input,identity){

@@ -37,7 +37,7 @@ const panels={
  surveys:{title:'Enquetes e Consultas',icon:'surveys',parent:'home',items:[
   {label:'PESQUISAS INSTITUCIONAIS',icon:'records',panel:'institutional',access:'institutionalSurveys'},
   {label:'CADASTRO PROFISSIONAL - SAHMT',icon:'professional',panel:'professional',access:'surveys'},
-  {label:'CADASTRO EPIDEMIOLÓGICO - SAHMT',icon:'epidemiological',panel:'epidemiological',access:'surveys'},
+  {label:'CADASTRO EPIDEMIOLÓGICO - SAHMT',icon:'epidemiological',panel:'epidemiological',access:'epidemiological'},
   {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'},
   {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'}
  ]},
@@ -64,7 +64,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const panelFolders={functional:'funcional',records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',institutional:'consultas/pesquisas',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027'};
  const panelFolderAllowed=name=>!Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]);
  const panelAllowed=name=>panelFolderAllowed(name)&&profilePanelAllowed(name);
- const profilePanelAllowed=name=>institutionalPanels.includes(name)?institutionalAllowed():registrationPanels.includes(name)?access.surveys===true:name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
+ const profilePanelAllowed=name=>institutionalPanels.includes(name)?institutionalAllowed():name==='professional'?access.surveys===true:name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2><div data-hub-folder-notice></div></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');

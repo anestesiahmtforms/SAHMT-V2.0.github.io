@@ -21,6 +21,10 @@ test('residents and substitutes cannot call the FE registration endpoints direct
   const registrations=createProfessionalRegistrationService({store});
   await assert.rejects(registrations.execute('BOOTSTRAP',{},identity),{code:'REGISTRATION_FORBIDDEN'});
   const surveys=createSurveyService({profileStore:store,responseStore:store});
-  await assert.rejects(surveys.execute('BOOTSTRAP',{survey:'epidemiological',cycle:'2026'},identity),{code:'SURVEY_FORBIDDEN'});
+  const request={survey:'epidemiological',cycle:'2026'};
+  await assert.rejects(surveys.execute('BOOTSTRAP',request,identity),{code:'SURVEY_FORBIDDEN'});
+  store.seed('users',identity.uid,{...identity,active:true,access:true,role:'administrador_app'});
+  await assert.rejects(surveys.execute('BOOTSTRAP',request,identity),{code:'SURVEY_FORBIDDEN'});
+  await assert.rejects(surveys.execute('SUBMIT',{...request,response:epi()},identity),{code:'SURVEY_FORBIDDEN'});
  }
 });

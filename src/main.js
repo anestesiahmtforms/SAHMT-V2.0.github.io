@@ -1539,15 +1539,17 @@ async function loadModule(route) {
   if(route === 'management-hub'){
     if(!canUseGovernanceHub(session)&&!(canUseVacationModule(session)&&['surveys','vacations2027'].includes(location.hash.split('/')[2]))){navigate('home');return;}
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
-    const [{mountManagementHub},{getFunctionalAccess}]=await Promise.all([import('./management-hub.js'),import('./functional-access.js')]);
+    const [{mountManagementHub},{getFunctionalAccess,isEffectiveTeamMember}]=await Promise.all([import('./management-hub.js'),import('./functional-access.js')]);
     const functionalEnabled=deployment.target==='FA'&&import.meta.env.VITE_FK_FUNCTIONAL_ENABLED==='true';
     const functionalAccess=functionalEnabled?await getFunctionalAccess(session):{allowed:false,group:null};
     if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
     const currentHub=()=>generation===evaluationModuleGeneration&&content.isConnected&&session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session);
     if(communicationAdminSession(session))preloadCommunicationModules({isCurrent:currentHub});
     const participantOnly=session.accountMode==='team';
-    let consultationsAllowed=can('admin');
-    if(!consultationsAllowed)try{consultationsAllowed=await readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub});}catch{}
+    const [consultationsAllowed,epidemiologicalAllowed]=await Promise.all([
+      can('admin')||readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub}).catch(()=>false),
+      isEffectiveTeamMember(session.user).catch(()=>false)
+    ]);
     if(!content.isConnected||!currentHub())return;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,folderNotice:operationalFolderNotice,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
@@ -1562,9 +1564,9 @@ async function loadModule(route) {
       },
       performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:currentHub,survey,action,response});},
       performIndicators:async(action,input,signal)=>{const {callSahmtPerformanceApi}=await import('./sahmt-performance-api.js');return callSahmtPerformanceApi({uid,isCurrent:()=>currentHub()&&isSahmtPerformanceAction(action),action,input,signal});},
-      performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>currentHub()&&consultationsAllowed,kind,action,input,signal});},
+      performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>currentHub()&&(kind==='epidemiological'?epidemiologicalAllowed:consultationsAllowed),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:true,groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:true,groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
     return;
   }

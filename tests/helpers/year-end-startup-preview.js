@@ -13,6 +13,7 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
    if(action==='LOAD'&&uid==='mode-owner')return {isAdmin:true,ownSigla:'FR',siglas:['FR'],months:[],rules:{}};
    throw Error('UNEXPECTED_VACATION_ACTION');
   }`,
+  'functional-access.js':`export async function getFunctionalAccess(){return {allowed:false};}export async function isEffectiveTeamMember(user){return ['team','shift-only','mode-owner'].includes(user.uid);}`,
   'firebase-app.js':'export const firebaseConfigured=true,app=null,appCheckReady=Promise.resolve(null);',
   'year-end-status-client.js':`export async function readYearEndBannerStatus({uid,isCurrent}){const r=await fetch('${base}__year-end-fixture',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({uid,action:'banner'})});const data=await r.json();if(!r.ok)throw Object.assign(Error(data.code),{code:data.code});if(!isCurrent())throw Error('YEAR_END_SESSION_CHANGED');return {participation:{canParticipate:data.eligible},completed:data.completed};}`,
   'auth.js':`const uid=new URL(location.href).searchParams.get('account')||'team';

@@ -37,6 +37,11 @@ async function ownCategoryAssignment(user) {
   return row;
 }
 
+export async function isEffectiveTeamMember(user) {
+  const assignment = await ownCategoryAssignment(user);
+  return assignedInstitutionalGroup(assignment, user) === 'team';
+}
+
 /** Checks the FA roster category before showing or opening the individual FK module. */
 export async function getFunctionalAccess(session) {
   const user = session?.user, profile = session?.profile;

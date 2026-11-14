@@ -52,7 +52,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     fakeImport: async (path) => {
       imports.push(path);
       if (path === './management-hub.js') return {mountManagementHub: (root, options) => { queries.push({name:'mountManagementHub', options}); return () => {}; }};
-      if (path === './functional-access.js') return {getFunctionalAccess:async()=>({allowed:true,group:'EQUIPE'})};
+      if (path === './functional-access.js') return {getFunctionalAccess:async()=>({allowed:true,group:'EQUIPE'}),isEffectiveTeamMember:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true};
       if (path === './data.js') return data;
       if (path === './performance-ui.js') return {mountPerformanceModule: () => {queries.push({name:'mountPerformanceModule'}); return () => {};}};
       throw new Error(`Importação inesperada no teste: ${path}`);
@@ -384,7 +384,7 @@ test('Governança admite todos os perfis aprovados e mantém contas não aprovad
  }
  assert.deepEqual(pilot,before);
  const common=harness({session:approved(),route:'management-hub'});await common.ui.loadModule('management-hub');
- assert.deepEqual(common.imports,['./management-hub.js','./functional-access.js']);assert.equal(common.queries[0].name,'mountManagementHub');assert.deepEqual(common.navigations,[]);const access=common.queries[0].options.access;assert.equal(access.groups,false);assert.equal(access.records,false);assert.equal(access.results,true);assert.equal(access.functional,true);assert.equal(access.sahmtPerformance,undefined);assert.equal(access.indicatorResults,undefined);assert.equal(access.institutionalSurveys,true);assert.equal(access.surveys,true);
+ assert.deepEqual(common.imports,['./management-hub.js','./functional-access.js']);assert.equal(common.queries[0].name,'mountManagementHub');assert.deepEqual(common.navigations,[]);const access=common.queries[0].options.access;assert.equal(access.groups,false);assert.equal(access.records,false);assert.equal(access.results,true);assert.equal(access.functional,true);assert.equal(access.sahmtPerformance,undefined);assert.equal(access.indicatorResults,undefined);assert.equal(access.institutionalSurveys,true);assert.equal(access.surveys,true);assert.equal(access.epidemiological,true);
  const direct=renderHarness(approved(),'management-hub');await direct.context.runRender();
  assert.deepEqual(direct.navigations,[]);assert.deepEqual(direct.loads,['management-hub']);
 });
