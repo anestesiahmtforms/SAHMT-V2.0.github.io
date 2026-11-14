@@ -13,6 +13,7 @@ function doPost(event) {
     var envelope = JSON.parse((event && event.postData && event.postData.contents) || '{}');
     var payload = verifyEnvelope_(envelope);
     if (payload.action === 'SYNC_OVERVIEW') return json_(syncOwnOverview_(payload.faIdToken));
+    if (payload.action === 'READ_TEAM_OVERVIEW') return json_(readTeamOverview_(payload.faIdToken, payload.subjectUid));
     if (payload.action === 'FUNCTIONAL_SURVEY_SUBMIT') return json_(submitFunctionalSurvey_(payload));
     throw new Error('FK_ACTION_INVALID');
   } catch (error) {
@@ -52,19 +53,20 @@ function authorizeFaUser_(idToken) {
   } else {
     var categoryId = sha256Hex_(JSON.stringify(email));
     var assignment = readFaDocument_(idToken, 'userCategories/' + categoryId);
-    var allowedCategories = ['EFETIVO','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO','ADMINISTRADOR','GESTOR'];
-    var affiliations = assignment && Array.isArray(assignment.memberCategories)
-      ? assignment.memberCategories.filter(function(value) { return ['EFETIVO','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'].indexOf(value) !== -1; }) : [];
-    if (!assignment || assignment.schemaVersion !== 1 || assignment.identityStatus !== 'LINKED'
-      || assignment.uid !== uid || normalizeEmail_(assignment.email) !== email
-      || !Array.isArray(assignment.memberCategories) || new Set(assignment.memberCategories).size !== assignment.memberCategories.length
-      || assignment.memberCategories.some(function(value) { return allowedCategories.indexOf(value) === -1; })
-      || affiliations.length !== 1 || affiliations[0] !== 'EFETIVO')
-      throw new Error('FK_AUTH_DENIED');
+    if (!isEffectiveAssignment_(assignment, uid, email)) throw new Error('FK_AUTH_DENIED');
     group = 'EQUIPE';
     permissions = [];
   }
-  return {code:'FK_AUTH_READY', uid:uid, email:email, group:group, permissions:permissions};
+  return {code:'FK_AUTH_READY', uid:uid, email:email, group:group, permissions:permissions,
+    administrator:group === 'ADMINISTRADOR' && (profile.role === 'administrador_app' || (profile.permissions || {}).admin === true)};
+}
+
+function isEffectiveAssignment_(assignment, uid, email) {
+  var categories = assignment && assignment.memberCategories;
+  return !!assignment && assignment.schemaVersion === 1 && assignment.identityStatus === 'LINKED' &&
+    assignment.uid === uid && assignment.email === email && Array.isArray(categories) &&
+    new Set(categories).size === categories.length && categories.includes('EFETIVO') &&
+    categories.every(function(value) { return ['EFETIVO','ADMINISTRADOR','GESTOR'].includes(value); });
 }
 
 function submitFunctionalSurvey_(payload) {
@@ -95,7 +97,7 @@ function submitFunctionalSurvey_(payload) {
   var result = UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/' + FK_PROJECT_
     + '/databases/(default)/documents:commit', {
       method:'post', contentType:'application/json',
-      headers:{Authorization:'Bearer ' + getFkWriterAccessToken_()},
+      headers:{Authorization:'Bearer ' + getFkSnapshotAccessToken_()},
       payload:JSON.stringify({writes:writes}), muteHttpExceptions:true
     });
   if (result.getResponseCode() >= 200 && result.getResponseCode() < 300)
@@ -220,12 +222,36 @@ function syncOwnOverview_(idToken) {
   return {code:'FK_SNAPSHOT_SAVED', uid:uid, snapshot:snapshot};
 }
 
+function readTeamOverview_(idToken, subjectUid) {
+  var access = authorizeFaUser_(idToken);
+  if (!access.administrator || typeof subjectUid !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(subjectUid))
+    throw new Error('FK_AUTH_DENIED');
+
+  var subject = readFaDocument_(idToken, 'users/' + subjectUid);
+  var email = normalizeEmail_(subject && subject.email);
+  if (!subject || subject.uid !== subjectUid || !email || subject.active !== true || subject.access !== true)
+    throw new Error('FK_TEAM_MEMBER_DENIED');
+  var assignment = readFaDocument_(idToken, 'userCategories/' + sha256Hex_(JSON.stringify(email)));
+  if (!isEffectiveAssignment_(assignment, subjectUid, email)) throw new Error('FK_TEAM_MEMBER_DENIED');
+
+  var url = 'https://firestore.googleapis.com/v1/projects/' + FK_PROJECT_ +
+    '/databases/(default)/documents/functionalProfiles/' + encodeURIComponent(subjectUid);
+  var response = UrlFetchApp.fetch(url, {method:'get', headers:{Authorization:'Bearer ' + getFkSnapshotAccessToken_()}, muteHttpExceptions:true});
+  var status = response.getResponseCode();
+  if (status === 404) return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:null};
+  if (status !== 200) throw new Error('FK_TEAM_OVERVIEW_UNAVAILABLE');
+  var snapshot = decodeFirestoreFields_(JSON.parse(response.getContentText()).fields || {});
+  if (snapshot.uid !== subjectUid) throw new Error('FK_SNAPSHOT_INVALID');
+  validateSnapshot_(snapshot);
+  return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:snapshot};
+}
+
 function writeOwnSnapshot_(snapshot) {
   validateSnapshot_(snapshot);
   var root='projects/'+FK_PROJECT_+'/databases/(default)/documents/';
   var response = UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FK_PROJECT_+
     '/databases/(default)/documents:commit',{method:'post',contentType:'application/json',
-      headers:{Authorization:'Bearer '+getFkWriterAccessToken_()},
+      headers:{Authorization:'Bearer '+getFkSnapshotAccessToken_()},
       payload:JSON.stringify({writes:[{update:{name:root+'functionalProfiles/'+encodeURIComponent(snapshot.uid),
         fields:toFirestoreFields_(snapshot)}}]}),muteHttpExceptions:true});
   if (response.getResponseCode() < 200 || response.getResponseCode() >= 300) throw new Error('FK_FIRESTORE_WRITE_FAILED');
@@ -270,8 +296,8 @@ function signFkJwt_(payload) {
   return signedJwt;
 }
 
-/** Firestore writes run as the narrowly-scoped FK service account, not the script owner. */
-function getFkWriterAccessToken_() {
+/** FK snapshot operations use the narrowly scoped service account. */
+function getFkSnapshotAccessToken_() {
   var now = Math.floor(Date.now() / 1000);
   var assertion = signFkJwt_({iss:FK_SIGNER_, scope:'https://www.googleapis.com/auth/datastore',
     aud:'https://oauth2.googleapis.com/token', iat:now, exp:now + 3600});

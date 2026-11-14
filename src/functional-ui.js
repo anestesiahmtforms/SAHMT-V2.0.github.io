@@ -3,7 +3,8 @@ import {doc, getDocFromServer} from 'firebase/firestore';
 import {getFunctionalFirestore} from './functional-firebase.js';
 import {getFunctionalAuth} from './functional-firebase.js';
 import {waitForGoogleProjectSession} from './google-project-auth-runtime.js';
-import {refreshFunctionalOverview} from './functional-client.js';
+import {refreshFunctionalOverview,readFunctionalTeamOverview} from './functional-client.js';
+import {listFunctionalTeam} from './functional-access.js';
 import {operationalContentAllowed,operationalFolderNotice} from './operational-folder-runtime.js';
 
 let activeFunctionalMountCleanup = null;
@@ -61,10 +62,11 @@ function sourceDetail(key,value) {
   return 'Resumo individual atualizado.';
 }
 
-export async function mountFunctionalModule(root, {uid, faAuth, isCurrent = () => true, onSessionRequired = () => {}} = {}) {
+export async function mountFunctionalModule(root, {uid, faAuth, administrator = false, isCurrent = () => true, onSessionRequired = () => {}} = {}) {
   let disposed = false;
   let stopAuth = () => {};
   const expanded = new Set();
+  let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '';
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const ownSession = () => current() && getFunctionalAuth()?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
@@ -74,6 +76,7 @@ export async function mountFunctionalModule(root, {uid, faAuth, isCurrent = () =
     stopAuth();
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     root?.removeEventListener('click', onFunctionalClick);
+    root?.removeEventListener('change', onSubjectChange);
   };
   activeFunctionalMountCleanup?.();
   activeFunctionalMountCleanup = cleanup;
@@ -97,19 +100,25 @@ export async function mountFunctionalModule(root, {uid, faAuth, isCurrent = () =
     if (!ownSession()) return cleanup;
     const profile = snapshot?.exists() ? snapshot.data() : null;
     if (profile && profile.uid !== uid) throw new Error('FK_PROFILE_UID_MISMATCH');
-    const sources={...(profile?.sources||{})};
-    paint('<section class="functional-page"><div data-fk-sources>'+sourceCards(sources,expanded)+'</div>'
-      + '<p class="functional-status" data-fk-refresh-status role="status">Atualizando seus dados…</p>'
+    ownSources={...(profile?.sources||{})};
+    ownStatus='Atualizando seus dados…';
+    const selector=administrator?'<div class="functional-team"><button class="secondary-button" type="button" data-fk-team aria-expanded="false" aria-controls="fk-team-picker">Selecionar integrante da Equipe</button>'
+      + '<div id="fk-team-picker" data-fk-picker hidden><label for="fk-team-subject">Integrante da Equipe</label>'
+      + '<select id="fk-team-subject" data-fk-subject disabled><option value="">Meu perfil</option></select><p data-fk-team-status role="status"></p></div>'
+      + '<h2 data-fk-owner>Meu perfil</h2></div>':'';
+    paint('<section class="functional-page">'+selector+'<div data-fk-sources>'+sourceCards(ownSources,expanded)+'</div>'
+      + '<p class="functional-status" data-fk-refresh-status role="status">'+ownStatus+'</p>'
       + '</section>');
     root.addEventListener('click', onFunctionalClick);
-    void updateOverview(db,sources);
+    if(administrator)root.addEventListener('change', onSubjectChange);
+    void updateOverview(db);
   } catch {
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     paint('<section class="functional-page"><p class="empty-state" role="status">Não foi possível confirmar sua autorização em FA e abrir seu perfil individual em FK. Tente novamente mais tarde.</p></section>');
   }
   return cleanup;
 
-  async function updateOverview(db,sources) {
+  async function updateOverview(db) {
     let refreshFailed=false;
     try {
       await refreshFunctionalOverview({faAuth,uid,isCurrent:ownSession});
@@ -118,21 +127,78 @@ export async function mountFunctionalModule(root, {uid, faAuth, isCurrent = () =
       if(ownSession()&&updated.exists()){
         const profile=updated.data();
         if(profile.uid!==uid)throw new Error('FK_PROFILE_UID_MISMATCH');
-        Object.assign(sources,profile.sources||{});
+        ownSources={...(profile.sources||{})};
       }
     } catch {refreshFailed=true;}
     if(!ownSession())return;
+    ownStatus=refreshFailed?'As fontes não puderam ser atualizadas agora. Os últimos dados disponíveis permanecem exibidos.':'';
+    if(!selection)renderOverview(ownSources,ownStatus);
+  }
+
+  function renderOverview(sources,statusText) {
     const host=root.querySelector('[data-fk-sources]');
     if(host){
       const focused = host.ownerDocument?.activeElement?.dataset.fkSource;
-      host.innerHTML=sourceCards(sources,expanded);
+      host.innerHTML=sources?sourceCards(sources,expanded):'';
       if(focused)host.querySelector('[data-fk-source="'+focused+'"]')?.focus({preventScroll:true});
     }
     const status=root.querySelector('[data-fk-refresh-status]');
-    if(status)status.textContent=refreshFailed?'As fontes não puderam ser atualizadas agora. Os últimos dados disponíveis permanecem exibidos.':'';
+    if(status)status.textContent=statusText;
+  }
+
+  async function openTeamPicker(button) {
+    const picker=root.querySelector('[data-fk-picker]');
+    if(!picker)return;
+    picker.hidden=!picker.hidden;
+    button.setAttribute('aria-expanded',String(!picker.hidden));
+    if(picker.hidden)return;
+    const select=picker.querySelector('[data-fk-subject]');
+    const status=picker.querySelector('[data-fk-team-status]');
+    if(!select.disabled){select.focus();return;}
+    if(loadingRoster)return;
+    loadingRoster=true;
+    status.textContent='Carregando integrantes…';
+    try {
+      const members=await listFunctionalTeam();
+      if(!ownSession())return;
+      roster=members;
+      select.innerHTML='<option value="">Meu perfil</option>'+roster.map(member=>
+        '<option value="'+escapeHtml(member.uid)+'">'+escapeHtml(member.name)+'</option>').join('');
+      select.disabled=false;
+      status.textContent=roster.length?'':'Nenhum integrante ativo da Equipe foi encontrado.';
+      if(!picker.hidden)select.focus();
+    } catch {
+      if(ownSession())status.textContent='Não foi possível carregar a Equipe. Feche e abra a seleção para tentar novamente.';
+    } finally {loadingRoster=false;}
+  }
+
+  async function onSubjectChange(event) {
+    if(!event.target.matches('[data-fk-subject]')||!administrator||!ownSession())return;
+    const value=event.target.value;
+    const member=roster.find(row=>row.uid===value);
+    if(value&&!member)return;
+    const revision=++subjectRevision;
+    selection=value;
+    expanded.clear();
+    root.querySelector('[data-fk-owner]').textContent=member?.name||'Meu perfil';
+    if(!member){renderOverview(ownSources,ownStatus);return;}
+    renderOverview(null,'Carregando perfil funcional…');
+    const isSelected=()=>ownSession()&&revision===subjectRevision;
+    try {
+      const profile=await readFunctionalTeamOverview({faAuth,uid,subjectUid:member.uid,isCurrent:isSelected});
+      if(!isSelected())return;
+      renderOverview(profile?.sources||null,profile?'':'Este integrante ainda não tem um perfil funcional salvo.');
+    } catch (error) {
+      if(!isSelected())return;
+      renderOverview(null,error?.message==='FK_TEAM_ACCESS_DENIED'
+        ?'O acesso a este perfil não foi autorizado.'
+        :'Não foi possível carregar este perfil agora. Troque a seleção e volte a este integrante para tentar novamente.');
+    }
   }
 
   function onFunctionalClick(event) {
+    const teamButton=event.target.closest('[data-fk-team]');
+    if(teamButton&&administrator&&ownSession()){void openTeamPicker(teamButton);return;}
     const sourceButton = event.target.closest('[data-fk-source]');
     if(sourceButton && ownSession()){
       const key = sourceButton.dataset.fkSource;

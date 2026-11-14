@@ -27,27 +27,56 @@ test('a group excluded from FK completes other sessions without FK credential ex
  controller.observeTarget('FK',null);assert.equal(controller.snapshot().complete,true);
 });
 
-function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUid=person.uid}={}){
+function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUid=person.uid,administrator=false,readTeam=async()=>null}={}){
  const source=readFileSync(new URL('../src/functional-ui.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');
  const updates=[],auth={currentUser:{uid:person.uid}},sources={innerHTML:''},status={textContent:''};
  let recovery=0,reads=0,authChanged;
- const root={isConnected:true,innerHTML:'',addEventListener(){},removeEventListener(){},querySelector:s=>s==='[data-fk-sources]'?sources:s==='[data-fk-refresh-status]'?status:null};
+ const listeners=new Map(),teamStatus={},select={disabled:true,focus(){}},owner={};
+ const picker={hidden:true,querySelector:s=>s==='[data-fk-subject]'?select:teamStatus};
+ const button={setAttribute(){}};
+ const hosts={'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-picker]':picker};
+ const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s]};
+ const openPicker=()=>listeners.get('click')({target:{closest:s=>s==='[data-fk-team]'?button:null}});
+ const choose=value=>listeners.get('change')({target:{value,matches:s=>s==='[data-fk-subject]'}});
  const context=vm.createContext({setTimeout,clearTimeout,env:{VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED:'true'},
   onAuthStateChanged:(_auth,callback)=>{authChanged=callback;return()=>{};},
   getFunctionalAuth:()=>auth,getFunctionalFirestore:()=>({}),waitForGoogleProjectSession:async()=>connected,
+  readFunctionalTeamOverview:readTeam,listFunctionalTeam:async()=>[{uid:'ana',name:'Ana'},{uid:'bia',name:'Bia'}],
   refreshFunctionalOverview:refresh,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
   getDocFromServer:async path=>{reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}}}})};}});
  vm.runInContext(source,context);
- return {root,sources,status,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
+ return {root,sources,status,owner,select,openPicker,choose,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
 }
 
 test('FK renders its profile before a slow refresh resolves',async()=>{
  const gate=deferred(),f=ui({refresh:()=>gate.promise});const cleanup=await f.run();
- assert.doesNotMatch(f.root.innerHTML,/data-fk-survey|Pesquisas institucionais/);assert.match(f.root.innerHTML,/Dados sincronizados/);
+ assert.doesNotMatch(f.root.innerHTML,/data-fk-team|data-fk-survey|Pesquisas institucionais/);assert.match(f.root.innerHTML,/Dados sincronizados/);
  assert.equal(f.root.innerHTML.match(/data-fk-source="([^"]+)"/)?.[1],'performance');
  assert.match(f.root.innerHTML,/aria-expanded="false"/);
  assert.doesNotMatch(f.root.innerHTML,/ACESSO INDIVIDUAL|SAHMT/);
  cleanup();gate.resolve();await turn();assert.equal(f.sources.innerHTML,'');
+});
+
+test('administrator selection clears the previous profile and ignores responses for an earlier choice',async()=>{
+ const ana=deferred(),own=deferred(),calls=[];
+ const f=ui({administrator:true,refresh:()=>own.promise,readTeam:({subjectUid})=>{
+  calls.push(subjectUid);
+  return subjectUid==='ana'?ana.promise:Promise.resolve({uid:'bia',sources:{vaccination:{state:'READY'}}});
+ }});
+ const cleanup=await f.run();
+ try{
+  assert.match(f.root.innerHTML,/Selecionar integrante da Equipe/);
+  f.openPicker();await turn();
+  assert.match(f.select.innerHTML,/<option value="ana">Ana<\/option>/);
+  const first=f.choose('ana');
+  assert.equal(f.sources.innerHTML,'');
+  await f.choose('bia');assert.deepEqual(calls,['ana','bia']);
+  assert.equal(f.owner.textContent,'Bia');assert.match(f.sources.innerHTML,/Vacinação/);
+  ana.resolve({uid:'ana',sources:{dosimetry:{state:'READY'}}});
+  own.resolve();await first;await turn();
+  assert.match(f.sources.innerHTML,/Vacinação/);assert.doesNotMatch(f.sources.innerHTML,/Dosimetria|Cadastro Profissional/);
+  await f.choose('');assert.equal(f.owner.textContent,'Meu perfil');assert.match(f.sources.innerHTML,/Cadastro Profissional/);
+ }finally{cleanup();}
 });
 
 test('missing FK session returns to central FA recovery without an individual Google button',async()=>{

@@ -1582,7 +1582,7 @@ async function loadModule(route) {
     }
     const isCurrent=()=>generation===evaluationModuleGeneration&&content.isConnected&&currentRoute()==='functional'&&session.status==='signed-in'
       &&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
-    const cleanup=await mountFunctionalModule(content,{uid,faAuth:auth,isCurrent,onSessionRequired:()=>{
+    const cleanup=await mountFunctionalModule(content,{uid,faAuth:auth,administrator:access.admin===true,isCurrent,onSessionRequired:()=>{
       if(!isCurrent())return;
       notice='Confirme sua conta na entrada do SAHMT para recuperar o acesso automático aos módulos.';
       navigate('offline');googleAccessPanel?.open();

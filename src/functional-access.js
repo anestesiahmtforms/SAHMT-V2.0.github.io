@@ -42,6 +42,22 @@ export async function isEffectiveTeamMember(user) {
   return assignedInstitutionalGroup(assignment, user) === 'team';
 }
 
+export async function listFunctionalTeam() {
+  const {listMemberCategoryAssignments, listUserProfiles} = await import('./data.js');
+  const [assignments, profiles] = await Promise.all([listMemberCategoryAssignments(), listUserProfiles()]);
+  const byUid = new Map(profiles.filter(profile => profile.uid === profile.id && profile.active === true && profile.access === true)
+    .map(profile => [profile.uid, profile]));
+  const members = new Map();
+  for (const assignment of assignments) {
+    const profile = byUid.get(assignment.uid);
+    if (profile && normalizeEmail(profile.email) &&
+        assignedInstitutionalGroup(assignment, profile) === 'team') {
+      members.set(profile.uid, {uid: profile.uid, name: profile.displayName?.trim() || profile.sigla?.trim() || 'Nome não cadastrado'});
+    }
+  }
+  return [...members.values()].sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
+}
+
 /** Checks the FA roster category before showing or opening the individual FK module. */
 export async function getFunctionalAccess(session) {
   const user = session?.user, profile = session?.profile;
@@ -49,7 +65,8 @@ export async function getFunctionalAccess(session) {
     || profile?.active !== true || profile?.access !== true) return Object.freeze({allowed: false, code: 'PROFILE_INACTIVE'});
   const email = normalizeEmail(user.email);
   if (user.emailVerified === true && normalizeEmail(profile.email) === ADMIN_EMAIL && email === ADMIN_EMAIL)
-    return Object.freeze({allowed: true, group: 'ADMINISTRADOR', admin: true});
+    return Object.freeze({allowed: true, group: 'ADMINISTRADOR', admin: session.accountMode !== 'team' &&
+      (profile.role === 'administrador_app' || profile.permissions?.admin === true)});
   if (user.emailVerified === true && normalizeEmail(profile.email) === MANAGER_EMAIL && email === MANAGER_EMAIL
     && profile.role === 'gestor')
     return Object.freeze({allowed: true, group: 'GESTOR', admin: false});

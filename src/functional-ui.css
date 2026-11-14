@@ -45,6 +45,11 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
 }
 .functional-dialog > footer button { width: 100%; min-height: 44px; }
 .functional-page { display: grid; gap: 14px; }
+.functional-team { display: grid; gap: 8px; }
+.functional-team [data-fk-picker]:not([hidden]) { display: grid; gap: 6px; }
+.functional-team select { width: 100%; min-height: 44px; color: inherit; }
+.functional-team h2 { margin: 3px 0; font-size: 1.1rem; }
+.functional-team p { margin: 0; }
 .functional-source-grid { display: grid; gap: 12px; }
 .functional-tile {
   display: grid;
