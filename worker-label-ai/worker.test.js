@@ -260,8 +260,15 @@ test('FH image reader rejects FA tokens, expired leases and foreign module claim
  }
 });
 
-for(const disabled of [['operacao'],['operacao/etiquetas']])test('disabled label folder blocks extraction before profile and AI reads: '+disabled,async()=>{const f=createFixture({policy:{schemaVersion:1,revision:1,disabled}});const response=await f.request(await validTokenPair());assert.equal(response.status,403);assert.equal(f.calls.some(c=>c.url.includes('/users/')||c.url.includes('api.openai.com')),false);});
+for(const disabled of [['operacao'],['operacao/etiquetas']])test('disabled label folder blocks extraction before AI reads: '+disabled,async()=>{const f=createFixture({policy:{schemaVersion:1,revision:1,disabled}});const response=await f.request(await validTokenPair());assert.equal(response.status,403);assert.equal(f.calls.some(c=>c.url.includes('api.openai.com')),false);});
 for(const config of [{policy:{}},{policyStatus:503}])test('unconfirmed label policy fails closed '+JSON.stringify(config),async()=>{const f=createFixture(config);assert.equal((await f.request(await validTokenPair())).status,503);assert.equal(f.calls.some(c=>c.url.includes('api.openai.com')),false);});
+test('an active administrator can extract labels while the folder is disabled',async()=>{
+ const fixture=createFixture({projectId:'sahmt-etiquetas-fh',profile:firestoreProfile({permissions:{admin:true}}),
+  policy:{schemaVersion:1,revision:1,disabled:['operacao']}});
+ const response=await fixture.request(await validTokenPair({idClaims:fhClaims}));
+ assert.equal(response.status,200);
+ assert.equal(fixture.calls.some(call=>call.url.endsWith('/runtimePolicy/folders')),false);
+});
 test('revocation during extraction withholds the result',async()=>{const f=createFixture({policy:{schemaVersion:1,revision:1,disabled:[]},revoke:true});assert.equal((await f.request(await validTokenPair())).status,403);});
 
-test('FH extraction obeys local folder policy and unrelated sibling remains active',async()=>{const pair=await validTokenPair({idClaims:fhClaims});const blocked=createFixture({projectId:'sahmt-etiquetas-fh',policy:{schemaVersion:1,revision:1,disabled:['operacao/etiquetas']}});assert.equal((await blocked.request(pair)).status,403);assert.equal(blocked.calls.some(c=>c.url.includes('/users/')||c.url.includes('api.openai.com')),false);const sibling=createFixture({projectId:'sahmt-etiquetas-fh',policy:{schemaVersion:1,revision:1,disabled:['operacao/eventos']}});assert.equal((await sibling.request(pair)).status,200);assert.equal(sibling.calls.filter(c=>c.url.endsWith('/runtimePolicy/folders')).length,2);});
+test('FH extraction obeys local folder policy and unrelated sibling remains active',async()=>{const pair=await validTokenPair({idClaims:fhClaims});const blocked=createFixture({projectId:'sahmt-etiquetas-fh',policy:{schemaVersion:1,revision:1,disabled:['operacao/etiquetas']}});assert.equal((await blocked.request(pair)).status,403);assert.equal(blocked.calls.some(c=>c.url.includes('api.openai.com')),false);const sibling=createFixture({projectId:'sahmt-etiquetas-fh',policy:{schemaVersion:1,revision:1,disabled:['operacao/eventos']}});assert.equal((await sibling.request(pair)).status,200);assert.equal(sibling.calls.filter(c=>c.url.endsWith('/runtimePolicy/folders')).length,2);});

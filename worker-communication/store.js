@@ -9,7 +9,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
  const name=`projects/${project}/databases/${source?'(default)':FF.databaseId}/documents`,root='https://firestore.googleapis.com/v1/'+name;
  const checkCollection=c=>{id(c);if(source&&!(source==='FJ'?['scheduleDays']:['users','scheduleDays']).includes(c))throw fail('COMM_SOURCE_DENIED',403);};
  async function assertAvailable(collection){
-  if(administrator&&!source)return;
+  if(administrator)return;
   if(source&&collection!=='scheduleDays')return;
   try{
    const r=await fetchImpl(root+'/runtimePolicy/folders',{method:'GET',headers:{Authorization:'Bearer '+await getToken()},redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(10000)});

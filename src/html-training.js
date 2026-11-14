@@ -71,7 +71,9 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   let readingPlan=null,readingTracker=null;
   const stopReading=()=>{readingTracker?.cleanup();readingTracker=null;};
   const accessAdmin=()=>isTrainingAdmin(profile)&&folderControlAvailable;
-  const contentAllowed=training=>trainingPathAllowed(folderAccess,trainingAccessPath(training));
+  const pathAllowed=path=>accessAdmin()||trainingPathAllowed(folderAccess,path);
+  const contentAllowed=training=>pathAllowed(trainingAccessPath(training));
+  const inactiveForOthers=path=>accessAdmin()&&!trainingPathAllowed(folderAccess,path);
   const folderLevel=()=>trainingFolderLevel([...catalog.filter(contentAllowed),...inactiveTrainings],folderPath,accessAdmin()?folderPaths:[]);
   const activityFor=training=>{const entry=activityStates.get(training.id);return htmlTrainingActivityState(training,entry?.version===training.version?entry.state:null,uid);};
   function refreshVisibleActivities(){
@@ -130,25 +132,23 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   function catalogue(){
     const level=folderLevel(),leaf=level.folders.length===0&&level.trainings.length>0,visible=level.trainings;
     const folderButton=(path,label,extra='')=>{
-      const enabled=trainingPathAllowed(folderAccess,path),locked=path.length&&!enabled;
+      const enabled=trainingPathAllowed(folderAccess,path),locked=path.length&&!pathAllowed(path);
       return button('folder',label,`data-folder="${h(JSON.stringify(path))}" data-folder-enabled="${enabled}" ${locked?'disabled aria-disabled="true" aria-description="Desativado" data-locked="true"':''} ${extra}`);
     };
     const book='<span class="ht-book-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15M6 8h3M6 12h3m6-4h3m-3 4h3"/></svg></span>';
     const folders=level.folders.map(folder=>{
-      const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong></span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,'class="ht-folder ht-navigation-book"');
+      const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong>${inactiveForOthers(folder.path)?'<small>Inativa para os demais usuários</small>':''}</span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,`class="ht-folder ht-navigation-book" aria-label="${h(folder.name)}" ${inactiveForOthers(folder.path)?'aria-description="Inativa para os demais usuários"':''}`);
       if(!accessAdmin())return entry;
       const enabled=!folderAccess.disabled.includes(JSON.stringify(folder.path));
       return `<div class="ht-navigation-card">${entry}${button('toggle-folder',enabled?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${enabled?'Desativar':'Ativar'} ${h(folder.name)}" ${enabled&&!folderIndexReady?'disabled data-locked="true"':''}`)}</div>`;
     }).join('');
     const documents=visible.map(t=>contentAllowed(t)
-      ?renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t)})
+      ?renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t),inactiveForOthers:inactiveForOthers(trainingAccessPath(t))})
       :renderTrainingDocumentCard(t,{compact:leaf,inactive:true})).join('');
     const count=level.folders.length+visible.length;
     const grid=count?`<div class="ht-browser-grid ht-folders${visible.length?' ht-catalog':''}${leaf?' ht-compact-documents':''}" style="--ht-grid-rows:${Math.ceil(count/2)};--ht-document-count:${Math.max(1,visible.length)};--ht-document-rows:${Math.max(1,Math.ceil(visible.length/2))}" role="group" aria-label="Pastas e documentos">${folders}${documents}</div>`:'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>';
     const preparation=accessAdmin()&&!folderIndexReady
-      ?folderAccess.disabled.length
-        ?'<p class="ht-notice">Ative as pastas desativadas para preparar o controle do acervo.</p>'
-        :'<p class="ht-notice">Prepare o controle de pastas para liberar a desativação.</p>'+button('build-folder-index','Preparar controle de pastas','class="ht-secondary"')
+      ?'<p class="ht-notice">Prepare o controle de pastas para liberar a desativação.</p>'+button('build-folder-index','Preparar controle de pastas','class="ht-secondary"')
       :'';
     return preparation+(folderPath.length?`<div class="ht-folder-toolbar">${button('back','VOLTAR','class="ht-secondary"')}</div>`:'')+grid;
   }
@@ -204,7 +204,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     root.classList.toggle('ht-catalog-view',mode==='catalog');
     root.classList.toggle('ht-navigation-view',mode==='catalog'&&(folderPath.length<=1||folderLevel().folders.length>0));
     if(mode==='participant'&&active&&state)activityStates.set(active.id,{version:active.version,state});
-    root.innerHTML=top()+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='participant'?participation():mode==='editor'&&editor?editorView():mode==='opening'?'<p class="ht-notice" role="status">Abrindo o texto do documento…</p>':'');
+    root.innerHTML=top()+(active&&inactiveForOthers(trainingAccessPath(active))?'<p class="ht-notice">Pasta inativa para os demais usuários.</p>':'')+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='participant'?participation():mode==='editor'&&editor?editorView():mode==='opening'?'<p class="ht-notice" role="status">Abrindo o texto do documento…</p>':'');
     if(mode==='participant'&&content?.sections?.length){
       const frame=root.querySelector('.ht-content-frame');
       if(frame){frame.addEventListener('load',()=>{
@@ -319,7 +319,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
         return;
       }
 
-      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||(path.length&&!validTrainingFolderPath(path)))return;if(!trainingPathAllowed(folderAccess,path))return;folderPath=path;render();refreshVisibleActivities();return;}
+      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||(path.length&&!validTrainingFolderPath(path)))return;if(!pathAllowed(path))return;folderPath=path;render();refreshVisibleActivities();return;}
       if(action==='open')return open(b.dataset.id);
       if(action==='edit'){
         const training=catalog.find(t=>t.id===b.dataset.id)||((active?.id===b.dataset.id)?active:null);

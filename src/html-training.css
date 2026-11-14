@@ -27,6 +27,7 @@
 .ht-document-face{position:relative;display:flex;flex-direction:column;gap:7px;min-width:0;min-height:126px;margin-top:12px;padding:16px;border:1px solid var(--folder-edge);border-top-color:#fffc;border-radius:4px 11px 11px 11px;background:linear-gradient(145deg,#fff,var(--folder-light) 55%,var(--folder-mid));box-shadow:inset 0 2px 2px #fff9,inset 0 -2px 4px #0000000c}
 .ht-document-face .ht-eyebrow{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.58rem;color:var(--folder-ink);font-weight:650}
 .ht-document-title{display:block;font-size:1rem;font-weight:750;line-height:1.3;overflow-wrap:anywhere;color:var(--folder-ink)}
+.ht-document-inactive{font-size:.68rem;font-weight:700;color:#743911;line-height:1.15}
 .ht-document-status{margin-top:auto;padding:7px 16px 0 0;border-top:1px solid var(--folder-edge);font-size:.72rem;line-height:1.3;font-weight:650;color:var(--folder-ink)}
 .ht-document-chevron{position:absolute;right:12px;bottom:12px;font-size:1rem;color:var(--folder-deep)}
 .html-trainings button.ht-document-folder:disabled{opacity:.65;cursor:default}

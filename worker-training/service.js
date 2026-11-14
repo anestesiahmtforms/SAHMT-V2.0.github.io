@@ -66,17 +66,18 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     return {profile,groups:documentGroupsFromAccess(access,identity.email),
       folderAccess:folderAccess||{version:0,disabled:[]},folderPolicyValid:!!folderAccess,folderIndex};
   }
+  const folderAllowed=(auth,path)=>admin(auth.profile)||trainingPathAllowed(auth.folderAccess,path);
   function requireIndexWhenDisabled(auth){
-    if(auth.folderAccess.disabled.length&&!validFolderIndex(auth.folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
+    if(!admin(auth.profile)&&auth.folderAccess.disabled.length&&!validFolderIndex(auth.folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
   }
   function assertIndexedRead(auth,id){
     requireIndexWhenDisabled(auth);
-    if(!auth.folderAccess.disabled.length)return;
+    if(admin(auth.profile)||!auth.folderAccess.disabled.length)return;
     if(!Object.hasOwn(auth.folderIndex.entries,id))fail('FOLDER_INDEX_REQUIRED',409);
     if(!trainingPathAllowed(auth.folderAccess,auth.folderIndex.entries[id]))fail('FORBIDDEN',403);
   }
   function canRead(auth, training, uid) {
-    return trainingPathAllowed(auth.folderAccess,trainingAccessPath(training))&&canSeeCard(auth,training,uid);
+    return folderAllowed(auth,trainingAccessPath(training))&&canSeeCard(auth,training,uid);
   }
   function canSeeCard(auth, training, uid) {
     return manages(auth.profile, training, uid) || training.status === 'PUBLISHED' && auth.groups.includes(training.audienceGroup);
@@ -112,7 +113,7 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     score.total = total(score); documentSize(score);
     return score;
   }
-  const mayReadAggregate=auth=>auth.folderAccess.disabled.length===0;
+  const mayReadAggregate=auth=>admin(auth.profile)||auth.folderAccess.disabled.length===0;
   async function readOrUpdateScore(tx, uid, timestamp, state) {
     const existing = await tx.get(C.score, uid);
     const pending = await tx.get(C.pendingScores, uid);
@@ -152,7 +153,6 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
       const auth = await authorize(tx, identity);
       if(action==='BUILD_FOLDER_INDEX'){
         if(!admin(auth.profile))fail('FORBIDDEN',403);
-        if(auth.folderAccess.disabled.length)fail('FORBIDDEN',403);
         let rows;
         try { rows=await tx.list(C.training,[],1000); }
         catch(error){if(error.code==='TRAINING_STORE_QUERY_TRUNCATED')fail('FOLDER_INDEX_TOO_LARGE',409);throw error;}
@@ -203,19 +203,18 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
         return { score, trainings };
       }
       if (action === 'LIST') {
-        if(!admin(auth.profile))requireIndexWhenDisabled(auth);
+        requireIndexWhenDisabled(auth);
         const trainings = [];
         const indexed=validFolderIndex(auth.folderIndex);
         const entries=indexed?Object.entries(auth.folderIndex.entries):[];
-        const enabled=entries.filter(([,path])=>trainingPathAllowed(auth.folderAccess,path));
+        const enabled=entries.filter(([,path])=>folderAllowed(auth,path));
         const inactiveTrainings=entries.flatMap(([id,folderPath])=>{
-          if(trainingPathAllowed(auth.folderAccess,folderPath))return [];
+          if(folderAllowed(auth,folderPath))return [];
           const card=Object.hasOwn(auth.folderIndex.cards||{},id)?auth.folderIndex.cards[id]:null;
           return card&&canSeeCard(auth,card,identity.uid)?[{id,title:card.title,folderPath}]:[];
         });
-        // Keep the administrative controls reachable when a legacy policy needs its index prepared.
         const rows=indexed?await getMany(tx,C.training,enabled.map(([id])=>id))
-          : auth.folderAccess.disabled.length?[]:await tx.list(C.training,[],1000);
+          : await tx.list(C.training,[],1000);
         for (const training of rows) {
           if (training && canRead(auth, training, identity.uid)) trainings.push(publicTraining(training, auth.profile, identity.uid));
         }
@@ -226,10 +225,10 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
       }
       const trainingId = identifier(input.trainingId);
       assertIndexedRead(auth,trainingId);
-      if(publish&&!trainingPathAllowed(auth.folderAccess,trainingAccessPath(publish.training)))fail('FORBIDDEN',403);
+      if(publish&&!folderAllowed(auth,trainingAccessPath(publish.training)))fail('FORBIDDEN',403);
       const training = await tx.get(C.training, trainingId);
 
-      if(training&&!trainingPathAllowed(auth.folderAccess,trainingAccessPath(training)))fail('FORBIDDEN',403);
+      if(training&&!folderAllowed(auth,trainingAccessPath(training)))fail('FORBIDDEN',403);
       if (action === 'PUBLISH') {
         if (!training && !admin(auth.profile) || training && !manages(auth.profile, training, identity.uid)) fail('FORBIDDEN', 403);
         if (publish.training.managerUid === '' && !admin(auth.profile) || input.deferInstitutionalReview === true && !admin(auth.profile)) fail('FORBIDDEN', 403);

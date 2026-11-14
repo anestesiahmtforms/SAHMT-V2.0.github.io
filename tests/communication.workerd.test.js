@@ -9,7 +9,7 @@ const {build}=require('esbuild'),{Miniflare,convertV4MiniflareOptions}=require('
 test('actual Worker runtime: FF-only Auth, zero-billing check, FF-only persistence, individual push and denial',async()=>{
  const data=new Map(),writes=[],pushes=[],requests=[];let disabledFf=false;
  const roots={FA:'projects/sahmt-17a16/databases/(default)/documents',FF:`projects/${FF.projectId}/databases/${FF.databaseId}/documents`};
- const people=[{fa:'fa-admin',ff:'ff-admin',email:ADMINS[0],google:'google-admin'},{fa:'fa-person',ff:'ff-person',email:'person@example.test',google:'google-person'}];
+ const people=[{fa:'fa-admin',ff:'ff-admin',email:ADMINS[0],google:'google-admin'},{fa:'fa-person',ff:'ff-person',email:'person@example.test',google:'google-person'},{fa:'fa-manager',ff:'ff-manager',email:ADMINS[3],google:'google-manager'}];
  for(const p of people)data.set(roots.FF+'/users/'+p.fa,{uid:p.fa,email:p.email,active:true,access:true,role:'gestor'});
  data.set(roots.FF+'/communicationSettings/main',{pushEnabled:false});
  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048});
@@ -57,12 +57,12 @@ test('actual Worker runtime: FF-only Auth, zero-billing check, FF-only persisten
   data.set(roots.FF+'/communicationMessages/'+releaseId,{...saved.body.message,id:releaseId});
   assert.equal((await call('PREPARE',{id:releaseId})).status,200);assert.equal(pushes.length,0);
   data.set(roots.FF+'/runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['comunicacao']});
-  const writesBeforePause=writes.length;
-  const paused=await call('SEND_BATCH',{id:releaseId,batches:0,confirmed:true});assert.equal(paused.status,403);assert.equal(paused.body.code,'COMM_FOLDER_DISABLED');assert.equal(pushes.length,0);assert.equal(writes.length,writesBeforePause);
-  assert.equal((await call('BOOTSTRAP',{},people[1])).status,403);
-  data.delete(roots.FF+'/runtimePolicy/folders');
+  for(const actor of people.slice(1)){
+   const blocked=await call('BOOTSTRAP',{},actor);assert.equal(blocked.status,403);assert.equal(blocked.body.code,'COMM_FOLDER_DISABLED');
+  }
   const sent=await call('SEND_BATCH',{id:releaseId,batches:0,confirmed:true});assert.equal(sent.status,200,JSON.stringify(sent));assert.equal(sent.body.dispatch.accepted,1);assert.equal(pushes[0].message.token,device);assert.equal(pushes[0].message.data.route,'home');assert.equal(pushes[0].message.webpush.headers.Urgency,'high');assert.equal(pushes[0].message.data.body,'Never on lock screen');
   assert.equal((await call('SEND_BATCH',{id:releaseId,batches:0,confirmed:true})).status,409);assert.equal(pushes.length,1);assert.ok(writes.length>0);assert.ok(writes.every(p=>p.startsWith(roots.FF+'/')));
+  data.delete(roots.FF+'/runtimePolicy/folders');
   data.set(roots.FF+'/communicationSettings/main',{pushEnabled:false});
   const next=await call('SAVE_MESSAGE',{version:0,message:{...saved.body.message,title:'Primary account disabled'}});assert.equal(next.status,200);
   data.set(roots.FF+'/communicationSettings/main',{pushEnabled:true});

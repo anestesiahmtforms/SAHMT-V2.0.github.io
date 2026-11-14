@@ -52,7 +52,16 @@ export function createOperationalChannelWorker({fetchImpl=fetch,now=Date.now,ver
       const appCheckToken=request.headers.get('X-Firebase-AppCheck');
       if(appCheckToken&&!/^[A-Za-z0-9_.-]{100,16000}$/.test(appCheckToken))throw channelError('CHANNEL_APP_CHECK_INVALID',401);
       const identity=await verifyIdentity(bearer.slice(7),env.FA_FIREBASE_WEB_API_KEY,appCheckToken);
-      const checkFolders=createChannelFolderCheck({fetchImpl,bearer,appCheckToken,body});
+      const requireOpenFolders=createChannelFolderCheck({fetchImpl,bearer,appCheckToken,body});
+      async function checkFolders(){
+        try{await requireOpenFolders();}
+        catch(error){
+          if(error.code!=='CHANNEL_FOLDER_DISABLED')throw error;
+          const profile=await firestore('users/'+encodeURIComponent(identity.uid),bearer,appCheckToken);
+          if(profile.uid!==identity.uid||profile.active!==true||profile.access!==true||
+             !(profile.role==='administrador_app'||profile.permissions?.admin===true))throw error;
+        }
+      }
       await checkFolders();
       const deliver=async(value,status=200,responseOrigin=origin)=>{if(status<400)await checkFolders();return json(value,status,responseOrigin);};
       if(body.action==='source'){

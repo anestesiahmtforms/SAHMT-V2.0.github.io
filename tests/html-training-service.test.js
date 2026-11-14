@@ -112,13 +112,14 @@ test('index migration requires administrator, and publishing updates nested rout
  await assert.rejects(h.exec('OPEN',{trainingId:'rop-one'}),{code:'FORBIDDEN'});
  assert.deepEqual(reads.filter(path=>path.startsWith('htmlTrainings/')),[]);
 });
-test('administrator can reactivate disabled folders and then repair an incomplete index',async()=>{
+test('administrator accesses disabled folders and repairs an incomplete index without reactivating them',async()=>{
  const h=await setup();h.store.seed('htmlTrainingSettings','folderIndex',{schemaVersion:1,complete:false,entries:{}});
  h.store.seed('htmlTrainingSettings','folders',{version:1,disabled:[JSON.stringify(['ROPs'])]});
- for(const action of ['OPEN','CONTENT','EDIT','AUDIT_LIST','SCORE'])await assert.rejects(h.exec(action,{trainingId:'rop-one',version:1},'admin'),{code:'FOLDER_INDEX_REQUIRED'});
- assert.equal((await h.exec('LIST',{},'admin')).trainings.length,0);
- await assert.rejects(h.exec('BUILD_FOLDER_INDEX',{},'admin'),{code:'FORBIDDEN'});
- await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:1},'admin');
+ for(const action of ['OPEN','CONTENT','EDIT','AUDIT_LIST','SCORE'])await h.exec(action,{trainingId:'rop-one',version:1},'admin');
+ const catalog=await h.exec('LIST',{},'admin');
+ assert.equal(catalog.trainings.length,1);
+ assert.deepEqual(catalog.inactiveTrainings,[]);
+ assert.deepEqual(catalog.folderAccess.disabled,[JSON.stringify(['ROPs'])]);
  await h.exec('BUILD_FOLDER_INDEX',{},'admin');
  assert.equal((await h.store.get('htmlTrainingSettings','folderIndex')).complete,true);
  assert.equal((await h.exec('CONTENT',{trainingId:'rop-one',version:1},'admin')).sections.length,2);
@@ -148,8 +149,6 @@ test('enabled sibling progress never reads a disabled sibling aggregate and admi
  const reviewed=await h.exec('REVIEW',{trainingId:'rop-one',uid:'participant',expectedVersion:result.state.version,points:2,note:'Approved'},'manager');assert.equal(reviewed.score,null);
  assert.deepEqual(reads.filter(path=>path.startsWith('htmlTrainingScores/')),[]);
  await assert.rejects(h.exec('RECONCILE_SCORE',{subjectUid:'participant'},'manager'),{code:'FORBIDDEN'});
- await assert.rejects(h.exec('RECONCILE_SCORE',{subjectUid:'participant'},'admin'),{code:'FORBIDDEN'});
- await h.exec('SET_FOLDER_ACCESS',{path:['Diretrizes'],enabled:true,expectedVersion:1},'admin');
  const reconciled=await h.exec('RECONCILE_SCORE',{subjectUid:'participant'},'admin');assert.equal(reconciled.score.total,107);
  assert.equal((await h.store.get('htmlTrainingStates','rop-one_participant')).bestScore,5);
 });
@@ -489,13 +488,14 @@ test('only administrators change folder access; disabled parents and children bl
  assert.equal((await h.exec('LIST')).trainings.length,0);
  for(const action of ['OPEN','CONTENT','BEGIN'])await assert.rejects(h.exec(action,{trainingId:'rop-one',requestId:'one'}),{code:'FORBIDDEN'});
  await assert.rejects(h.exec('EDIT',{trainingId:'rop-one'},'manager'),{code:'FORBIDDEN'});
- assert.equal((await h.exec('LIST',{},'admin')).trainings.length,0);
- await assert.rejects(h.exec('OPEN',{trainingId:'rop-one'},'admin'),{code:'FORBIDDEN'});
+ assert.equal((await h.exec('LIST',{},'admin')).trainings.length,1);
+ assert.equal((await h.exec('OPEN',{trainingId:'rop-one'},'admin')).training.id,'rop-one');
  await assert.rejects(h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:0},'admin'),{code:'VERSION_CONFLICT'});
  await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:1},'admin');
  assert.equal((await h.exec('OPEN',{trainingId:'rop-one'},'admin')).training.id,'rop-one');
  await h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery'],enabled:false,expectedVersion:2},'admin');
  assert.equal((await h.exec('LIST')).trainings.length,0);
+ assert.equal((await h.exec('OPEN',{trainingId:'rop-one'},'admin')).training.id,'rop-one');
  await h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery'],enabled:true,expectedVersion:3},'admin');
  assert.equal((await h.exec('LIST')).trainings.length,1);
  assert.equal(await h.store.get('htmlTrainingStates','rop-one_participant'),null);

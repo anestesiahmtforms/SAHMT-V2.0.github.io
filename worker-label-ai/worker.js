@@ -226,6 +226,7 @@ async function readAuthorizedProfile(uid, idToken, fetchImpl, projectId = PROJEC
   const authorized = projectId === 'sahmt-etiquetas-fh' ? (fhPermission('labelsWrite') === true || fhPermission('labelsManage') === true) :
     legacyAdminRoleAllowed || profilePermission(fields, 'admin') || profilePermission(fields, 'labelsWrite') || profilePermission(fields, 'labelsManage');
   if (!authorized) throw new WorkerError(403, 'PERMISSION_DENIED', 'Seu perfil não tem permissão para ler etiquetas.');
+  return legacyAdminRoleAllowed||profilePermission(fields,'admin');
 }
 
 function imageBytes(dataUrl) {
@@ -398,8 +399,8 @@ export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.
       if (projectId === 'sahmt-etiquetas-fh' && (identity.sourceProjectId !== PROJECT_ID || identity.moduleStation !== 'FH' ||
           identity.firebase?.sign_in_provider !== 'custom' || !Number.isSafeInteger(identity.moduleLeaseExpiresAt) || identity.moduleLeaseExpiresAt <= now() / 1000))
         throw new WorkerError(401, 'UNAUTHENTICATED', 'A sessão de Etiquetas expirou. Abra o módulo novamente.');
-      await requireLabelFolder(idToken,fetchImpl,projectId);
-      await readAuthorizedProfile(identity.sub, idToken, fetchImpl, projectId);
+      const administrator=await readAuthorizedProfile(identity.sub, idToken, fetchImpl, projectId);
+      if(!administrator)await requireLabelFolder(idToken,fetchImpl,projectId);
 
       const contentType = request.headers.get('Content-Type') || '';
       if (!contentType.toLowerCase().startsWith('application/json')) throw new WorkerError(400, 'INVALID_REQUEST', 'A imagem enviada está inválida. Capture novamente.');
@@ -410,7 +411,8 @@ export function createWorker({fetchImpl = globalThis.fetch, crypto = globalThis.
       catch { throw new WorkerError(400, 'INVALID_REQUEST', 'A imagem enviada está inválida. Capture novamente.'); }
       const images = validateImages(body, request);
       const result = await extractWithOpenAi(images, env.OPENAI_API_KEY, fetchImpl);
-      await requireLabelFolder(idToken,fetchImpl,projectId);
+      const stillAdministrator=administrator&&await readAuthorizedProfile(identity.sub,idToken,fetchImpl,projectId);
+      if(!stillAdministrator)await requireLabelFolder(idToken,fetchImpl,projectId);
       return jsonResponse(200, result, origin);
     } catch (error) {
       return errorResponse(error, origin);

@@ -15,6 +15,16 @@ test('FI refuses a disabled source before its query and withholds results when p
  await assert.rejects(fresh.checkMonthly(),{code:'FOLDER_DISABLED'});
 });
 
+test('FI administrator can read sources behind disabled parents and HTML subfolders',async()=>{
+ const guard=createFiFolderReader({administrator:true,
+  readPolicy:()=>assert.fail('administrator reads without the general folder policy'),
+  readTrainingPolicy:()=>assert.fail('administrator reads without the training folder policy')});
+ await guard.checkMonthly();
+ const wrapped=guard.wrap({FB:{get:()=>['document']},FJ:{get:()=>['schedule']}});
+ assert.deepEqual(await wrapped.FB.get('htmlTrainings','protocol'),['document']);
+ assert.deepEqual(await wrapped.FJ.get('scheduleDays','day'),['schedule']);
+});
+
 test('the FI folder panel requires service permission and stays absent from the pilot',()=>{
  const profile={permissions:{admin:true}};
  assert.match(renderFiControl({profile,showFolderAdmin:true}),/data-fi-folder-admin/);

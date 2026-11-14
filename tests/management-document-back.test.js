@@ -24,7 +24,7 @@ function trainings({holdOpen = false, holdBegin = false, completed = false,admin
   const api = async (action,input) => {
     calls.push(action);
     if (action === 'LIST') {
-      const folderPath=trainingAccessPath(training),inactive=!trainingPathAllowed(folderAccess,folderPath);
+      const folderPath=trainingAccessPath(training),inactive=!admin&&!trainingPathAllowed(folderAccess,folderPath);
       return {trainings:inactive?[]:[structuredClone(training)],inactiveTrainings:inactive?[{id:training.id,title:training.title,folderPath}]:[],
         folderAccess:structuredClone(folderAccess),folderIndexReady:true,canManageFolders:admin,folderPaths:[folderPath]};
     }
@@ -71,20 +71,20 @@ test('disabled deep folders cannot hydrate stale catalog or expose folder comman
  assert.deepEqual(h.calls,['LIST']);assert.doesNotMatch(h.root.innerHTML,/data-ht="toggle-folder"|data-ht="open"/);
 });
 
-test('administrator opens a descendant only after reactivating each independently disabled folder',async t=>{
+test('administrator opens documents behind disabled parents and keeps visibility of their status',async t=>{
  const path=['Protocolos','Protocolos do SAHMT','Adultos','Via aérea'];
  const h=trainings({admin:true,path,disabled:[path.slice(0,1),path.slice(0,3)]});t.after(()=>h.controller());await tick();
- h.click('folder',{folder:JSON.stringify(path)});h.click('open',{id:'one'});await tick();
- assert.deepEqual(h.calls,['LIST']);
- h.click('toggle-folder',{folder:JSON.stringify(path.slice(0,1))});await tick();await tick();
- h.click('folder',{folder:JSON.stringify(path.slice(0,2))});await tick();
- assert.match(h.root.innerHTML,/Ativar Adultos/);
- h.click('folder',{folder:JSON.stringify(path)});await tick();
- assert.equal(h.calls.includes('OPEN'),false);
- h.click('toggle-folder',{folder:JSON.stringify(path.slice(0,3))});await tick();await tick();
- h.click('folder',{folder:JSON.stringify(path)});await tick();await tick();
- assert.ok(h.calls.includes('OPEN'));assert.match(h.root.innerHTML,/data-ht="open"/);
- h.click('open',{id:'one'});await tick();await tick();assert.ok(h.calls.includes('CONTENT'));assert.match(h.frame.srcdoc,/<p>Texto<\/p>/);
+ assert.match(h.root.innerHTML,/Ativar Protocolos/);
+ assert.match(h.root.innerHTML,/Inativa para os demais usuários/);
+ for(let depth=1;depth<=path.length;depth++){
+  h.click('folder',{folder:JSON.stringify(path.slice(0,depth))});await tick();
+  if(depth===2)assert.match(h.root.innerHTML,/Ativar Adultos/);
+ }
+ assert.match(h.root.innerHTML,/Pasta inativa para os demais usuários/);
+ h.click('open',{id:'one'});await tick();await tick();
+ assert.ok(h.calls.includes('CONTENT'));assert.match(h.frame.srcdoc,/<p>Texto<\/p>/);
+ assert.match(h.root.innerHTML,/Pasta inativa para os demais usuários/);
+ assert.ok(!h.calls.includes('SET_FOLDER_ACCESS'));
 });
 
 test('the protected text is visible before a slow BEGIN completes, without another opening button',async t=>{

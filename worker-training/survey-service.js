@@ -26,15 +26,14 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
   }
   async function execute(action,input,identity){
     if(performanceEnabled&&action==='GET_PERFORMANCE'&&exact(input,[])){
-      await authorize(identity);
+      if(!(await authorize(identity)).administrator)await checkPerformance();
       const runtime=await responseStore.get('fePerformanceRuntime','current');
       if(!performanceActive(runtime,now()))return {status:'PREPARING',uid:identity.uid,summary:{uid:identity.uid,total:0},reference:{maxTotal:0},awards:[]};
       const [summary,reference,awards]=await Promise.all([
         responseStore.get('fePerformanceSummaries',identity.uid),responseStore.get('fePerformanceReference','current'),
         responseStore.list('fePerformanceAwards',[{field:'uid',op:'EQUAL',value:identity.uid}],200)
       ]);
-      await authorize(identity);
-      await checkPerformance();
+      if(!(await authorize(identity)).administrator)await checkPerformance();
       return {status:'READY',uid:identity.uid,summary:summary||{uid:identity.uid,total:0},reference:reference||{maxTotal:0},awards};
     }
     if(action==='REPORT'&&exact(input,['survey','cycle'])&&input.survey==='epidemiological'&&input.cycle===CYCLE){if(!identity?.uid||identity.emailVerified!==true||identity.provider!=='google.com'||identity.email?.trim().toLowerCase()!==reportReaderEmail?.toLowerCase())fail('SURVEY_FORBIDDEN',403);const p=await profileStore.get('users',identity.uid);if(!p||p.uid!==identity.uid||p.email?.toLowerCase()!==identity.email.toLowerCase()||p.active!==true||p.access!==true||!(p.role==='administrador_app'||p.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);const cycle=await responseStore.get('epidemiologicalCycles',CYCLE);const report=cycle?.status==='closed'?await responseStore.get('epidemiologicalReports',CYCLE):null;const fresh=await profileStore.get('users',identity.uid);if(!fresh||fresh.uid!==identity.uid||fresh.email?.toLowerCase()!==identity.email.toLowerCase()||fresh.active!==true||fresh.access!==true||!(fresh.role==='administrador_app'||fresh.permissions?.admin===true))fail('SURVEY_FORBIDDEN',403);return {report:report?.grouping_version===2?report:null};}

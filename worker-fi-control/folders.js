@@ -36,6 +36,7 @@ export function createFiFolderReader({readPolicy,readTrainingPolicy,administrato
   return value;
  }
  async function check(alias,collection) {
+  if(administrator)return;
   const base=collection.split('/')[0];
   if(alias==='FB'&&['htmlTrainings','htmlTrainingContent'].includes(base))return checkHtmlLibrary();
   if(alias==='FJ'&&base==='scheduleDays'){
@@ -51,12 +52,14 @@ export function createFiFolderReader({readPolicy,readTrainingPolicy,administrato
   }
  }
  async function checkHtmlLibrary() {
+  if(administrator)return;
   const value=await assertOpen('gestao/area-gestao-de-documentos');
   if(value?.disabled.some(id=>id.startsWith('gestao/'))||(await training())?.disabled.length)throw fiError('FI_FOLDER_DISABLED',403);
  }
  async function checkMonthly() {
+  if(administrator)return;
   for(const folder of ['registros/qmentum','gestao'])await assertOpen(folder);
-  if((!administrator&&(await policy())?.disabled.some(id=>id.startsWith('gestao/')))||(await training())?.disabled.length)throw fiError('FI_FOLDER_DISABLED',403);
+  if((await policy())?.disabled.some(id=>id.startsWith('gestao/'))||(await training())?.disabled.length)throw fiError('FI_FOLDER_DISABLED',403);
  }
  return {
   start:()=>administrator?null:policy(),
