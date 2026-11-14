@@ -12,6 +12,11 @@ service cloud.firestore {
       allow list, create, update, delete: if false;
     }
 
+    match /functionalPerformance/{uid} {
+      allow get: if signedGoogle() && request.auth.uid == uid && resource.data.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
     match /functionalRecognition/{uid} {
       allow get: if signedGoogle() && request.auth.uid == uid;
       allow list, create, update, delete: if false;

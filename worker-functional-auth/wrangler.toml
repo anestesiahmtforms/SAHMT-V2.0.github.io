@@ -3,6 +3,9 @@ main = "worker.js"
 compatibility_date = "2026-11-10"
 workers_dev = true
 
+[triggers]
+crons = ["17 * * * *"]
+
 [vars]
 FK_AUTH_ORIGIN = "https://anestesiahmtforms.github.io"
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw1IOYZy4wuy4nt72FPrsUh_MYYWXrDfndgQmZCqTA9hSmYEJzMRe5w6EIarzTkXN5B/exec"

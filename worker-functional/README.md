@@ -10,4 +10,4 @@ Keep FA's `VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED` disabled until the updated App
 
 ## SAHMT performance
 
-Performance remains separate in each instance and is not integrated with FK. FK does not read performance ledgers or events from FB, FC, FE, FG, or FJ, and no source publisher is configured. A future transfer requires a separately approved process.
+The FK Worker schedules an hourly consolidation. The FK Apps Script reads only the published performance summaries and their runtime/reference metadata in FB, FC, FE, FG and FJ, plus the active Equipe roster in FA. It writes private documents to `functionalPerformance/{uid}`. Total points include negative entries. The percentage uses the highest combined total in the same active Equipe roster and is rounded and bounded to 0–100. If the highest total is zero or negative, all percentages are 0. A failed consolidation preserves the previous confirmed snapshot and its timestamp.

@@ -12,6 +12,7 @@ function doPost(event) {
   try {
     var envelope = JSON.parse((event && event.postData && event.postData.contents) || '{}');
     var payload = verifyEnvelope_(envelope);
+    if (payload.action === 'SYNC_TEAM_PERFORMANCE' && Object.keys(payload).length === 1) return json_(syncTeamPerformance_());
     if (payload.action === 'SYNC_OVERVIEW') return json_(syncOwnOverview_(payload.faIdToken));
     if (payload.action === 'READ_TEAM_OVERVIEW') return json_(readTeamOverview_(payload.faIdToken, payload.subjectUid));
     if (payload.action === 'FUNCTIONAL_SURVEY_SUBMIT') return json_(submitFunctionalSurvey_(payload));
@@ -238,20 +239,25 @@ function readTeamOverview_(idToken, subjectUid) {
   var options = {method:'get', headers:{Authorization:'Bearer ' + getFkSnapshotAccessToken_()}, muteHttpExceptions:true};
   var responses = UrlFetchApp.fetchAll([
     Object.assign({url:root + 'functionalProfiles/' + encodeURIComponent(subjectUid)}, options),
-    Object.assign({url:root + 'functionalRecognition/' + encodeURIComponent(subjectUid)}, options)
+    Object.assign({url:root + 'functionalRecognition/' + encodeURIComponent(subjectUid)}, options),
+    Object.assign({url:root + 'functionalPerformance/' + encodeURIComponent(subjectUid)}, options)
   ]);
   var response = responses[0], recognitionResponse = responses[1];
   var recognition = recognitionResponse.getResponseCode() === 200
     ? decodeFirestoreFields_(JSON.parse(recognitionResponse.getContentText()).fields || {}) : null;
   var message = recognition && recognition.uid === subjectUid && typeof recognition.message === 'string'
     ? recognition.message : null;
+  var scoreResponse = responses[2];
+  var performance = scoreResponse.getResponseCode() === 200
+    ? decodeFirestoreFields_(JSON.parse(scoreResponse.getContentText()).fields || {}) : null;
+  if (performance && performance.uid !== subjectUid) performance = null;
   var status = response.getResponseCode();
-  if (status === 404) return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:null, recognition:message};
+  if (status === 404) return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:null, recognition:message, performance:performance};
   if (status !== 200) throw new Error('FK_TEAM_OVERVIEW_UNAVAILABLE');
   var snapshot = decodeFirestoreFields_(JSON.parse(response.getContentText()).fields || {});
   if (snapshot.uid !== subjectUid) throw new Error('FK_SNAPSHOT_INVALID');
   validateSnapshot_(snapshot);
-  return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:snapshot, recognition:message};
+  return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:snapshot, recognition:message, performance:performance};
 }
 
 function writeOwnSnapshot_(snapshot) {
@@ -274,9 +280,9 @@ function readFaDocument_(idToken, path) {
   return decodeFirestoreFields_(document.fields || {});
 }
 
-function signFkJwt_(payload) {
+function signFkJwt_(payload, principal) {
   var signUrl = 'https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/'
-    + encodeURIComponent(FK_SIGNER_) + ':signJwt';
+    + encodeURIComponent(principal || FK_SIGNER_) + ':signJwt';
   var signed;
   try {
     signed = UrlFetchApp.fetch(signUrl, {method:'post', contentType:'application/json',
@@ -305,10 +311,10 @@ function signFkJwt_(payload) {
 }
 
 /** FK snapshot operations use the narrowly scoped service account. */
-function getFkSnapshotAccessToken_() {
+function getFkSnapshotAccessToken_(principal) {
   var now = Math.floor(Date.now() / 1000);
-  var assertion = signFkJwt_({iss:FK_SIGNER_, scope:'https://www.googleapis.com/auth/datastore',
-    aud:'https://oauth2.googleapis.com/token', iat:now, exp:now + 3600});
+  var assertion = signFkJwt_({iss:principal || FK_SIGNER_, scope:'https://www.googleapis.com/auth/datastore',
+    aud:'https://oauth2.googleapis.com/token', iat:now, exp:now + 3600}, principal);
   var response = UrlFetchApp.fetch('https://oauth2.googleapis.com/token', {
     method:'post', contentType:'application/x-www-form-urlencoded',
     payload:{grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion:assertion},
@@ -328,6 +334,7 @@ function decodeFirestoreFields_(fields) {
 }
 function decodeFirestoreValue_(value) {
   if (value.stringValue !== undefined) return value.stringValue;
+  if (value.timestampValue !== undefined) return value.timestampValue;
   if (value.booleanValue !== undefined) return value.booleanValue;
   if (value.integerValue !== undefined) return Number(value.integerValue);
   if (value.doubleValue !== undefined) return value.doubleValue;
@@ -395,4 +402,105 @@ function constantTimeEqual_(a, b) {
 }
 function json_(value) {
   return ContentService.createTextOutput(JSON.stringify(value)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function syncTeamPerformance_() {
+  var lastRun = Number(PropertiesService.getScriptProperties().getProperty('FK_PERFORMANCE_UPDATED_AT') || 0);
+  if (Date.now() - lastRun < 50 * 60 * 1000) return {code:'FK_PERFORMANCE_ALREADY_CURRENT'};
+  var token = getFkSnapshotAccessToken_('fk-performance-reader@' + FK_PROJECT_ + '.iam.gserviceaccount.com');
+  var headers = {Authorization:'Bearer ' + token};
+  var readTime = new Date(Date.now() - 10000).toISOString();
+  var sources = [
+    ['sahmt-gestao-5ae66','fbPerformance','total','current','team'],
+    ['indicadores---sahmt','fcPerformance','performanceTotal','state','team'],
+    ['outros-48120','fePerformance','total','current','current'],
+    ['sahmt-checklist-fg','fgPerformance','points','state',null],
+    ['sahmt-escala-fj','fjPerformance','total',null,null]
+  ];
+  var requests = [];
+  function base(project) {
+    return 'https://firestore.googleapis.com/v1/projects/' + project + '/databases/(default)/documents';
+  }
+  function query(project, collection, fields) {
+    requests.push({url:base(project)+':runQuery',method:'post',headers:headers,muteHttpExceptions:true,contentType:'application/json',
+      payload:JSON.stringify({readTime:readTime,structuredQuery:{from:[{collectionId:collection}],select:{fields:fields.map(function(fieldPath){return {fieldPath:fieldPath};})},limit:401}})});
+  }
+  function metadata(project, path) {
+    requests.push({url:base(project)+'/'+path+'?readTime='+encodeURIComponent(readTime),method:'get',headers:headers,muteHttpExceptions:true});
+    return requests.length-1;
+  }
+  query(FA_PROJECT_,'users',['uid','email','active','access']);
+  query(FA_PROJECT_,'userCategories',['uid','email','schemaVersion','identityStatus','memberCategories']);
+  var inputs = sources.map(function(source){
+    var project=source[0], prefix=source[1], rows=requests.length;
+    query(project,prefix+'Summaries',['uid',source[2],'revision','status','performanceRevision']);
+    return {project:project, field:source[2], rows:rows,
+      runtime:source[3]?metadata(project,prefix+'Runtime/'+source[3]):null,
+      reference:source[4]?metadata(project,prefix+'Reference/'+source[4]):null};
+  });
+  var responses=UrlFetchApp.fetchAll(requests);
+  function read(index) {
+    if(index===null)return null;
+    if(responses[index].getResponseCode()!==200)throw new Error('FK_PERFORMANCE_SOURCE_UNAVAILABLE');
+    return JSON.parse(responses[index].getContentText());
+  }
+  function records(index) {
+    var result=read(index);
+    if(!Array.isArray(result)||result.some(function(row){return row.error;}))throw new Error('FK_PERFORMANCE_SOURCE_INVALID');
+    var rows=result.filter(function(row){return row.document;}).map(function(row){
+      return {id:row.document.name.split('/').pop(),value:decodeFirestoreFields_(row.document.fields||{})};
+    });
+    if(rows.length>=401)throw new Error('FK_PERFORMANCE_SOURCE_LIMIT');
+    return rows;
+  }
+  function fields(index){var doc=read(index);return doc?decodeFirestoreFields_(doc.fields||{}):null;}
+  var assignments=new Map(records(1).map(function(row){return [row.id,row.value];}));
+  var team=records(0).filter(function(row){
+    var p=row.value,email=normalizeEmail_(p.email);
+    return p.uid===row.id&&p.active===true&&p.access===true&&email&&
+      isEffectiveAssignment_(assignments.get(sha256Hex_(JSON.stringify(email))),p.uid,email);
+  }).map(function(row){return row.id;});
+  if(!team.length)throw new Error('FK_PERFORMANCE_TEAM_EMPTY');
+  if(team.length>400)throw new Error('FK_PERFORMANCE_TEAM_LIMIT');
+  var totals=new Map(team.map(function(uid){return [uid,0];}));
+  inputs.forEach(function(input,index){
+    var runtime=fields(input.runtime),reference=fields(input.reference),rows=records(input.rows);
+    if(runtime&&runtime.projectId!==input.project)throw new Error('FK_PERFORMANCE_SOURCE_INVALID');
+    var start=runtime&&runtime.effectiveFrom;
+    if(index<=2&&(runtime.enabled!==true||runtime.mode!==['FB_ONLY','FC_ONLY','FE_ONLY'][index]||
+       !Number.isFinite(typeof start==='number'?start:Date.parse(start))||Date.parse(readTime)<(typeof start==='number'?start:Date.parse(start))))throw new Error('FK_PERFORMANCE_SOURCE_INACTIVE');
+    if(index===0&&(reference.status!=='CONFIRMED'||!Number.isSafeInteger(reference.revision)))throw new Error('FK_PERFORMANCE_FB_PENDING');
+    if(index===1&&(runtime.performanceDirty!==false||reference.performanceStatus!=='CONFIRMED'||
+       !Number.isSafeInteger(reference.performanceRevision)||runtime.performanceRevision!==reference.performanceRevision))throw new Error('FK_PERFORMANCE_FC_PENDING');
+    if(index===3&&(runtime.status!=='ACTIVE'||runtime.rule!=='FG_DAILY_TEAM_ACKNOWLEDGEMENT_TRANSFER_V2'))throw new Error('FK_PERFORMANCE_FG_PENDING');
+    var seen=new Set();
+    rows.forEach(function(row){
+      var value=row.value, points=value[input.field];
+      if(index===0&&value.revision!==reference.revision||
+         index===1&&(value.performanceRevision!==reference.performanceRevision||value.status!=='CONFIRMED'))return;
+      if(row.id!==value.uid||!Number.isFinite(points)||seen.has(row.id))throw new Error('FK_PERFORMANCE_SOURCE_INVALID');
+      seen.add(row.id);
+      if(totals.has(row.id))totals.set(row.id,totals.get(row.id)+points);
+    });
+    if(index<=2&&(!Number.isSafeInteger(reference.eligibleCount)||seen.size!==reference.eligibleCount))throw new Error('FK_PERFORMANCE_SOURCE_INCOMPLETE');
+  });
+  var maximum=Math.max.apply(null,Array.from(totals.values()));
+  var lock=LockService.getScriptLock();
+  if(!lock.tryLock(10000))throw new Error('FK_PERFORMANCE_SYNC_BUSY');
+  try {
+    var last=PropertiesService.getScriptProperties();
+    var updatedAt=Date.parse(readTime);
+    if(updatedAt<=Number(last.getProperty('FK_PERFORMANCE_UPDATED_AT')||0))return {code:'FK_PERFORMANCE_ALREADY_CURRENT'};
+    var root='projects/'+FK_PROJECT_+'/databases/(default)/documents/';
+    var writes=team.map(function(uid){
+      var total=totals.get(uid);
+      var percentage=maximum>0?Math.max(0,Math.min(100,Math.round(total/maximum*100))):0;
+      return {update:{name:root+'functionalPerformance/'+uid,fields:toFirestoreFields_({uid:uid,total:total,percentage:percentage,updatedAt:updatedAt})}};
+    });
+    var result=UrlFetchApp.fetch(base(FK_PROJECT_)+':commit',{method:'post',headers:{Authorization:'Bearer '+getFkSnapshotAccessToken_()},contentType:'application/json',
+      payload:JSON.stringify({writes:writes}),muteHttpExceptions:true});
+    if(result.getResponseCode()!==200)throw new Error('FK_PERFORMANCE_WRITE_FAILED');
+    last.setProperty('FK_PERFORMANCE_UPDATED_AT',String(updatedAt));
+    return {code:'FK_PERFORMANCE_SYNCED',members:team.length};
+  } finally {lock.releaseLock();}
 }

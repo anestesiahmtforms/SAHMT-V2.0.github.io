@@ -62,7 +62,7 @@ try{
     await request(api+'/content',token,{method:'PUT',body:{scriptId,files:[
       {name:'appsscript',type:'JSON',source:manifestText},{name:'Gateway',type:'SERVER_JS',source:desired}
     ]}});
-    const version=await request(api+'/versions',token,{method:'POST',body:{description:'FK: mensagens individuais de valorização profissional'}});
+    const version=await request(api+'/versions',token,{method:'POST',body:{description:'FK: consolida os resumos de desempenho das cinco instâncias'}});
     demand(Number.isInteger(version.versionNumber)&&version.versionNumber>config.versionNumber,'FK_APPS_SCRIPT_VERSION_INVALID');
     const deploymentConfig={scriptId,versionNumber:version.versionNumber,manifestFileName:config.manifestFileName,
       description:config.description||'SAHMT Funcional FK - snapshots e pesquisas'};

@@ -61,7 +61,7 @@ test('administrator selection clears the previous profile and ignores responses 
  const ana=deferred(),own=deferred(),calls=[];
  const f=ui({administrator:true,refresh:()=>own.promise,readTeam:({subjectUid})=>{
   calls.push(subjectUid);
-  return subjectUid==='ana'?ana.promise:Promise.resolve({snapshot:{uid:'bia',sources:{vaccination:{state:'READY'}}},recognition:'Mensagem da Bia'});
+  return subjectUid==='ana'?ana.promise:Promise.resolve({snapshot:{uid:'bia',sources:{vaccination:{state:'READY'}}},recognition:'Mensagem da Bia',performance:{uid:'bia',total:12.5,percentage:81,updatedAt:Date.now()}});
  }});
  const cleanup=await f.run();
  try{
@@ -75,6 +75,7 @@ test('administrator selection clears the previous profile and ignores responses 
   assert.equal(f.owner.textContent,'Bia');assert.equal(f.recognition.textContent,'Mensagem da Bia');assert.match(f.sources.innerHTML,/Vacinação/);
   ana.resolve({snapshot:{uid:'ana',sources:{dosimetry:{state:'READY'}}},recognition:'Mensagem da Ana'});
   own.resolve();await first;await turn();
+  assert.match(f.sources.innerHTML,/PONTOS TOTAIS ADQUIRIDOS[\s\S]*12,5[\s\S]*data-tone="high">81%[\s\S]*Margens de avaliação/);
   assert.match(f.sources.innerHTML,/Vacinação/);assert.doesNotMatch(f.sources.innerHTML,/Dosimetria|Cadastro Profissional/);
   assert.equal(f.recognition.textContent,'Mensagem da Bia');
   await f.choose('');assert.equal(f.owner.textContent,'Pessoa autenticada');assert.equal(f.recognition.textContent,'Mensagem própria');assert.match(f.sources.innerHTML,/Cadastro Profissional/);

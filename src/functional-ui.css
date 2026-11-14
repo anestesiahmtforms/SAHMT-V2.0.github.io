@@ -45,6 +45,27 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
 }
 .functional-dialog > footer button { width: 100%; min-height: 44px; }
 .functional-page { display: grid; gap: 14px; }
+.functional-performance { display: grid; gap: 12px; }
+.functional-performance p { margin: 0; }
+.functional-performance-total { display: grid; gap: 4px; }
+.functional-performance-total span { font-size: .78rem; font-weight: 800; letter-spacing: .04em; }
+.functional-performance-total strong { font-size: 1.8rem; line-height: 1.1; }
+.functional-performance-relative { display: flex; align-items: center; gap: 10px; }
+.functional-performance-percent {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  min-width: 3.6rem;
+  min-height: 3.6rem;
+  padding: 4px;
+  border: 3px solid currentColor;
+  border-radius: 50%;
+  font-size: 1.1rem;
+}
+.functional-performance-percent[data-tone="low"] { color: #a63439; background: #fff1f0; }
+.functional-performance-percent[data-tone="medium"] { color: #7c5800; background: #fff3ce; }
+.functional-performance-percent[data-tone="high"] { color: #1e6948; background: #e7f5ed; }
+.functional-performance-bands { display: flex; flex-wrap: wrap; gap: 4px 8px; margin: 5px 0 0; padding: 0; list-style: none; font-size: .82rem; }
 .functional-team { display: grid; gap: 8px; }
 .functional-team [data-fk-picker]:not([hidden]) { display: grid; gap: 6px; }
 .functional-team select { width: 100%; min-height: 44px; color: inherit; }

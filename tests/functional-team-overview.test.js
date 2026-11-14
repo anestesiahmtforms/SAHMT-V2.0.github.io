@@ -10,6 +10,7 @@ test('FK administrative lookup checks the actor and active effective assignment 
  const requests=[];
  const env={UrlFetchApp:{fetchAll(input){return input.map(({url,...options})=>this.fetch(url,options));},fetch(url,options){
   requests.push([url,options.method]);
+  if(url.includes('/functionalPerformance/'))return {getResponseCode:()=>404};
   if(url.includes('/functionalRecognition/'))return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({fields:{uid:{stringValue:'person'},message:{stringValue:'Mensagem individual'}}})};
   return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({fields:{uid:{stringValue:'person'},schemaVersion:{integerValue:'1'},
    updatedAt:{integerValue:'1'},sources:{mapValue:{fields:{}}}}})};
@@ -34,7 +35,7 @@ test('FK administrative lookup checks the actor and active effective assignment 
  assert.equal(overview.snapshot.uid,'person');
  assert.equal(overview.recognition,'Mensagem individual');
  assert.deepEqual(requests.map(([url,method])=>[url.split('/documents/').at(-1),method]),
-  [['functionalProfiles/person','get'],['functionalRecognition/person','get']]);
+  [['functionalProfiles/person','get'],['functionalRecognition/person','get'],['functionalPerformance/person','get']]);
 });
 
 test('FK worker signs the selected UID and rejects a mismatched result',async()=>{
@@ -53,5 +54,5 @@ test('FK worker signs the selected UID and rejects a mismatched result',async()=
  result={code:'FK_AUTH_DENIED'};
  assert.equal((await call({faIdToken:token,subjectUid:'person'})).status,403);
  result={code:'FK_TEAM_OVERVIEW',uid:'person',snapshot:null,recognition:'Mensagem individual'};
- assert.deepEqual(await (await call({faIdToken:token,subjectUid:'person'})).json(),{uid:'person',snapshot:null,recognition:'Mensagem individual'});
+ assert.deepEqual(await (await call({faIdToken:token,subjectUid:'person'})).json(),{uid:'person',snapshot:null,recognition:'Mensagem individual',performance:null});
 });

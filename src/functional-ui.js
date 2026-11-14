@@ -51,12 +51,36 @@ function sourceCards(sources, expanded) {
     return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-controls="fk-source-'+key+'" aria-expanded="'+open+'">'
       + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong><small>'+escapeHtml(states[value?.state]||'Status não informado')+'</small></span>'
       + '<span class="functional-chevron" aria-hidden="true">›</span></button><div class="functional-source-detail" id="fk-source-'+key+'"'+(open?'':' hidden')+'>'
-      + '<p>'+escapeHtml(sourceDetail(key,value))+'</p></div>'+operationalFolderNotice(sourceFolders[key])+'</div>';
+      + (key==='performance'&&value?.state==='READY'?performanceDetail(value.data):'<p>'+escapeHtml(sourceDetail(key,value))+'</p>')
+      + '</div>'+operationalFolderNotice(sourceFolders[key])+'</div>';
   }).join('') + '</div>';
 }
 
+const pointsFormat = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
+
+function performanceSource(score,uid) {
+  if(score?.uid!==uid||!Number.isFinite(score.total)||!Number.isInteger(score.percentage)||
+     score.percentage<0||score.percentage>100||!Number.isSafeInteger(score.updatedAt)||!Number.isFinite(new Date(score.updatedAt).getTime()))return {state:'PREPARING'};
+  return {state:'READY',data:score};
+}
+
+function performanceDetail({total,percentage,updatedAt}) {
+  const tone=percentage<=60?'low':percentage<=80?'medium':'high';
+  const feedback={
+    low:'Você ainda não atingiu a pontuação mínima de desempenho, precisa se esforçar para não perder concessões funcionais.',
+    medium:'Você atingiu valores médios de desempenho, seu esforço e maior engajamento contribuirá para melhoria contínua dos nossos processos de qualidade e segurança.',
+    high:'Você demonstra empenho e engajamento nos processos da equipe. O SAHMT agradece pelo seu apoio!'
+  };
+  const updated=new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Sao_Paulo'}).format(updatedAt);
+  return '<div class="functional-performance"><p class="functional-performance-total"><span>PONTOS TOTAIS ADQUIRIDOS</span><strong>'+pointsFormat.format(total)+'</strong></p>'
+    + '<p class="functional-performance-relative"><strong class="functional-performance-percent" data-tone="'+tone+'">'+percentage+'%</strong><span>Da maior pontuação da Equipe</span></p>'
+    + '<div><p><strong>Margens de avaliação</strong></p><ul class="functional-performance-bands">'
+    + ['0 a 20','21 a 40','41 a 60','61 a 80','81 a 100'].map(range=>'<li>'+range+'%</li>').join('')+'</ul></div>'
+    + '<p>'+feedback[tone]+'</p><small>Atualizado em '+escapeHtml(updated)+'</small></div>';
+}
+
 function sourceDetail(key,value) {
-  if(value?.state==='PREPARING')return key==='performance'?'A consulta será disponibilizada quando a integração de desempenho for definida.':'A integração desta pasta está em preparação.';
+  if(value?.state==='PREPARING')return key==='performance'?'Aguardando a consolidação dos pontos de FB, FC, FE, FG e FJ.':'A integração desta pasta está em preparação.';
   if(value?.state!=='READY')return 'Nenhum dado individual foi confirmado nesta atualização.';
   if(key==='professionalRegistration')return value.data?.record?'Cadastro profissional localizado.':'Nenhum cadastro profissional individual localizado.';
   return 'Resumo individual atualizado.';
@@ -66,7 +90,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   let disposed = false;
   let stopAuth = () => {};
   const expanded = new Set();
-  let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = '';
+  let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = '', ownPerformance = {state:'PREPARING'};
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const ownSession = () => current() && getFunctionalAuth()?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
@@ -100,7 +124,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     if (!ownSession()) return cleanup;
     const profile = snapshot?.exists() ? snapshot.data() : null;
     if (profile && profile.uid !== uid) throw new Error('FK_PROFILE_UID_MISMATCH');
-    ownSources={...(profile?.sources||{})};
+    ownSources={...(profile?.sources||{}),performance:ownPerformance};
     ownStatus='Atualizando seus dados…';
     const selector=administrator?'<div class="functional-team"><button class="secondary-button" type="button" data-fk-team aria-expanded="false" aria-controls="fk-team-picker">Selecionar integrante da Equipe</button>'
       + '<div id="fk-team-picker" data-fk-picker hidden><label for="fk-team-subject">Integrante da Equipe</label>'
@@ -113,6 +137,13 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     root.addEventListener('click', onFunctionalClick);
     if(administrator)root.addEventListener('change', onSubjectChange);
     void updateOverview(db);
+    void waitWithTimeout(getDocFromServer(doc(db,'functionalPerformance',uid)),10000,'FK_PERFORMANCE_TIMEOUT')
+      .then(snapshot=>{
+        if(!ownSession())return;
+        ownPerformance=performanceSource(snapshot.exists()?snapshot.data():null,uid);
+        ownSources.performance=ownPerformance;
+        if(!selection)renderOverview(ownSources,ownStatus);
+      }).catch(()=>{});
     void waitWithTimeout(getDocFromServer(doc(db,'functionalRecognition',uid)),10000,'FK_RECOGNITION_TIMEOUT')
       .then(snapshot=>{
         if(!ownSession()||!snapshot.exists())return;
@@ -136,7 +167,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       if(ownSession()&&updated.exists()){
         const profile=updated.data();
         if(profile.uid!==uid)throw new Error('FK_PROFILE_UID_MISMATCH');
-        ownSources={...(profile.sources||{})};
+        ownSources={...(profile.sources||{}),performance:ownPerformance};
       }
     } catch {refreshFailed=true;}
     if(!ownSession())return;
@@ -202,10 +233,10 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     renderOverview(null,'Carregando perfil funcional…');
     const isSelected=()=>ownSession()&&revision===subjectRevision;
     try {
-      const {snapshot:profile,recognition}=await readFunctionalTeamOverview({faAuth,uid,subjectUid:member.uid,isCurrent:isSelected});
+      const {snapshot:profile,recognition,performance}=await readFunctionalTeamOverview({faAuth,uid,subjectUid:member.uid,isCurrent:isSelected});
       if(!isSelected())return;
       showRecognition(recognition);
-      renderOverview(profile?.sources||null,profile?'':'Este integrante ainda não tem um perfil funcional salvo.');
+      renderOverview({...profile?.sources,performance:performanceSource(performance,member.uid)},profile?'':'Este integrante ainda não tem um perfil funcional salvo.');
     } catch (error) {
       if(!isSelected())return;
       renderOverview(null,error?.message==='FK_TEAM_ACCESS_DENIED'

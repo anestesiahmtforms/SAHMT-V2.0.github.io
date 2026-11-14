@@ -22,7 +22,14 @@ async function signedEnvelope(payload, secret, now = Date.now(), nonce = crypto.
 }
 
 export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now} = {}) {
-  return Object.freeze({async fetch(request, env) {
+  return Object.freeze({async scheduled(_event, env) {
+    const body=await signedEnvelope({action:'SYNC_TEAM_PERFORMANCE'},env.FK_HMAC_SECRET,clock());
+    const response=await fetchImpl(env.APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'application/json'},body,redirect:'follow',signal:AbortSignal.timeout(45000)});
+    if(!response.ok)throw Error('FK_PERFORMANCE_SYNC_UNAVAILABLE');
+    const result=await response.json();
+    if(!['FK_PERFORMANCE_SYNCED','FK_PERFORMANCE_ALREADY_CURRENT'].includes(result.code))
+      throw Error(/^FK_[A-Z_]+$/.test(result.code||'')?result.code:'FK_PERFORMANCE_SYNC_UNAVAILABLE');
+  },async fetch(request, env) {
     const origin = request.headers.get('Origin') || '';
     const headers = cors(origin, env || {});
     const url = new URL(request.url);
@@ -88,7 +95,7 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
         if (result.code !== 'FK_TEAM_OVERVIEW' || result.uid !== subjectUid ||
             (result.snapshot !== null && result.snapshot?.uid !== subjectUid))
           throw new Error('UPSTREAM_RESPONSE_INVALID');
-        return Response.json({uid:subjectUid,snapshot:result.snapshot,recognition:typeof result.recognition === 'string' ? result.recognition : null},{status:200,headers});
+        return Response.json({uid:subjectUid,snapshot:result.snapshot,recognition:typeof result.recognition === 'string' ? result.recognition : null,performance:result.performance?.uid===subjectUid?result.performance:null},{status:200,headers});
       } catch {
         return Response.json({code:'FK_TEAM_OVERVIEW_UNAVAILABLE'},{status:503,headers});
       }
