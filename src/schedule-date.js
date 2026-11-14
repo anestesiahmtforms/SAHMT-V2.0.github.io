@@ -1,3 +1,9 @@
+const scheduleWeekday = new Intl.DateTimeFormat('pt-BR', {weekday: 'long', timeZone: 'America/Sao_Paulo'});
+
+export function scheduleTodayWeekday(date = new Date()) {
+  return scheduleWeekday.format(date);
+}
+
 export function localDateKey(date = new Date(), timeZone = 'America/Sao_Paulo') {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone,

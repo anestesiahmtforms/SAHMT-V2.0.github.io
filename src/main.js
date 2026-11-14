@@ -33,7 +33,7 @@ import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} fr
 import {currentRoute, navigate, shouldRenderHashChange} from './router.js';
 import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, readFreshSafeCache, removeQueuedOperation, requiresSendConfirmation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
-import {isValidDateKey, localDateKey, shiftDateKey} from './schedule-date.js';
+import {isValidDateKey, localDateKey, scheduleTodayWeekday, shiftDateKey} from './schedule-date.js';
 import {buildScheduleView} from './schedule-view.js';
 import {scheduleReadFailure} from './schedule-read-error.js';
 import {formatScheduleReleaseTime, visibleScheduleReleaseSiglas} from './schedule-release.js';
@@ -1108,7 +1108,7 @@ function shellView() {
   const labelAccessPanel = route === 'labels' && !['labelsRead','labelsWrite','labelsManage'].some(can) ? `<section class="panel" role="status"><p>${!session.labelProfileLoaded ? 'Verificando seu acesso a Etiquetas…' : session.labelProfileError ? 'Não foi possível confirmar seu acesso a Etiquetas. Tente novamente.' : 'Seu acesso a Etiquetas precisa ser liberado pela administração de FH.'}</p>${session.labelProfileLoaded ? '<button type="button" class="secondary-button" data-retry-fh-label-access>Verificar acesso novamente</button>' : ''}</section>` : '';
   const view = ['home','schedule'].includes(route) ? `<section class="content-grid">
       ${route === 'schedule' ? `<article class="schedule-card panel"><div class="schedule-date-block"><header class="panel-heading schedule-date-heading"><label class="date-picker"><span class="sr-only">Data da escala</span><input type="date" id="schedule-date"></label></header>
-        <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button">Hoje</button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
+        <nav class="schedule-day-nav" aria-label="Navegar pela escala"><button class="secondary-button" id="schedule-previous" type="button" aria-label="Dia anterior">Anterior</button><button class="primary-button" id="schedule-today" type="button"><span>Hoje</span><small>${scheduleTodayWeekday()}</small></button><button class="secondary-button" id="schedule-next" type="button" aria-label="Próximo dia">Próximo</button></nav></div>
         <div id="schedule-content" class="schedule-content"><p class="loading">Carregando escala…</p></div>
 
       </article>` : ''}
@@ -1196,6 +1196,8 @@ async function loadSchedule() {
   const render = async ({localOnly = false} = {}) => {
     if (!scheduleCurrent()) return;
     if(currentRoute()!=='schedule')return;
+    const weekday = document.querySelector('#schedule-today small');
+    if (weekday) weekday.textContent = scheduleTodayWeekday();
     const requestId = ++requestSequence;
     const selectedDate = dateInput.value;
     if (!selectedDate) return;

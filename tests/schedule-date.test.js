@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {localDateKey, shiftDateKey} from '../src/schedule-date.js';
+import {localDateKey, scheduleTodayWeekday, shiftDateKey} from '../src/schedule-date.js';
 
 test('usa a data local de São Paulo mesmo quando o navegador está em UTC', () => {
   assert.equal(localDateKey(new Date('2026-09-24T02:30:00.000Z')), '2026-09-23');
@@ -15,4 +15,9 @@ test('navega dias incluindo virada de mês e ano sem erro de horário de verão'
 test('recusa datas impossíveis e deslocamentos fracionários', () => {
   assert.throws(() => shiftDateKey('2026-02-30', 1), TypeError);
   assert.throws(() => shiftDateKey('2026-09-24', 0.5), TypeError);
+});
+
+test('o dia da semana no botão Hoje segue a virada de data em Brasília', () => {
+  assert.equal(scheduleTodayWeekday(new Date('2026-11-14T02:59:00Z')), 'sexta-feira');
+  assert.equal(scheduleTodayWeekday(new Date('2026-11-14T03:00:00Z')), 'sábado');
 });

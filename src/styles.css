@@ -2691,3 +2691,17 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .material-viewer-inactive:not([hidden]){display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
 
 #schedule-contact-dialog .schedule-release:disabled { opacity: .55; cursor: default; transform: none; }
+
+.app-shell--schedule .schedule-date-heading { justify-content: center; }
+.app-shell--schedule #schedule-date,
+.app-shell--schedule #schedule-date::-webkit-date-and-time-value { text-align: center; }
+.app-shell--schedule #schedule-today {
+  display: grid;
+  place-content: center;
+  gap: 2px;
+  line-height: 1.15;
+}
+.app-shell--schedule #schedule-today small {
+  font-size: .72em;
+  overflow-wrap: anywhere;
+}
