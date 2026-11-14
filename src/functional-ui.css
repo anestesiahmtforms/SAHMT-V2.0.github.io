@@ -20,17 +20,6 @@
 }
 .functional-dialog::backdrop { background: #0c2f49b8; }
 body:has(.functional-dialog[open]) { overflow: hidden; }
-.functional-dialog > header {
-  padding: 18px 16px;
-  border-bottom: 1px solid #cfdfd6;
-  background: linear-gradient(145deg, #fff9ea, #dfefe5);
-  text-align: center;
-}
-.functional-dialog h1 {
-  margin: 0;
-  font-size: clamp(1.3rem, 4vw, 1.8rem);
-  letter-spacing: .09em;
-}
 .functional-dialog-content {
   min-height: 0;
   overflow: auto;
@@ -70,22 +59,39 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
 .functional-team [data-fk-picker]:not([hidden]) { display: grid; gap: 6px; }
 .functional-team select { width: 100%; min-height: 44px; color: inherit; }
 .functional-person {
-  padding: 14px 16px;
-  border: 1px solid #dfcfaa;
-  border-inline-start: 4px solid #9c7730;
-  border-radius: 14px;
-  background: linear-gradient(135deg, #fffaf0, #f7efd9);
+  margin: 12px clamp(12px, 3vw, 22px) 0;
+  padding: clamp(12px, 3vw, 22px) clamp(14px, 4vw, 26px);
+  border: 1px solid #377775;
+  border-block-start: 3px solid #bfa267;
+  border-radius: 16px;
+  background: radial-gradient(ellipse at top right, #255e58, transparent 75%), #142f3d;
+  color: #fffaf0;
+  text-align: center;
+  overflow-wrap: anywhere;
+  box-shadow: 0 8px 20px #183f3d23;
+}
+.functional-person h1 {
+  margin: 0;
+  color: #e8ce90;
+  font-size: clamp(.92rem, 3.5vw, 1.12rem);
+  font-weight: 800;
+  letter-spacing: .12em;
 }
 .functional-person h2 {
-  margin: 0;
-  font-size: clamp(1.1rem, 4vw, 1.35rem);
-  line-height: 1.25;
+  margin: 7px 0 0;
+  font-size: clamp(1.13rem, 4.4vw, 1.55rem);
+  line-height: 1.16;
 }
 .functional-recognition {
-  margin: 8px 0 0;
-  color: #3a4137;
-  font: 500 clamp(.9rem, 2.5vw, 1rem)/1.55 Georgia, serif;
-  overflow-wrap: anywhere;
+  max-width: 56ch;
+  margin: 9px auto 0;
+  color: #edf4f1;
+  font: 500 clamp(.83rem, 2.6vw, 1rem)/1.42 Georgia, serif;
+}
+@media (max-height: 420px) {
+  .functional-person { margin-top: 7px; padding-block: 7px; }
+  .functional-person h2 { margin-top: 4px; }
+  .functional-recognition { margin-top: 5px; max-height: 27dvh; overflow: auto; }
 }
 .functional-team p { margin: 0; }
 .functional-source-grid { display: grid; gap: 12px; }

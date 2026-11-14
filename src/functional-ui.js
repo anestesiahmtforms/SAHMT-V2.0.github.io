@@ -88,6 +88,9 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   let detailDialog, openSource = '', visibleSources = null;
   let resultRequest=0;
   let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = '', ownPerformance = {state:'PREPARING'};
+  const header=root.closest('.functional-dialog')?.querySelector('[data-fk-header]');
+  const owner=header?.querySelector('[data-fk-owner]');
+  const recognition=header?.querySelector('[data-fk-recognition]');
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const ownSession = () => current() && getFunctionalAuth()?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
@@ -95,6 +98,8 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     if (disposed) return;
     disposed = true;
     if(detailDialog?.open)detailDialog.close();
+    showOwner('');
+    showRecognition('');
     stopAuth();
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     root?.removeEventListener('click', onFunctionalClick);
@@ -129,8 +134,8 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       + '<select id="fk-team-subject" data-fk-subject disabled><option value="">Meu perfil</option></select><p data-fk-team-status role="status"></p></div>'
       + '</div>':'';
     visibleSources=ownSources;
-    paint('<section class="functional-page"><header class="functional-person"><h2 data-fk-owner>'+escapeHtml(displayName||'Meu perfil')+'</h2>'
-      + '<p class="functional-recognition" data-fk-recognition hidden></p></header>'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
+    showOwner(displayName||'Meu perfil');
+    paint('<section class="functional-page">'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
       + '<p class="functional-status" data-fk-refresh-status role="status">'+ownStatus+'</p>'
       + '</section><dialog class="functional-detail" id="fk-detail" aria-labelledby="fk-detail-title">'
       + '<header><span class="functional-detail-icon" data-fk-detail-icon></span><h2 id="fk-detail-title" tabindex="-1" autofocus></h2></header>'
@@ -233,11 +238,16 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     }
   }
 
+  function showOwner(name) {
+    if(!owner)return;
+    owner.textContent=name;
+    owner.hidden=!name;
+  }
+
   function showRecognition(message) {
-    const paragraph=root.querySelector('[data-fk-recognition]');
-    if(!paragraph)return;
-    paragraph.textContent=message||'';
-    paragraph.hidden=!message;
+    if(!recognition)return;
+    recognition.textContent=message||'';
+    recognition.hidden=!message;
   }
 
   async function openTeamPicker(button) {
@@ -274,7 +284,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     const revision=++subjectRevision;
     selection=value;
     if(detailDialog?.open)detailDialog.close();
-    root.querySelector('[data-fk-owner]').textContent=member?.name||displayName||'Meu perfil';
+    showOwner(member?.name||displayName||'Meu perfil');
     showRecognition(member?'':ownRecognition);
     if(!member){renderOverview(ownSources,ownStatus);return;}
     renderOverview(null,'Carregando perfil funcional…');

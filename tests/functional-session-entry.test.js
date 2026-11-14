@@ -39,7 +39,8 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUi
   querySelector:key=>({'[data-fk-detail-body]':detailBody,'#fk-detail-title':detailTitle,'[data-fk-detail-icon]':detailIcon})[key]};
  const openSource=key=>listeners.get('click')({target:{closest:s=>s==='[data-fk-source]'?{dataset:{fkSource:key}}:null}});
  const hosts={'#fk-detail':detail,'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker};
- const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s]};
+ const header={querySelector:s=>hosts[s]};
+ const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s],closest:()=>({querySelector:()=>header})};
  const openPicker=()=>listeners.get('click')({target:{closest:s=>s==='[data-fk-team]'?button:null}});
  const choose=value=>listeners.get('change')({target:{value,matches:s=>s==='[data-fk-subject]'}});
  const context=vm.createContext({setTimeout,clearTimeout,env:{VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED:'true'},
@@ -118,7 +119,13 @@ test('FK refuses to show a snapshot with a different owner UID',async()=>{
 test('FK clears visible data when the destination session changes',async()=>{
  const f=ui();
  await f.run();
+ await turn();
+ assert.equal(f.owner.textContent,'Pessoa autenticada');
+ assert.equal(f.recognition.textContent,'Mensagem própria');
  assert.match(f.root.innerHTML,/Cadastro Profissional/);
  f.changeFkUser('other-uid');
  assert.doesNotMatch(f.root.innerHTML,/Cadastro Profissional/);
+ assert.equal(f.owner.hidden,true);
+ assert.equal(f.recognition.hidden,true);
+ assert.equal(f.recognition.textContent,'');
 });
