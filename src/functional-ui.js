@@ -1,3 +1,4 @@
+import {onAuthStateChanged} from 'firebase/auth';
 import {doc, getDocFromServer} from 'firebase/firestore';
 import {getFunctionalFirestore} from './functional-firebase.js';
 import {getFunctionalAuth} from './functional-firebase.js';
@@ -62,12 +63,15 @@ function sourceDetail(key,value) {
 
 export async function mountFunctionalModule(root, {uid, faAuth, isCurrent = () => true, onSessionRequired = () => {}} = {}) {
   let disposed = false;
+  let stopAuth = () => {};
   const expanded = new Set();
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
+  const ownSession = () => current() && getFunctionalAuth()?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
   const cleanup = () => {
     if (disposed) return;
     disposed = true;
+    stopAuth();
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     root?.removeEventListener('click', onFunctionalClick);
   };
@@ -80,13 +84,19 @@ export async function mountFunctionalModule(root, {uid, faAuth, isCurrent = () =
     if(!connected){if(current())onSessionRequired();return cleanup;}
     if(fkAuth?.currentUser?.uid!==uid)throw new Error('FK_AUTH_UID_MISMATCH');
     if (!current()) return cleanup;
+    stopAuth = onAuthStateChanged(fkAuth, user => {
+      if (disposed || user?.uid === uid) return;
+      paint('<section class="functional-page"><p role="status">Confirme sua sessão para consultar seu perfil funcional.</p></section>');
+      cleanup();
+    });
     paint('<section class="functional-page"><p role="status">Acesso confirmado. Carregando seu perfil funcional…</p></section>');
     const db = getFunctionalFirestore();
     if (!db) throw new Error('FK_FIRESTORE_UNAVAILABLE');
     // The first snapshot may not exist yet (rules reject reads of absent documents).
     const snapshot = await waitWithTimeout(getDocFromServer(doc(db, 'functionalProfiles', uid)), 20000, 'FK_PROFILE_READ_TIMEOUT').catch(()=>null);
-    if (!current()) return cleanup;
+    if (!ownSession()) return cleanup;
     const profile = snapshot?.exists() ? snapshot.data() : null;
+    if (profile && profile.uid !== uid) throw new Error('FK_PROFILE_UID_MISMATCH');
     const sources={...(profile?.sources||{})};
     paint('<section class="functional-page"><div data-fk-sources>'+sourceCards(sources,expanded)+'</div>'
       + '<p class="functional-status" data-fk-refresh-status role="status">Atualizando seus dados…</p>'
@@ -102,12 +112,16 @@ export async function mountFunctionalModule(root, {uid, faAuth, isCurrent = () =
   async function updateOverview(db,sources) {
     let refreshFailed=false;
     try {
-      await refreshFunctionalOverview({faAuth,uid,isCurrent:current});
-      if(!current())return;
+      await refreshFunctionalOverview({faAuth,uid,isCurrent:ownSession});
+      if(!ownSession())return;
       const updated=await getDocFromServer(doc(db,'functionalProfiles',uid));
-      if(current()&&updated.exists())Object.assign(sources,updated.data().sources||{});
+      if(ownSession()&&updated.exists()){
+        const profile=updated.data();
+        if(profile.uid!==uid)throw new Error('FK_PROFILE_UID_MISMATCH');
+        Object.assign(sources,profile.sources||{});
+      }
     } catch {refreshFailed=true;}
-    if(!current())return;
+    if(!ownSession())return;
     const host=root.querySelector('[data-fk-sources]');
     if(host){
       const focused = host.ownerDocument?.activeElement?.dataset.fkSource;
@@ -120,7 +134,7 @@ export async function mountFunctionalModule(root, {uid, faAuth, isCurrent = () =
 
   function onFunctionalClick(event) {
     const sourceButton = event.target.closest('[data-fk-source]');
-    if(sourceButton && current()){
+    if(sourceButton && ownSession()){
       const key = sourceButton.dataset.fkSource;
       const detail = root.querySelector('#fk-source-'+key);
       if(!detail)return;

@@ -27,17 +27,18 @@ test('a group excluded from FK completes other sessions without FK credential ex
  controller.observeTarget('FK',null);assert.equal(controller.snapshot().complete,true);
 });
 
-function ui({connected=true,refresh=async()=>{},initialReadFails=false}={}){
+function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUid=person.uid}={}){
  const source=readFileSync(new URL('../src/functional-ui.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');
  const updates=[],auth={currentUser:{uid:person.uid}},sources={innerHTML:''},status={textContent:''};
- let recovery=0,reads=0;
+ let recovery=0,reads=0,authChanged;
  const root={isConnected:true,innerHTML:'',addEventListener(){},removeEventListener(){},querySelector:s=>s==='[data-fk-sources]'?sources:s==='[data-fk-refresh-status]'?status:null};
  const context=vm.createContext({setTimeout,clearTimeout,env:{VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED:'true'},
+  onAuthStateChanged:(_auth,callback)=>{authChanged=callback;return()=>{};},
   getFunctionalAuth:()=>auth,getFunctionalFirestore:()=>({}),waitForGoogleProjectSession:async()=>connected,
   refreshFunctionalOverview:refresh,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
-  getDocFromServer:async path=>{reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({sources:{professionalRegistration:{state:'READY',data:{record:true}}}})};}});
+  getDocFromServer:async path=>{reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}}}})};}});
  vm.runInContext(source,context);
- return {root,sources,status,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,onSessionRequired:()=>recovery++}),recovery:()=>recovery};
+ return {root,sources,status,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
 }
 
 test('FK renders its profile before a slow refresh resolves',async()=>{
@@ -62,4 +63,19 @@ test('a first user without a readable snapshot can see Desempenho while generati
 test('refresh failure preserves the functional screen and reports stale sources',async()=>{
  const f=ui({refresh:async()=>{throw Error('unavailable');}}),cleanup=await f.run();await turn();
  assert.match(f.status.textContent,/não puderam ser atualizadas/);assert.doesNotMatch(f.root.innerHTML,/data-fk-survey|Pesquisas institucionais/);cleanup();
+});
+
+test('FK refuses to show a snapshot with a different owner UID',async()=>{
+ const f=ui({profileUid:'other-uid',refresh:()=>assert.fail('foreign profile must never be refreshed')});
+ await f.run();
+ assert.doesNotMatch(f.root.innerHTML,/Dados sincronizados|Cadastro Profissional/);
+ assert.match(f.root.innerHTML,/Não foi possível confirmar/);
+});
+
+test('FK clears visible data when the destination session changes',async()=>{
+ const f=ui();
+ await f.run();
+ assert.match(f.root.innerHTML,/Cadastro Profissional/);
+ f.changeFkUser('other-uid');
+ assert.doesNotMatch(f.root.innerHTML,/Cadastro Profissional/);
 });
