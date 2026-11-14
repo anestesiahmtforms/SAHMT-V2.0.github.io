@@ -27,14 +27,14 @@ test('a group excluded from FK completes other sessions without FK credential ex
  controller.observeTarget('FK',null);assert.equal(controller.snapshot().complete,true);
 });
 
-function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUid=person.uid,administrator=false,readTeam=async()=>null}={}){
+function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUid=person.uid,administrator=false,readTeam=async()=>({snapshot:null,recognition:null})}={}){
  const source=readFileSync(new URL('../src/functional-ui.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');
  const updates=[],auth={currentUser:{uid:person.uid}},sources={innerHTML:''},status={textContent:''};
  let recovery=0,reads=0,authChanged;
- const listeners=new Map(),teamStatus={},select={disabled:true,focus(){}},owner={};
+ const listeners=new Map(),recognition={hidden:true},teamStatus={},select={disabled:true,focus(){}},owner={};
  const picker={hidden:true,querySelector:s=>s==='[data-fk-subject]'?select:teamStatus};
  const button={setAttribute(){}};
- const hosts={'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-picker]':picker};
+ const hosts={'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker};
  const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s]};
  const openPicker=()=>listeners.get('click')({target:{closest:s=>s==='[data-fk-team]'?button:null}});
  const choose=value=>listeners.get('change')({target:{value,matches:s=>s==='[data-fk-subject]'}});
@@ -43,9 +43,9 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUi
   getFunctionalAuth:()=>auth,getFunctionalFirestore:()=>({}),waitForGoogleProjectSession:async()=>connected,
   readFunctionalTeamOverview:readTeam,listFunctionalTeam:async()=>[{uid:'ana',name:'Ana'},{uid:'bia',name:'Bia'}],
   refreshFunctionalOverview:refresh,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
-  getDocFromServer:async path=>{reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}}}})};}});
+  getDocFromServer:async path=>{if(path.startsWith('functionalRecognition'))return {exists:()=>true,data:()=>({uid:person.uid,message:'Mensagem própria'})};reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}}}})};}});
  vm.runInContext(source,context);
- return {root,sources,status,owner,select,openPicker,choose,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
+ return {root,sources,status,owner,recognition,select,openPicker,choose,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
 }
 
 test('FK renders its profile before a slow refresh resolves',async()=>{
@@ -61,7 +61,7 @@ test('administrator selection clears the previous profile and ignores responses 
  const ana=deferred(),own=deferred(),calls=[];
  const f=ui({administrator:true,refresh:()=>own.promise,readTeam:({subjectUid})=>{
   calls.push(subjectUid);
-  return subjectUid==='ana'?ana.promise:Promise.resolve({uid:'bia',sources:{vaccination:{state:'READY'}}});
+  return subjectUid==='ana'?ana.promise:Promise.resolve({snapshot:{uid:'bia',sources:{vaccination:{state:'READY'}}},recognition:'Mensagem da Bia'});
  }});
  const cleanup=await f.run();
  try{
@@ -70,12 +70,14 @@ test('administrator selection clears the previous profile and ignores responses 
   assert.match(f.select.innerHTML,/<option value="ana">Ana<\/option>/);
   const first=f.choose('ana');
   assert.equal(f.sources.innerHTML,'');
+  assert.equal(f.recognition.hidden,true);
   await f.choose('bia');assert.deepEqual(calls,['ana','bia']);
-  assert.equal(f.owner.textContent,'Bia');assert.match(f.sources.innerHTML,/Vacinação/);
-  ana.resolve({uid:'ana',sources:{dosimetry:{state:'READY'}}});
+  assert.equal(f.owner.textContent,'Bia');assert.equal(f.recognition.textContent,'Mensagem da Bia');assert.match(f.sources.innerHTML,/Vacinação/);
+  ana.resolve({snapshot:{uid:'ana',sources:{dosimetry:{state:'READY'}}},recognition:'Mensagem da Ana'});
   own.resolve();await first;await turn();
   assert.match(f.sources.innerHTML,/Vacinação/);assert.doesNotMatch(f.sources.innerHTML,/Dosimetria|Cadastro Profissional/);
-  await f.choose('');assert.equal(f.owner.textContent,'Meu perfil');assert.match(f.sources.innerHTML,/Cadastro Profissional/);
+  assert.equal(f.recognition.textContent,'Mensagem da Bia');
+  await f.choose('');assert.equal(f.owner.textContent,'Pessoa autenticada');assert.equal(f.recognition.textContent,'Mensagem própria');assert.match(f.sources.innerHTML,/Cadastro Profissional/);
  }finally{cleanup();}
 });
 

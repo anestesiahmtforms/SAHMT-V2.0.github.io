@@ -88,7 +88,7 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
         if (result.code !== 'FK_TEAM_OVERVIEW' || result.uid !== subjectUid ||
             (result.snapshot !== null && result.snapshot?.uid !== subjectUid))
           throw new Error('UPSTREAM_RESPONSE_INVALID');
-        return Response.json({uid:subjectUid,snapshot:result.snapshot},{status:200,headers});
+        return Response.json({uid:subjectUid,snapshot:result.snapshot,recognition:typeof result.recognition === 'string' ? result.recognition : null},{status:200,headers});
       } catch {
         return Response.json({code:'FK_TEAM_OVERVIEW_UNAVAILABLE'},{status:503,headers});
       }

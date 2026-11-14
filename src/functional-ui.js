@@ -62,11 +62,11 @@ function sourceDetail(key,value) {
   return 'Resumo individual atualizado.';
 }
 
-export async function mountFunctionalModule(root, {uid, faAuth, administrator = false, isCurrent = () => true, onSessionRequired = () => {}} = {}) {
+export async function mountFunctionalModule(root, {uid, displayName = '', faAuth, administrator = false, isCurrent = () => true, onSessionRequired = () => {}} = {}) {
   let disposed = false;
   let stopAuth = () => {};
   const expanded = new Set();
-  let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '';
+  let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = '';
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const ownSession = () => current() && getFunctionalAuth()?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
@@ -105,13 +105,22 @@ export async function mountFunctionalModule(root, {uid, faAuth, administrator = 
     const selector=administrator?'<div class="functional-team"><button class="secondary-button" type="button" data-fk-team aria-expanded="false" aria-controls="fk-team-picker">Selecionar integrante da Equipe</button>'
       + '<div id="fk-team-picker" data-fk-picker hidden><label for="fk-team-subject">Integrante da Equipe</label>'
       + '<select id="fk-team-subject" data-fk-subject disabled><option value="">Meu perfil</option></select><p data-fk-team-status role="status"></p></div>'
-      + '<h2 data-fk-owner>Meu perfil</h2></div>':'';
-    paint('<section class="functional-page">'+selector+'<div data-fk-sources>'+sourceCards(ownSources,expanded)+'</div>'
+      + '</div>':'';
+    paint('<section class="functional-page">'+selector+'<header class="functional-person"><h2 data-fk-owner>'+escapeHtml(displayName||'Meu perfil')+'</h2>'
+      + '<p class="functional-recognition" data-fk-recognition hidden></p></header><div data-fk-sources>'+sourceCards(ownSources,expanded)+'</div>'
       + '<p class="functional-status" data-fk-refresh-status role="status">'+ownStatus+'</p>'
       + '</section>');
     root.addEventListener('click', onFunctionalClick);
     if(administrator)root.addEventListener('change', onSubjectChange);
     void updateOverview(db);
+    void waitWithTimeout(getDocFromServer(doc(db,'functionalRecognition',uid)),10000,'FK_RECOGNITION_TIMEOUT')
+      .then(snapshot=>{
+        if(!ownSession()||!snapshot.exists())return;
+        const entry=snapshot.data();
+        if(entry.uid!==uid||typeof entry.message!=='string')return;
+        ownRecognition=entry.message;
+        if(!selection)showRecognition(ownRecognition);
+      }).catch(()=>{});
   } catch {
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     paint('<section class="functional-page"><p class="empty-state" role="status">Não foi possível confirmar sua autorização em FA e abrir seu perfil individual em FK. Tente novamente mais tarde.</p></section>');
@@ -144,6 +153,13 @@ export async function mountFunctionalModule(root, {uid, faAuth, administrator = 
     }
     const status=root.querySelector('[data-fk-refresh-status]');
     if(status)status.textContent=statusText;
+  }
+
+  function showRecognition(message) {
+    const paragraph=root.querySelector('[data-fk-recognition]');
+    if(!paragraph)return;
+    paragraph.textContent=message||'';
+    paragraph.hidden=!message;
   }
 
   async function openTeamPicker(button) {
@@ -180,13 +196,15 @@ export async function mountFunctionalModule(root, {uid, faAuth, administrator = 
     const revision=++subjectRevision;
     selection=value;
     expanded.clear();
-    root.querySelector('[data-fk-owner]').textContent=member?.name||'Meu perfil';
+    root.querySelector('[data-fk-owner]').textContent=member?.name||displayName||'Meu perfil';
+    showRecognition(member?'':ownRecognition);
     if(!member){renderOverview(ownSources,ownStatus);return;}
     renderOverview(null,'Carregando perfil funcional…');
     const isSelected=()=>ownSession()&&revision===subjectRevision;
     try {
-      const profile=await readFunctionalTeamOverview({faAuth,uid,subjectUid:member.uid,isCurrent:isSelected});
+      const {snapshot:profile,recognition}=await readFunctionalTeamOverview({faAuth,uid,subjectUid:member.uid,isCurrent:isSelected});
       if(!isSelected())return;
+      showRecognition(recognition);
       renderOverview(profile?.sources||null,profile?'':'Este integrante ainda não tem um perfil funcional salvo.');
     } catch (error) {
       if(!isSelected())return;

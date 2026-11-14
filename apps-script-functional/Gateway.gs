@@ -234,16 +234,24 @@ function readTeamOverview_(idToken, subjectUid) {
   var assignment = readFaDocument_(idToken, 'userCategories/' + sha256Hex_(JSON.stringify(email)));
   if (!isEffectiveAssignment_(assignment, subjectUid, email)) throw new Error('FK_TEAM_MEMBER_DENIED');
 
-  var url = 'https://firestore.googleapis.com/v1/projects/' + FK_PROJECT_ +
-    '/databases/(default)/documents/functionalProfiles/' + encodeURIComponent(subjectUid);
-  var response = UrlFetchApp.fetch(url, {method:'get', headers:{Authorization:'Bearer ' + getFkSnapshotAccessToken_()}, muteHttpExceptions:true});
+  var root = 'https://firestore.googleapis.com/v1/projects/' + FK_PROJECT_ + '/databases/(default)/documents/';
+  var options = {method:'get', headers:{Authorization:'Bearer ' + getFkSnapshotAccessToken_()}, muteHttpExceptions:true};
+  var responses = UrlFetchApp.fetchAll([
+    Object.assign({url:root + 'functionalProfiles/' + encodeURIComponent(subjectUid)}, options),
+    Object.assign({url:root + 'functionalRecognition/' + encodeURIComponent(subjectUid)}, options)
+  ]);
+  var response = responses[0], recognitionResponse = responses[1];
+  var recognition = recognitionResponse.getResponseCode() === 200
+    ? decodeFirestoreFields_(JSON.parse(recognitionResponse.getContentText()).fields || {}) : null;
+  var message = recognition && recognition.uid === subjectUid && typeof recognition.message === 'string'
+    ? recognition.message : null;
   var status = response.getResponseCode();
-  if (status === 404) return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:null};
+  if (status === 404) return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:null, recognition:message};
   if (status !== 200) throw new Error('FK_TEAM_OVERVIEW_UNAVAILABLE');
   var snapshot = decodeFirestoreFields_(JSON.parse(response.getContentText()).fields || {});
   if (snapshot.uid !== subjectUid) throw new Error('FK_SNAPSHOT_INVALID');
   validateSnapshot_(snapshot);
-  return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:snapshot};
+  return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:snapshot, recognition:message};
 }
 
 function writeOwnSnapshot_(snapshot) {

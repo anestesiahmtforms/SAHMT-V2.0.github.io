@@ -12,7 +12,7 @@ export async function readFunctionalTeamOverview({faAuth,uid,subjectUid,isCurren
   const result=await requestFunctional(endpoint,{faAuth,uid,isCurrent,fetchImpl,input:{subjectUid}});
   if(result?.uid!==subjectUid||(result.snapshot!==null&&result.snapshot?.uid!==subjectUid))
     throw new Error('FK_TEAM_OVERVIEW_UNAVAILABLE');
-  return result.snapshot;
+  return result;
 }
 
 async function requestFunctional(endpoint,{faAuth,uid,isCurrent,fetchImpl,input={}}) {

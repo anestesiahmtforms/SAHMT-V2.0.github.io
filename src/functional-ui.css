@@ -48,7 +48,22 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
 .functional-team { display: grid; gap: 8px; }
 .functional-team [data-fk-picker]:not([hidden]) { display: grid; gap: 6px; }
 .functional-team select { width: 100%; min-height: 44px; color: inherit; }
-.functional-team h2 { margin: 3px 0; font-size: 1.1rem; }
+.functional-person h2 {
+  margin: 0;
+  font-size: clamp(1.1rem, 4vw, 1.35rem);
+  line-height: 1.25;
+}
+.functional-recognition {
+  margin: 8px 0 0;
+  padding: 12px 15px;
+  border: 1px solid #dfcfaa;
+  border-inline-start: 4px solid #9c7730;
+  border-radius: 12px;
+  background: #fff8e8;
+  color: #3a4137;
+  font: 500 clamp(.9rem, 2.5vw, 1rem)/1.55 Georgia, serif;
+  overflow-wrap: anywhere;
+}
 .functional-team p { margin: 0; }
 .functional-source-grid { display: grid; gap: 12px; }
 .functional-tile {
