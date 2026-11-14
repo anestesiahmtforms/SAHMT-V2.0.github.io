@@ -74,7 +74,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  if(syncStatusElement)dialog.querySelector('[data-hub-sync]').append(syncStatusElement);
  const render=()=>{
   cleanupYearEnd();cleanupYearEnd=()=>{};cleanupSurvey();cleanupSurvey=()=>{};cleanupRegistration();cleanupRegistration=()=>{};cleanupIndicators();cleanupIndicators=()=>{};const ticket=++renderId;
-  const spec=panels[panel];dialog.dataset.panel=panel;
+  const spec=panels[panel];dialog.dataset.panel=panel;delete dialog.dataset.surveyView;
   dialog.querySelector('[data-hub-user]').textContent=['climateForm','stressForm','epidemiological'].includes(panel)?'Participação por grupo':displayName;
   dialog.querySelector('#management-hub-title').textContent=spec.title;
   dialog.querySelector('[data-hub-folder-notice]').innerHTML=folderNotice(panelFolders[panel]);
@@ -112,7 +112,19 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    const frame=body.querySelector('iframe');
    const survey=panel==='climateForm'?'climate':'stress';
    const formPanel=panel;
-   cleanupSurvey=bindSurveySession(frame,{perform:async(action,response)=>{const result=await performSurvey(survey,action,response);if(!disposed&&panel===formPanel&&action==='BOOTSTRAP'){const label={team:'Equipe',resident:'Residentes'}[result?.group];if(label)dialog.querySelector('[data-hub-user]').textContent='Grupo: '+label;}return result;},isCurrent:()=>!disposed&&isSurveySessionCurrent()});
+   cleanupSurvey=bindSurveySession(frame,{
+    perform:(action,response)=>performSurvey(survey,action,response),
+    isCurrent:()=>!disposed&&panel===formPanel&&isSurveySessionCurrent(),
+    onView:view=>{
+     if(view==='complete'){
+      panel='institutional';render();
+      const notice=document.createElement('p');
+      notice.className='management-survey-confirmation';notice.setAttribute('role','status');
+      notice.textContent='Sua participação foi registrada.';
+      body.querySelector('.management-surveys-intro')?.append(notice);
+     }else dialog.dataset.surveyView=view;
+    }
+   });
    frame.src=panel==='climateForm'?'https://outros-48120.web.app/':'https://outros-48120.web.app/stress.html';
   }
   if(panel==='fePerformance'){

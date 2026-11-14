@@ -3,10 +3,10 @@ import {assertFeFolderReadable} from '../worker-fe-surveys/survey-policy.js';imp
 import {createSurveyService} from '../worker-training/survey-service.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';
 import {institutionalAssignmentKey} from '../src/institutional-group.js';
-import {VERSION as climateVersion} from '../climate-domain/schema.js';
+import {VERSION as climateVersion,COMMON,OPEN,questionsForSelection} from '../climate-domain/schema.js';
 import {VERSION as stressVersion,QUESTIONS} from '../stress-domain/schema.js';
 const identity={uid:'synthetic-one',email:'one@example.invalid',emailVerified:true,provider:'google.com'};
-const response=(kind,id='a'.repeat(32))=>({survey_cycle:'2026',survey_version:kind==='climate'?climateVersion:stressVersion,submission_id:id,group:'substitute',...(kind==='climate'?{consent:true,answers:{Q01:4},comments:{O01:'Synthetic comment'}}:{answers:Object.fromEntries(QUESTIONS.map(q=>[q.id,2]))})});
+const response=(kind,id='a'.repeat(32))=>({survey_cycle:'2026',survey_version:kind==='climate'?climateVersion:stressVersion,submission_id:id,group:'substitute',...(kind==='climate'?{consent:true,answers:Object.fromEntries([...COMMON,...questionsForSelection('team')].map(q=>[q.id,4])),comments:Object.fromEntries(OPEN.map(q=>[q.id,'Synthetic comment']))}:{answers:Object.fromEntries(QUESTIONS.map(q=>[q.id,2])),stress_rating:0})});
 async function fixture(category='EFETIVO'){const profiles=vaccinationMemoryStore(),responses=vaccinationMemoryStore();profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});profiles.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:[category]});responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:'2026-10-01T00:00:00Z'});for(const kind of ['climate','stress'])responses.seed(kind+'Cycles','2026',{status:'open'});return {profiles,responses,service:createSurveyService({profileStore:profiles,responseStore:responses,performanceEnabled:true,uuid:()=> 'b'.repeat(32)})};}
 const input=(kind,id)=>({survey:kind,cycle:'2026',response:response(kind,id)});
 test('FK displays only published charts, without comments, small cohorts or individual answers',async()=>{
@@ -39,6 +39,17 @@ test('one account gets one response per survey/cycle; participation data contain
   assert.equal((await responses.get(kind+'Responses','c'.repeat(32))),null);
  }
  const comments=await responses.list('climateComments');assert.equal(comments.length,1);assert.equal(Object.hasOwn(comments[0],'uid'),false);assert.equal(Object.hasOwn(comments[0],'group'),false);
+});
+test('incomplete or blank required answers consume neither participation nor performance points',async()=>{
+ const {service,responses}=await fixture();
+ const missingClimate=input('climate');delete missingClimate.response.answers.T01;
+ const blankComment=input('climate');blankComment.response.comments.O05='  ';
+ const missingStress=input('stress');delete missingStress.response.stress_rating;
+ for(const payload of [missingClimate,blankComment,missingStress]){
+  await assert.rejects(service.execute('SUBMIT',payload,identity),{code:'SURVEY_INVALID_INPUT'});
+ }
+ assert.equal((await responses.list('surveyParticipation')).length,0);
+ assert.equal((await responses.list('fePerformanceAwards')).length,0);
 });
 test('concurrent submissions with distinct random IDs commit a single ledger and a single answer',async()=>{
  const {service,responses}=await fixture();const results=await Promise.all(Array.from({length:20},(_,i)=>service.execute('SUBMIT',input('stress',(i+1).toString(16).padStart(32,'0')),identity)));
@@ -108,7 +119,9 @@ test('FE institutional research admits verified active users in every institutio
   const {service}=await fixture(category);
   for(const survey of ['climate','stress']){
    assert.deepEqual(await service.execute('BOOTSTRAP',{survey,cycle:'2026'},identity),{group,alreadyResponded:false});
-   assert.deepEqual(await service.execute('SUBMIT',input(survey),identity),{accepted:true,alreadyResponded:false});
+   const payload=input(survey);
+   if(survey==='climate')payload.response.answers=Object.fromEntries([...COMMON,...questionsForSelection(group)].map(q=>[q.id,4]));
+   assert.deepEqual(await service.execute('SUBMIT',payload,identity),{accepted:true,alreadyResponded:false});
   }
  }
 });

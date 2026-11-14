@@ -52,6 +52,13 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .management-hub-user-row [data-hub-sync]:empty{display:none}
 .app-shell .management-hub-header .sync-status-button:not(.sync-status-button--synced){width:auto;max-width:100%;white-space:normal;overflow-wrap:anywhere;font-size:.62rem;line-height:1.2}
 
+.management-hub-dialog[data-survey-view][open]{grid-template-rows:minmax(0,1fr);gap:0}
+.management-hub-dialog[data-survey-view="intro"]{width:min(92vw,580px);max-height:450px}
+.management-hub-dialog[data-survey-view] .management-hub-header>:not([data-hub-folder-notice]){position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.management-hub-dialog[data-survey-view] .management-hub-header{position:absolute;display:block;inset:4px 4px auto;z-index:1;min-height:0;padding:0;border:0;background:none;box-shadow:none;pointer-events:none}
+.management-hub-dialog[data-survey-view="questions"] .management-hub-content-panel{grid-template-rows:minmax(0,1fr)}
+.management-hub-dialog[data-survey-view="questions"] .management-hub-footer{display:none}
+.management-survey-confirmation{color:#125b58;font-weight:700}
 .management-survey-frame{display:block;flex:1 1 auto;min-height:180px;width:100%;height:100%;border:0;border-radius:12px;background:#f1f6f6}.management-hub-dialog[data-panel="climateForm"] .management-hub-body,.management-hub-dialog[data-panel="stressForm"] .management-hub-body{padding:0;overflow:hidden}
 
 .management-hub-dialog[data-panel="surveys"] .management-hub-grid{grid-template-rows:repeat(4,minmax(100px,1fr));margin-block:0}.management-hub-dialog[data-panel="surveys"] .management-hub-body,.management-hub-dialog[data-panel="professional"] .management-hub-body,.management-hub-dialog[data-panel="epidemiological"] .management-hub-body{overflow:auto}

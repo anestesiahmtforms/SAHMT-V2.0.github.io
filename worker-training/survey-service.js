@@ -1,6 +1,6 @@
 import {validateEpidemiologicalSubmission,REGISTRATION_CYCLE} from '../src/registration-domain.js';
-import {validateSubmission as climateInput,VERSION as climateVersion,CYCLE} from '../climate-domain/schema.js';
-import {validateSubmission as stressInput,VERSION as stressVersion} from '../stress-domain/schema.js';
+import {validateCompleteSubmission as climateInput,VERSION as climateVersion,CYCLE} from '../climate-domain/schema.js';
+import {validateCompleteSubmission as stressInput,VERSION as stressVersion} from '../stress-domain/schema.js';
 import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} from '../src/institutional-group.js';
 import {functionalSurveyCharts} from '../src/functional-survey-charts.js';
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};

@@ -5,7 +5,7 @@ import {readFile, mkdir} from 'node:fs/promises';
 import {extname, resolve} from 'node:path';
 import {chromium} from 'playwright';
 import {surveyTestBuild} from './helpers/survey-test-build.js';
-test('responsive survey: conditional modules, privacy payload, XSS text, retry, consent and thanks', async () => {
+test('responsive survey: conditional modules, mandatory answers, privacy, exact retry and return', async () => {
   const root=await surveyTestBuild('climate');
   const server = http.createServer(async (req, res) => {
     const path = new URL(req.url, 'http://localhost').pathname;
@@ -14,6 +14,7 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
   });
   await new Promise(done => server.listen(0, '127.0.0.1', done));
   const origin = `http://127.0.0.1:${server.address().port}`;
+  const returnURL = 'https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/management-hub/institutional';
   const browser = await chromium.launch({channel: 'msedge', headless: true});
   try {
     for (const width of [320, 390, 768, 1440]) {
@@ -25,6 +26,7 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
           received.push({data: request.postDataJSON(), headers: request.headers()});
           await route.fulfill({status: received.length === 1 ? 503 : 200, contentType: 'application/json', body: JSON.stringify(received.length === 1 ? {error: 'UNAVAILABLE'} : {writeResults: []})}); return;
         }
+        if (request.isNavigationRequest() && request.url() === returnURL.split('#')[0]) return route.fulfill({status:200,body:'Pesquisas institucionais'});
         if (new URL(request.url()).origin !== origin) { await route.abort(); return; }
         await route.continue();
       });
@@ -35,28 +37,33 @@ test('responsive survey: conditional modules, privacy payload, XSS text, retry, 
         await mkdir(process.env.CLIMATE_SCREENSHOTS, {recursive:true});
         await page.screenshot({path: resolve(process.env.CLIMATE_SCREENSHOTS, `pesquisa-${width}.png`)});
       }
-      await page.locator('form').waitFor({state:'visible'});assert.equal(await page.locator('fieldset').count(),37);
+      await page.getByText('Você acessou pelo grupo:').waitFor();
       assert.equal(await page.locator('[name=module]').count(),0);
 
-      assert.match(await page.locator('.notice').innerText(),/registros técnicos/);
+      assert.equal(await page.locator('form').isVisible(),false);
+      const start = page.getByRole('button',{name:'Iniciar Pesquisa'});
+      assert.equal(await start.isDisabled(),true);
+      await page.check('[name=consent]');await start.click();
       
-      await page.locator('form').waitFor({state:'visible'});assert.equal(await page.locator('fieldset').count(),37);assert.equal(await page.locator('#module').isVisible(),true);
+      assert.equal(await page.locator('fieldset').count(),37);assert.equal(await page.locator('#module').isVisible(),true);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await page.check('[name=Q01][value="4"]'); await page.locator('[type=submit]').click(); assert.equal(received.length, 0);
-      await page.check('[name=consent]'); await page.fill('[name=O01]', '<script>alert("text only")</script>');
-      await page.locator('[type=submit]').click(); await page.waitForFunction(() => document.querySelector('#status').textContent.includes('Não foi possível'));
+      await page.locator('input[type=radio][value="4"]').evaluateAll(inputs=>inputs.forEach(input=>{input.checked=true;}));
+      await page.locator('textarea').evaluateAll(fields=>fields.forEach(field=>{field.value='Sem sugestão';}));
+      await page.fill('[name=O01]', '<script>alert("text only")</script>');
+      await page.locator('[type=submit]').click(); await page.getByRole('status').filter({hasText:'Tente reenviar as mesmas respostas.'}).waitFor();
       assert.equal(await page.locator('[name=Q01][value="4"]').isDisabled(), true);
-      await page.getByRole('button', {name: 'Tentar reenviar'}).click(); await page.getByRole('heading', {name: /Suas respostas foram recebidas/}).waitFor();
+      await page.getByRole('button', {name: 'Tentar reenviar'}).click(); await page.waitForURL(returnURL);
       assert.equal(received.length, 2); assert.deepEqual(received[0].data, received[1].data);
       assert.deepEqual(Object.keys(received[0].data), ['writes']);
       const writes=received[0].data.writes;
       assert.deepEqual(Object.keys(writes[0].update.fields).sort(),['answers','group','survey_cycle','survey_version']);
       assert.equal(writes[0].update.fields.group.stringValue,assignedGroup);
-      assert.deepEqual(writes[0].update.fields.answers.mapValue.fields,{Q01:{integerValue:'4'}});
+      assert.equal(Object.keys(writes[0].update.fields.answers.mapValue.fields).length,37);
+      assert.deepEqual(writes[0].update.fields.answers.mapValue.fields.Q01,{integerValue:'4'});
       assert.notEqual(writes[0].update.name.split('/').at(-1),writes[1].update.name.split('/').at(-1));
       for (const h of ['authorization','cookie','referer']) assert.equal(received[0].headers[h], undefined);
-      assert.equal(requests.some(req => new URL(req.url()).origin !== origin && !req.url().includes('firestore.googleapis.com/')), false);
-      assert.deepEqual(await page.evaluate(() => ({local: localStorage.length, session: sessionStorage.length})), {local:0, session:0});
+      assert.equal(requests.some(req => new URL(req.url()).origin !== origin && !req.url().includes('firestore.googleapis.com/') && req.url() !== returnURL.split('#')[0]), false);
       assert.deepEqual(errors, []); await context.close();
     }
   } finally { await browser.close(); await new Promise(done => server.close(done)); }

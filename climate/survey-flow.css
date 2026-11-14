@@ -1,0 +1,26 @@
+.survey-app{display:grid;place-items:center;width:min(100%,52rem);min-height:100dvh;padding:16px}
+.survey-banner{width:min(100%,36rem);margin:0;padding:clamp(18px,4vw,34px);border:1px solid #ccdddb;border-radius:22px;background:#fff;box-shadow:0 12px 32px #193f5026;text-align:center}
+.survey-banner h1{margin:0 0 20px;font-size:clamp(1.3rem,4vw,2rem)}
+.survey-banner #participant-gate{padding:0;border:0;background:transparent}
+.survey-banner .participant-group-label{margin:0}
+.survey-banner .participant-group-notice h2{margin:4px 0 12px;color:#0f6663}
+.survey-banner .consent{display:flex;align-items:center;justify-content:center;gap:10px;margin:16px 0;padding:12px;background:#eff7f6;text-align:left}
+.survey-banner .primary{width:min(100%,22rem)}
+.survey-footer{padding:12px 16px;border-top:1px solid #d2e1df;background:#f4f8f8;text-align:center}
+.survey-banner>.survey-footer{margin:20px 0 0;border-radius:10px}
+.survey-footer a{display:block;font-weight:700}
+.survey-questions{inset:0;width:min(calc(100% - 24px),60rem);height:min(calc(100dvh - 24px),54rem);max-width:none;max-height:none;margin:auto;padding:0;overflow:hidden;border:1px solid #ccdddb;border-radius:20px;background:#f5f9f9;color:inherit}
+.survey-questions::backdrop{background:#082936bd;backdrop-filter:blur(4px)}
+.survey-questions form{display:grid;grid-template-rows:auto minmax(0,1fr) auto;height:100%}
+.survey-questions header{padding:12px 16px;border-bottom:1px solid #d2e1df;background:#fff;text-align:center}
+.survey-questions h2{margin:0;font-size:clamp(1.05rem,3vw,1.35rem)}
+.survey-question-body{overflow:auto;overscroll-behavior:contain;padding:0 clamp(10px,3vw,24px);scroll-padding:16px}
+.survey-question-body section{margin:12px 0}
+.survey-actions{display:flex;justify-content:center;gap:8px}
+.survey-footer [data-status]{margin:0 0 6px}
+.survey-footer [data-status]:empty{display:none}
+.survey-embedded,.survey-embedded body{background:transparent}
+.survey-embedded .survey-app{width:100%;min-height:100dvh;padding:0}
+.survey-embedded:has(.survey-questions[open]),.survey-embedded body:has(.survey-questions[open]){overflow:hidden}
+.survey-embedded .survey-banner{width:100%;box-shadow:none;border:0;border-radius:0;background:transparent}
+.survey-embedded .survey-questions{width:100%;height:100dvh;border:0;border-radius:0}

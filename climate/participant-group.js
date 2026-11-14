@@ -1,7 +1,7 @@
 import {callParticipantSurvey} from './participant-session.js';
 export const identifyInstitutionalGroup=()=>callParticipantSurvey({action:'BOOTSTRAP'});
-export function mountParticipantGate(host,form,onIdentified,{identify=identifyInstitutionalGroup}={}) {
- form.hidden=true;
+export function mountParticipantGate(host,consentPanel,onIdentified,{identify=identifyInstitutionalGroup}={}) {
+ consentPanel.hidden=true;
  host.innerHTML='<p role="status" aria-live="polite">Preparando a pesquisa com seu cadastro do app…</p>';
  void (async()=>{
   try {
@@ -9,9 +9,9 @@ export function mountParticipantGate(host,form,onIdentified,{identify=identifyIn
    if(!host.isConnected)return;
    const label={team:'Equipe',resident:'Residentes'}[group];
    host.classList.add('participant-group-notice');
-   host.innerHTML='<h2>Você acessou pelo grupo '+label+'</h2><p>Seus dados pessoais não serão exibidos neste ambiente. Os resultados são apresentados apenas de forma agregada por grupo. O controle de participação fica separado das respostas para impedir duplicidades.</p><p role="status" aria-live="polite"></p>';
+   host.innerHTML='<p class="participant-group-label">Você acessou pelo grupo:</p><h2>'+label+'</h2><p>Seus dados pessoais não serão exibidos neste ambiente. Os resultados são apresentados apenas de forma agregada por grupo. O controle de participação fica separado das respostas para impedir duplicidades.</p><p role="status" aria-live="polite"></p>';
    if(state.alreadyResponded===true){host.querySelector('[role=status]').textContent='Você já participou desta pesquisa neste ciclo. Não é possível enviar outra resposta.';return;}
-   if(state.alreadyResponded!==false)throw Error('REGISTRY_UNAVAILABLE');onIdentified(group);form.hidden=false;
+   if(state.alreadyResponded!==false)throw Error('REGISTRY_UNAVAILABLE');onIdentified(group);consentPanel.hidden=false;
   } catch(error) {
    if(!host.isConnected)return;
    if(error.message==='NAVIGATING_TO_APP'){host.querySelector('[role=status]').textContent='Abrindo a pesquisa com sua sessão do app…';return;}

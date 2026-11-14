@@ -1,17 +1,30 @@
 export const SURVEY_APP_ORIGIN='https://anestesiahmtforms.github.io';
 export const SURVEY_FE_ORIGIN='https://outros-48120.web.app';
+export const INSTITUTIONAL_SURVEYS_URL=SURVEY_APP_ORIGIN+'/SAHMT-V2.0.github.io/#/management-hub/institutional';
+const VIEW='SAHMT_SURVEY_VIEW_V1';
+export function notifySurveyHost(view,appWindow=window){
+ if(appWindow.parent!==appWindow)appWindow.parent.postMessage({type:VIEW,view},SURVEY_APP_ORIGIN);
+}
 const REQUEST='SAHMT_SURVEY_REQUEST_V1',REPLY='SAHMT_SURVEY_REPLY_V1';
 const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 const challengeValid=v=>typeof v==='string'&&/^[a-f0-9]{32}$/.test(v);
-export function bindSurveySession(frame,{perform,isCurrent=()=>true,appWindow=window,feOrigin=SURVEY_FE_ORIGIN}={}){
- let disposed=false;const requests=new Map();
+export function bindSurveySession(frame,{perform,onView=()=>{},isCurrent=()=>true,appWindow=window,feOrigin=SURVEY_FE_ORIGIN}={}){
+ let disposed=false,accepted=false;const requests=new Map();
  const listener=async event=>{
   const d=event.data;
-  if(disposed||!isCurrent()||event.origin!==feOrigin||event.source!==frame.contentWindow||!exact(d,['type','challenge','action','input'])||d.type!==REQUEST||!challengeValid(d.challenge)||!['BOOTSTRAP','SUBMIT'].includes(d.action)||(d.action==='BOOTSTRAP'&&d.input!==null))return;
+  if(disposed||!isCurrent()||event.origin!==feOrigin||event.source!==frame.contentWindow)return;
+  if(exact(d,['type','view'])&&d.type===VIEW){
+   if(d.view==='intro'||d.view==='questions'||(d.view==='complete'&&accepted))onView(d.view);
+   return;
+  }
+  if(!exact(d,['type','challenge','action','input'])||d.type!==REQUEST||!challengeValid(d.challenge)||!['BOOTSTRAP','SUBMIT'].includes(d.action)||(d.action==='BOOTSTRAP'&&d.input!==null))return;
   try{if(JSON.stringify(d).length>32768)return;}catch{return;}
   if(!requests.has(d.challenge)){if(requests.size>=16)return;requests.set(d.challenge,Promise.resolve().then(()=>perform(d.action,d.input)).then(result=>({result}),()=>({error:'SURVEY_UNAVAILABLE'})));}
   const target=event.source,reply=await requests.get(d.challenge);
-  if(!disposed&&isCurrent()&&target===frame.contentWindow)target.postMessage({type:REPLY,challenge:d.challenge,...reply},feOrigin);
+  if(!disposed&&isCurrent()&&target===frame.contentWindow){
+   if(d.action==='SUBMIT'&&reply.result?.accepted===true)accepted=true;
+   target.postMessage({type:REPLY,challenge:d.challenge,...reply},feOrigin);
+  }
  };
  appWindow.addEventListener('message',listener);
  return()=>{disposed=true;requests.clear();appWindow.removeEventListener('message',listener);};

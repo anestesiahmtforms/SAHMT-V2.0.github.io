@@ -22,6 +22,13 @@ export const OPEN = questions('O', ['Qual é o principal ponto forte do SAHMT qu
 export const questionsForSelection = value => MODULES[value] || (value === 'team' ? MODULES.preceptor : []);
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const allowedKeys = (value, keys) => isObject(value) && Object.keys(value).every(key => keys.includes(key));
+export function validateCompleteSubmission(input) {
+  const response = validateSubmission(input);
+  const requiredQuestions = [...COMMON, ...questionsForSelection(response.group)];
+  if (!requiredQuestions.every(q => Object.hasOwn(response.answers, q.id))) throw Error('INCOMPLETE_ANSWERS');
+  if (!OPEN.every(q => Object.hasOwn(response.comments, q.id))) throw Error('INCOMPLETE_COMMENTS');
+  return response;
+}
 export function validateSubmission(input) {
   if (!allowedKeys(input, ['survey_version', 'survey_cycle', 'submission_id', 'consent', 'answers', 'comments', 'group']) || input.consent !== true || input.survey_version !== VERSION || input.survey_cycle !== CYCLE || !/^[a-f0-9]{32}$/.test(input.submission_id)) throw Error('INVALID_SUBMISSION');
   const group = input.group;

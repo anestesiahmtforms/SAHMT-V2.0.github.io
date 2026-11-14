@@ -52,6 +52,11 @@ export function calculate(answers,stressRating){
  const total=Object.values(clean).reduce((a,b)=>a+b,0),band=BANDS.find(b=>total>=b.min&&total<=b.max);
  return {total,band:band.id,bandLabel:band.label,dimensions:DIMENSIONS.map(d=>({id:d.id,label:d.label,score:QUESTIONS.filter(q=>q.dimension===d.id).reduce((sum,q)=>sum+clean[q.id],0),maximum:50})),...(stressRating!==undefined?{stressRating}:{})};
 }
+export function validateCompleteSubmission(input){
+ const response=validateSubmission(input);
+ if(response.stress_rating===undefined)throw Error('STRESS_RATING_REQUIRED');
+ return response;
+}
 export function validateSubmission(input){
  if(!input||typeof input!=='object'||Array.isArray(input)||!Object.keys(input).every(k=>['survey_cycle','survey_version','submission_id','group','answers','stress_rating'].includes(k)))throw Error('INVALID_FIELDS');
  if(input.survey_cycle!==CYCLE||input.survey_version!==VERSION||!/^[a-f0-9]{32}$/.test(input.submission_id)||!Object.hasOwn(GROUPS,input.group))throw Error('INVALID_SUBMISSION');
