@@ -1,10 +1,12 @@
-import {mountSurveyFlow,surveyResponseId} from './survey-flow.js';
+import {mountSurveyFlow,surveyResponseId} from '../src/survey-flow.js';
+import {identifyInstitutionalGroup} from './participant-group.js';
 import './style.css';
 import {DIMENSIONS,QUESTIONS,SCALE,VERSION,CYCLE} from '../stress-domain/schema.js';
 import {send} from './stress-transport.js';
 
 let participantGroup;
 mountSurveyFlow(document.querySelector('#app'), {
+  identify:identifyInstitutionalGroup,
   title: 'Avaliação de estresse e fadiga',
   questions: `<p>Considere os últimos sete dias e escolha a frequência de cada experiência.</p>
     ${DIMENSIONS.map(d => `<section><h2>${d.label}</h2>${QUESTIONS.filter(q => q.dimension === d.id).map(q => `<fieldset><legend>${q.id}. ${q.text}</legend><div class="options">${SCALE.map(([value,label]) => `<label><input type="radio" name="${q.id}" value="${value}" required><span>${value} · ${label}</span></label>`).join('')}</div></fieldset>`).join('')}</section>`).join('')}

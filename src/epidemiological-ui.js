@@ -1,7 +1,7 @@
 import './registration-ui.css';
 import {registrationField} from './registration-fields.js';
 import {EPIDEMIOLOGICAL_FIELDS,REGISTRATION_CYCLE,validateCompleteEpidemiologicalSubmission,bmiBand} from './registration-domain.js';
-import {mountSurveyFlow,surveyResponseId} from '../climate/survey-flow.js';
+import {mountSurveyFlow,surveyResponseId} from './survey-flow.js';
 
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const questions = EPIDEMIOLOGICAL_FIELDS.map(field => registrationField({...field,required:true})).join('') +

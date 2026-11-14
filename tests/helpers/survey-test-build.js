@@ -11,9 +11,7 @@ export async function surveyTestBuild(name) {
      return source.slice(0,start)+(climate?"export async function sendSubmission(payload,commentToken,signal){const r=await fetch(COMMIT_URL,{method:'POST',credentials:'omit',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json'},body:JSON.stringify(commitBody(payload,commentToken)),signal});if(!r.ok)throw Error(r.status===403?'NOT_ACCEPTED':'UNAVAILABLE');return {accepted:true,alreadyResponded:false};}":"export async function send(payload,signal){const r=await fetch(COMMIT_URL,{method:'POST',credentials:'omit',referrerPolicy:'no-referrer',headers:{'Content-Type':'application/json'},body:JSON.stringify(commitBody(payload)),signal});if(!r.ok)throw Error(r.status===403?'NOT_ACCEPTED':'UNAVAILABLE');return {accepted:true,alreadyResponded:false};}");
     }
     if(!id.endsWith('/climate/participant-group.js'))return;
-    const start=source.indexOf('export const identifyInstitutionalGroup='),end=source.indexOf('export function mountParticipantGate(',start);
-    if(start<0||end<0)throw Error('TEST_REGISTRY_BOUNDARY_MISSING');
-    return source.slice(0,start)+"export async function identifyInstitutionalGroup(){const group=new URL(location.href).searchParams.get('testGroup')||'team';if(group==='invalid')throw Error('SYNTHETIC_MISSING');return {group,alreadyResponded:false};}\n"+source.slice(end);
+    return "export async function identifyInstitutionalGroup(){const group=new URL(location.href).searchParams.get('testGroup')||'team';if(group==='invalid')throw Error('SYNTHETIC_MISSING');return {group,alreadyResponded:false};}\n";
   }}]});
   return outDir;
 }

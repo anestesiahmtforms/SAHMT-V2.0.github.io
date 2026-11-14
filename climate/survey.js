@@ -1,4 +1,5 @@
-import {mountSurveyFlow,surveyResponseId} from './survey-flow.js';
+import {mountSurveyFlow,surveyResponseId} from '../src/survey-flow.js';
+import {identifyInstitutionalGroup} from './participant-group.js';
 import {COMMON,DIMENSIONS,OPEN,VERSION,CYCLE,questionsForSelection} from '../climate-domain/schema.js';
 import './style.css';
 import {sendSubmission} from './transport.js';
@@ -9,6 +10,7 @@ let participantGroup;
 const commentToken = surveyResponseId();
 
 mountSurveyFlow(document.querySelector('#app'), {
+  identify:identifyInstitutionalGroup,
   title: 'Pesquisa de clima organizacional',
   questions: `<p>Considere os últimos seis meses. Marque N/A quando o item não se aplicar ou quando você não tiver informação para responder.</p>
     ${DIMENSIONS.map(([label], i) => `<section><h2>${i + 1}. ${label}</h2>${COMMON.slice(i * 4, i * 4 + 4).map(renderQuestion).join('')}</section>`).join('')}

@@ -1,5 +1,5 @@
-import {mountParticipantGate} from './participant-group.js';
-import {INSTITUTIONAL_SURVEYS_URL, notifySurveyHost} from '../src/survey-session-bridge.js';
+import {mountParticipantGate} from './survey-participant-gate.js';
+import {INSTITUTIONAL_SURVEYS_URL, notifySurveyHost} from './survey-session-bridge.js';
 import './survey-flow.css';
 
 export function mountSurveyFlow(app, {title, questions, identify, privacy, extraIntro='', onGroup, readResponse, submit, onComplete}) {
