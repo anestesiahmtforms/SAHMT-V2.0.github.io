@@ -53,7 +53,7 @@ test('the owner can switch between administrator and team views without replacin
  }finally{await browser?.close();await preview.close();}
 });
 
-test('banner recovers without FE login; team Governance opens only the two schedules',{timeout:60000},async()=>{
+test('banner recovers without FE login; team Governance opens schedules and consultations',{timeout:60000},async()=>{
  const preview=await createYearEndStartupPreview({statusFailures:1,requireSecondaryConnect:true});let browser;
  try{
   preview.release();browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();page.setDefaultTimeout(12000);
@@ -73,7 +73,12 @@ async function openYearEnd(page){
 
 async function assertTeamConsultations(page){
  await page.evaluate(()=>location.hash='#/management-hub/surveys');await page.locator('.management-hub-dialog[data-panel="surveys"]').waitFor();
- const dialog=page.locator('.management-hub-dialog');assert.equal(await dialog.locator('[data-hub-item]').count(),2);assert.equal(await dialog.locator('[data-hub-item]').filter({hasText:'ESCALA FINAL DE ANO'}).isEnabled(),true);assert.equal(await dialog.locator('[data-hub-item]').filter({hasText:'ESCALA DE FÉRIAS 2027'}).isEnabled(),true);assert.equal(await dialog.getByText('PESQUISAS INSTITUCIONAIS',{exact:true}).count(),0);
+ const dialog=page.locator('.management-hub-dialog');
+ const items=dialog.locator('[data-hub-item]');
+ assert.equal(await items.count(),5);
+ for(const title of ['ESCALA FINAL DE ANO','ESCALA DE FÉRIAS 2027','PESQUISAS INSTITUCIONAIS','CADASTRO PROFISSIONAL','CADASTRO EPIDEMIOLÓGICO']){
+  assert.equal(await items.filter({hasText:title}).isEnabled(),true,title);
+ }
  await page.evaluate(()=>location.hash='#/home');await page.locator('.app-shell--home [data-route="schedule"]').waitFor();assert.equal(await page.locator('.management-hub-dialog').count(),0);
 }
 
