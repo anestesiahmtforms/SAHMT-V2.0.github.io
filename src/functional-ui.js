@@ -6,6 +6,7 @@ import {waitForGoogleProjectSession} from './google-project-auth-runtime.js';
 import {refreshFunctionalOverview,readFunctionalTeamOverview} from './functional-client.js';
 import {listFunctionalTeam} from './functional-access.js';
 import {operationalContentAllowed,operationalFolderNotice} from './operational-folder-runtime.js';
+import {loadFunctionalResult,renderFunctionalResult,resultYears} from './functional-results.js';
 
 let activeFunctionalMountCleanup = null;
 const waitWithTimeout = (promise, milliseconds, code) => {
@@ -18,14 +19,22 @@ const waitWithTimeout = (promise, milliseconds, code) => {
 const sourceLabels = Object.freeze({
   performance: 'Desempenho',
   professionalRegistration: 'Cadastro Profissional',
+  dosimetry: 'Dosimetria',
   vaccination: 'Vacinação',
-  dosimetry: 'Dosimetria'
+  climate: 'Pesquisa de Clima Organizacional',
+  stress: 'Avaliação de Estresse e Fadiga',
+  epidemiological: 'Cadastro Epidemiológico',
+  notifications: 'Notificações'
 });
 const sourceFolders = Object.freeze({
   performance:'funcional/desempenho',
   professionalRegistration:'funcional/cadastro-profissional',
   vaccination:'funcional/biosseguranca/vacinacao',
-  dosimetry:'funcional/biosseguranca/dosimetria'
+  dosimetry:'funcional/biosseguranca/dosimetria',
+  climate:'funcional/pesquisas-institucionais/clima',
+  stress:'funcional/pesquisas-institucionais/estresse-fadiga',
+  epidemiological:'funcional/cadastro-epidemiologico',
+  notifications:'funcional'
 });
 const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 
@@ -38,15 +47,13 @@ const sourceIcons = {
 const sourceIcon = key => '<svg class="functional-tile-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="'+(sourceIcons[key]||sourceIcons.professionalRegistration)+'"/></svg>';
 
 function sourceCards(sources) {
-  const entries = {performance:{state:'PREPARING'}, ...sources};
-  const keys = Object.keys(entries).filter(key=>sourceFolders[key]&&operationalContentAllowed(sourceFolders[key]))
-    .sort((a,b) => Number(b==='performance') - Number(a==='performance') || sourceLabels[a].localeCompare(sourceLabels[b], 'pt-BR'));
+  const keys = Object.keys(sourceLabels).filter(key=>operationalContentAllowed(sourceFolders[key]));
   const states = {READY:'Dados sincronizados', PREPARING:'Em preparação', SESSION_REQUIRED:'Autenticação necessária', UNAVAILABLE:'Temporariamente indisponível'};
   if (!keys.length) return '<p class="empty-state">Nenhuma pasta funcional está disponível.</p>';
   return '<div class="functional-source-grid">' + keys.map(key => {
-    const value = entries[key];
+    const value = sources[key]??{state:'PREPARING'};
     return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail">'
-      + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong><small>'+escapeHtml(states[value?.state]||'Status não informado')+'</small></span>'
+      + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong>'+(key==='performance'?'<small>'+escapeHtml(states[value.state]||'Status não informado')+'</small>':'')+'</span>'
       + '<span class="functional-chevron" aria-hidden="true">›</span></button>'
       + operationalFolderNotice(sourceFolders[key])+'</div>';
   }).join('') + '</div>';
@@ -75,17 +82,11 @@ function performanceDetail({total,percentage,updatedAt}) {
     + '<p>'+feedback[tone]+'</p><small>Atualizado em '+escapeHtml(updated)+'</small></div>';
 }
 
-function sourceDetail(key,value) {
-  if(value?.state==='PREPARING')return key==='performance'?'Aguardando a consolidação dos pontos de FB, FC, FE, FG e FJ.':'A integração desta pasta está em preparação.';
-  if(value?.state!=='READY')return 'Nenhum dado individual foi confirmado nesta atualização.';
-  if(key==='professionalRegistration')return value.data?.record?'Cadastro profissional localizado.':'Nenhum cadastro profissional individual localizado.';
-  return 'Resumo individual atualizado.';
-}
-
 export async function mountFunctionalModule(root, {uid, displayName = '', faAuth, administrator = false, isCurrent = () => true, onSessionRequired = () => {}} = {}) {
   let disposed = false;
   let stopAuth = () => {};
   let detailDialog, openSource = '', visibleSources = null;
+  let resultRequest=0;
   let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = '', ownPerformance = {state:'PREPARING'};
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const ownSession = () => current() && getFunctionalAuth()?.currentUser?.uid === uid;
@@ -138,12 +139,16 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     detailDialog=root.querySelector('#fk-detail');
     detailDialog?.addEventListener('close',()=>{
       if(detailDialog.open)return;
+      resultRequest++;
       const key=openSource;
       openSource='';
       detailDialog.querySelector('[data-fk-detail-body]').replaceChildren();
       if(key&&ownSession())root.querySelector('[data-fk-source="'+key+'"]')?.focus({preventScroll:true});
     });
     root.addEventListener('click', onFunctionalClick);
+    detailDialog?.addEventListener('change',event=>{
+      if(ownSession()&&event.target.matches('[data-fk-year]'))void fetchResult(Number(event.target.value));
+    });
     if(administrator)root.addEventListener('change', onSubjectChange);
     void updateOverview(db);
     void waitWithTimeout(getDocFromServer(doc(db,'functionalPerformance',uid)),10000,'FK_PERFORMANCE_TIMEOUT')
@@ -196,19 +201,36 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     if(status)status.textContent=statusText;
     if(detailDialog?.open){
       if(!hasSource(openSource))detailDialog.close();
-      else renderSourceDetail();
+      else if(openSource==='performance')renderSourceDetail();
     }
   }
 
   function hasSource(key) {
     return visibleSources&&Object.hasOwn(sourceFolders,key)&&
-      (key==='performance'||Object.hasOwn(visibleSources,key))&&operationalContentAllowed(sourceFolders[key]);
+      operationalContentAllowed(sourceFolders[key]);
   }
 
   function renderSourceDetail(){
     const value=visibleSources[openSource]??{state:'PREPARING'};
-    detailDialog.querySelector('[data-fk-detail-body]').innerHTML=openSource==='performance'&&value.state==='READY'
-      ?performanceDetail(value.data):'<p>'+escapeHtml(sourceDetail(openSource,value))+'</p>';
+    detailDialog.querySelector('[data-fk-detail-body]').innerHTML=value.state==='READY'
+      ?performanceDetail(value.data):'<p>Aguardando a consolidação dos pontos de FB, FC, FE, FG e FJ.</p>';
+  }
+
+  async function fetchResult(year) {
+    const key=openSource, ticket=++resultRequest;
+    const current=()=>ownSession()&&detailDialog.open&&openSource===key&&resultRequest===ticket;
+    const body=detailDialog.querySelector('[data-fk-detail-body]');
+    const output=body.querySelector('[data-fk-result]');
+    if(!output)return;
+    output.textContent='Consultando…';
+    try{
+      const result=await loadFunctionalResult({key,year,uid,subjectUid:selection||uid,faAuth,isCurrent:current});
+      if(current())output.innerHTML=renderFunctionalResult(key,result);
+    }catch(error){
+      if(current())output.textContent=error?.code?.endsWith('_FOLDER_DISABLED')
+        ?'A consulta está desativada no Controle de Pastas da área de origem.'
+        :'Não foi possível confirmar o resultado agora. Feche e reabra o painel para tentar novamente.';
+    }
   }
 
   function showRecognition(message) {
@@ -280,8 +302,15 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       openSource=key;
       detailDialog.querySelector('#fk-detail-title').textContent=sourceLabels[key];
       detailDialog.querySelector('[data-fk-detail-icon]').innerHTML=sourceIcon(key);
-      renderSourceDetail();
+      if(key==='performance')renderSourceDetail();
+      else{
+        const years=resultYears(key);
+        detailDialog.querySelector('[data-fk-detail-body]').innerHTML=(years.length
+          ?'<label class="functional-result-year">Ano <select data-fk-year>'+years.map(year=>'<option>'+year+'</option>').join('')+'</select></label>':'')
+          +'<div data-fk-result aria-live="polite"></div>';
+      }
       detailDialog.showModal();
+      if(key!=='performance')void fetchResult(resultYears(key)[0]);
     }
   }
 }

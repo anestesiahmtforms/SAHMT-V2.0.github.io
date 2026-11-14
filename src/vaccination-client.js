@@ -3,8 +3,28 @@ const base='https://sahmt-html-training.anestesiahmtforms.workers.dev';
 const messages={MANUAL_FORBIDDEN:'Seu acesso ao manual não está liberado.',MANUAL_NOT_FOUND:'O manual está temporariamente indisponível.',DOSIMETRY_FORBIDDEN:'Seu acesso ao histórico individual não está liberado.',DOSIMETRY_RECORD_UNAVAILABLE:'Seu relatório precisa ser conferido pelo administrador. Tente novamente após a revisão.',VAC_CATEGORY_NOT_CONFIGURED:'Seu vínculo profissional precisa ser revisado pelo administrador antes de salvar.',VAC_VERSION_CONFLICT:'Este cadastro foi alterado em outra sessão. Recarregue o período antes de salvar.',VAC_FORBIDDEN:'Seu acesso não está liberado para esta operação.',DOCUMENT_FORBIDDEN:'Seu acesso não está liberado para esta operação.',DOCUMENT_DRIVE_NOT_CONNECTED:'O envio de comprovantes ainda não foi conectado ao Drive. O cadastro pode ser salvo.',DOCUMENT_FOLDER_NOT_CONFIGURED:'Sua pasta de comprovantes ainda não foi configurada. Procure o administrador.',DOCUMENT_UPLOAD_CONFLICT:'Esta tentativa já foi usada para outro arquivo. Selecione o comprovante novamente.',DOCUMENT_UPLOAD_LIMIT:'O limite diário de envio foi atingido. Procure o administrador.',DOCUMENT_FILE_TOO_LARGE:'O arquivo ultrapassou o tamanho permitido.',DOCUMENT_IMAGE_DIMENSIONS_INVALID:'A foto não está no formato preparado pelo app. Selecione-a novamente.'};
 export async function createVaccinationClient(user){
  if(deployment.target!=='FB'||deployment.projectId!=='sahmt-gestao-5ae66')throw Error('O histórico vacinal está disponível no ambiente de Gestão.');
- const [{auth},{onAuthStateChanged}]=await Promise.all([import('./firebase-auth.js'),import('firebase/auth')]);
- const valid=()=>auth?.currentUser?.uid===user.uid&&auth.app?.options?.projectId==='sahmt-gestao-5ae66';
+ const {auth}=await import('./firebase-auth.js');
+ return createOccupationalClient(user,auth);
+}
+
+export async function createFunctionalOccupationalReader(user,{isCurrent}){
+ const {getGoogleProjectAuth,waitForGoogleProjectSession}=await import('./google-project-auth-runtime.js');
+ if(!await waitForGoogleProjectSession('FB',{isCurrent})||!isCurrent())throw Error('Confirme sua sessão de FB na entrada do aplicativo.');
+ const client=await createOccupationalClient(user,getGoogleProjectAuth('FB'),isCurrent);
+ return {
+  async read(source,year){
+   if(source==='vaccination')return client.api('BOOTSTRAP',{year});
+   if(source==='dosimetry')return client.dosimetry('GET_OWN',{year});
+   throw Error('FK_SOURCE_INVALID');
+  },
+  dispose:client.dispose
+ };
+}
+
+async function createOccupationalClient(user,auth,isCurrent=()=>true){
+ const {onAuthStateChanged}=await import('firebase/auth');
+ const actor=auth?.currentUser;
+ const valid=()=>isCurrent()&&actor?.uid===user.uid&&auth.currentUser===actor&&auth.app?.options?.projectId==='sahmt-gestao-5ae66';
  const pending=new Set();
  const api=async(path,action,input)=>{
   if(!valid())throw Error('Sua sessão mudou. Entre novamente.');

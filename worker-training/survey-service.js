@@ -2,6 +2,7 @@ import {validateEpidemiologicalSubmission,REGISTRATION_CYCLE} from '../src/regis
 import {validateSubmission as climateInput,VERSION as climateVersion,CYCLE} from '../climate-domain/schema.js';
 import {validateSubmission as stressInput,VERSION as stressVersion} from '../stress-domain/schema.js';
 import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} from '../src/institutional-group.js';
+import {functionalSurveyCharts} from '../src/functional-survey-charts.js';
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 const validId=id=>typeof id==='string'&&/^[a-f0-9]{32}$/.test(id);
@@ -25,6 +26,20 @@ export function createSurveyService({profileStore,responseStore,uuid=()=>crypto.
     return {affiliation:group,group:researchGroup(group),administrator};
   }
   async function execute(action,input,identity){
+    if(performanceEnabled&&action==='FK_AGGREGATE'&&exact(input,['survey','cycle'])&&
+       Object.hasOwn(kinds,input.survey)&&input.cycle===CYCLE){
+      const access=await authorize(identity);
+      if(access.affiliation!=='team'&&!access.administrator)fail('SURVEY_FORBIDDEN',403);
+      return responseStore.transaction(async tx=>{
+        if(!access.administrator)await checkSurvey(folders[input.survey],tx);
+        const cycle=await tx.get(kinds[input.survey].cycleCollection,CYCLE);
+        if(cycle?.status!=='closed')return {status:'OPEN',groups:[]};
+        const report=await tx.get(input.survey+'Reports',CYCLE);
+        if(report?.survey_cycle!==CYCLE||report.grouping_version!==2||report.survey_version!==kinds[input.survey].version)
+          return {status:'PENDING',groups:[]};
+        return {status:'READY',groups:functionalSurveyCharts(input.survey,report)};
+      });
+    }
     if(performanceEnabled&&action==='GET_PERFORMANCE'&&exact(input,[])){
       if(!(await authorize(identity)).administrator)await checkPerformance();
       const runtime=await responseStore.get('fePerformanceRuntime','current');

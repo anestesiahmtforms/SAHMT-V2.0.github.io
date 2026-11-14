@@ -54,7 +54,9 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUi
 
 test('FK renders its profile before a slow refresh resolves',async()=>{
  const gate=deferred(),f=ui({refresh:()=>gate.promise});const cleanup=await f.run();
- assert.doesNotMatch(f.root.innerHTML,/data-fk-team|data-fk-survey|Pesquisas institucionais|Biossegurança/);assert.match(f.root.innerHTML,/Dados sincronizados/);
+ assert.doesNotMatch(f.root.innerHTML,/data-fk-team|data-fk-survey|Biossegurança/);
+ assert.deepEqual([...f.root.innerHTML.matchAll(/data-fk-source="([^"]+)"/g)].map(m=>m[1]),
+  ['performance','professionalRegistration','dosimetry','vaccination','climate','stress','epidemiological','notifications']);
  assert.equal(f.root.innerHTML.match(/data-fk-source="([^"]+)"/)?.[1],'performance');
  assert.match(f.root.innerHTML,/aria-haspopup="dialog"/);
  assert.doesNotMatch(f.root.innerHTML,/ACESSO INDIVIDUAL|SAHMT/);
@@ -83,7 +85,7 @@ test('administrator selection clears the previous profile and ignores responses 
   assert.equal(f.detail.open,true);
   assert.equal(f.detailTitle.textContent,'Desempenho');
   assert.match(f.detailBody.innerHTML,/PONTOS TOTAIS ADQUIRIDOS[\s\S]*12,5[\s\S]*data-tone="high">81%[\s\S]*Margens de avaliação/);
-  assert.match(f.sources.innerHTML,/Vacinação/);assert.doesNotMatch(f.sources.innerHTML,/Dosimetria|Cadastro Profissional/);
+  assert.match(f.sources.innerHTML,/Vacinação/);
   assert.equal(f.recognition.textContent,'Mensagem da Bia');
   f.detail.close();
   assert.equal(f.detailBody.innerHTML,'');

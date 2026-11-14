@@ -9,6 +9,22 @@ const identity={uid:'synthetic-one',email:'one@example.invalid',emailVerified:tr
 const response=(kind,id='a'.repeat(32))=>({survey_cycle:'2026',survey_version:kind==='climate'?climateVersion:stressVersion,submission_id:id,group:'substitute',...(kind==='climate'?{consent:true,answers:{Q01:4},comments:{O01:'Synthetic comment'}}:{answers:Object.fromEntries(QUESTIONS.map(q=>[q.id,2]))})});
 async function fixture(category='EFETIVO'){const profiles=vaccinationMemoryStore(),responses=vaccinationMemoryStore();profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});profiles.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:[category]});responses.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:'2026-10-01T00:00:00Z'});for(const kind of ['climate','stress'])responses.seed(kind+'Cycles','2026',{status:'open'});return {profiles,responses,service:createSurveyService({profileStore:profiles,responseStore:responses,performanceEnabled:true,uuid:()=> 'b'.repeat(32)})};}
 const input=(kind,id)=>({survey:kind,cycle:'2026',response:response(kind,id)});
+test('FK displays only published charts, without comments, small cohorts or individual answers',async()=>{
+ const {service,responses}=await fixture(),query={survey:'climate',cycle:'2026'};
+ assert.deepEqual(await service.execute('FK_AGGREGATE',query,identity),{status:'OPEN',groups:[]});
+ responses.seed('climateCycles','2026',{status:'closed'});
+ assert.deepEqual(await service.execute('FK_AGGREGATE',query,identity),{status:'PENDING',groups:[]});
+ responses.seed('climateReports','2026',{survey_cycle:'2026',survey_version:climateVersion,grouping_version:2,
+  groups:{team:{suppressed:false,respondents:8,general:{numerator:21,denominator:40},comments:['PRIVATE']},
+   resident:{suppressed:true,respondents:2,general:{numerator:5,denominator:8}}},answers:['PRIVATE']});
+ const result=await service.execute('FK_AGGREGATE',query,identity);
+ assert.deepEqual(result,{status:'READY',groups:[
+  {label:'Equipe',charts:[{label:'Respostas favoráveis',slices:[{label:'Favoráveis',value:21},{label:'Demais respostas válidas',value:19}]}]},
+  {label:'Residentes',charts:[]}
+ ]});
+ const resident=await fixture('RESIDENTE_1');
+ await assert.rejects(resident.service.execute('FK_AGGREGATE',query,identity),{code:'SURVEY_FORBIDDEN'});
+});
 test('one account gets one response per survey/cycle; participation data contains no answer identifier or group',async()=>{
  const {service,responses}=await fixture();
  for(const kind of ['climate','stress']){
