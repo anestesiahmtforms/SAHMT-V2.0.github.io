@@ -18,14 +18,12 @@ const waitWithTimeout = (promise, milliseconds, code) => {
 const sourceLabels = Object.freeze({
   performance: 'Desempenho',
   professionalRegistration: 'Cadastro Profissional',
-  biosafetyManual: 'Biossegurança',
   vaccination: 'Vacinação',
   dosimetry: 'Dosimetria'
 });
 const sourceFolders = Object.freeze({
   performance:'funcional/desempenho',
   professionalRegistration:'funcional/cadastro-profissional',
-  biosafetyManual:'funcional/biosseguranca/manual',
   vaccination:'funcional/biosseguranca/vacinacao',
   dosimetry:'funcional/biosseguranca/dosimetria'
 });
@@ -34,7 +32,6 @@ const escapeHtml = value => String(value).replace(/[&<>"']/g, char => ({'&':'&am
 const sourceIcons = {
   performance: 'M4 20h16M7 16v-4m5 4V8m5 8V4',
   professionalRegistration: 'M5 4h14v16H5zM8 9h8m-8 4h8m-8 4h5',
-  biosafetyManual: 'M12 3l7 3v5c0 4-3 7-7 10-4-3-7-6-7-10V6zM9 12l2 2 4-4',
   vaccination: 'M12 5v14M5 12h14',
   dosimetry: 'M4 13h4l2-6 4 10 2-4h4',
 };
