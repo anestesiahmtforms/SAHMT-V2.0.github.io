@@ -12,6 +12,12 @@ if(!/^[A-Za-z0-9_-]{30,100}$/.test(spreadsheet||''))throw Error('FF_HISTORY_SPRE
 const config=JSON.parse(await readFile('worker-communication/wrangler.jsonc','utf8'));
 if(config.account_id!==account||config.name!==script)throw Error('FF_WORKER_TARGET_MISMATCH');
 const cloudToken=await firebaseCliAccountToken(owner);
+const billingResponse=await fetch('https://cloudbilling.googleapis.com/v1/projects/sahmt-comunicacao-ff/billingInfo',{
+ headers:{Authorization:'Bearer '+cloudToken},redirect:'error',signal:AbortSignal.timeout(15000)
+});
+if(!billingResponse.ok)throw Error('FF_BILLING_STATUS_UNAVAILABLE');
+const billing=await billingResponse.json();
+if(billing.billingEnabled!==false||billing.billingAccountName)throw Error('FF_BILLING_MUST_STAY_DISABLED');
 for(const service of ['drive.googleapis.com','sheets.googleapis.com']){
  const response=await fetch('https://serviceusage.googleapis.com/v1/projects/772883283859/services/'+service,{
   headers:{Authorization:'Bearer '+cloudToken},redirect:'error',signal:AbortSignal.timeout(15000)

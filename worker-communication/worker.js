@@ -62,9 +62,11 @@ async function runtime(env,fetchImpl,buildService,actor,headers){
    await store.assertAvailable();
    let verified=false;
    let code='';
+   let archiveApi='';
+   let archiveHttpStatus=0;
    try{await historyDrive.verify();verified=true;}
-   catch(error){code=error.code||'COMM_HISTORY_UNAVAILABLE';}
-   await store.transaction(tx=>tx.set('communicationHistoryHealth','2026',{verified,code,checkedAt:Date.now()}));
+   catch(error){code=error.code||'COMM_HISTORY_UNAVAILABLE';archiveApi=error.archiveApi||'';archiveHttpStatus=error.archiveHttpStatus||0;}
+   await store.transaction(tx=>tx.set('communicationHistoryHealth','2026',{verified,code,archiveApi,archiveHttpStatus,checkedAt:Date.now()}));
    if(verified)await history.recover();
   }
  };

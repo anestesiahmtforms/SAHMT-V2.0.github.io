@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const retired=new Set(['firebase-project-auth-browser','management-project-auth-auto-connect','management-firebase-app','indicators-firebase-app','management-session-browser','management-lease-access','management-pilot-auth-diagnostics']);
 // Explicit browser-safe shared files only; backend implementations remain excluded.
-const sharedBrowserModules=new Set(['communication/domain.js','server/folder-read-policy.js']);
+const sharedBrowserModules=new Set(['communication/domain.js','communication/obligations.js','server/folder-read-policy.js']);
 const visited=new Set(),pending=['src/main.js'];
 while(pending.length){
  const path=pending.pop();if(visited.has(path))continue;

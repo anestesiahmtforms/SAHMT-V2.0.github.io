@@ -13,11 +13,16 @@ export function createCommunicationHistoryDrive({getToken,fetchImpl=fetch,spread
  if(typeof getToken!=='function'||!id(spreadsheetId)||folderId!==HISTORY_FOLDER)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);
  const root=SHEETS+spreadsheetId;
  async function request(url,body){
+  const api=url.startsWith(FILES)?'DRIVE':'SHEETS';
   try{
    const response=await fetchImpl(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',cache:'no-store',signal:AbortSignal.timeout(20000)});
-   if(!response.ok){await response.body?.cancel();throw fail(response.status===403?'COMM_HISTORY_FORBIDDEN':response.status===429?'COMM_PROVIDER_QUOTA_EXHAUSTED':'COMM_HISTORY_UNAVAILABLE',response.status===429?429:503);}
+   if(!response.ok){
+    await response.body?.cancel();
+    const error=fail(response.status===403?'COMM_HISTORY_FORBIDDEN':response.status===429?'COMM_PROVIDER_QUOTA_EXHAUSTED':'COMM_HISTORY_UNAVAILABLE',response.status===429?429:503);
+    throw Object.assign(error,{archiveApi:api,archiveHttpStatus:response.status});
+   }
    return await boundedJson(response);
-  }catch(e){if(/^COMM_/.test(e.code||''))throw e;throw fail('COMM_HISTORY_UNAVAILABLE',503);}
+  }catch(e){if(/^COMM_/.test(e.code||''))throw Object.assign(e,{archiveApi:e.archiveApi||api});throw Object.assign(fail('COMM_HISTORY_UNAVAILABLE',503),{archiveApi:api});}
  }
  async function verify(){
   const meta=await request(FILES+spreadsheetId+'?fields='+encodeURIComponent('id,mimeType,parents,trashed,permissions(type,role,emailAddress)'));
