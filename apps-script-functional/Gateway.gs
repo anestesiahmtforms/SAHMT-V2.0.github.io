@@ -15,6 +15,8 @@ function doPost(event) {
     if (payload.action === 'SYNC_TEAM_PERFORMANCE' && Object.keys(payload).length === 1) return json_(syncTeamPerformance_());
     if (payload.action === 'SYNC_OVERVIEW') return json_(syncOwnOverview_(payload.faIdToken));
     if (payload.action === 'READ_TEAM_OVERVIEW') return json_(readTeamOverview_(payload.faIdToken, payload.subjectUid));
+    if (payload.action === 'FUNCTIONAL_DOSIMETRY_IMPORT' && Object.keys(payload).length === 3) return json_(functionalDosimetryImport_(payload.faIdToken, payload.input));
+    if (payload.action === 'FUNCTIONAL_DOSIMETRY' && Object.keys(payload).length === 3) return json_(functionalDosimetry_(payload.faIdToken, payload.input));
     if (payload.action === 'FUNCTIONAL_SURVEY_SUBMIT') return json_(submitFunctionalSurvey_(payload));
     throw new Error('FK_ACTION_INVALID');
   } catch (error) {
@@ -503,4 +505,94 @@ function syncTeamPerformance_() {
     last.setProperty('FK_PERFORMANCE_UPDATED_AT',String(updatedAt));
     return {code:'FK_PERFORMANCE_SYNCED',members:team.length};
   } finally {lock.releaseLock();}
+}
+
+/** The functional user can read only their own dosimetry; administrators may inspect a selected member. */
+function functionalDosimetry_(idToken,input){
+ if(!input||Object.keys(input).length!==3||input.operation!=='GET'||!Object.prototype.hasOwnProperty.call(input,'subjectUid')||!Object.prototype.hasOwnProperty.call(input,'year')||
+   typeof input.subjectUid!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(input.subjectUid||'')||!Number.isInteger(input.year)||input.year<2025||input.year>2099)throw new Error('FK_DOSIMETRY_INPUT_INVALID');
+ function authorize(){var access=authorizeFaUser_(idToken);if(!access.administrator&&(access.group!=='EQUIPE'||access.uid!==input.subjectUid))throw new Error('FK_AUTH_DENIED');
+  var subject=readFaDocument_(idToken,'users/'+input.subjectUid),email=normalizeEmail_(subject&&subject.email);
+  if(!subject||subject.uid!==input.subjectUid||!email||subject.active!==true||subject.access!==true)throw new Error('FK_TEAM_MEMBER_DENIED');
+  if(!(access.administrator&&access.uid===input.subjectUid)){var assignment=readFaDocument_(idToken,'userCategories/'+sha256Hex_(JSON.stringify(email)));if(!isEffectiveAssignment_(assignment,input.subjectUid,email))throw new Error('FK_TEAM_MEMBER_DENIED');}
+  if(!access.administrator){var policyResponse=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FA_PROJECT_+'/databases/(default)/documents/runtimePolicy/folders',{method:'get',headers:{Authorization:'Bearer '+idToken},muteHttpExceptions:true});
+   if(policyResponse.getResponseCode()===200){var policy=decodeFirestoreFields_(JSON.parse(policyResponse.getContentText()).fields||{});if(policy.schemaVersion!==1||!Number.isSafeInteger(policy.revision)||policy.revision<1||!Array.isArray(policy.disabled)||policy.disabled.some(function(k){return typeof k!=='string';}))throw new Error('FK_DOSIMETRY_UNAVAILABLE');if(['funcional','funcional/biosseguranca','funcional/biosseguranca/dosimetria'].some(function(k){return policy.disabled.indexOf(k)>=0;}))throw new Error('FK_DOSIMETRY_FOLDER_DISABLED');}
+   else if(policyResponse.getResponseCode()!==404)throw new Error('FK_DOSIMETRY_UNAVAILABLE');}
+  return {actor:access,email:email};}
+ var authorized=authorize(),root='projects/'+FK_PROJECT_+'/databases/(default)/documents/';
+ var response=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/'+root+'occupationalDosimetry/'+input.subjectUid+'_'+input.year,{method:'get',headers:{Authorization:'Bearer '+getFkSnapshotAccessToken_()},muteHttpExceptions:true});
+ if(response.getResponseCode()!==200&&response.getResponseCode()!==404)throw new Error('FK_DOSIMETRY_UNAVAILABLE');
+ var record=response.getResponseCode()===200?decodeFirestoreFields_(JSON.parse(response.getContentText()).fields||{}):null;
+ if(record&&(record.uid!==input.subjectUid||record.year!==input.year||normalizeEmail_(record.email)!==authorized.email||!Array.isArray(record.values)||record.values.length!==12||record.values.some(function(v){return v!==null&&(typeof v!=='string'||!(/^(ANR|LI|ND|NU|EC|EX|OD)$/.test(v)||/^\d{1,5}(?:[.,]\d{1,3})?$/.test(v)));})))throw new Error('FK_DOSIMETRY_RECORD_INVALID');
+ var fresh=authorize();if(fresh.actor.uid!==authorized.actor.uid||fresh.email!==authorized.email)throw new Error('FK_AUTH_DENIED');
+ return {code:'FK_DOSIMETRY_READY',uid:input.subjectUid,year:input.year,record:record?{uid:record.uid,year:record.year,values:record.values,version:record.version||0,issuedOn:record.issuedOn}:null};
+}
+
+function functionalDosimetryRoster_(idToken) {
+  var root='https://firestore.googleapis.com/v1/projects/'+FA_PROJECT_+'/databases/(default)/documents';
+  var responses=UrlFetchApp.fetchAll(['users','userCategories'].map(function(collection){return {url:root+':runQuery',method:'post',contentType:'application/json',headers:{Authorization:'Bearer '+idToken},muteHttpExceptions:true,
+    payload:JSON.stringify({structuredQuery:{from:[{collectionId:collection}],limit:401}})};}));
+  var records=responses.map(function(response){if(response.getResponseCode()!==200)throw new Error('FK_DOSIMETRY_UNAVAILABLE');var rows=JSON.parse(response.getContentText()).filter(function(r){return r.document;});if(rows.length>=401)throw new Error('FK_DOSIMETRY_LIMIT');return rows.map(function(r){return Object.assign({id:r.document.name.split('/').pop()},decodeFirestoreFields_(r.document.fields||{}));});});
+  var assignments=Object.create(null);records[1].forEach(function(a){if(a.uid)assignments[a.uid]=a;});
+  return records[0].filter(function(p){return p.uid===p.id&&p.active===true&&p.access===true&&isEffectiveAssignment_(assignments[p.uid],p.uid,normalizeEmail_(p.email));}).map(function(p){return {uid:p.uid,email:normalizeEmail_(p.email),name:String(p.displayName||p.name||p.sigla||p.email)};});
+}
+function functionalDosimetryBatchGet_(names, token) {
+  var result={};if(!names.length)return result;
+  var response=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FK_PROJECT_+'/databases/(default)/documents:batchGet',{method:'post',contentType:'application/json',headers:{Authorization:'Bearer '+token},payload:JSON.stringify({documents:names}),muteHttpExceptions:true});
+  if(response.getResponseCode()!==200)throw new Error('FK_DOSIMETRY_UNAVAILABLE');
+  var rows=JSON.parse(response.getContentText());if(!Array.isArray(rows)||rows.length!==names.length)throw new Error('FK_DOSIMETRY_UNAVAILABLE');
+  rows.forEach(function(r){var name=r.found&&r.found.name||r.missing;if(names.indexOf(name)<0||Object.prototype.hasOwnProperty.call(result,name))throw new Error('FK_DOSIMETRY_UNAVAILABLE');result[name]=r.found?{record:decodeFirestoreFields_(r.found.fields||{}),updateTime:r.found.updateTime}:null;});return result;
+}
+function functionalDosimetryImport_(idToken,input) {
+  function invalid(){throw new Error('FK_DOSIMETRY_INPUT_INVALID');}
+  var keys=['operation','year','issuedOn','sourceFingerprint','fileName','rows'];
+  if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==keys.length||keys.some(function(k){return !Object.prototype.hasOwnProperty.call(input,k);})||
+    ['PREVIEW_IMPORT','IMPORT'].indexOf(input.operation)<0||!Number.isInteger(input.year)||input.year<2025||input.year>2099||
+    typeof input.issuedOn!=='string'||!/^20\d{2}-\d{2}-\d{2}$/.test(input.issuedOn)||!Number.isFinite(Date.parse(input.issuedOn+'T00:00:00Z'))||new Date(input.issuedOn+'T00:00:00Z').toISOString().slice(0,10)!==input.issuedOn||
+    typeof input.sourceFingerprint!=='string'||!/^[a-f0-9]{64}$/.test(input.sourceFingerprint||'')||typeof input.fileName!=='string'||!input.fileName.trim()||input.fileName.length>200||
+    !Array.isArray(input.rows)||input.rows.length<1||input.rows.length>100)invalid();
+  var save=input.operation==='IMPORT',codes=Object.create(null),names=Object.create(null);
+  function normalized(name){return String(name).normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9]+/g,' ').trim().split(' ').filter(function(p){return ['DE','DA','DO','DAS','DOS','E'].indexOf(p)<0;}).join(' ');}
+  function validValue(v){return v===null||typeof v==='string'&&(/^(ANR|LI|ND|NU|EC|EX|OD)$/.test(v)||/^\d{1,5}(?:[.,]\d{1,3})?$/.test(v));}
+  input.rows.forEach(function(r){var expected=save?['code','name','values','monitorType','uid','expectedVersion','bindingConfirmed']:['code','name','values','monitorType'];
+    if(!r||Object.keys(r).length!==expected.length||expected.some(function(k){return !Object.prototype.hasOwnProperty.call(r,k);})||typeof r.code!=='string'||!/^\d{3,6}$/.test(r.code||'')||codes[r.code]||
+      typeof r.name!=='string'||r.name.length>200||!normalized(r.name)||names[normalized(r.name)]||r.monitorType!=='28'||!Array.isArray(r.values)||r.values.length!==12||r.values.some(function(v){return !validValue(v);})||!r.values.some(function(v){return v!==null;})||
+      save&&(typeof r.uid!=='string'||!/^[A-Za-z0-9_-]{1,128}$/.test(r.uid||'')||!Number.isSafeInteger(r.expectedVersion)||r.expectedVersion<0||typeof r.bindingConfirmed!=='boolean'))invalid();codes[r.code]=true;names[normalized(r.name)]=true;});
+  var access=authorizeFaUser_(idToken);if(!access.administrator)throw new Error('FK_AUTH_DENIED');
+  var roster=functionalDosimetryRoster_(idToken),byUid=Object.create(null);roster.forEach(function(p){byUid[p.uid]=p;});
+  if(!roster.length)throw new Error('FK_TEAM_MEMBER_DENIED');
+  var root='projects/'+FK_PROJECT_+'/databases/(default)/documents/';
+  var token=getFkSnapshotAccessToken_(),paths=[];roster.forEach(function(p){paths.push(root+'occupationalDosimetryBindings/'+p.uid,root+'occupationalDosimetry/'+p.uid+'_'+input.year);});
+  var documents=functionalDosimetryBatchGet_(paths,token),nameMap=Object.create(null);
+  roster.forEach(function(p){var d=documents[root+'occupationalDosimetryBindings/'+p.uid],binding=d&&d.record;
+    if(binding&&binding.uid===p.uid&&normalizeEmail_(binding.email)===p.email&&Array.isArray(binding.names))binding.names.forEach(function(name){var key=normalized(name);if(!nameMap[key])nameMap[key]=[];if(nameMap[key].indexOf(p.uid)<0)nameMap[key].push(p.uid);});
+    var existing=documents[root+'occupationalDosimetry/'+p.uid+'_'+input.year];
+    if(existing&&(existing.record.uid!==p.uid||existing.record.year!==input.year||normalizeEmail_(existing.record.email)!==p.email||!Array.isArray(existing.record.values)||existing.record.values.length!==12||existing.record.values.some(function(v){return !validValue(v);})))throw new Error('FK_DOSIMETRY_RECORD_INVALID');
+  });
+  if(!save){var rows=input.rows.map(function(r){var matches=nameMap[normalized(r.name)]||[],uid=matches.length===1?matches[0]:null;var existing=uid&&documents[root+'occupationalDosimetry/'+uid+'_'+input.year];return Object.assign({},r,{uid:uid,expectedVersion:existing&&existing.record.version||0,bindingConfirmed:false});});
+    if(!authorizeFaUser_(idToken).administrator)throw new Error('FK_AUTH_DENIED');
+    return {code:'FK_DOSIMETRY_IMPORT_PREVIEW',year:input.year,rows:rows,members:roster.map(function(p){var d=documents[root+'occupationalDosimetry/'+p.uid+'_'+input.year];return {uid:p.uid,name:p.name,version:d&&d.record.version||0};})};}
+  var reportedMonths=Array(12).fill(false);input.rows.forEach(function(r){r.values.forEach(function(v,i){if(v!==null)reportedMonths[i]=true;});});
+  var used=Object.create(null),writes=[],batchId=Utilities.getUuid(),at=Date.now(),changed=0;
+  input.rows.forEach(function(r){var person=byUid[r.uid];if(!person||used[r.uid])throw new Error('FK_TEAM_MEMBER_DENIED');used[r.uid]=true;
+    var matches=nameMap[normalized(r.name)]||[];if(!(matches.length===1&&matches[0]===r.uid)&&!r.bindingConfirmed)throw new Error('FK_DOSIMETRY_BINDING_REQUIRED');
+    var path=root+'occupationalDosimetry/'+r.uid+'_'+input.year,doc=documents[path],old=doc&&doc.record,version=old&&old.version||0;
+    var values=r.values.map(function(v,i){return !reportedMonths[i]&&old?old.values[i]:v;});
+    if(old&&old.sourceFingerprint===input.sourceFingerprint&&old.issuedOn===input.issuedOn&&JSON.stringify(old.values)===JSON.stringify(values))return;
+    if(version!==r.expectedVersion)throw new Error('FK_DOSIMETRY_CONFLICT');
+    var record=Object.assign({},old||{},{schemaVersion:2,status:'RECORDED',entryMethod:'PDF_IMPORT',uid:r.uid,email:person.email,year:input.year,values:values,sourceName:r.name,sourceCode:r.code,
+      sourceFingerprint:input.sourceFingerprint,sourceFileName:input.fileName,unit:'mSv',quantity:'Hp(10)',monitorType:'28',issuedOn:input.issuedOn,version:version+1,updatedAt:at,updatedBy:access.uid});
+    writes.push({update:{name:path,fields:toFirestoreFields_(record)},currentDocument:doc?{updateTime:doc.updateTime}:{exists:false}});
+    writes.push(createOnlyWrite_(root+'occupationalDosimetryAudit/'+batchId+'_'+r.uid,{uid:r.uid,year:input.year,actorUid:access.uid,createdAt:at,sourceFingerprint:input.sourceFingerprint,previousValues:old?old.values:Array(12).fill(null),values:values,version:version+1}));
+    var bindingDoc=documents[root+'occupationalDosimetryBindings/'+r.uid],aliases=bindingDoc&&bindingDoc.record.names||[];
+    if(aliases.indexOf(r.name)<0)writes.push({update:{name:root+'occupationalDosimetryBindings/'+r.uid,fields:toFirestoreFields_({schemaVersion:1,uid:r.uid,email:person.email,names:aliases.concat([r.name]).slice(-20)})},currentDocument:bindingDoc?{updateTime:bindingDoc.updateTime}:{exists:false}});
+    changed++;
+  });
+  var fresh=authorizeFaUser_(idToken);if(!fresh.administrator||fresh.uid!==access.uid)throw new Error('FK_AUTH_DENIED');
+  var latest=functionalDosimetryRoster_(idToken);input.rows.forEach(function(r){var p=latest.filter(function(p){return p.uid===r.uid&&p.email===byUid[r.uid].email;});if(p.length!==1)throw new Error('FK_TEAM_MEMBER_DENIED');});
+  if(writes.length){writes.push(createOnlyWrite_(root+'occupationalDosimetryImports/'+batchId,{schemaVersion:1,year:input.year,issuedOn:input.issuedOn,actorUid:access.uid,createdAt:at,sourceFingerprint:input.sourceFingerprint,fileName:input.fileName,records:changed}));
+    var response=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FK_PROJECT_+'/databases/(default)/documents:commit',{method:'post',contentType:'application/json',headers:{Authorization:'Bearer '+token},payload:JSON.stringify({writes:writes}),muteHttpExceptions:true});
+    if(response.getResponseCode()===409||response.getResponseCode()===400&&/FAILED_PRECONDITION|ABORTED/.test(response.getContentText()))throw new Error('FK_DOSIMETRY_CONFLICT');
+    if(response.getResponseCode()<200||response.getResponseCode()>=300)throw new Error('FK_DOSIMETRY_WRITE_FAILED');}
+  return {code:'FK_DOSIMETRY_IMPORTED',year:input.year,updated:changed,unchanged:input.rows.length-changed};
 }

@@ -1568,7 +1568,7 @@ async function loadModule(route) {
         const vaccination=panel==='vaccinationHistory';
         const module=await(vaccination?import('./vaccination.js'):import('./dosimetry.js'));
         if(!currentHub()||!isCurrent())return()=>{};
-        const mount=vaccination?module.mountVaccination:module.mountDosimetry;
+        const mount=module.mountVaccination;
         const user=session.user;
         return mount(host,{user,profile:session.profile,onBack,clientFactory:async()=>{
           const {createVaccinationClient}=await import('./vaccination-client.js');

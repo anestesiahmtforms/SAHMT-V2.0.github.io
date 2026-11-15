@@ -89,7 +89,9 @@
     "firebase": "^12.19.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
-    "parse5": "5.1.1"
+    "parse5": "5.1.1",
+    "pdfjs-dist": "6.5.438",
+    "tesseract.js": "7.0.0"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.2",

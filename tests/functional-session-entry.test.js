@@ -73,6 +73,7 @@ test('administrator selection clears the previous profile and ignores responses 
  const cleanup=await f.run();
  try{
   assert.match(f.root.innerHTML,/Selecionar integrante da Equipe/);
+  assert.match(f.root.innerHTML,/data-fk-dose-admin>Atualizar histórico de dosimetria/);
   f.openPicker();await turn();
   assert.match(f.select.innerHTML,/<option value="ana">Ana<\/option>/);
   const first=f.choose('ana');

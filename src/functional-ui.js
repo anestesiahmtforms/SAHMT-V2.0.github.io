@@ -1,3 +1,6 @@
+import {mountFunctionalDosimetryImport} from './functional-dosimetry-import.js';
+import {mountFunctionalDosimetry} from './functional-dosimetry.js';
+import {requestFunctionalDosimetry} from './functional-client.js';
 import {onAuthStateChanged} from 'firebase/auth';
 import {doc, getDocFromServer} from 'firebase/firestore';
 import {getFunctionalFirestore} from './functional-firebase.js';
@@ -86,7 +89,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   let disposed = false;
   let stopAuth = () => {};
   let detailDialog, openSource = '', visibleSources = null;
-  let resultRequest=0;
+  let resultRequest=0,cleanupDosimetry=()=>{};
   let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = '', ownPerformance = {state:'PREPARING'};
   const header=root.closest('.functional-dialog')?.querySelector('[data-fk-header]');
   const owner=header?.querySelector('[data-fk-owner]');
@@ -96,7 +99,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
   const cleanup = () => {
     if (disposed) return;
-    disposed = true;
+    disposed = true;cleanupDosimetry();
     if(detailDialog?.open)detailDialog.close();
     showOwner('');
     showRecognition('');
@@ -132,7 +135,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     const selector=administrator?'<div class="functional-team"><button class="secondary-button" type="button" data-fk-team aria-expanded="false" aria-controls="fk-team-picker">Selecionar integrante da Equipe</button>'
       + '<div id="fk-team-picker" data-fk-picker hidden><label for="fk-team-subject">Integrante da Equipe</label>'
       + '<select id="fk-team-subject" data-fk-subject disabled><option value="">Meu perfil</option></select><p data-fk-team-status role="status"></p></div>'
-      + '</div>':'';
+      + '<button class="secondary-button" type="button" data-fk-dose-admin>Atualizar histórico de dosimetria</button></div>':'';
     visibleSources=ownSources;
     showOwner(displayName||'Meu perfil');
     paint('<section class="functional-page">'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
@@ -144,7 +147,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     detailDialog=root.querySelector('#fk-detail');
     detailDialog?.addEventListener('close',()=>{
       if(detailDialog.open)return;
-      resultRequest++;
+      resultRequest++;cleanupDosimetry();cleanupDosimetry=()=>{};
       const key=openSource;
       openSource='';
       detailDialog.querySelector('[data-fk-detail-body]').replaceChildren();
@@ -303,6 +306,17 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   }
 
   function onFunctionalClick(event) {
+    const doseAdmin=event.target.closest('[data-fk-dose-admin]');
+    if(doseAdmin&&administrator&&ownSession()&&detailDialog&&!detailDialog.open&&hasSource('dosimetry')){
+      openSource='dosimetry';
+      detailDialog.querySelector('#fk-detail-title').textContent='Atualizar histórico de dosimetria';
+      detailDialog.querySelector('[data-fk-detail-icon]').innerHTML=sourceIcon('dosimetry');
+      detailDialog.querySelector('[data-fk-detail-body]').innerHTML='<div data-fk-dose-host></div>';
+      detailDialog.showModal();
+      const current=()=>ownSession()&&detailDialog.open&&openSource==='dosimetry';
+      cleanupDosimetry=mountFunctionalDosimetryImport(detailDialog.querySelector('[data-fk-dose-host]'),{isCurrent:current,request:input=>requestFunctionalDosimetry({faAuth,uid,input,isCurrent:current})});
+      return;
+    }
     const teamButton=event.target.closest('[data-fk-team]');
     if(teamButton&&administrator&&ownSession()){void openTeamPicker(teamButton);return;}
     const sourceButton = event.target.closest('[data-fk-source]');
@@ -312,6 +326,15 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       openSource=key;
       detailDialog.querySelector('#fk-detail-title').textContent=sourceLabels[key];
       detailDialog.querySelector('[data-fk-detail-icon]').innerHTML=sourceIcon(key);
+      if(key==='dosimetry'){
+        detailDialog.querySelector('[data-fk-detail-body]').innerHTML='<div data-fk-dose-host></div>';
+        detailDialog.showModal();
+        const subjectUid=selection||uid;
+        const current=()=>ownSession()&&detailDialog.open&&openSource==='dosimetry'&&(selection||uid)===subjectUid;
+        cleanupDosimetry=mountFunctionalDosimetry(detailDialog.querySelector('[data-fk-dose-host]'),{subjectUid,administrator,isCurrent:current,
+          request:input=>requestFunctionalDosimetry({faAuth,uid,input,isCurrent:current})});
+        return;
+      }
       if(key==='performance')renderSourceDetail();
       else{
         const years=resultYears(key);

@@ -36,20 +36,44 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
     const headers = cors(origin, env || {});
     const url = new URL(request.url);
     const route = url.pathname;
-    if (!['/v1/functional/refresh','/v1/functional/survey','/v1/functional/team-overview'].includes(route)) return Response.json({code:'NOT_FOUND'}, {status:404,headers});
+    if (!['/v1/functional/refresh','/v1/functional/survey','/v1/functional/team-overview','/v1/functional/dosimetry'].includes(route)) return Response.json({code:'NOT_FOUND'}, {status:404,headers});
     if (request.method === 'OPTIONS') return new Response(null, {status:origin === env.FK_AUTH_ORIGIN ? 204 : 403,headers});
     if (request.method !== 'POST' || origin !== env.FK_AUTH_ORIGIN) return Response.json({code:'REQUEST_REJECTED'}, {status:403,headers});
     if (!env.APPS_SCRIPT_URL || !env.FK_HMAC_SECRET || env.FK_HMAC_SECRET.length < 32)
       return Response.json({code:'SERVICE_UNAVAILABLE'}, {status:503,headers});
+    const bodyLimit=route==='/v1/functional/dosimetry'?200000:MAX_BODY;
     const length = Number(request.headers.get('Content-Length') || 0);
-    if (length > MAX_BODY) return Response.json({code:'REQUEST_TOO_LARGE'}, {status:413,headers});
+    if (length > bodyLimit) return Response.json({code:'REQUEST_TOO_LARGE'}, {status:413,headers});
     let input;
     try {
       const raw = await request.text();
-      if (new TextEncoder().encode(raw).byteLength > MAX_BODY) return Response.json({code:'REQUEST_TOO_LARGE'}, {status:413,headers});
+      if (new TextEncoder().encode(raw).byteLength > bodyLimit) return Response.json({code:'REQUEST_TOO_LARGE'}, {status:413,headers});
       input = JSON.parse(raw);
     } catch { return Response.json({code:'REQUEST_INVALID'}, {status:400,headers}); }
     const validToken = typeof input?.faIdToken === 'string' && input.faIdToken.length >= 100 && input.faIdToken.length <= 10000 && !/[\s\x00-\x1f]/.test(input.faIdToken);
+    if(route==='/v1/functional/dosimetry'){
+      if(!input||Object.keys(input).length!==2||!Object.hasOwn(input,'input')||!validToken||
+         !input.input||typeof input.input!=='object'||Array.isArray(input.input))return Response.json({code:'REQUEST_INVALID'},{status:400,headers});
+      try{
+        const batch=['PREVIEW_IMPORT','IMPORT'].includes(input.input.operation);
+        if(!batch&&input.input.operation!=='GET')return Response.json({code:'REQUEST_INVALID'},{status:400,headers});
+        const payload={action:batch?'FUNCTIONAL_DOSIMETRY_IMPORT':'FUNCTIONAL_DOSIMETRY',faIdToken:input.faIdToken,input:input.input};input.faIdToken='';
+        const body=await signedEnvelope(payload,env.FK_HMAC_SECRET,clock());payload.faIdToken='';
+        const response=await fetchImpl(env.APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'application/json'},body,redirect:'follow',signal:AbortSignal.timeout(30000)});
+        if(!response.ok)throw Error();const text=await response.text();if(text.length>200000)throw Error();const result=JSON.parse(text);
+        const errors={FK_AUTH_DENIED:403,FK_TEAM_MEMBER_DENIED:403,FK_DOSIMETRY_INPUT_INVALID:400,FK_DOSIMETRY_CONFLICT:409,FK_DOSIMETRY_BINDING_REQUIRED:400,FK_DOSIMETRY_FOLDER_DISABLED:403};
+        if(Object.hasOwn(errors,result.code))return Response.json({code:result.code},{status:errors[result.code],headers});
+        if(batch){
+          if(result.year!==input.input.year)throw Error();
+          if(input.input.operation==='PREVIEW_IMPORT'&&result.code==='FK_DOSIMETRY_IMPORT_PREVIEW'&&Array.isArray(result.rows)&&result.rows.length<=100&&Array.isArray(result.members))return Response.json(result,{headers});
+          if(input.input.operation==='IMPORT'&&result.code==='FK_DOSIMETRY_IMPORTED'&&Number.isSafeInteger(result.updated)&&Number.isSafeInteger(result.unchanged))return Response.json(result,{headers});
+          throw Error();
+        }
+        if(!['FK_DOSIMETRY_READY','FK_DOSIMETRY_SAVED'].includes(result.code)||result.uid!==input.input.subjectUid||result.year!==input.input.year||
+          result.record!==null&&(result.record?.uid!==result.uid||result.record?.year!==result.year||!Array.isArray(result.record.values)||result.record.values.length!==12))throw Error();
+        return Response.json({uid:result.uid,year:result.year,record:result.record},{headers});
+      }catch{return Response.json({code:'FK_DOSIMETRY_UNAVAILABLE'},{status:503,headers});}
+    }
     if (route === '/v1/functional/survey') {
       const keys=['faIdToken','action','survey','cycle','response'];
       if (!input || Object.keys(input).length!==keys.length || keys.some(key=>!Object.hasOwn(input,key))

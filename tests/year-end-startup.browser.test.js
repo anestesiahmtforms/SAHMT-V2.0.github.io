@@ -85,12 +85,12 @@ async function assertTeamConsultations(page){
  await items.filter({hasText:'ACESSO RESTRITO'}).click();
  await page.locator('.management-hub-dialog[data-panel="institutional"]').waitFor();
  assert.equal(await items.count(),7);
- for(const title of ['PESQUISA DE CLIMA ORGANIZACIONAL','AVALIAÇÃO DE ESTRESSE E FADIGA','ESCALA FINAL DE ANO','ESCALA DE FÉRIAS 2027','CADASTRO PROFISSIONAL','CADASTRO EPIDEMIOLÓGICO','BIOSSEGURANÇA']){
+ for(const title of ['PESQUISA DE CLIMA ORGANIZACIONAL','AVALIAÇÃO DE ESTRESSE E FADIGA','ESCALA FINAL DE ANO','ESCALA DE FÉRIAS 2027','CADASTRO PROFISSIONAL','CADASTRO EPIDEMIOLÓGICO','MEU HISTÓRICO VACINAL']){
   assert.equal(await items.filter({hasText:title}).isEnabled(),true,title);
  }
- await dialog.getByRole('button',{name:'BIOSSEGURANÇA',exact:true}).click();
- await page.locator('.management-hub-dialog[data-panel="biosafety"]').waitFor();
- assert.deepEqual((await items.allTextContents()).map(text=>text.replace(/›$/,'')),['MEU HISTÓRICO VACINAL','MEU HISTÓRICO DE DOSIMETRIA']);
+ assert.equal(await items.filter({hasText:'DOSIMETRIA'}).count(),0);
+ await dialog.getByRole('button',{name:'MEU HISTÓRICO VACINAL',exact:true}).click();
+ await page.locator('.management-hub-dialog[data-panel="vaccinationHistory"]').waitFor();
  await dialog.getByRole('button',{name:'VOLTAR',exact:true}).click();
  await page.locator('.management-hub-dialog[data-panel="institutional"]').waitFor();
  await page.evaluate(()=>location.hash='#/home');await page.locator('.app-shell--home [data-route="schedule"]').waitFor();assert.equal(await page.locator('.management-hub-dialog').count(),0);

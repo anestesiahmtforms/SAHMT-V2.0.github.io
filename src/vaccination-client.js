@@ -24,7 +24,7 @@ export async function createFunctionalOccupationalReader(user,{isCurrent,auth}){
  return {
   async read(source,year){
    if(source==='vaccination')return client.api('BOOTSTRAP',{year});
-   if(source==='dosimetry')return client.dosimetry('GET_OWN',{year});
+
    throw Error('FK_SOURCE_INVALID');
   },
   dispose:client.dispose

@@ -1,3 +1,5 @@
+import {requestFunctionalDosimetry} from './functional-client.js';
+import {dosimetryMonths} from './dosimetry-domain.js';
 import {callInstitutionalSurvey} from './institutional-survey-client.js';
 import {callRegistrationApi} from './registration-client.js';
 import {createFunctionalOccupationalReader} from './vaccination-client.js';
@@ -17,6 +19,7 @@ export function resultYears(key){
 export async function loadFunctionalResult({key,year,uid,subjectUid,faAuth,isCurrent}){
   if(surveys.includes(key))return callInstitutionalSurvey({uid,isCurrent,authClient:faAuth,survey:key,action:'FK_AGGREGATE'});
   if(key==='notifications')return {pending:true};
+  if(key==='dosimetry'){const result=await requestFunctionalDosimetry({faAuth,uid,isCurrent,input:{operation:'GET',subjectUid,year}});return {record:result.record?{...result.record,months:dosimetryMonths(result.record.values)}:null};}
   if(subjectUid!==uid)return {ownOnly:true};
   if(key==='professionalRegistration'){
     const {record}=await callRegistrationApi({uid,isCurrent,kind:'professional',action:'BOOTSTRAP'});

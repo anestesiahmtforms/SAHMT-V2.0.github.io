@@ -1,5 +1,4 @@
 import {createVaccinationService} from '../worker-training/vaccination-service.js';
-import {createDosimetryService} from '../worker-training/dosimetry-service.js';
 import {assignedInstitutionalGroup,institutionalAssignmentKey,institutionalGroup} from '../src/institutional-group.js';
 import {createVaccinationProofService} from './vaccination-proofs.js';
 import {awardUpdatedVaccinations} from './vaccination-performance.js';
@@ -26,15 +25,13 @@ export function createFeBiosafetyService({store,checkFolder,now=Date.now}) {
     eligibleParticipant:profile=>profile.active===true&&profile.access===true&&institutionalGroup(profile.memberCategories)==='team',
     onSaved:awardUpdatedVaccinations
   });
-  const dosimetry = createDosimetryService({
-    store,authorizeAccess:(tx,identity,profile)=>checkAccess(tx,identity,profile,'dosimetria')
-  });
   const documents = createVaccinationProofService({
     store,now,authorize:async(tx,identity)=>vaccinationAccess(tx,identity,await tx.get('users',identity.uid))
   });
-  const services = {vaccination,dosimetry,documents};
+  const services = {vaccination,documents};
   return {
-    execute(action,input,identity) {
+    async execute(action,input,identity) {
+      if(input?.kind==='dosimetry')fail('DOSIMETRY_MOVED_TO_FK',410);
       if (!input || !Object.hasOwn(services,input.kind) || Object.keys(input).length!==2 ||
           !input.payload || typeof input.payload!=='object' || Array.isArray(input.payload)) fail('VAC_INVALID_INPUT',400);
       return services[input.kind].execute(action,input.payload,identity);

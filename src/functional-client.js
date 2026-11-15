@@ -27,3 +27,11 @@ async function requestFunctional(endpoint,{faAuth,uid,isCurrent,fetchImpl,input=
   if(!response.ok||!result)throw new Error(result?.code||'FK_REFRESH_UNAVAILABLE');
   return result;
 }
+
+export async function requestFunctionalDosimetry({faAuth,uid,input,isCurrent=()=>true,fetchImpl=fetch}={}){
+ const endpoint=refreshEndpoint&&new URL('dosimetry',refreshEndpoint);
+ const result=await requestFunctional(endpoint,{faAuth,uid,isCurrent,fetchImpl,input:{input}});
+ if(['PREVIEW_IMPORT','IMPORT'].includes(input.operation)){if(result?.year!==input.year)throw Error('FK_DOSIMETRY_SCOPE_INVALID');return result;}
+ if(result?.uid!==input.subjectUid||result.year!==input.year||result.record!==null&&(result.record?.uid!==input.subjectUid||result.record?.year!==input.year))throw Error('FK_DOSIMETRY_SCOPE_INVALID');
+ return result;
+}

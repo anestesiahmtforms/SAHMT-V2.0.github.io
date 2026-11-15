@@ -22,23 +22,6 @@ test('vaccination starts with a highlighted centered period and the vaccine ques
  }finally{await browser.close();}
 });
 
-test('dosimetry uses a centered year banner and keeps all monthly rows within its fixed modal',async()=>{
- const browser=await chromium.launch(launch);
- try{const page=await browser.newPage();for(const viewport of [{width:320,height:568},{width:390,height:650},{width:768,height:900},{width:1440,height:900}]){
- await page.setViewportSize(viewport);await page.goto(base+'?hub');await page.getByRole('button',{name:'MEU HISTÓRICO DE DOSIMETRIA',exact:true}).click();
- await page.locator('.dosimetry-years').waitFor();
- assert.equal(await page.locator('[data-dose-back],[data-dose-refresh]').count(),0);
- const years=await page.locator('.dosimetry-year').all();const first=await years[0].boundingBox(),second=await years[1].boundingBox();
- assert.ok(second.y>=first.y+first.height);assert.ok(Math.abs(first.x-second.x)<1);assert.ok(first.width>first.height*2);
- const banner=await page.locator('.management-hub-dialog').boundingBox();assert.ok(Math.abs(banner.y+banner.height/2-viewport.height/2)<2);assert.ok(banner.height<450);
- await page.getByRole('button',{name:'2025',exact:true}).click();await page.locator('[data-dose-month="1"]').getByText('0,7',{exact:true}).waitFor();
- assert.equal(await page.locator('.dosimetry-owner,.dosimetry-period,.dosimetry-meta,[data-dose-back],[data-dose-refresh]').count(),0);
- assert.equal(await page.locator('.dosimetry-table tbody tr').count(),12);
- const metrics=await page.locator('.management-hub-dialog').evaluate(dialog=>{const body=dialog.querySelector('.management-hub-body'),footer=dialog.querySelector('footer').getBoundingClientRect(),last=dialog.querySelector('.dosimetry-legend').getBoundingClientRect();return {overflow:body.scrollHeight-body.clientHeight,last:last.bottom,footer:footer.top,bottom:footer.bottom};});
- if(process.env.SAHMT_LAYOUT_SCREENSHOTS)await page.screenshot({path:process.env.SAHMT_LAYOUT_SCREENSHOTS+'/dosimetry-record-'+viewport.width+'.png'});
- assert.ok(metrics.overflow<=1,JSON.stringify({viewport,metrics}));assert.ok(metrics.last<=metrics.footer&&metrics.bottom<=viewport.height,JSON.stringify({viewport,metrics}));
- await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.locator('.dosimetry-years').waitFor();
- if(process.env.SAHMT_LAYOUT_SCREENSHOTS)await page.screenshot({path:process.env.SAHMT_LAYOUT_SCREENSHOTS+'/dosimetry-years-'+viewport.width+'.png'});
- }
- }finally{await browser.close();}
+test('FE exposes vaccination directly and has no dosimetry or Biossegurança button',async()=>{
+ const browser=await chromium.launch(launch);try{const page=await browser.newPage();await page.goto(base+'?hub');await page.locator('.management-hub-dialog[data-panel="institutional"]').waitFor();assert.equal(await page.getByRole('button',{name:'BIOSSEGURANÇA',exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:/DOSIMETRIA/}).count(),0);await page.getByRole('button',{name:'MEU HISTÓRICO VACINAL',exact:true}).click();await page.locator('[data-vac-year]:enabled').waitFor();await page.getByRole('button',{name:'VOLTAR',exact:true}).click();await page.locator('.management-hub-dialog[data-panel="institutional"]').waitFor();}finally{await browser.close();}
 });

@@ -87,7 +87,7 @@ jobs:
           node --test tests/app-publication.test.js tests/app-updates-control-route.test.js tests/app-updates-targeted.test.js tests/app-updates-admin-lifecycle.test.js
           npx firebase emulators:exec --project demo-sahmt-v2 --only firestore "node --test tests/app-updates-targeted.rules.test.js"
       - name: Verify member categories and five-project identity classification
-        run: node --test tests/member-categories.test.js
+        run: node --test tests/member-categories.test.js tests/functional-dosimetry.test.js tests/functional-team-overview.test.js tests/dosimetry-report-parser.test.js
       # The executor quota guard is independent of Firestore authorization.
       - name: Verify Apps Script quota protection
         run: node --test tests/apps-script-service-quota.test.js

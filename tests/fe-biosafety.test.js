@@ -35,7 +35,7 @@ test('updated vaccines award at most four FE-local points per year without a com
  await request('vaccination','SAVE',{...updated,expectedVersion:4});
  assert.equal((await store.get('feVaccinationUpdatedPerformanceSummaries','team')).total,4);
  await request('vaccination','SAVE',{...input,year:2027});
- await request('dosimetry','GET_OWN',{year:2026});
+ await assert.rejects(request('dosimetry','GET_OWN',{year:2026}),{code:'DOSIMETRY_MOVED_TO_FK'});
  assert.equal((await store.get('feVaccinationUpdatedPerformanceSummaries','team')).total,5);
  assert.equal((await store.list('feVaccinationUpdatedPerformanceAwards')).length,5);
  assert.equal((await store.list('fePerformanceAwards')).length,0);
@@ -53,7 +53,7 @@ test('FE proves membership before reading histories, executing writes or serving
  const file={...selection,subject:'hepatitisB',requestId:'12345678-1234-4234-8234-123456789012',mimeType:'application/pdf',dataBase64:Buffer.from('%PDF-1.7\n%%EOF').toString('base64')};
  for(const uid of ['resident','substitute']){
   await assert.rejects(request('vaccination','SAVE',input,uid),{code:'VAC_FORBIDDEN'});
-  await assert.rejects(request('dosimetry','GET_OWN',{year:2026},uid),{code:'VAC_FORBIDDEN'});
+  await assert.rejects(request('dosimetry','GET_OWN',{year:2026},uid),{code:'DOSIMETRY_MOVED_TO_FK'});
   await assert.rejects(request('documents','UPLOAD',file,uid),{code:'VAC_FORBIDDEN'});
  }
  await request('documents','UPLOAD',file);
