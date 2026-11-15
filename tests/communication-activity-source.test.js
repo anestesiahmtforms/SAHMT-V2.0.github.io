@@ -74,6 +74,7 @@ function trainingFixture(){
  store.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});
  store.seed('users','admin',{uid:'admin',email:'admin@example.invalid',active:true,access:true,role:'administrador_app'});
  store.seed('documentAccessEmails',identity.email,{id:identity.email,email:identity.email,active:true,groups:['GENERAL']});
+ store.seed('htmlTrainingSettings','folders',{version:1,disabled:[]});
  store.seed('htmlTrainings',activity.id,{id:activity.id,title:activity.title,status:'PUBLISHED',version:1,maxScore:5,audienceGroup:'GENERAL',folderPath:['ROPs']});
  return {store,service:createHtmlTrainingService({store}),admin:{...identity,uid:'admin',email:'admin@example.invalid'}};
 }
