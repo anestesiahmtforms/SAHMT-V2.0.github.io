@@ -138,7 +138,7 @@ test('inactive Funcional keeps the nested directory visible without starting sou
  let refreshes=0;
  const f=ui({folderAllowed:()=>false,refresh:async()=>refreshes++});
  const cleanup=await f.run();
- assert.match(f.root.innerHTML,/<summary>Biossegurança<\/summary>[\s\S]*<summary>Dosimetria<\/summary>/);
+ assert.match(f.root.innerHTML,/<summary><span>Biossegurança<\/span>[\s\S]*<summary><span>Dosimetria<\/span>/);
  assert.match(f.root.innerHTML,/Pesquisas institucionais/);
  assert.doesNotMatch(f.root.innerHTML,/data-fk-dose-admin|iframe/);
  assert.equal(refreshes,0);
