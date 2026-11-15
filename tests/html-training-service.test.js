@@ -55,7 +55,7 @@ const publication = (expectedVersion = 0) => ({ trainingId: 'rop-one', expectedV
   bank: bank(), selectedQuestionIds: ['q0', 'q1', 'q2', 'q3', 'q4'], auditSchema: schema() });
 async function setup() {
   const store = memoryStore(); let sequence = 0;
-  store.seed('htmlTrainingSettings','folders',{version:1,disabled:[]});
+  store.seed('htmlTrainingSettings','folders',{version:0,disabled:[]});
   for (const uid of ['admin', 'manager', 'participant', 'other']) {
     store.seed('users', uid, { uid, active: true, access: true, role: uid === 'admin' ? 'administrador_app' : 'colaborador', permissions: {} });
     store.seed('documentAccessEmails', `${uid}@example.invalid`, { id: `${uid}@example.invalid`, email: `${uid}@example.invalid`, active: true, groups: ['GENERAL'] });
