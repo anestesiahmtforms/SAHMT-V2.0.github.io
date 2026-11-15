@@ -8,4 +8,4 @@ export function communicationDevicePushActive(){
 export function rememberCommunicationDevicePushActive(active){
  try{localStorage.setItem(communicationDeviceStateKey,active?'active':'disabled');}catch{}
 }
-export function communicationAdminSession(session){return communicationFeatureEnabled&&session?.status==='signed-in'&&session.profile?.active===true&&session.profile?.access===true&&adminIdentity(session.user);}
+export function communicationAdminSession(session){return communicationFeatureEnabled&&session?.accountMode!=='team'&&session?.status==='signed-in'&&session.profile?.active===true&&session.profile?.access===true&&adminIdentity(session.user);}
