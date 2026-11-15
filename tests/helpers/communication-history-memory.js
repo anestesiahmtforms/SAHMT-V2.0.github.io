@@ -1,0 +1,7 @@
+export function communicationMemory(){
+ const data=new Map();let lock=Promise.resolve();const get=async(c,k)=>structuredClone(data.get(c+'/'+k)||null);
+ const page=async(c,{cursor='',limit=20,filters=[],publishedBefore,fields}={})=>[...data].filter(([k,v])=>k.startsWith(c+'/')&&k.split('/')[1]>cursor&&filters.every(([f,x])=>v[f]===x)&&(publishedBefore===undefined||v.status==='published'&&v.publishAt<=publishedBefore)).sort(([a],[b])=>a.localeCompare(b)).slice(0,limit).map(([k,v])=>({...structuredClone(fields?Object.fromEntries(fields.filter(f=>f in v).map(f=>[f,v[f]])):v),id:k.split('/')[1]}));
+ const countPublished=async(start,end)=>[...data].filter(([k,v])=>k.startsWith('communicationMessages/')&&v.firstPublishedAt>=start&&v.firstPublishedAt<end).length;
+ const transaction=work=>{const run=lock.then(async()=>{const changes=new Map(),tx={get,countPublished,set:(c,k,v)=>changes.set(c+'/'+k,structuredClone(v)),create:(c,k,v)=>{if(data.has(c+'/'+k))throw Error('ALREADY_EXISTS');changes.set(c+'/'+k,structuredClone(v));},delete:(c,k)=>changes.set(c+'/'+k,null)};const result=await work(tx);for(const [k,v]of changes)v===null?data.delete(k):data.set(k,v);return result;});lock=run.catch(()=>{});return run;};
+ return {data,get,page,countPublished,transaction,getMany:(c,ids)=>Promise.all(ids.map(k=>get(c,k))),eligibleRecipients:()=>page('users',{limit:201,filters:[['active',true],['access',true]]})};
+}

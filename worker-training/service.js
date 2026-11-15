@@ -10,7 +10,7 @@ import {startReading,readingProgress,assertReadingComplete} from './reading-stat
 const C = Object.freeze({ training: 'htmlTrainings', versions: 'htmlTrainingVersions', content: 'htmlTrainingContent',
   state: 'htmlTrainingStates', score: 'htmlTrainingScores', pendingScores: 'htmlTrainingPendingScores', audits: 'htmlTrainingAudits', sync: 'htmlTrainingSync' });
 const managedActions = new Set(['EDIT', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE']);
-const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE', 'SET_FOLDER_ACCESS','BUILD_FOLDER_INDEX','RECONCILE_SCORE','READING_START','READING_PROGRESS']);
+const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE', 'SET_FOLDER_ACCESS','BUILD_FOLDER_INDEX','RECONCILE_SCORE','READING_START','READING_PROGRESS','OBLIGATION_CATALOG','OBLIGATION_ELIGIBILITY','OBLIGATION_STATUS']);
 const admin = profile => profile.role === 'administrador_app' || profile.permissions?.admin === true;
 const manages = (profile, training, uid) => admin(profile) || training.managerUid === uid;
 const navigationCard = training => ({
@@ -151,6 +151,62 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     const runId = action === 'BEGIN' ? identifier(uuid()) : null;
     return store.transaction(async tx => {
       const auth = await authorize(tx, identity);
+      if(action.startsWith('OBLIGATION_')){
+        const exact=keys=>Object.keys(input).length===keys.length&&keys.every(k=>Object.hasOwn(input,k));
+        if(action==='OBLIGATION_CATALOG'){
+          if(!exact([]))fail('INVALID_INPUT');
+          if(!admin(auth.profile))fail('FORBIDDEN',403);
+          const rows=await tx.list(C.training,[],1000);
+          return {items:rows.filter(t=>t.status==='PUBLISHED'&&trainingPathAllowed(auth.folderAccess,trainingAccessPath(t)))
+            .map(t=>({kind:'TRAINING',id:t.id,title:t.title,version:t.version,maxScore:t.maxScore}))};
+        }
+        const eligibility=action==='OBLIGATION_ELIGIBILITY';
+        if(!exact(['trainingId','version','minimumScore',...(eligibility?['recipients']:[])]))fail('INVALID_INPUT');
+        const trainingId=identifier(input.trainingId);version(input.version);
+        if(input.version<1||!Number.isFinite(input.minimumScore)||input.minimumScore<=0)fail('INVALID_INPUT');
+        if(eligibility&&!admin(auth.profile))fail('FORBIDDEN',403);
+        const training=await tx.get(C.training,trainingId);
+        const unavailable=reason=>({completed:false,unavailable:true,reason});
+        const activityReason=!training?'NOT_FOUND':training.version!==input.version?'VERSION_CHANGED':training.status!=='PUBLISHED'?'NOT_PUBLISHED':input.minimumScore>training.maxScore?'INVALID_MINIMUM_SCORE':null;
+        if(!eligibility){
+          if(activityReason)return unavailable(activityReason);
+          if(!canRead(auth,training,identity.uid))return unavailable('FORBIDDEN');
+          const state=await tx.get(C.state,`${trainingId}_${identity.uid}`);
+          if(state&&(state.uid!==identity.uid||state.trainingId!==trainingId||!Array.isArray(state.attempts)))fail('SCORE_UNAVAILABLE',503);
+          const attempts=state?.attempts||[];
+          const valid=attempts.filter(a=>a.trainingVersion===input.version&&Number.isSafeInteger(a.acknowledgedAt)&&a.acknowledgedAt>0&&Number.isSafeInteger(a.completedAt)&&a.completedAt>=a.acknowledgedAt&&a.maxScore===training.maxScore&&Number.isFinite(a.score)&&a.score>=input.minimumScore&&a.score<=training.maxScore).sort((a,b)=>a.completedAt-b.completedAt);
+          if(valid.length)return {completed:true,completedAt:valid[0].completedAt,score:valid[0].score};
+          return attempts.length>=2?unavailable('ATTEMPT_LIMIT'):{completed:false};
+        }
+        if(!Array.isArray(input.recipients)||input.recipients.length>8||new Set(input.recipients.map(r=>r?.uid)).size!==input.recipients.length)fail('INVALID_INPUT');
+        const eligibleUids=[],excluded=[];
+        const areaPolicy=await tx.get('runtimePolicy','folders');
+        for(const recipient of input.recipients){
+          if(!recipient||Object.keys(recipient).length!==2)fail('INVALID_INPUT');
+          const uid=identifier(recipient.uid),email=normalizeDocumentAccessEmail(recipient.email);
+          let reason=activityReason;
+          if(!reason){
+            const profiles=await tx.list('users',[{field:'email',op:'EQUAL',value:email}],2);
+            const profile=profiles.length===1?profiles[0]:null;
+            if(!profile?.uid||profile.email?.trim().toLowerCase()!==email||profile.active!==true||profile.access!==true)reason='SOURCE_MEMBER_UNAVAILABLE';
+            else{
+              try{
+                if(!admin(profile)&&areaPolicy!==null)assertFolderReadable(areaPolicy,'gestao/area-gestao-de-documentos');
+                const access=await tx.get('documentAccessEmails',email);
+                const target={...auth,profile,groups:documentGroupsFromAccess(access,email)};
+                if(!canRead(target,training,profile.uid))reason='FORBIDDEN';
+                else{
+                  const state=await tx.get(C.state,`${trainingId}_${profile.uid}`);
+                  if(state&&(state.uid!==profile.uid||state.trainingId!==trainingId||!Array.isArray(state.attempts)))reason='SCORE_UNAVAILABLE';
+                  else if(state?.attempts.length>=2&&!state.attempts.some(a=>a.trainingVersion===input.version&&Number.isSafeInteger(a.acknowledgedAt)&&a.acknowledgedAt>0&&Number.isSafeInteger(a.completedAt)&&a.completedAt>=a.acknowledgedAt&&a.maxScore===training.maxScore&&Number.isFinite(a.score)&&a.score>=input.minimumScore&&a.score<=training.maxScore))reason='ATTEMPT_LIMIT';
+                }
+              }catch(error){if(!['FORBIDDEN','FOLDER_DISABLED','FOLDER_POLICY_INVALID','TRAINING_FOLDER_POLICY_UNAVAILABLE'].includes(error.code))throw error;reason=error.code;}
+            }
+          }
+          if(reason)excluded.push({uid,reason});else eligibleUids.push(uid);
+        }
+        return {eligibleUids,excluded};
+      }
       if(action==='BUILD_FOLDER_INDEX'){
         if(!admin(auth.profile))fail('FORBIDDEN',403);
         let rows;

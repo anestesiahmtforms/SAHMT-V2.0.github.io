@@ -54,7 +54,7 @@ export async function createHtmlTrainingClient(user) {
 }
 
 /** Mount returns cleanup immediately, including while startup/auth is pending. */
-export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscribeFolderAccess:providedSubscription} = {}) {
+export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscribeFolderAccess:providedSubscription,initialTrainingId='',onActivityExit=()=>{}} = {}) {
   const dialog=root.closest?.('dialog.management-area-dialog');
   const banner=dialog?root.ownerDocument.createElement('section'):null;
   if(banner){
@@ -66,6 +66,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   let alive=true, revision=0, api=providedApi, valid=()=>true, auditCleanup=null, unsubscribe=null, busy=false, operationId=0;
   let catalog=[], inactiveTrainings=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
   const uid=user?.uid, activityStates=new Map();
+  let requestedTraining=initialTrainingId;
   let progressGeneration=0,folderAccess={version:0,disabled:[]},folderControlAvailable=false,folderPaths=[],folderIndexReady=true;
   let watchingPolicy=false, confirmedPolicy=null, unsubscribePolicy;
   let readingPlan=null,readingTracker=null;
@@ -116,7 +117,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     // Leaving a pending read invalidates its response without trapping the modal.
     if(busy){revision++;operationId++;busy=false;if(mode==='opening'||mode==='participant'){mode='catalog';active=null;state=null;content=null;}render();if(mode==='catalog')refreshVisibleActivities();return true;}
     if(mode==='editor'){mode=editorParent;editor=null;error='';render();if(mode==='catalog')refreshVisibleActivities();return true;}
-    if(mode!=='catalog'&&mode!=='denied'){void perform(loadCatalog);return true;}
+    if(mode!=='catalog'&&mode!=='denied'){onActivityExit();void perform(loadCatalog);return true;}
     if(mode==='catalog'&&folderPath.length){folderPath=folderPath.slice(0,-1);render();refreshVisibleActivities();return true;}
     return false;
   }
@@ -248,6 +249,13 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     folderPaths=res.folderPaths||[];folderIndexReady=res.folderIndexReady!==false;
     catalog=(res.trainings||[]).filter(contentAllowed);
     inactiveTrainings=(res.inactiveTrainings||[]).filter(t=>!contentAllowed(t));
+    if(requestedTraining){
+      const id=requestedTraining;
+      requestedTraining='';
+      if(catalog.some(training=>training.id===id)){await open(id);return;}
+      error='O treinamento indicado está indisponível para esta conta.';
+      onActivityExit();
+    }
     render();refreshVisibleActivities();
   }
   function applyFolderPolicy(next){
@@ -306,7 +314,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     if(busy)return;
     if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
     perform(async()=>{
-      if(action==='catalog')return loadCatalog();
+      if(action==='catalog'){onActivityExit();return loadCatalog();}
       if(action==='build-folder-index'){
         if(!accessAdmin())return;
         await call('BUILD_FOLDER_INDEX');await loadCatalog();return;

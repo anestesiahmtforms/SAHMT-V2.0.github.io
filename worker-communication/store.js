@@ -62,7 +62,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
   if(source)throw fail('COMM_SOURCE_READ_ONLY',403);
   await assertAvailable();
   const {transaction:t}=await request(':beginTransaction',{options:{readWrite:{}}}),writes=[];if(!t)throw fail('COMM_STORE_UNAVAILABLE',503);
-  const tx={get:(c,k)=>get(c,k,t),countPublished:(start,end)=>countPublished(start,end,t),set:(c,k,v)=>writes.push({update:{name:name+'/'+path(c,k),fields:encodeFields(v)}}),create:(c,k,v)=>writes.push({update:{name:name+'/'+path(c,k),fields:encodeFields(v)},currentDocument:{exists:false}})};
+  const tx={get:(c,k)=>get(c,k,t),countPublished:(start,end)=>countPublished(start,end,t),set:(c,k,v)=>writes.push({update:{name:name+'/'+path(c,k),fields:encodeFields(v)}}),create:(c,k,v)=>writes.push({update:{name:name+'/'+path(c,k),fields:encodeFields(v)},currentDocument:{exists:false}}),delete:(c,k)=>writes.push({delete:name+'/'+path(c,k)})};
   try{const result=await work(tx);if(writes.length>40)throw fail('COMM_OPERATION_WORK_LIMIT',429);await request(writes.length?':commit':':rollback',writes.length?{transaction:t,writes}:{transaction:t});return result;}
   catch(e){await request(':rollback',{transaction:t}).catch(()=>{});throw e;}
  }
@@ -83,5 +83,23 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
   if(names.some(n=>!map.has(n)))throw fail('COMM_STORE_UNAVAILABLE',503);
   return names.map((n,i)=>map.get(n)?{...map.get(n),id:keys[i]}:null);
  }
- return {get,getMany,page,listUserAppInstallations,transaction,countPublished,assertAvailable};
+ async function eligibleRecipients(){
+  if(source)throw fail('COMM_SOURCE_DENIED',403);
+  const query={from:[{collectionId:'users'}],limit:201,select:{fields:['uid','email','displayName','institutionalGroup','role','active','access'].map(fieldPath=>({fieldPath}))},where:{compositeFilter:{op:'AND',filters:['active','access'].map(fieldPath=>({fieldFilter:{field:{fieldPath},op:'EQUAL',value:{booleanValue:true}}}))}}};
+  const data=await request(':runQuery',{structuredQuery:query});
+  const rows=data.filter(row=>row.document).map(({document})=>({...decodeFields(document.fields||{}),id:document.name.split('/').at(-1)}));
+  if(rows.length>200)throw fail('COMM_AUDIENCE_LIMIT',409);
+  return rows;
+ }
+ async function historyDue(now,limit){
+  if(source||!Number.isSafeInteger(now)||!Number.isSafeInteger(limit)||limit<1||limit>4)throw fail('COMM_INVALID_INPUT');
+  const data=await request(':runQuery',{structuredQuery:{
+   from:[{collectionId:'communicationMessages'}],limit,
+   select:{fields:[{fieldPath:'__name__'}]},
+   where:{fieldFilter:{field:{fieldPath:'historyArchiveAfter'},op:'LESS_THAN_OR_EQUAL',value:{integerValue:String(now)}}},
+   orderBy:[{field:{fieldPath:'historyArchiveAfter'},direction:'ASCENDING'}]
+  }});
+  return data.filter(row=>row.document).map(({document})=>document.name.split('/').at(-1));
+ }
+ return {get,getMany,page,eligibleRecipients,historyDue,listUserAppInstallations,transaction,countPublished,assertAvailable};
 }

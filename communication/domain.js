@@ -20,7 +20,7 @@ export function validateMessage(value,now=Date.now()){
  const linkUrl=String(value.linkUrl||'').trim();if(linkUrl){let link;try{link=new URL(linkUrl);}catch{throw fail('COMM_INVALID_INPUT');}if(link.protocol!=='https:'||link.username||link.password||linkUrl.length>2048)throw fail('COMM_INVALID_INPUT');m.linkUrl=linkUrl;m.linkLabel=String(value.linkLabel||'ABRIR LINK').trim().slice(0,60)||'ABRIR LINK';}
  return m;
 }
-export const isCurrentMessage=(m,now=Date.now())=>m?.status==='published'&&m.publishAt<=now&&m.expiresAt>now;
+export const isCurrentMessage=(m,now=Date.now())=>m?.status==='published'&&m.publishAt<=now&&(m.hasActivity===true&&Boolean(m.activity)||m.expiresAt>now);
 export function matches(message,sourceUid,profile,members){
  if(!activeProfile(profile)||isSystemOwnerEmail(profile.email))return false;
  switch(message.audienceType){case 'ALL':return true;case 'USER':return message.audienceValue===sourceUid;case 'ROLE':return message.audienceValue===profile.role;case 'GROUP':case 'AREA':return members?.includes(sourceUid)===true;default:return false;}

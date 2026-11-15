@@ -246,6 +246,8 @@ let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
+let obligationBanner = null;
+let obligationBannerUid = '';
 let cleanupDocumentTraining = null;
 let cleanupUserInspection = null;
 let evaluationModuleGeneration = 0;
@@ -1562,7 +1564,12 @@ async function loadModule(route) {
         const result=await callVacationsApi({uid,isCurrent:()=>currentHub()&&consultationsAllowed,action,input,signal});
         return participantOnly?{...result,isAdmin:false}:result;
       },
-      performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>currentHub()&&(action==='GET_PERFORMANCE'||epidemiologicalAllowed),survey,action,response});},
+      performSurvey:async(survey,action,response)=>{
+        const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');
+        const result=await callInstitutionalSurvey({uid,isCurrent:()=>currentHub()&&(action==='GET_PERFORMANCE'||epidemiologicalAllowed),survey,action,response});
+        if(action==='SUBMIT'&&result?.accepted===true)window.dispatchEvent(new Event('communication:activity-completed'));
+        return result;
+      },
       performIndicators:async(action,input,signal)=>{const {callSahmtPerformanceApi}=await import('./sahmt-performance-api.js');return callSahmtPerformanceApi({uid,isCurrent:()=>currentHub()&&isSahmtPerformanceAction(action),action,input,signal});},
       openOccupationalHistory:async(host,panel,isCurrent,onBack)=>{
         const vaccination=panel==='vaccinationHistory';
@@ -1575,10 +1582,22 @@ async function loadModule(route) {
           return createVaccinationClient(user,{isCurrent:()=>currentHub()&&isCurrent()});
         }});
       },
-      performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>currentHub()&&(kind==='epidemiological'?epidemiologicalAllowed:consultationsAllowed),kind,action,input,signal});},
+      performRegistration:async(kind,action,input,signal)=>{
+        const {callRegistrationApi}=await import('./registration-client.js');
+        const result=await callRegistrationApi({uid,isCurrent:()=>currentHub()&&(kind==='epidemiological'?epidemiologicalAllowed:consultationsAllowed),kind,action,input,signal});
+        if(kind==='epidemiological'&&action==='SUBMIT'&&result?.accepted===true)window.dispatchEvent(new Event('communication:activity-completed'));
+        return result;
+      },
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
       access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
-      onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
+      onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{
+        if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}
+        const prefix='#/management-hub'+(panel==='home'?'':'/'+panel);
+        if(!location.hash.startsWith(prefix+'/required/')){
+          obligationBanner?.setActivityActive(null);
+          history.replaceState(history.state,'',prefix);
+        }
+      }});
     return;
   }
   if(route==='functional'){
@@ -1954,7 +1973,7 @@ async function loadModule(route) {
         areaBack.addEventListener('click',()=>{if(!cleanupDocumentTraining?.goBack?.())areaDialog.close();});
       }
       areaDialog?.addEventListener('cancel',event=>{if(cleanupDocumentTraining?.goBack?.())event.preventDefault();});
-      areaDialog?.addEventListener('close', () => { managementActivityLoad++; cleanupDocumentTraining?.(); cleanupDocumentTraining=null; history.replaceState(history.state,'','#/management'); refreshLocalCatalogAfterClose(); });
+      areaDialog?.addEventListener('close', () => { managementActivityLoad++; cleanupDocumentTraining?.(); cleanupDocumentTraining=null; if(typeof obligationBanner!=='undefined')obligationBanner?.setActivityActive(null); history.replaceState(history.state,'','#/management'); refreshLocalCatalogAfterClose(); });
       content.querySelector('#seed-management-areas')?.addEventListener('click', async (event) => {
         if (!window.confirm('Criar no Firestore as áreas V1 ausentes? A ação não importará gestores, membros ou conteúdos.')) return;
         const button = event.currentTarget;
@@ -3476,7 +3495,12 @@ async function loadManagementAreaActivities(area) {
     try {
       const {mountHtmlTrainings} = await import('./html-training.js');
       if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
-      cleanupDocumentTraining = mountHtmlTrainings(detail, {user:session.user, profile:session.profile});
+      const [,,,required,trainingId]=(globalThis.location?.hash||'').split('/');
+      cleanupDocumentTraining = mountHtmlTrainings(detail, {
+        user:session.user,profile:session.profile,
+        initialTrainingId:required==='required'&&trainingId?decodeURIComponent(trainingId):'',
+        onActivityExit:()=>{if(typeof obligationBanner!=='undefined')obligationBanner?.setActivityActive(null);}
+      });
     } catch (error) {
       if (loadId !== managementActivityLoad || !detail.isConnected || session.user?.uid !== requestUid) return;
       const route = '#/management/area-gestao-de-documentos';
@@ -5209,7 +5233,65 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
   input.disabled = false;
 }
 
+function activeObligationId(){
+  const parts=location.hash.split('/');
+  const id=parts.at(-1);
+  const training=parts.length===6&&parts[1]==='management'&&parts[2]==='area-gestao-de-documentos'&&parts[3]==='required';
+  const survey=parts.length===5&&parts[1]==='management-hub'&&['climateForm','stressForm','epidemiological'].includes(parts[2])&&parts[3]==='required';
+  return (training||survey)&&/^activity-[a-zA-Z0-9-]{1,100}$/.test(id)?id:null;
+}
+
+function syncObligationBanner(){
+  const currentUid=()=>typeof communicationFeatureEnabled!=='undefined'&&communicationFeatureEnabled&&
+    session.status==='signed-in'&&session.profile?.active===true&&session.profile?.access===true?session.user?.uid||'':'';
+  const uid=currentUid();
+  if(uid===obligationBannerUid){
+    obligationBanner?.setActivityActive(activeObligationId());
+    return;
+  }
+  obligationBanner?.cleanup();
+  obligationBanner=null;
+  obligationBannerUid=uid;
+  if(!uid)return;
+  const isCurrent=()=>currentUid()===uid&&obligationBannerUid===uid;
+  void Promise.all([import('./communication-obligation-banner.js'),import('./communication-client.js')]).then(([banner,communication])=>{
+    if(!isCurrent())return;
+    const client=communication.createCommunicationClient({isCurrent});
+    const controller=banner.mountCommunicationObligationBanner({
+      uid,client,isCurrent,
+      onOpenActivity(item){
+        const activity=item.activity;
+        const surveyPanels={climate:'climateForm',stress:'stressForm',epidemiological:'epidemiological'};
+        const panel=Object.hasOwn(surveyPanels,activity.id)?surveyPanels[activity.id]:'';
+        const base=activity.kind==='TRAINING'?deployment.fbBase:deployment.faBase;
+        const route=activity.kind==='TRAINING'
+          ? '#/management/area-gestao-de-documentos/required/'+encodeURIComponent(activity.id)
+          : panel?'#/management-hub/'+panel+'/required':'';
+        if(!route)return;
+        const target=route+'/'+encodeURIComponent(item.id);
+        if(location.pathname===base){
+          if(location.hash===target){controller.setActivityActive(item.id);void render();}
+          else location.hash=target;
+        }else location.assign(base+target);
+      },
+      onRecover(){
+        if(deployment.target==='FB'){location.assign(deployment.faBase+'#/offline');return;}
+        void connectionRecovery.recover('manual');
+        googleAccessPanel?.open();
+      },
+      onSignOut:signOutGlobal
+    });
+    obligationBanner={...controller,cleanup(){controller.cleanup();client.dispose();}};
+    const sync=()=>controller.setActivityActive(activeObligationId());
+    sync();
+    window.addEventListener('html-training-score-updated',controller.refresh);
+    const cleanup=obligationBanner.cleanup;
+    obligationBanner.cleanup=()=>{window.removeEventListener('html-training-score-updated',controller.refresh);cleanup();};
+  }).catch(()=>{if(isCurrent())obligationBannerUid='';});
+}
+
 async function render() {
+  if(typeof syncObligationBanner==='function')syncObligationBanner();
   if(typeof setOperationalFolderSession==='function')setOperationalFolderSession(session);
   const generation=++evaluationModuleGeneration,requestRoute=currentRoute();
   const current=()=>generation===evaluationModuleGeneration&&requestRoute===currentRoute();

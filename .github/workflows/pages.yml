@@ -64,6 +64,8 @@ jobs:
           npm run test:climate-rules
       - name: Run domain tests
         run: npm run test:domain
+      - name: Verify FF history and activity completion
+        run: node --test tests/communication-history.test.js tests/communication-history-drive.test.js tests/communication-history-store.test.js tests/communication-history-service.test.js tests/communication-history-integration.test.js tests/communication-obligations.test.js tests/communication-obligation-service.test.js tests/communication-activity-source.test.js
       - name: Verify FI control
         run: npm run test:fi-control
       - name: Verify isolated FI and FJ modules

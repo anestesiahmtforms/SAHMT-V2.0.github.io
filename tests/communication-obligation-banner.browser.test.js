@@ -1,0 +1,85 @@
+import test,{before,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {createServer} from 'vite';
+import {chromium} from 'playwright';
+let server,browser,url;
+before(async()=>{server=await createServer({configFile:false,root:process.cwd(),server:{host:'127.0.0.1',port:0}});await server.listen();url=server.resolvedUrls.local[0]+'tests/fixtures/communication-obligation-banner.html';browser=await chromium.launch({headless:true,...(process.env.CI?{}:{channel:'msedge'})});});
+after(async()=>{await browser?.close();await server?.close();});
+async function pageFor(options={}){const page=await browser.newPage(options);page.setDefaultTimeout(10000);await page.goto(url,{timeout:30000});await page.locator('[data-obligation-banner]').waitFor();return page;}
+const panel=page=>page.locator('[data-obligation-banner]');
+
+test('server-confirmed age, oldest priority and bounded request budget; no read or dismiss',async()=>{
+ const page=await pageFor();try{
+  assert.equal(await page.getByLabel('Atividade pendente').inputValue(),'old');
+  for(const [hours,stage] of [[0,0],[23,0],[24,1],[48,2],[72,3],[96,4],[119,4],[120,5]]){
+   await page.evaluate(h=>window.age(h),hours);assert.equal(await panel(page).getAttribute('data-stage'),String(stage));
+  }
+  assert.equal(await panel(page).getByRole('button',{name:/fechar|dispensar/i}).count(),0);
+  assert.equal(await page.evaluate(()=>fixture.calls.some(c=>/READ|MARK/.test(c.action))),false);
+  assert.ok(await page.evaluate(()=>fixture.calls.filter(c=>c.action==='VERIFY_ACTIVITY').every(c=>c.input.id==='old')));
+  await page.evaluate(()=>{Date.now=()=>9999999999999;localStorage.setItem('obligation-clock','9999999999999');});
+  await page.evaluate(()=>window.age(0));assert.equal(await panel(page).getAttribute('data-stage'),'0');
+  await page.getByLabel('Atividade pendente').selectOption('new');await page.getByRole('button',{name:'Abrir atividade',exact:true}).click();
+  assert.deepEqual(await page.evaluate(()=>fixture.opens),['new']);
+  const requests=await page.evaluate(async()=>{banner.setActivityActive(null);fixture.items=Array.from({length:20},(_,i)=>({...fixture.items[0],id:'pending-'+i,publishAt:1700000000000+i}));fixture.calls=[];await banner.refresh();return fixture.calls.map(c=>c.action);});
+  assert.deepEqual(requests,['PENDING_ACTIVITIES','VERIFY_ACTIVITY']);
+ }finally{await page.close();}
+});
+
+test('phone pointer/touch and keyboard movement stay bounded; routes and native modal preserve access',async()=>{
+ const page=await pageFor({viewport:{width:320,height:568},hasTouch:true});try{
+  const handle=page.getByRole('button',{name:/Mover aviso/});await handle.focus();await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowUp');
+  const before=await panel(page).boundingBox();await handle.press('Shift+ArrowDown');const after=await panel(page).boundingBox();assert.ok(after.y>before.y);
+  const drag=await handle.boundingBox();await page.mouse.move(drag.x+20,drag.y+10);await page.mouse.down();await page.mouse.move(2000,2000);await page.mouse.up();
+  const touch=await page.context().newCDPSession(page),touchHandle=await handle.boundingBox();
+  await touch.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:touchHandle.x+30,y:touchHandle.y+15}]});
+  await touch.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:1,y:1}]});
+  await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await touch.detach();
+  const bounds=await panel(page).boundingBox();assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=321&&bounds.y+bounds.height<=569,JSON.stringify(bounds));
+  await page.evaluate(()=>{document.querySelector('#route').innerHTML='<button id="route-two">Outra rota</button>';document.querySelector('#native').showModal();});
+  await page.getByRole('button',{name:'Verificar conclusão',exact:true}).click();
+  assert.equal(await panel(page).evaluate(el=>el.closest('dialog')?.id),'native');
+  await page.evaluate(()=>{const second=document.createElement('dialog');second.id='second';second.innerHTML='<button>Segundo modal</button>';document.body.append(second);second.showModal();});
+  await page.getByRole('button',{name:'Verificar conclusão',exact:true}).click();assert.equal(await panel(page).evaluate(el=>el.closest('dialog')?.id),'second');
+  await page.evaluate(()=>{const first=document.querySelector('#native');first.close();first.showModal();});
+  await page.getByRole('button',{name:'Verificar conclusão',exact:true}).click();assert.equal(await panel(page).evaluate(el=>el.closest('dialog')?.id),'native');
+  await page.getByLabel('Atividade pendente').focus();await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.textContent),'Abrir atividade');
+  assert.equal(await page.evaluate(()=>document.body.style.overflow),'');
+ }finally{await page.close();}
+});
+
+test('120h blocks general controls while activity, recovery and signout stay usable',async()=>{
+ const page=await pageFor({viewport:{width:320,height:568}});try{
+  await page.evaluate(()=>window.age(120));assert.equal(await panel(page).getAttribute('data-blocking'),'true');
+  assert.equal(await page.locator('#route').evaluate(el=>el.inert),true);
+  await page.evaluate(()=>document.querySelector('#general').click());assert.equal(await page.evaluate(()=>fixture.general),0);
+  await page.getByRole('button',{name:'Abrir atividade',exact:true}).click();
+  assert.equal(await panel(page).getAttribute('data-blocking'),'false');
+  await page.locator('#activity-control').click();assert.equal(await page.evaluate(()=>fixture.submitted),1);
+  await page.evaluate(()=>{document.querySelector('#native').close();banner.setActivityActive(null);});
+  await page.evaluate(()=>fixture.recoverDialog=true);
+  await page.getByRole('button',{name:'Recuperar acesso',exact:true}).click();assert.equal(await page.evaluate(()=>fixture.recoveries),1);
+  await page.locator('#activity-control').click();assert.equal(await page.evaluate(()=>fixture.submitted),2);
+  await page.waitForFunction(()=>document.querySelector('[data-obligation-banner]')?.dataset.blocking==='true');
+  await page.getByRole('button',{name:'Sair da conta',exact:true}).click();assert.equal(await panel(page).count(),0);assert.equal(await page.locator('#route').evaluate(el=>el.inert),false);
+ }finally{await page.close();}
+});
+
+test('source failure preserves pending state and recovers; confirmed completion removes only its item',async()=>{
+ const page=await pageFor();try{
+  await page.evaluate(async()=>{fixture.fail=true;await banner.refresh();});await page.getByText(/Não foi possível verificar/).waitFor();assert.equal(await page.getByLabel('Atividade pendente').locator('option').count(),2);
+  await page.getByRole('button',{name:'Recuperar acesso',exact:true}).click();await page.getByText(/Não foi possível verificar/).waitFor({state:'hidden'});
+  await page.evaluate(async()=>{fixture.unavailable=true;await banner.refresh();});await page.getByText(/Atividade retirada/).waitFor();
+  await page.evaluate(async()=>{fixture.unavailable=false;fixture.completed.push('old');window.dispatchEvent(new Event('communication:activity-completed'));});
+  await page.waitForFunction(()=>document.querySelector('[data-obligation-banner] select')?.value==='new');
+  await page.evaluate(async()=>{fixture.completed.push('new');await banner.refresh();});assert.equal(await panel(page).count(),0);
+ }finally{await page.close();}
+});
+
+test('cleanup suppresses late responses and old-session resume events',async()=>{
+ const page=await pageFor();try{
+  await page.evaluate(()=>{fixture.hold=true;window.pendingRefresh=banner.refresh();});await page.waitForFunction(()=>typeof fixture.release==='function');
+  await page.evaluate(async()=>{banner.cleanup();fixture.current=false;fixture.release();await pendingRefresh;});assert.equal(await panel(page).count(),0);
+  const count=await page.evaluate(()=>fixture.calls.length);await page.evaluate(()=>window.dispatchEvent(new Event('online')));assert.equal(await page.evaluate(()=>fixture.calls.length),count);
+ }finally{await page.close();}
+});

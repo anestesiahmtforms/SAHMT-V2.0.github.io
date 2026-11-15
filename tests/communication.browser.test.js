@@ -68,7 +68,7 @@ test('ordinary users see own inbox only; Governance hides administrative card en
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{const page=await browser.newPage();await page.goto(url+'?common');await page.getByRole('dialog',{name:'Mensagens recebidas'}).waitFor();assert.equal(await page.locator('[data-view],[data-enable],[data-disable]').count(),0);assert.equal(await page.evaluate(()=>window.calls.some(c=>['DIRECTORY','GROUPS','MESSAGES'].includes(c.action))),false);
   await page.goto(url+'?common&hub');await page.locator('dialog[open]').waitFor();assert.equal(await page.getByRole('button',{name:'CENTRAL DE COMUNICAÇÃO',exact:true}).count(),0);
-  await page.goto(url+'?hub');await open(page,'CENTRAL DE COMUNICAÇÃO');await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();assert.equal(await page.locator('.comm-menu button').count(),2);
+  await page.goto(url+'?hub');await open(page,'CENTRAL DE COMUNICAÇÃO');await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();assert.equal(await page.locator('.comm-menu button').count(),3);
  }finally{await browser.close();}
 });
 

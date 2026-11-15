@@ -7,13 +7,14 @@ export async function boundedJson(response,max=512*1024){
  try{for(;;){const r=await reader.read();if(r.done)break;size+=r.value.length;if(size>max)throw fail('COMM_RESPONSE_LIMIT',503);chunks.push(r.value);}}finally{await reader.cancel().catch(()=>{});}
  try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw fail('COMM_SERVICE_UNAVAILABLE',503);}
 }
-export function serviceToken(credentials,fetchImpl=fetch){
+export function serviceToken(credentials,fetchImpl=fetch,{history=false}={}){
  if(credentials?.project_id!==FF.projectId||credentials.client_email!==`communication-worker@${FF.projectId}.iam.gserviceaccount.com`)throw fail('COMM_CONFIG_REQUIRED',503);
  const key=createPrivateKey(credentials.private_key);let cached;
  return async()=>{
   if(cached)return cached;
   const iat=Math.floor(Date.now()/1000),b=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
-  const unsigned=b({alg:'RS256',typ:'JWT'})+'.'+b({iss:credentials.client_email,scope:'https://www.googleapis.com/auth/cloud-platform',aud:'https://oauth2.googleapis.com/token',iat,exp:iat+3600});
+  const scope=history?'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.metadata.readonly':'https://www.googleapis.com/auth/cloud-platform';
+  const unsigned=b({alg:'RS256',typ:'JWT'})+'.'+b({iss:credentials.client_email,scope,aud:'https://oauth2.googleapis.com/token',iat,exp:iat+3600});
   const r=await fetchImpl('https://oauth2.googleapis.com/token',{method:'POST',redirect:'manual',signal:AbortSignal.timeout(15000),body:new URLSearchParams({grant_type:'urn:ietf:params:oauth:grant-type:jwt-bearer',assertion:unsigned+'.'+sign('RSA-SHA256',Buffer.from(unsigned),key).toString('base64url')})});
   const d=await boundedJson(r,16384);if(!r.ok||typeof d.access_token!=='string')throw fail('COMM_SERVICE_UNAVAILABLE',503);cached=d.access_token;return cached;
  };

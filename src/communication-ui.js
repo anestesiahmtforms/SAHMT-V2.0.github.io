@@ -3,6 +3,8 @@ import {communicationEntryFromSession} from './communication-entry.js';
 import {communicationSenderRole} from './communication-operational-notices.js';
 import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-text.js';
 import {communicationLimitMessage} from './communication-usage.js';
+import {openActivityComposer} from './communication-activity-ui.js';
+import {openCommunicationHistory, communicationDate} from './communication-history-ui.js';
 import './communication.css';
 
 const errors = {
@@ -10,6 +12,13 @@ const errors = {
   COMM_FORBIDDEN: 'Sua conta não tem autorização para esta ação.',
   COMM_INVALID_AUDIENCE: 'O destinatário não está disponível. Selecione novamente.',
   COMM_INVALID_INPUT: 'Confira o título, a descrição e o público.',
+  COMM_IDENTITY_MISMATCH: 'Recupere o acesso usando a mesma conta Google aberta no SAHMT.',
+  COMM_SOURCE_UNAVAILABLE: 'A origem da atividade está indisponível. Recarregue e tente novamente.',
+  COMM_SOURCE_FORBIDDEN: 'Sua conta não tem acesso à origem da atividade. Recupere o acesso com a conta autorizada.',
+  COMM_ACTIVITY_UNAVAILABLE: 'A atividade não está disponível. Recarregue e escolha outra atividade publicada.',
+  COMM_INVALID_ACTIVITY: 'Confira a atividade publicada e a nota mínima informada.',
+  COMM_HISTORY_UNAVAILABLE: 'O histórico está indisponível. Tente novamente.',
+  COMM_HISTORY_FORBIDDEN: 'O serviço não conseguiu acessar o histórico. Solicite a revisão do acesso administrativo.',
 };
 const needsGoogle = error => ['COMM_SESSION_INVALID', 'COMM_IDENTITY_MISMATCH'].includes(error.code);
 const audienceOptions = [{id: 'ALL', name: 'TODOS'}, ...BUILTIN_GROUPS, {id: 'USER', name: 'INDIVIDUAL'}];
@@ -28,6 +37,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   let generation = 0;
   let cleanupGoogle = () => {};
   let composeState;
+  let activityState;
   let directory;
   const active = () => !disposed && isCurrent();
   const dialog = root.closest('.management-hub-dialog');
@@ -42,17 +52,18 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     return `sahmt-ff-pending-event:${uid}:${hash}`;
   }
 
-  function render(title, content, {compose = false, menu = false, inbox = false, sent = false} = {}) {
+  function render(title, content, {compose = false, menu = false, inbox = false, sent = false, activity = false} = {}) {
     inboxObserver?.disconnect();
     generation++;
     root.classList.add('communication');
     root.classList.toggle('communication--compose', compose);
+    root.classList.toggle('communication--activity', activity);
     root.classList.toggle('communication--menu', menu);
     root.classList.toggle('communication--inbox', inbox);
     root.classList.toggle('communication--sent', sent);
     root.classList.toggle('communication--received', inbox && !sent);
     const hubHeading = dialog?.querySelector('#management-hub-title');
-    if (hubHeading) hubHeading.textContent = compose ? 'CRIAR E ENVIAR EVENTO' : sent ? title : 'CENTRAL DE COMUNICAÇÃO';
+    if (hubHeading) hubHeading.textContent = activity ? title : compose ? 'CRIAR E ENVIAR EVENTO' : sent ? title : 'CENTRAL DE COMUNICAÇÃO';
     const heading = inbox && hubHeading || (menu || compose) && hubHeading ? '' : `<header class="comm-heading"><h2 tabindex="-1">${esc(title)}</h2></header>`;
     const navigation = compose ? '<button type="button" data-back>VOLTAR</button>' :
       sent ? '<button type="button" data-home>VOLTAR</button>' : inbox ? '<button type="button" data-back>VOLTAR PARA HOME</button>' : '';
@@ -93,8 +104,9 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
 
   function adminMenu() {
     composeState = undefined;
+    activityState = undefined;
     if (canCreateEvents) {
-      render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button><button type="button" data-sent-messages>MENSAGENS ENVIADAS</button></div>', {menu: true});
+      render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button><button type="button" data-create-activity>TREINAMENTOS E ENQUETES</button><button type="button" data-sent-messages>MENSAGENS ENVIADAS</button></div>', {menu: true});
       return;
     }
     void inbox();
@@ -164,6 +176,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   }
 
   function eventForm() {
+    activityState = undefined;
     composeState ??= {id: `event-${crypto.randomUUID()}`, title: '', description: '', audience: 'ALL', recipient: '', sent: false};
     const state = composeState;
     render('Criar e enviar evento', `<form data-comm-form>
@@ -247,43 +260,52 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     }
   }
 
-  async function loadSentMessages(cursor = '') {
+  function loadSentMessages() {
     if (!canCreateEvents) return;
-    if (!cursor) render('MENSAGENS ENVIADAS', '<div data-sent-list></div><button type="button" data-sent-next hidden>CARREGAR MAIS</button>', {inbox: true, sent: true});
-    const ticket = generation;
-    const list = root.querySelector('[data-sent-list]');
-    const more = root.querySelector('[data-sent-next]');
-    more.disabled = true;
-    status('Carregando mensagens enviadas…');
-    try {
-      const page = await client.request('SENT_MESSAGES', {cursor});
-      if (!active() || generation !== ticket) return;
-      const cards = page.items.map(item => {
-        const audience = audienceOptions.find(option => option.id === (item.audienceType === 'GROUP' ? item.audienceValue : item.audienceType))?.name;
-        return `<details class="comm-card"><summary><strong>${esc(item.title)}</strong></summary><p>${esc([item.sender, new Date(item.publishAt).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'}), audience].filter(Boolean).join(' · '))}</p><p class="comm-message">${linkedNoticeText(item.message)}</p></details>`;
-      }).join('');
-      list.insertAdjacentHTML('beforeend', cards);
-      more.dataset.sentNext = page.cursor || '';
-      more.textContent = 'CARREGAR MAIS';
-      more.hidden = !page.cursor;
-      status(list.children.length || page.cursor ? '' : 'Nenhuma mensagem enviada.');
-    } catch (error) {
-      if (!active() || generation !== ticket) return;
-      if (needsGoogle(error)) return recoverGoogle();
-      more.dataset.sentNext = cursor;
-      more.textContent = 'TENTAR NOVAMENTE';
-      more.hidden = false;
-      report(error, 'Não foi possível carregar as mensagens enviadas.');
-    } finally {
-      more.disabled = false;
-    }
+    openCommunicationHistory({root, client, render, status, report, isCurrent: active, audienceOptions, onRecover: recoverGoogle});
   }
 
+  function activityForm() {
+    if (!canCreateEvents) return;
+    composeState = undefined;
+    activityState ??= {};
+    openActivityComposer({root, client, render, status, report, isCurrent: active, audienceOptions,
+      loadDirectory, state: activityState, onRecover: recoverGoogle});
+  }
   function receivedCard(message, open = false) {
     const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
       `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
     const date = new Date(message.publishAt).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'});
-    return `<details class="comm-card"${open?' open':''}><summary><h3>${esc(message.title)}</h3><span class="comm-received-date">${esc(date)} · ${esc(message.category)}</span></summary><div class="comm-received-body"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}</div></details>`;
+    return `<details class="comm-card" data-message-id="${esc(message.id)}"${open?' open':''}><summary><h3>${esc(message.title)}</h3><span class="comm-received-date">${esc(date)} · ${esc(message.category)}</span></summary><div class="comm-received-body"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}<p class="comm-note" data-read-status></p></div></details>`;
+  }
+
+  async function recordRead(card) {
+    if (adminMode || !active() || !card?.isConnected || !card.open || root.ownerDocument.visibilityState !== 'visible' || card.dataset.readRecorded || card.dataset.readPending) return;
+    if (!card.getClientRects().length) return;
+    card.dataset.readPending = 'true';
+    const readStatus = card.querySelector('[data-read-status]');
+    try {
+      const result = await client.request('MESSAGE_READ', {id: card.dataset.messageId});
+      if (!active() || !card.isConnected) return;
+      if (result.recorded === true) {
+        card.dataset.readRecorded = 'true';
+        readStatus.textContent = `Abertura registrada: ${communicationDate(result.readAt)}`;
+      } else if (result.legacy) {
+        card.dataset.readRecorded = 'legacy';
+        readStatus.textContent = 'Leitura: não registrado no envio original.';
+      }
+    } catch (error) {
+      if (!active() || !card.isConnected) return;
+      readStatus.textContent = errors[error.code] || 'Abertura ainda não confirmada. Feche e reabra a mensagem para tentar novamente.';
+    } finally { delete card.dataset.readPending; }
+  }
+
+  function readToggle(event) {
+    if (event.target.matches('[data-message-id]')) void recordRead(event.target);
+  }
+
+  function visibilityChanged() {
+    if (root.ownerDocument.visibilityState === 'visible') for (const card of root.querySelectorAll('[data-message-id][open]')) void recordRead(card);
   }
 
   function inbox() {
@@ -332,6 +354,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
       const {message} = await client.request('MESSAGE', {id: decodeURIComponent(key)});
       if (!active() || generation !== ticket) return;
       render('MENSAGENS RECEBIDAS', receivedCard(message, true), {inbox: true});
+      void recordRead(root.querySelector('[data-message-id]'));
     } catch (error) {
       if (!active() || generation !== ticket) return;
       if (needsGoogle(error)) return recoverGoogle();
@@ -341,7 +364,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   }
 
   async function initialView() {
-    if (canCreateEvents) return composeState ? eventForm() : adminMenu();
+    if (canCreateEvents) return activityState ? activityForm() : composeState ? eventForm() : adminMenu();
     const [, , section, key] = location.hash.split('/');
     return section === 'message' && key ? detail(key) : inbox();
   }
@@ -367,8 +390,8 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     if (button.hasAttribute('data-back')) return onBack();
     if (button.hasAttribute('data-home')) return canCreateEvents ? adminMenu() : void inbox();
     if (button.hasAttribute('data-sent-messages')) return void loadSentMessages();
-    if (button.hasAttribute('data-sent-next')) return void loadSentMessages(button.dataset.sentNext);
     if (button.hasAttribute('data-create-event')) return eventForm();
+    if (button.hasAttribute('data-create-activity')) return activityForm();
   }
 
   function submit(event) {
@@ -385,7 +408,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   }
 
   function cancelWhileSending(event) {
-    if (!composeState?.sending) return;
+    if (!composeState?.sending && !activityState?.sending) return;
     event.preventDefault();
     event.stopImmediatePropagation();
   }
@@ -394,6 +417,8 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   root.addEventListener('click', click);
   root.addEventListener('submit', submit);
   root.addEventListener('change', change);
+  root.addEventListener('toggle', readToggle, true);
+  root.ownerDocument.addEventListener('visibilitychange', visibilityChanged);
   dialog?.addEventListener('cancel', cancelWhileSending, true);
   if (communicationEntryFromSession(appSession, {adminMode})) void initialView();
   else void bootstrap();
@@ -405,6 +430,8 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     root.removeEventListener('click', click);
     root.removeEventListener('submit', submit);
     root.removeEventListener('change', change);
+    root.removeEventListener('toggle', readToggle, true);
+    root.ownerDocument.removeEventListener('visibilitychange', visibilityChanged);
     dialog?.removeEventListener('cancel', cancelWhileSending, true);
     if (inboxDialog) {inboxDialog.close(); inboxDialog.remove();}
     else root.replaceChildren();

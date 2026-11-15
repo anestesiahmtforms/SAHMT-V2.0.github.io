@@ -23,6 +23,54 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
     return {affiliation:group,group:researchGroup(group),administrator};
   }
   async function execute(action,input,identity){
+    if(['OBLIGATION_CATALOG','OBLIGATION_ELIGIBILITY','OBLIGATION_STATUS'].includes(action)){
+      const catalog=action==='OBLIGATION_CATALOG',eligibility=action==='OBLIGATION_ELIGIBILITY';
+      if(!exact(input,catalog?[]:['survey','cycle',...(eligibility?['recipients']:[])])||!catalog&&(!Object.hasOwn(kinds,input.survey)||input.cycle!==CYCLE))fail('SURVEY_INVALID_INPUT');
+      const access=await authorize(identity);
+      if((catalog||eligibility)&&!access.administrator)fail('SURVEY_FORBIDDEN',403);
+      const titles={climate:'Pesquisa de Clima Organizacional',stress:'Avaliação de Estresse e Fadiga',epidemiological:'Cadastro Epidemiológico SAHMT'};
+      const participationValid=(p,uid,survey)=>!p||exact(p,['uid','survey','cycle','completed'])&&p.uid===uid&&p.survey===survey&&p.cycle===CYCLE&&p.completed===true;
+      const availability=async(tx,survey)=>{
+        try{await checkSurvey(folders[survey],tx);}catch(error){if(error.status===403)return 'SURVEY_FOLDER_DISABLED';throw error;}
+        const cycle=await tx.get(kinds[survey].cycleCollection,CYCLE);
+        return cycle?.status==='open'?null:'SURVEY_CYCLE_CLOSED';
+      };
+      return responseStore.transaction(async tx=>{
+        if(catalog){
+          const items=[];
+          for(const survey of Object.keys(kinds))if(!await availability(tx,survey))items.push({kind:'SURVEY',id:survey,title:titles[survey],cycle:CYCLE});
+          return {items};
+        }
+        if(!eligibility){
+          // This ledger contains no response IDs or answers; old accepted participation
+          // remains valid after cycle closure and subsequent folder deactivation.
+          const p=await tx.get('surveyParticipation',`${identity.uid}_${input.survey}_${CYCLE}`);
+          if(!participationValid(p,identity.uid,input.survey))fail('SURVEY_PARTICIPATION_INVALID',503);
+          if(p)return {completed:true};
+          if(access.affiliation!=='team')return {completed:false,unavailable:true,reason:'SURVEY_FORBIDDEN'};
+          const reason=await availability(tx,input.survey);
+          return reason?{completed:false,unavailable:true,reason}:{completed:false};
+        }
+        if(!Array.isArray(input.recipients)||input.recipients.length>8||new Set(input.recipients.map(r=>r?.uid)).size!==input.recipients.length)fail('SURVEY_INVALID_INPUT');
+        const eligibleUids=[],excluded=[],unavailable=await availability(tx,input.survey);
+        for(const recipient of input.recipients){
+          if(!exact(recipient,['uid','email'])||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(recipient.uid)||typeof recipient.email!=='string'||recipient.email.length>254||!recipient.email.includes('@'))fail('SURVEY_INVALID_INPUT');
+          const email=recipient.email.trim().toLowerCase(),assignment=await profileStore.get('userCategories',await institutionalAssignmentKey(email));
+          const uid=assignment?.uid;
+          const profile=typeof uid==='string'&&/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(uid)?await profileStore.get('users',uid):null;
+          const group=assignedInstitutionalGroup(assignment,{uid,email});
+          let reason;
+          if(!profile||profile.uid!==uid||profile.email?.trim().toLowerCase()!==email||profile.active!==true||profile.access!==true||!group||/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(email))reason='SOURCE_MEMBER_UNAVAILABLE';
+          else{
+            const p=await tx.get('surveyParticipation',`${uid}_${input.survey}_${CYCLE}`);
+            if(!participationValid(p,uid,input.survey))fail('SURVEY_PARTICIPATION_INVALID',503);
+            if(!p)reason=group!=='team'?'SURVEY_FORBIDDEN':unavailable;
+          }
+          if(reason)excluded.push({uid:recipient.uid,reason});else eligibleUids.push(recipient.uid);
+        }
+        return {eligibleUids,excluded};
+      });
+    }
     if(performanceEnabled&&action==='FK_AGGREGATE'&&exact(input,['survey','cycle'])&&
        Object.hasOwn(kinds,input.survey)&&input.cycle===CYCLE){
       const access=await authorize(identity);

@@ -5,10 +5,12 @@ import {assignedInstitutionalGroup} from '../src/institutional-group.js';
 import {communicationSenderRole,operationalNoticeIdentity,urgentNoticeInput,RELEASE_NOTICE,scheduleReleaseIdentity} from '../src/communication-operational-notices.js';
 import {COMMUNICATION_LIMITS,communicationUsagePeriod} from '../src/communication-usage.js';
 import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
+import {createObligationService} from './obligation-service.js';
+import {validateObligation} from '../communication/obligations.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
-export function createCommunicationService({store,fa,scheduleSource=fa,send,recipientEnabled,pushQueue,now=Date.now,uuid=()=>crypto.randomUUID()}){
+export function createCommunicationService({store,fa,scheduleSource=fa,send,recipientEnabled,pushQueue,history,historyDrive,activitySource,now=Date.now,uuid=()=>crypto.randomUUID()}){
  const audit=(tx,a,action,subject,detail={})=>tx.create('communicationAuditLogs',uuid(),{...actorData(a),at:now(),action,subject,detail});
  const admin=a=>{if(!adminIdentity(a))throw fail('COMM_FORBIDDEN',403);};
  const profile=async(uid,email)=>{
@@ -16,7 +18,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   const p=rows[0];if(rows.length!==1||!activeProfile(p)||typeof p.uid!=='string'||p.uid!==p.id||p.email!==email||p.ffUid&&p.ffUid!==uid)throw fail('COMM_FORBIDDEN',403);
   return p;
  };
- const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
+ const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','SENT_DETAIL','ACTIVITY_CATALOG','PENDING_ACTIVITIES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
  const quota=(code,used,limit,resetsAt)=>Object.assign(fail(code,429),{used,limit,...(resetsAt?{resetsAt}:{})});
  async function admit(a,action){
   const {day,resetsAt}=communicationUsagePeriod(now()),minute=Math.floor(now()/60000),key=digest(a.uid);
@@ -37,6 +39,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
  }
  async function audience(m,p,localUid){
   if(isSystemOwnerEmail(p?.email))return false;
+  if(m.history&&!m.historyLegacy){const snapshot=await store.get('communicationMessageRecipients',m.id);return activeProfile(p)&&snapshot?.items?.some(item=>item.uid===localUid)===true;}
   if(m.audienceType==='GROUP'){
    if(BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))return activeProfile(p)&&p.institutionalGroup===m.audienceValue.slice('institutional-'.length);
    const g=await store.get('communicationGroups',m.audienceValue);
@@ -49,17 +52,42 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   return matches(m,localUid,p);
  }
  const paged=rows=>({items:rows.slice(0,PAGE_SIZE),cursor:rows.length>PAGE_SIZE?rows[PAGE_SIZE-1].id:null});
- async function saveMessage(input,a,{event=false,release=false}={}){
+ async function resolveRecipients({audience:selection,recipient}={}){
+  const rows=await store.eligibleRecipients();
+  return rows.filter(p=>p.uid===p.id&&activeProfile(p)&&!isSystemOwnerEmail(p.email)&&
+   (selection==='ALL'||selection==='USER'&&p.uid===recipient||selection===`institutional-${p.institutionalGroup}`));
+ }
+ async function messageRecipients(m){
+  if(['ALL','USER'].includes(m.audienceType)||m.audienceType==='GROUP'&&BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))return resolveRecipients({audience:m.audienceType==='GROUP'?m.audienceValue:m.audienceType,recipient:m.audienceValue});
+  const rows=await store.eligibleRecipients();
+  const group=m.audienceType==='GROUP'?await store.get('communicationGroups',m.audienceValue):null;
+  const area=m.audienceType==='AREA'?await store.get('managementAreas',m.audienceValue):null;
+  const members=group?.active===true?group.memberUids:area?.active===true?[...(area.memberUids||[]),...(area.managerUids||[])]:[];
+  return rows.filter(person=>person.id===person.uid&&matches(m,person.uid,person,members));
+ }
+ const obligations=history&&activitySource?createObligationService({
+  store,source:activitySource,history,resolveRecipients,now,uuid,
+  saveActivity:(input,a)=>saveMessage({
+   id:input.id,version:0,message:{
+    title:input.title,message:input.description,category:'ENQUETES E CONSULTAS',priority:'HIGH',
+    audienceType:input.audienceType,audienceValue:input.audienceValue,route:'home',
+    status:'published',publishAt:now(),expiresAt:now()+365*86400000
+   }
+  },a,{activityInput:input})
+ }):null;
+ async function saveMessage(input,a,{event=false,release=false,activityInput=null}={}){
   const key=input.id?id(input.id):uuid(),m=validateMessage(input.message,now());
-  if((!event&&key.startsWith('event-'))||(!release&&key.startsWith('release-')))throw fail('COMM_INVALID_ID');
-  if(!event&&m.audienceType==='USER'){const p=await store.get('users',m.audienceValue);if(!activeProfile(p)||isSystemOwnerEmail(p.email))throw fail('COMM_INVALID_AUDIENCE');}
+  if(activityInput){m.activity=validateObligation(activityInput.activity);m.hasActivity=true;}
+  if((!event&&key.startsWith('event-'))||(!release&&key.startsWith('release-'))||(!activityInput&&key.startsWith('activity-')))throw fail('COMM_INVALID_ID');
+  if(!event&&!activityInput&&m.audienceType==='USER'){const p=await store.get('users',m.audienceValue);if(!activeProfile(p)||isSystemOwnerEmail(p.email))throw fail('COMM_INVALID_AUDIENCE');}
   if((m.audienceType==='GROUP'&&!BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))||m.audienceType==='AREA'){const g=await store.get(m.audienceType==='GROUP'?'communicationGroups':'managementAreas',m.audienceValue);if(g?.active!==true)throw fail('COMM_INVALID_AUDIENCE');}
   if(input.source)throw fail('COMM_SOURCE_UNSUPPORTED');const source=null;
+  const recipients=history&&m.status==='published'?(activityInput?.recipients||await messageRecipients(m)):null;
   const saved=await store.transaction(async tx=>{
    const old=await tx.get('communicationMessages',key),dispatch=await tx.get('communicationDispatches',key);
-   if((event||release)&&old){
+   if((event||release||activityInput)&&old){
     const sameNotice=old.status==='published'&&(release||old.createdBy?.sourceUid===a.sourceUid)&&
-     ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field]);
+     ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field])&&(!activityInput||old.previewId===activityInput.previewId&&old.fingerprint===activityInput.fingerprint&&JSON.stringify(old.activity)===JSON.stringify(m.activity));
     if(!sameNotice)throw fail('COMM_CONFLICT',409);
     const mayStart=release&&dispatch?.status==='queueing'&&isCurrentMessage(old,now())&&
      (dispatch.enqueueStatus==='retry'||dispatch.enqueueStatus==='starting'&&dispatch.enqueueStartedAt<=now()-60000);
@@ -68,6 +96,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
     return {message:old,dispatch:nextDispatch,alreadySent:true,startPush:mayStart};
    }
    if(dispatch)throw fail('COMM_MESSAGE_LOCKED',409);
+   if(old?.history)throw fail('COMM_MESSAGE_LOCKED',409);
    if((old?.version||0)!==input.version)throw fail('COMM_CONFLICT',409);
    if(event&&m.audienceType==='USER'){
     const recipient=await tx.get('users',m.audienceValue);
@@ -81,14 +110,21 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    const total=firstPublish?(await tx.get('communicationMetrics','total')||counters()):null;
    const monthly=firstPublish?(await tx.get('communicationMetrics',month)||counters()):null;
    const record={...m,id:key,version:(old?.version||0)+1,createdAt:old?.createdAt||now(),createdBy:old?.createdBy||actorData(a),updatedAt:now(),updatedBy:actorData(a),firstPublishedAt:old?.firstPublishedAt||(firstPublish?now():null),source:source?.reference||old?.source||null};
+   if(activityInput){record.previewId=activityInput.previewId;record.fingerprint=activityInput.fingerprint;}
+   if(firstPublish&&history){
+    record.history=await history.reserve(tx,record,recipients);
+    if(!activityInput)record.historyArchiveAfter=record.expiresAt;
+   }
+   if(firstPublish&&activityInput)await obligations.reserveIndex(tx,record,recipients);
    tx.set('communicationMessages',key,record);
    const settings=release?await tx.get('communicationSettings','main'):null;
    const automaticDispatch=release&&m.status==='published'&&settings?.pushEnabled===true?{id:key,messageId:key,title:m.title,category:m.category,audienceType:m.audienceType,audienceValue:m.audienceValue,author:actorData(a),createdAt:now(),status:'queueing',cursor:'',version:record.version,processed:0,accepted:0,failed:0,skipped:0,unknown:0,batches:0,pendingCount:1,automatic:true,enqueueStatus:'starting',enqueueStartedAt:now()}:null;
    if(automaticDispatch)tx.create('communicationDispatches',key,automaticDispatch);
    if(firstPublish)for(const [k,v]of [['total',total],[month,monthly]]){v.published++;v.categories[m.category]=(v.categories[m.category]||0)+1;tx.set('communicationMetrics',k,v);}
    if(firstPublish)tx.set('communicationPublicationBudgets',period.day,{published:published+1,at:now()});
-   audit(tx,a,old?'MESSAGE_EDITED':'MESSAGE_CREATED',key,{version:record.version,status:m.status,record,automaticPush:Boolean(automaticDispatch)});return {message:record,dispatch:automaticDispatch,...(firstPublish?{publicationUsage:{used:published+1,limit:COMMUNICATION_LIMITS.dailyPublications,resetsAt:period.resetsAt}}:{})};
+   audit(tx,a,old?'MESSAGE_EDITED':'MESSAGE_CREATED',key,{version:record.version,status:m.status,...(history?{history:record.history||null}:{record}),automaticPush:Boolean(automaticDispatch)});return {message:record,dispatch:automaticDispatch,...(firstPublish?{publicationUsage:{used:published+1,limit:COMMUNICATION_LIMITS.dailyPublications,resetsAt:period.resetsAt}}:{})};
   });
+  if(history&&saved.message.history)saved.syncQueued=await history.afterPublish(saved.message);
   if(release&&saved.dispatch){
    if(saved.alreadySent&&!saved.startPush){
     const pushPending=saved.dispatch.status==='queueing'&&saved.dispatch.enqueueStatus==='starting'&&isCurrentMessage(saved.message,now());
@@ -307,14 +343,41 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return {done:true,status:outcome.status};
   }catch(error){await store.transaction(async tx=>{const receipt=await tx.get('communicationPushDeliveries',receiptId);if(receipt?.status==='processing')tx.set('communicationPushDeliveries',receiptId,{...receipt,status:'retry'});}).catch(()=>{});throw error;}
  }
- async function consumePush(input){if(typeof input?.dispatchId==='string'&&!input.dispatchId.startsWith('release-'))return {done:true};if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input);throw fail('COMM_INVALID_INPUT');}
+ async function consumePush(input){if(input?.kind==='history'){if(!history)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);return history.consume(input);}if(typeof input?.dispatchId==='string'&&!input.dispatchId.startsWith('release-'))return {done:true};if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input);throw fail('COMM_INVALID_INPUT');}
  return {consumePush,async execute(action,input,a){
   if(!input||Array.isArray(input)||typeof input!=='object')throw fail('COMM_INVALID_INPUT');
-  const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
+  const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGE_READ','PENDING_ACTIVITIES','VERIFY_ACTIVITY','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
   if(!regular.has(action))admin(a);
   if(action==='SENT_MESSAGES'&&!communicationSenderRole(a.email))throw fail('COMM_FORBIDDEN',403);
   // Validate authorization before accessing directory, rate records or messages.
   const ownProfile=await profile(a.uid,a.email);a={...a,sourceUid:ownProfile.uid};await admit(a,action);
+  if(['ACTIVITY_CATALOG','PREVIEW_ACTIVITY','CREATE_ACTIVITY','CANCEL_ACTIVITY','PENDING_ACTIVITIES','VERIFY_ACTIVITY'].includes(action)){
+   if(action==='PENDING_ACTIVITIES'&&!history&&Object.keys(input).length===0)return {items:[],serverNow:now()};
+   if(!history||!activitySource)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);
+   return obligations.execute(action,input,a);
+  }
+  if(action==='MESSAGE_READ'){
+   if(Object.keys(input).length!==1)throw fail('COMM_INVALID_INPUT');const m=await store.get('communicationMessages',id(input.id));
+   if(!m||!isCurrentMessage(m,now())||!await audience(m,ownProfile,a.sourceUid))throw fail('COMM_FORBIDDEN',403);
+   return history&&m.history&&!m.historyLegacy?history.markRead(input,a.sourceUid):{recorded:false,legacy:true};
+  }
+  if(action==='HISTORY_RETRY'){
+   if(!history||Object.keys(input).length!==1)throw fail('COMM_INVALID_INPUT');const m=await store.get('communicationMessages',id(input.id));if(!m?.history)throw fail('COMM_NOT_FOUND',404);return {syncQueued:await history.afterPublish(m)};
+  }
+  if(action==='SENT_DETAIL'){
+   if(!communicationSenderRole(a.email)||!Object.keys(input).every(k=>['id','historyRow'].includes(k)))throw fail('COMM_FORBIDDEN',403);
+   const key=id(input.id),m=await store.get('communicationMessages',key);
+   if(m&&m.status!=='archived'){
+    const result=history?await history.detail({id:key}):{message:m,recipients:[],recipientsRecorded:false,syncPending:false};
+    const dispatch=await store.get('communicationDispatches',key);
+    if(dispatch)result.message={...result.message,pushStatus:dispatch.status==='completed'?('Aceitos pelo provedor: '+(dispatch.accepted||0)+' · Falhas: '+(dispatch.failed||0)):'Processamento: '+dispatch.status};
+    return result;
+   }
+   if(!historyDrive)throw fail('COMM_NOT_FOUND',404);
+   const archived=await historyDrive.readMessage({row:m?.history?.messageRow||input.historyRow});
+   if(!archived||archived.id!==key)throw fail('COMM_NOT_FOUND',404);
+   return {message:archived,recipients:archived.recipientsRecorded?await historyDrive.readRecipients({start:archived.recipientStart,count:archived.recipientCount}):[],recipientsRecorded:archived.recipientsRecorded,syncPending:false,serverNow:now()};
+  }
   if(['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action))await presence(input.installation,a);
   if(action==='USAGE')return usage();
   if(action==='BOOTSTRAP')return {isAdmin:adminIdentity(a),projectId:FF.projectId,databaseId:FF.databaseId,batchSize:BATCH_SIZE};
@@ -328,13 +391,21 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return {items,cursor:rows.length===5?(recent?`${last.publishAt}|${last.id}`:last.id):null};
   }
   if(action==='SENT_MESSAGES'){
+   if(historyDrive&&typeof input.cursor==='string'&&input.cursor.startsWith('archive:')){
+    const before=Number(input.cursor.slice(8)),result=await historyDrive.readMessages({before,limit:input.filters?.recipient?5:20,filters:input.filters||{}});
+    const active=await store.getMany('communicationMessages',result.items.map(m=>m.id));let items=result.items.filter((m,n)=>!active[n]||active[n].status==='archived'||active[n].status==='cancelled');
+    if(input.filters?.recipient){const match=String(input.filters.recipient).toLocaleLowerCase('pt-BR'),keep=[];for(const m of items){const people=m.recipientsRecorded?await historyDrive.readRecipients({start:m.recipientStart,count:m.recipientCount}):[];if(people.some(p=>p.uid===match||[p.displayName,p.email].some(v=>v.toLocaleLowerCase('pt-BR').includes(match))))keep.push(m);}items=keep;}
+    return {items:items.map(m=>({...m,sender:communicationSenderRole(m.senderEmail)||m.senderEmail})),cursor:result.cursor?`archive:${result.cursor}`:null};
+   }
    const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:PAGE_SIZE,publishedBefore:now()});
    const items=rows.flatMap(m=>{
     const sender=communicationSenderRole(m.createdBy?.email);
-    return sender?[{id:m.id,title:m.title,message:m.message,category:m.category,publishAt:m.publishAt,audienceType:m.audienceType,audienceValue:m.audienceType==='GROUP'?m.audienceValue:'',sender}]:[];
+    return sender?[{id:m.id,title:m.title,message:m.message,category:m.category,publishAt:m.publishAt,audienceType:m.audienceType,audienceValue:history?m.audienceValue:m.audienceType==='GROUP'?m.audienceValue:'',sender,...(history?{senderEmail:m.createdBy?.email||'',activity:m.activity||null,recipientsRecorded:Boolean(m.history&&!m.historyLegacy),historyRow:m.history?.messageRow}: {})}]:[];
    });
    const last=rows.at(-1);
-   return {items,cursor:rows.length===PAGE_SIZE?`${last.publishAt}|${last.id}`:null};
+   let cursor=rows.length===PAGE_SIZE?`${last.publishAt}|${last.id}`:null;
+   if(!cursor&&historyDrive){const state=await store.get('communicationHistoryState','2026');if(state?.nextMessageRow>2)cursor=`archive:${state.nextMessageRow}`;}
+   const f=input.filters||{};return {items:items.filter(m=>(!f.from||m.publishAt>=Number(f.from))&&(!f.to||m.publishAt<=Number(f.to))&&(!f.kind||f.kind===(m.activity?.kind||'MESSAGE'))&&(!f.audience||f.audience===m.audienceValue||f.audience===m.audienceType)&&(!f.search||[m.title,m.message,m.senderEmail||m.sender].some(v=>String(v).toLocaleLowerCase('pt-BR').includes(String(f.search).toLocaleLowerCase('pt-BR'))))),cursor};
   }
   if(action==='MESSAGE'){
    const m=await store.get('communicationMessages',id(input.id));

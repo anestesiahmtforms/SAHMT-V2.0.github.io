@@ -3,6 +3,9 @@ import {verifyCommunicationActor,serviceToken,assertFreeProject,boundedJson} fro
 import {createStore} from './store.js';
 import {createCommunicationService} from './service.js';
 import {COMMUNICATION_LIMITS} from '../src/communication-usage.js';
+import {createActivitySource} from './activity-source.js';
+import {createCommunicationHistoryDrive} from './history-drive.js';
+import {createCommunicationHistory} from './history-service.js';
 const ORIGIN='https://anestesiahmtforms.github.io';
 function limitedFetch(action){let calls=0;return (url,options)=>{
  const target=new URL(url),path=decodeURIComponent(target.pathname);
@@ -20,9 +23,10 @@ export function resolveScheduleSourceProject(env={}){
  if(project!=='FJ')throw fail('COMM_CONFIG_REQUIRED',503);
  return project;
 }
-async function runtime(env,fetchImpl,buildService,actor){
+async function runtime(env,fetchImpl,buildService,actor,headers){
  if(buildService)return buildService(env);
- const getToken=serviceToken(JSON.parse(env.FF_SERVICE_ACCOUNT_JSON||'null'),fetchImpl);
+ const credentials=JSON.parse(env.FF_SERVICE_ACCOUNT_JSON||'null');
+ const getToken=serviceToken(credentials,fetchImpl);
  await assertFreeProject(getToken,fetchImpl);
  const administrator=adminIdentity(actor)&&actor.email==='wx2064@gmail.com';
  const store=createStore({getToken,fetchImpl,administrator}),fa=createStore({getToken,fetchImpl,source:'FA'});
@@ -43,8 +47,27 @@ async function runtime(env,fetchImpl,buildService,actor){
   if(code==='UNREGISTERED')return {status:'failed',disable:true,reason:'UNREGISTERED'};
   return {status:'failed',reason:r.status===429?'PROVIDER_QUOTA':code==='SENDER_ID_MISMATCH'?'SENDER_ID_MISMATCH':'PROVIDER_REJECTED'};
  };
- const service=createCommunicationService({store,fa,scheduleSource,send,recipientEnabled,pushQueue:env.COMMUNICATION_PUSH_QUEUE});
- return {async execute(...args){await store.assertAvailable();const result=await service.execute(...args);await store.assertAvailable();return result;},async consumePush(...args){await store.assertAvailable();return service.consumePush(...args);}};
+ const pushQueue=env.COMMUNICATION_PUSH_QUEUE;
+ const historyDrive=env.FF_HISTORY_SPREADSHEET_ID?createCommunicationHistoryDrive({
+  getToken:serviceToken(credentials,fetchImpl,{history:true}),fetchImpl,spreadsheetId:env.FF_HISTORY_SPREADSHEET_ID
+ }):null;
+ const history=historyDrive?createCommunicationHistory({store,drive:historyDrive,pushQueue}):null;
+ const activitySource=history&&actor?createActivitySource({fetchImpl,headers,actor}):null;
+ const service=createCommunicationService({store,fa,scheduleSource,send,recipientEnabled,pushQueue,history,historyDrive,activitySource});
+ return {
+  async execute(...args){await store.assertAvailable();const result=await service.execute(...args);await store.assertAvailable();return result;},
+  async consumePush(...args){await store.assertAvailable();return service.consumePush(...args);},
+  async recoverHistory(){
+   if(!history)return;
+   await store.assertAvailable();
+   let verified=false;
+   let code='';
+   try{await historyDrive.verify();verified=true;}
+   catch(error){code=error.code||'COMM_HISTORY_UNAVAILABLE';}
+   await store.transaction(tx=>tx.set('communicationHistoryHealth','2026',{verified,code,checkedAt:Date.now()}));
+   if(verified)await history.recover();
+  }
+ };
 }
 export function createCommunicationWorker({verify=verifyCommunicationActor,buildService}={}){
  return {
@@ -52,7 +75,7 @@ export function createCommunicationWorker({verify=verifyCommunicationActor,build
    const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin'};
    const json=(body,status=200)=>Response.json(body,{status,headers});
    if(request.headers.get('Origin')!==ORIGIN)return json({code:'COMM_ORIGIN_DENIED'},403);
-   Object.assign(headers,{'Access-Control-Allow-Origin':ORIGIN,'Access-Control-Allow-Headers':'Authorization, Content-Type, X-SAHMT-FA-Authorization','Access-Control-Allow-Methods':'POST, OPTIONS'});
+   Object.assign(headers,{'Access-Control-Allow-Origin':ORIGIN,'Access-Control-Allow-Headers':'Authorization, Content-Type, X-SAHMT-FA-Authorization, X-SAHMT-FB-Authorization','Access-Control-Allow-Methods':'POST, OPTIONS'});
    if(new URL(request.url).pathname!=='/v1/communication')return json({code:'COMM_NOT_FOUND'},404);
    if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
    if(request.method!=='POST')return json({code:'COMM_METHOD_DENIED'},405);
@@ -62,9 +85,9 @@ export function createCommunicationWorker({verify=verifyCommunicationActor,build
     if(Number(request.headers.get('Content-Length'))>16384)throw fail('COMM_BODY_LIMIT',413);
     let body;try{body=await boundedJson(request,16384);}catch(e){throw e.code==='COMM_RESPONSE_LIMIT'?fail('COMM_BODY_LIMIT',413):fail('COMM_INVALID_INPUT');}
     if(!body||typeof body.action!=='string'||Object.keys(body).some(k=>!['action','input'].includes(k)))throw fail('COMM_INVALID_INPUT');
-    const fetchImpl=limitedFetch(body.action),actor=await verify(request,{fetchImpl,action:body.action}),service=await runtime(env,fetchImpl,buildService,actor);
+    const fetchImpl=limitedFetch(body.action),actor=await verify(request,{fetchImpl,action:body.action}),service=await runtime(env,fetchImpl,buildService,actor,request.headers);
     return json(await service.execute(body.action,body.input||{},actor));
-   }catch(e){const code=/^COMM_[A-Z_]+$/.test(e.code||'')?e.code:'COMM_SERVICE_UNAVAILABLE',details=Object.fromEntries(['used','limit','resetsAt'].filter(key=>Number.isSafeInteger(e[key])&&e[key]>=0).map(key=>[key,e[key]]));return json({code,...details},[400,401,403,409,413,429,503].includes(e.status)?e.status:503);}
+   }catch(e){const code=/^COMM_[A-Z_]+$/.test(e.code||'')?e.code:'COMM_SERVICE_UNAVAILABLE',details=Object.fromEntries(['used','limit','resetsAt'].filter(key=>Number.isSafeInteger(e[key])&&e[key]>=0).map(key=>[key,e[key]]));return json({code,...details},[400,401,403,404,409,413,429,503].includes(e.status)?e.status:503);}
   },
   async queue(batch,env){
    if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true'){for(const message of batch.messages)message.retry({delaySeconds:30});return;}
@@ -72,6 +95,11 @@ export function createCommunicationWorker({verify=verifyCommunicationActor,build
     const service=await runtime(env,limitedFetch(),buildService);
     for(const message of batch.messages){try{await service.consumePush(message.body);message.ack();}catch{message.retry({delaySeconds:30});}}
    }catch{for(const message of batch.messages)message.retry({delaySeconds:30});}
+  },
+  async scheduled(_event,env){
+   if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true'||!env.FF_HISTORY_SPREADSHEET_ID)return;
+   const service=await runtime(env,limitedFetch(),buildService);
+   await service.recoverHistory();
   }
  };
 }

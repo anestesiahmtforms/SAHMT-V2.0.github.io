@@ -1,0 +1,27 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Central — atividades sintéticas</title><style>body{font:16px system-ui;margin:0}main{max-width:760px;margin:auto}</style><main id="root"></main><script type="module">
+import {mountCommunication} from '../../src/communication-ui.js';
+const params=new URLSearchParams(location.search),admin=!params.has('common');
+const person={uid:'synthetic-person',displayName:'Pessoa Teste',email:'pessoa@example.test',institutionalGroup:'team'};
+const training={kind:'TRAINING',id:'training-synthetic',title:'Treinamento publicado',version:'v2',maxScore:10};
+const survey={kind:'SURVEY',id:'survey-synthetic',title:'Enquete publicada',cycle:'2026-11'};
+const now=1794700000000;
+const message={id:'synthetic-message',title:'Convocação sintética',message:'Corpo integral\nSegunda linha https://example.test',publishAt:now,audienceType:'ALL',senderEmail:'admin@example.test',status:'published',activity:{...survey}};
+let cancelled=false,creates=0,previewCount=0;
+window.calls=[];window.current=true;
+const client={dispose(){},connectGoogle:async(host,{onConnected})=>{host.innerHTML='<button type="button">Confirmar acesso de teste</button>';host.firstChild.onclick=onConnected;return()=>host.replaceChildren();},request:async(action,input={})=>{
+ window.calls.push({action,input:structuredClone(input)});
+ if(action==='BOOTSTRAP')return {isAdmin:admin};
+ if(action==='DIRECTORY')return {items:[person],cursor:null};
+ if(action==='ACTIVITY_CATALOG')return {items:[input.kind==='TRAINING'?training:survey]};
+ if(action==='PREVIEW_ACTIVITY'){await new Promise(resolve=>setTimeout(resolve,30));return {previewId:'preview-'+(++previewCount),activity:input.activity,recipients:[person],excluded:[{uid:'excluded-person',reason:'FORBIDDEN'}]};}
+ if(action==='CREATE_ACTIVITY'){creates++;if(params.has('lost')&&creates===1)throw Error('Resposta perdida');return {message:{...message,id:input.id},syncQueued:true};}
+ if(action==='SENT_MESSAGES')return {items:input.cursor?[{...message,id:'legacy-message',title:'Histórico legado',activity:null,historyRow:4}]:[{...message,historyRow:3}],cursor:input.cursor?null:'next'};
+ if(action==='SENT_DETAIL')return {message:{...message,id:input.id,status:cancelled?'cancelled':'published',...(cancelled?{cancellationReason:'Atividade retirada'}:{})},recipients:input.id==='legacy-message'?[]:[{...person,status:cancelled?'CANCELLED':'COMPLETED',readAt:now+1000,completedAt:now+2000,sourceCompletedAt:null,score:null}],recipientsRecorded:input.id!=='legacy-message',syncPending:true,serverNow:now+3000};
+ if(action==='CANCEL_ACTIVITY'){cancelled=true;return {cancelled:true};}
+ if(action==='HISTORY_RETRY')return {syncQueued:true};
+ if(action==='INBOX')return {items:[message,{...message,id:'legacy-message',title:'Aviso legado'}],cursor:null};
+ if(action==='MESSAGE_READ')return input.id==='legacy-message'?{recorded:false,legacy:true}:{recorded:true,readAt:now+1000};
+ throw Error('Unexpected action '+action);
+}};
+window.unmount=mountCommunication(document.querySelector('#root'),{client,adminMode:admin,isCurrent:()=>window.current,appSession:{user:{uid:'synthetic-admin',email:admin?'wx2064@gmail.com':'person@example.test',emailVerified:true}},onBack:()=>{window.unmount();}});
+</script></html>
