@@ -41,17 +41,18 @@ test('only the four verified emails grant administration, never local roles or p
  const f=fixture();for(const action of ['SAVE_MESSAGE','PREPARE','SEND_BATCH','DIRECTORY','GROUPS','HISTORY','SENT_MESSAGES','AUDIT','METRICS','SETTINGS','SAVE_SETTINGS','IMPORT_SOURCE'])await assert.rejects(f.call(action,{}, {...person,role:'administrador_app',permissions:{admin:true}}),{code:'COMM_FORBIDDEN'});
  assert.equal(f.store.data.size,3);
 });
-test('sent history shows both authorized senders and excludes drafts and other authors',async()=>{
+test('sent history is administrator-only and excludes drafts and other authors',async()=>{
  const f=fixture();
  const manager={...actor,uid:'ff-manager',sourceUid:'fa-manager',email:ADMINS[3]};
  f.store.data.set('users/'+manager.sourceUid,{uid:manager.sourceUid,email:manager.email,active:true,access:true});
  const entries=[['admin',actor],['manager',manager],['other',person],['draft',actor]];
  for(const [key,sender] of entries)f.store.data.set('communicationMessages/'+key,message({status:key==='draft'?'draft':'published',createdBy:{email:sender.email}}));
- for(const sender of [actor,manager]){
+ for(const sender of [actor]){
   const {items}=await f.call('SENT_MESSAGES',{},sender);
-  assert.deepEqual(items.map(item=>[item.id,item.sender]),[['admin','Administrador'],['manager','Gestor operacional']]);
+  assert.deepEqual(items.map(item=>[item.id,item.sender]),[['admin','Administrador']]);
   assert.ok(items.every(item=>item.audienceValue===''));
  }
+ await assert.rejects(f.call('SENT_MESSAGES',{},manager),{code:'COMM_FORBIDDEN'});
  await assert.rejects(f.call('SENT_MESSAGES',{}, {...actor,email:ADMINS[1]}),{code:'COMM_FORBIDDEN'});
 });
 
