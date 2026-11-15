@@ -110,3 +110,6 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .management-hub-dialog[data-panel="institutional"] .management-hub-header [data-hub-heading-icon],.management-hub-dialog[data-panel="institutional"] .management-hub-user-row{display:none}
 
 @media(max-width:520px){.management-hub-dialog[data-panel="institutional"] .management-hub-arrow{display:none}}
+.management-hub-button--inactive{opacity:.68;filter:saturate(.62);border-style:dashed!important;cursor:pointer}
+.management-hub-button--inactive:focus-visible{opacity:1;filter:none}
+.management-hub-button--inactive .management-survey-subtitle{color:#f5dfaa}

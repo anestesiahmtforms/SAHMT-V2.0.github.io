@@ -19,9 +19,13 @@ export function operationalRouteActivityAllowed(route) {
  return !id||operationalContentAllowed(id);
 }
 export function operationalContentAllowed(id) {
+ // These centers are permanently exempt from folder availability. Access to
+ // them remains governed by the role checks in the route and module ACLs.
+ if(id==='comunicacao'||id==='fi-control')return true;
  return !operationalFolderPolicyEnabled||administrator||operationalFolderAllowed(policy,id);
 }
 export function operationalFolderNotice(id) {
+ if(id==='comunicacao'||id==='fi-control')return '';
  if(!operationalFolderPolicyEnabled||!Object.hasOwn(operationalFolders,id))return '';
  if(!policy)return administrator?'':'<aside class="notice folder-inactive-notice" role="status">Atividades indisponíveis enquanto o servidor confirma a situação da pasta. A navegação continua disponível.</aside>';
  const blocker=id.split('/').map((_,index,parts)=>parts.slice(0,index+1).join('/')).find(folder=>policy.disabled.includes(folder));

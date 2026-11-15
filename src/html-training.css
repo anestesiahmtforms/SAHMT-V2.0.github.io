@@ -178,3 +178,5 @@
  .management-area-dialog--leaf-banner .management-area-dialog__footer{padding-top:4px}
  .management-area-dialog--leaf-banner .management-area-dialog__footer button{min-height:32px;padding:5px 10px}
 }
+.html-trainings .ht-folder-inactive{opacity:.66;filter:saturate(.62);border-style:dashed!important;cursor:pointer}
+.html-trainings .ht-folder-inactive:focus-visible{opacity:1;filter:none;outline:3px solid #1762a1;outline-offset:2px}

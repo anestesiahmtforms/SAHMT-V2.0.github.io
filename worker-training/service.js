@@ -1,6 +1,6 @@
 import {assertFolderReadable} from '../server/folder-read-policy.js';
 import { documentGroupsFromAccess, normalizeDocumentAccessEmail } from '../src/document-access.js';
-import {trainingPathAllowed,trainingAccessPath,trainingFolderLevel,validTrainingFolderPath,parseTrainingFolderAccess} from '../src/html-training-folders.js';
+import {trainingPathAllowed,trainingAccessPath,trainingFolderLevel,validTrainingFolderPath,parseTrainingFolderAccess,initialTrainingFolderAccess} from '../src/html-training-folders.js';
 import {Buffer} from 'node:buffer';
 import { finalizeRopAudit } from '../src/domain/rop-audit.js';
 import { copy, documentSize, fail, identifier, publication, text, version } from './domain-validation.js';
@@ -68,7 +68,7 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     }
     const access = await tx.get('documentAccessEmails', identity.email);
     const settings=await tx.get('htmlTrainingSettings','folders');
-    const folderAccess=settings===null?{version:0,disabled:[]}:parseTrainingFolderAccess(settings);
+    const folderAccess=settings===null?initialTrainingFolderAccess:parseTrainingFolderAccess(settings);
     if(!folderAccess)fail('TRAINING_FOLDER_POLICY_UNAVAILABLE',503);
     const folderIndex=await tx.get('htmlTrainingSettings','folderIndex');
     return {profile,areaInactive,groups:documentGroupsFromAccess(access,identity.email),

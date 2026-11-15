@@ -3,7 +3,7 @@ import './html-training.css';
 import { deployment } from './deployment-context.js';
 import { escapeHtml as h, canManageTraining, isTrainingAdmin, readerDocument } from './html-training-model.js';
 import { mountTrainingAudit } from './html-training-audit.js';
-import {trainingCategories,trainingFolderLevel,trainingPathAllowed,trainingAccessPath,validTrainingFolderPath,parseTrainingFolderAccess} from './html-training-folders.js';
+import {trainingCategories,trainingFolderLevel,trainingPathAllowed,trainingAccessPath,validTrainingFolderPath,parseTrainingFolderAccess,initialTrainingFolderAccess} from './html-training-folders.js';
 import {renderTrainingDocumentCard} from './html-training-card.js';
 import {htmlTrainingActivityState, loadHtmlTrainingDocument, hydrateHtmlTrainingActivities} from './html-training-activity.js';
 import {mountReadingTracker} from './html-training-reading.js';
@@ -35,7 +35,7 @@ export async function createHtmlTrainingClient(user) {
         unsubscribe=onSnapshot(doc(db,'htmlTrainingSettings','folders'),{includeMetadataChanges:true},snapshot=>{
           if(disposed)return;
           if(!valid()||snapshot.metadata.fromCache||globalThis.navigator?.onLine===false)return offline();
-          callback(snapshot.exists()?parseTrainingFolderAccess(snapshot.data()):{version:0,disabled:[]});
+          callback(snapshot.exists()?parseTrainingFolderAccess(snapshot.data()):initialTrainingFolderAccess);
         },()=>{if(!disposed)offline();});
       }).catch(()=>{if(!disposed)offline();});
       return ()=>{disposed=true;unsubscribe?.();globalThis.removeEventListener?.('offline',offline);};
@@ -69,7 +69,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   const uid=user?.uid, activityStates=new Map();
   let requestedTraining=initialTrainingId;
   let areaInactive=false,restrictedNavigationAllowed=false;
-  let progressGeneration=0,folderAccess={version:0,disabled:[]},folderControlAvailable=false,folderPaths=[],folderIndexReady=true;
+  let progressGeneration=0,folderAccess=initialTrainingFolderAccess,folderControlAvailable=false,folderPaths=[],folderIndexReady=true;
   let watchingPolicy=false, confirmedPolicy=null, unsubscribePolicy;
   let readingPlan=null,readingTracker=null;
   const stopReading=()=>{readingTracker?.cleanup();readingTracker=null;};
@@ -144,10 +144,12 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     };
     const book='<span class="ht-book-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15M6 8h3M6 12h3m6-4h3m-3 4h3"/></svg></span>';
     const folders=level.folders.map(folder=>{
-      const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong>${inactiveForOthers(folder.path)?'<small>Inativa para os demais usuários</small>':''}</span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,`class="ht-folder ht-navigation-book" aria-label="${h(folder.name)}" ${inactiveForOthers(folder.path)?'aria-description="Inativa para os demais usuários"':''}`);
+      const enabled=!areaInactive&&trainingPathAllowed(folderAccess,folder.path);
+      const inactiveLabel=enabled?'':accessAdmin()?'<small>Inativa para usuários comuns</small>':'<small>Inativa · navegação disponível</small>';
+      const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong>${inactiveLabel}</span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,`class="ht-folder ht-navigation-book${enabled?'':' ht-folder-inactive'}" aria-label="${h(folder.name)}" ${!enabled?'aria-description="Inativa. Navegação disponível; atividades bloqueadas."':''}`);
       if(!accessAdmin())return entry;
-      const enabled=trainingPathAllowed(folderAccess,folder.path);
-      return `<div class="ht-navigation-card">${entry}${button('toggle-folder',enabled?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${enabled?'Desativar':'Ativar'} ${h(folder.name)}" ${enabled&&!folderIndexReady?'disabled data-locked="true"':''}`)}</div>`;
+       const folderActive=trainingPathAllowed(folderAccess,folder.path);
+       return `<div class="ht-navigation-card">${entry}${button('toggle-folder',folderActive?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${folderActive?'Desativar':'Ativar'} ${h(folder.name)}" ${folderActive&&!folderIndexReady?'disabled data-locked="true"':''}`)}</div>`;
     }).join('');
     const documents=visible.map(t=>contentAllowed(t)
       ?renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t),inactiveForOthers:inactiveForOthers(trainingAccessPath(t))})
@@ -248,7 +250,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   async function loadCatalog(){
     resetCatalog();render();
     const res=await call('LIST',{},revision);
-    const access=res.folderAccess||{version:0,disabled:[]};
+    const access=res.folderAccess||initialTrainingFolderAccess;
     if(watchingPolicy&&access.version!==confirmedPolicy?.version)return;
     folderAccess=watchingPolicy?confirmedPolicy:access;
     folderControlAvailable=res.canManageFolders===true;

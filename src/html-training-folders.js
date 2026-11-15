@@ -20,6 +20,7 @@ export function parseTrainingFolderAccess(value){
  return {version:value.version,disabled:[...value.disabled]};
 }
 export const trainingCategories=Object.freeze(['Protocolos','Diretrizes','ROPs','Documentos administrativos']);
+export const initialTrainingFolderAccess=Object.freeze({version:0,disabled:Object.freeze(trainingCategories.map(category=>JSON.stringify([category])))});
 const folderOrder={Protocolos:['Protocolos do SAHMT','Protocolos da Instituição'],ROPs:['Cultura de segurança','Comunicação','Uso de medicamentos','Vida profissional / Força de Trabalho','Controle de Infecção','Avaliação de riscos'],'Documentos administrativos':['Acesso restrito','Acesso geral']};
 const within=(path,parent)=>parent.every((part,index)=>path[index]===part);
 

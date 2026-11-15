@@ -57,7 +57,7 @@ function sourceCards(sources) {
   return '<div class="functional-source-grid">' + keys.map(key => {
     const value = sources[key]??{state:'PREPARING'};
     const available=operationalContentAllowed(sourceFolders[key]);
-    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail">'
+    return '<div class="functional-source"><button class="functional-tile'+(available?'':' functional-tile--inactive')+'" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail"'+(!available?' aria-description="Pasta inativa. A navegação continua disponível; atividades bloqueadas."':'')+'>'
       + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong>'+(!available?'<small>Pasta inativa ou indisponível</small>':key==='performance'?'<small>'+escapeHtml(states[value.state]||'Status não informado')+'</small>':'')+'</span>'
       + '<span class="functional-chevron" aria-hidden="true">›</span></button>'
       + operationalFolderNotice(sourceFolders[key])+'</div>';

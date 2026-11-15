@@ -83,7 +83,20 @@ const routes = Object.freeze({
  schedule:'operacao/escala'
 });
 
-export const initialOperationalFolderPolicy=Object.freeze({schemaVersion:1,revision:0,disabled:Object.freeze([])});
-export const operationalFolderAllowed=(policy,id)=>
- policy===initialOperationalFolderPolicy || folderReadable(policy,id);
+// Governance starts closed for ordinary users. Operational workflows and the
+// user's personal records remain available until an administrator changes them.
+// Communication and Administrative Centers are permanently outside this
+// folder policy; their own role checks continue to control who can enter.
+export const governanceFolderRoots=Object.freeze([
+ 'gestao','indicadores','registros','consultas','desempenho',
+ 'funcional/desempenho','funcional/pesquisas-institucionais',
+ 'operacao/checklist/desempenho'
+]);
+export const initialOperationalFolderPolicy=Object.freeze({schemaVersion:1,revision:0,disabled:governanceFolderRoots});
+export const operationalFolderAllowed=(policy,id)=>{
+ if(policy===initialOperationalFolderPolicy){
+  return typeof id!=='string'||!governanceFolderRoots.some(folder=>id===folder||id.startsWith(folder+'/'));
+ }
+ return folderReadable(policy,id);
+};
 export const operationalRouteFolder=route=>Object.hasOwn(routes,route)?routes[route]:null;

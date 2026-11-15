@@ -16,7 +16,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
    if(r.status===404){await r.body?.cancel();return;}
    if(!r.ok)throw Error('POLICY_UNAVAILABLE');
    const policy=decodeFields((await boundedJson(r)).fields||{});
-   for(const folder of source?['operacao/escala','operacao/eventos','operacao/escala/ferias']:['comunicacao'])assertFolderReadable(policy,folder);
+   for(const folder of source?['operacao/escala','operacao/eventos','operacao/escala/ferias']:[])assertFolderReadable(policy,folder);
   }catch(error){if(error.code==='COMM_OPERATION_WORK_LIMIT')throw error;throw fail(error.code==='FOLDER_DISABLED'?'COMM_FOLDER_DISABLED':'COMM_FOLDER_POLICY_UNAVAILABLE',error.code==='FOLDER_DISABLED'?403:503);}
  }
  async function request(path,body){

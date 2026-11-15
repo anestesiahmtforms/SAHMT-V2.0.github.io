@@ -1,4 +1,5 @@
 import {bindSurveySession} from './survey-session-bridge.js';
+import {renderOperationalFolderDirectory} from './operational-folder-directory.js';
 import './management-hub.css';
 import './fe-performance.css';
 
@@ -96,10 +97,11 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    if(['performance','faPerformance','fcPerformance'].includes(item.access)&&access[item.access]!==true)return '';
    const available=panelFolderAllowed(item.panel||item.route);
    const allowed=itemAllowed(item);
-   return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="'+(available?'Acesso não liberado para este perfil':'Pasta inativa ou sem confirmação do servidor')+'"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+(!available?'<small class="management-survey-subtitle">Pasta inativa ou indisponível</small>':'')+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
+   return '<button type="button" class="management-hub-button '+(item.className||'')+(!available?' management-hub-button--inactive':'')+'" data-hub-item="'+index+'"'+(!available?' aria-description="Pasta inativa. A navegação continua disponível; atividades bloqueadas."':'')+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+(!available?'<small class="management-survey-subtitle">INATIVA · NAVEGAÇÃO DISPONÍVEL</small>':'')+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
   if(!panelFolderAllowed(panel)&&!navigationOnly.includes(panel)&&!spec.items){
-   body.innerHTML='<p role="status">Pasta inativa ou indisponível. As atividades aguardam a reativação ou a confirmação do servidor.</p>';
+   const folder=panelFolders[panel];
+   body.innerHTML=folder?renderOperationalFolderDirectory(folder):'<p role="status">Pasta inativa ou indisponível. As atividades aguardam a reativação ou a confirmação do servidor.</p>';
    back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
    dialog.querySelector('#management-hub-title').focus({preventScroll:true});
    return;
@@ -130,7 +132,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    void import('./year-end-schedule-ui.js').then(({mountYearEndSchedule})=>{if(!current())return;cleanupYearEnd=mountYearEndSchedule(body,{isCurrent:current,onConfirmed:onYearEndConfirmed,connectAccess:connectYearEndAccess,createRepository:current=>createYearEndRepository(current)});}).catch(()=>{if(current())body.innerHTML='<p role="alert">Não foi possível abrir a escala. Volte e tente novamente.</p>';});
   }
   if(panel==='general'&&institutionalAllowed()){
-   const surveyCard=(kind,panel,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+panel+'"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+(panelFolderAllowed(panel)?subtitle:'Pasta inativa ou indisponível')+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
+   const surveyCard=(kind,panel,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card'+(panelFolderAllowed(panel)?'':' management-hub-button--inactive')+'" data-survey-panel="'+panel+'"'+(!panelFolderAllowed(panel)?' aria-description="Pasta inativa. A navegação continua disponível; atividades bloqueadas."':'')+'><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+(panelFolderAllowed(panel)?subtitle:'INATIVA · NAVEGAÇÃO DISPONÍVEL')+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
    body.innerHTML='<div class="management-surveys">'+(climateEnabled&&access.fePerformance===true?'<div class="management-survey-links">'+surveyCard('performance','fePerformance','DESEMPENHO FE','Minha pontuação nas pesquisas')+'</div>':'<p class="management-surveys-pending">Nenhuma opção disponível nesta área no momento.</p>')+'</div>';
   }
   if(teamSurveyPanels.includes(panel)&&access.teamSurveys){

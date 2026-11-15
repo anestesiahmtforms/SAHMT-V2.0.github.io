@@ -1,9 +1,9 @@
-import {operationalFolders,operationalFolderAllowed} from './operational-folders.js';
+import {operationalFolders,operationalFolderAllowed,governanceFolderRoots} from './operational-folders.js';
 import {subscribeOperationalFolderPolicy} from './operational-folder-runtime.js';
 
 const fold=value=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
 const groups=new Map();
-for(const [id,title] of Object.entries(operationalFolders)){
+for(const [id,title] of Object.entries(operationalFolders).filter(([id])=>id!=='comunicacao')){
  const path=id.split('/');
  const group=path[0];
  const parents=path.slice(0,-1).map((_,index)=>operationalFolders[path.slice(0,index+1).join('/')]).filter(Boolean).join(' / ');
@@ -21,6 +21,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
   <div class="fi-folder-actions">
    <button type="button" data-operational-folder-inspect>Conferir serviços</button>
    <button type="button" data-operational-folder-initialize hidden>Inicializar controle</button>
+   <button type="button" data-operational-folder-lock-governance hidden>Desativar Governança para usuários comuns</button>
    <button type="button" data-operational-folder-resume hidden>Retomar atualização</button>
   </div>
   <p class="fi-folder-notice" data-operational-folder-status role="status"></p>
@@ -40,6 +41,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
  const list=root.querySelector('[data-folder-list]');
  const inspectButton=root.querySelector('[data-operational-folder-inspect]');
  const initializeButton=root.querySelector('[data-operational-folder-initialize]');
+ const lockGovernanceButton=root.querySelector('[data-operational-folder-lock-governance]');
  const resumeButton=root.querySelector('[data-operational-folder-resume]');
 
  function render(focusId) {
@@ -53,8 +55,9 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
   description.textContent=pending?'Atualização pendente. Retome a atualização para confirmar a mudança nos serviços.':
    policy?'Todos os usuários autorizados podem navegar pelas pastas e subpastas inativas. As atividades ficam bloqueadas até a reativação. Ativar uma subpasta libera o caminho até ela e mantém os outros ramos inativos.':'Aguardando a confirmação do servidor.';
   initializeButton.hidden=policy?.revision!==0;
+  lockGovernanceButton.hidden=!policy||policy.revision===0||!governanceFolderRoots.some(id=>operationalFolderAllowed(policy,id));
   resumeButton.hidden=!pending;
-  for(const button of [inspectButton,initializeButton,resumeButton])button.disabled=busy;
+  for(const button of [inspectButton,initializeButton,lockGovernanceButton,resumeButton])button.disabled=busy||pending;
   filter.disabled=!policy;
   status.textContent=message;
 
@@ -70,7 +73,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
    return `<li class="fi-folder-row">
     <div class="fi-folder-name"><strong>${title}</strong>${parents?`<small>${parents}</small>`:''}</div>
     <span class="fi-folder-state" data-state="${effective?'active':ownActive?'inherited':'disabled'}">${state}</span>
-   <button type="button" data-operational-folder="${id}" data-enable="${!effective}" aria-label="${action} ${title}" ${busy||pending?'disabled':''}>${action}</button>
+   <button type="button" data-operational-folder="${id}" data-enable="${!effective}" aria-label="${action} ${title}" ${busy||pending||policy.revision===0?'disabled':''}>${action}</button>
    </li>`;
   };
   const total=Object.keys(operationalFolders).length;
@@ -94,17 +97,30 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
   focusTarget?.focus({preventScroll:true});
  }
  async function click(event) {
-  const button=event.target.closest?.('[data-operational-folder],[data-operational-folder-resume],[data-operational-folder-inspect],[data-operational-folder-initialize]');
+  const button=event.target.closest?.('[data-operational-folder],[data-operational-folder-resume],[data-operational-folder-inspect],[data-operational-folder-initialize],[data-operational-folder-lock-governance]');
   if(!button||!root.contains(button)||button.disabled||busy||!isCurrent())return;
   const id=button.dataset.operationalFolder;
   const inspect=button.hasAttribute('data-operational-folder-inspect');
-  if(!inspect&&!policy)return;
   const initialize=button.hasAttribute('data-operational-folder-initialize');
-  const data=inspect?{}:initialize?{initialize:true,revision:0}:id?{id,enabled:!operationalFolderAllowed(policy,id),revision:policy.revision}:{resume:true,revision:policy.revision};
+  const lockGovernance=button.hasAttribute('data-operational-folder-lock-governance');
+  if(!inspect&&!policy)return;
+  const data=inspect?{}:initialize?{initialize:true,revision:0}:lockGovernance?null:id?{id,enabled:!operationalFolderAllowed(policy,id),revision:policy.revision}:{resume:true,revision:policy.revision};
   const restoreFocus=id&&root.ownerDocument.activeElement===button;
-  busy=true;message=inspect?'Conferindo serviços…':'Enviando atualização…';render();
+  busy=true;message=inspect?'Conferindo serviços…':lockGovernance?'Desativando conteúdos de Governança…':initialize?'Inicializando e bloqueando conteúdos de Governança…':'Enviando atualização…';render();
   try {
-   const result=await request(inspect?'folders.inspect':'folders.publish',data);
+   let result;
+   if(initialize){
+    result=await request('folders.publish',data);
+   }else if(lockGovernance){
+    let revision=policy.revision;
+    for(const folder of governanceFolderRoots){
+     if(!operationalFolderAllowed(policy,folder))continue;
+     result=await request('folders.publish',{id:folder,enabled:false,revision});
+     revision=result.revision;
+     if(result.pending)break;
+    }
+    result=result||{revision,pending:false};
+   }else result=await request(inspect?'folders.inspect':'folders.publish',data);
    if(inspect){
     inspection=result;
     message=result.pending?'A atualização está pendente. Retome para concluir.':result.initialized
@@ -112,7 +128,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
     return;
    }
    inspection=null;
-   message=result.pending?'Alguns serviços ainda não confirmaram. Use Retomar atualização.':'Atualização confirmada pelos serviços.';
+   message=result.pending?'Alguns serviços ainda não confirmaram. Use Retomar atualização.':initialize||lockGovernance?'Governança desativada para usuários comuns; o administrador mantém acesso e pode reativar cada pasta.':'Atualização confirmada pelos serviços.';
   }catch(error){message=error.code==='FOLDER_POLICY_CONFLICT'?'O controle mudou em outra sessão. Atualize a consulta e tente novamente.'
    :error.code==='FOLDER_POLICY_INPUT'?'A Central FI ainda não reconhece esta pasta. Atualize o Worker de controle antes de alterar o estado.'
    :'Não foi possível concluir a operação na Central FI.';}
