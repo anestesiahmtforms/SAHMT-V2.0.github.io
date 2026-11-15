@@ -8,6 +8,7 @@ function fixture({parent=HISTORY_FOLDER,failWrite=false}={}){
  const fetchImpl=async(url,options={})=>{
   const u=new URL(url);
   assert.equal(options.headers.Authorization,'Bearer synthetic');
+  assert.equal(options.redirect,'manual');
   if(u.hostname==='www.googleapis.com')return Response.json({id:sheetId,mimeType:'application/vnd.google-apps.spreadsheet',parents:[parent],trashed:false,permissions:[{type:'user',role:'owner',emailAddress:'anestesiahmtforms6@gmail.com'},{type:'user',role:'writer',emailAddress:'communication-worker@sahmt-comunicacao-ff.iam.gserviceaccount.com'}]});
   if(u.pathname.endsWith('/values:batchGet'))return Response.json({valueRanges:Object.values(HISTORY_HEADERS).map(headers=>({values:[headers]}))});
   if(u.pathname.endsWith('/values:batchUpdate')){
@@ -23,6 +24,16 @@ function fixture({parent=HISTORY_FOLDER,failWrite=false}={}){
 test('archive adapter refuses a file outside the exact authorized folder before writing',async()=>{
  assert.equal(typeof api.createCommunicationHistoryDrive,'function');
  const f=fixture({parent:'another-folder'});await assert.rejects(f.create().write([{range:'Mensagens!A2:Q2',values:[Array(17).fill('')]}]),{code:'COMM_HISTORY_DESTINATION_INVALID'});assert.equal(f.writes.length,0);
+});
+test('archive adapter rejects a provider redirect without forwarding credentials',async()=>{
+ const calls=[];
+ const drive=api.createCommunicationHistoryDrive({spreadsheetId:sheetId,getToken:async()=> 'synthetic',fetchImpl:async(url,{redirect})=>{
+  calls.push(new URL(url).hostname);
+  assert.equal(redirect,'manual');
+  return Response.redirect('https://example.com',307);
+ }});
+ await assert.rejects(drive.verify(),{code:'COMM_HISTORY_UNAVAILABLE',archiveApi:'DRIVE',archiveHttpStatus:307});
+ assert.deepEqual(calls,['www.googleapis.com']);
 });
 test('archive fixed-range retry preserves literal text and cannot duplicate events',async()=>{
  assert.equal(typeof api.createCommunicationHistoryDrive,'function');

@@ -15,7 +15,7 @@ export function createCommunicationHistoryDrive({getToken,fetchImpl=fetch,spread
  async function request(url,body){
   const api=url.startsWith(FILES)?'DRIVE':'SHEETS';
   try{
-   const response=await fetchImpl(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',cache:'no-store',signal:AbortSignal.timeout(20000)});
+   const response=await fetchImpl(url,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(20000)});
    if(!response.ok){
     await response.body?.cancel();
     const error=fail(response.status===403?'COMM_HISTORY_FORBIDDEN':response.status===429?'COMM_PROVIDER_QUOTA_EXHAUSTED':'COMM_HISTORY_UNAVAILABLE',response.status===429?429:503);
