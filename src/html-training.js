@@ -3,12 +3,13 @@ import './html-training.css';
 import { deployment } from './deployment-context.js';
 import { escapeHtml as h, canManageTraining, isTrainingAdmin, readerDocument } from './html-training-model.js';
 import { mountTrainingAudit } from './html-training-audit.js';
-import {trainingCategories,trainingFolderLevel,trainingPathAllowed,trainingAccessPath,validTrainingFolderPath,parseTrainingFolderAccess,initialTrainingFolderAccess} from './html-training-folders.js';
+import {trainingCategories,trainingFolderLevel,trainingPathAllowed,trainingAccessPath,validTrainingFolderPath,parseTrainingFolderAccess} from './html-training-folders.js';
 import {renderTrainingDocumentCard} from './html-training-card.js';
 import {htmlTrainingActivityState, loadHtmlTrainingDocument, hydrateHtmlTrainingActivities} from './html-training-activity.js';
 import {mountReadingTracker} from './html-training-reading.js';
 
 const categories = trainingCategories;
+const initialTrainingFolderAccess=Object.freeze({version:0,disabled:Object.freeze(categories.map(category=>JSON.stringify([category])))});
 const folderErrorMessages={FOLDER_INDEX_REQUIRED:'O controle de pastas precisa ser atualizado pelo administrador. Seu acesso ao conteúdo permanece suspenso até essa atualização.',FOLDER_INDEX_TOO_LARGE:'O acervo excede o limite desta preparação. O administrador precisa organizar a migração antes de desativar pastas.'};
 const uuid = () => globalThis.crypto.randomUUID();
 const button = (action, label, extra='') => `<button type="button" data-ht="${action}" ${extra}>${label}</button>`;
