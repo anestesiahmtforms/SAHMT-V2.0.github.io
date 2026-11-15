@@ -7,6 +7,7 @@ const who=uid=>({uid,email:uid+'@example.invalid',emailVerified:true,provider:'g
 const denied=code=>e=>e.code===code;
 async function setup(){
  const store=memoryStore();let time=1000000,serial=0;
+ store.seed('htmlTrainingSettings','folders',{version:1,disabled:[]});
  for(const uid of ['admin','reader']){store.seed('users',uid,{uid,active:true,access:true,role:uid==='admin'?'administrador_app':'colaborador'});store.seed('documentAccessEmails',uid+'@example.invalid',{id:uid+'@example.invalid',email:uid+'@example.invalid',active:true,groups:['GENERAL']});}
  const service=createHtmlTrainingService({store,readingRequired:true,now:()=>time,uuid:()=>`run-${++serial}`});
  const exec=(action,input={},uid='reader')=>service.execute(action,{trainingId:'document-one',...input},who(uid));
