@@ -2,3 +2,13 @@
 @media(max-width:600px){.vac-header{padding:18px 14px;gap:10px}.vac-emblem{flex-basis:38px}.vac-emblem svg{width:34px;height:38px}.vac-panel{padding:18px 14px}.vac-form-grid,.vac-charts,.vac-upload-controls{grid-template-columns:minmax(0,1fr)}.vac-toolbar{padding:12px}.vac-toolbar nav{width:100%}.vac-toolbar nav button{flex:1;font-size:.75rem;padding:9px}.vac-app .vac-vaccine{grid-template-columns:28px minmax(0,1fr)}.vac-vaccine select{grid-column:1/-1}.vac-metrics{gap:8px}.vac-metrics article{padding:12px 8px}.vac-metrics strong{font-size:1.1rem}.vac-metrics span{font-size:.66rem}.vac-file-buttons button{flex:1}.vac-save-row>.vac-primary{width:100%}.vac-entry{flex-direction:column;align-items:stretch}.vac-individuals summary{flex-wrap:wrap}.vac-footer button{width:100%}.vac-preview{padding:12px;gap:12px}.vac-preview img{width:100%;height:210px}}
 
 .vac-manual-drive{margin:14px 0 20px;padding:14px;border:1px solid #d5c49f;border-radius:12px;background:#fffaf0}.vac-manual-drive p{margin:10px 0 0}.vac-drive-link{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;max-width:100%;padding:11px 16px;border:1px solid #b69b62;border-radius:11px;background:linear-gradient(125deg,#185777,#123a54);color:#fff;font-size:.85rem;font-weight:800;line-height:1.3;text-decoration:none}.vac-drive-link svg{width:23px;height:23px;flex-shrink:0}.vac-drive-link:focus-visible{outline:3px solid #b39452;outline-offset:3px}
+
+.vac-app{grid-template-columns:minmax(0,1fr)}
+.vac-toolbar{justify-content:center;padding:8px 0;background:transparent;border:0}
+.vac-period{justify-content:center;width:min(100%,320px);padding:14px 20px;border:2px solid #d0b16c;border-radius:18px;background:linear-gradient(145deg,#fff9e9,#e5f0f5);box-shadow:0 5px 12px #12344820}
+.vac-period label{justify-content:center;gap:18px;font-size:1rem;font-weight:900;letter-spacing:.08em}
+.vac-period select{width:120px;font-size:1.15rem;font-weight:900;text-align:center;border:2px solid #245c7b}
+.vac-panel form{margin-top:0}
+.vac-vaccines{min-inline-size:0;padding-top:16px;border:2px solid #c4a468}
+.vac-vaccines legend{width:100%;padding:12px 8px;border:1px solid #d5b974;border-radius:12px;background:linear-gradient(125deg,#185777,#123a54);color:white;text-align:center;font-size:clamp(1.15rem,4.5vw,1.5rem);font-weight:900;line-height:1.3}
+.management-hub-dialog[data-panel="vaccinationHistory"] .vac-footer{display:none}

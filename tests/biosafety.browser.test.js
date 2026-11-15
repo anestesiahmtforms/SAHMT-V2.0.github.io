@@ -25,16 +25,16 @@ test('annual banners preserve twelve monthly values, responsive layout and sessi
   assert.equal(await page.locator('.dosimetry-year svg').count(),2);
   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   for(const year of [2025,2026]){
-   await page.getByRole('button',{name:String(year),exact:true}).click();await page.getByText('Profissional de demonstração',{exact:true}).waitFor();
+   await page.getByRole('button',{name:String(year),exact:true}).click();await page.locator('.dosimetry-app[aria-busy="false"] .dosimetry-table').waitFor();
    await page.getByRole('heading',{name:'Meu Histórico de Dosimetria · '+year,exact:true}).waitFor();
    assert.equal(await page.locator('.dosimetry-table tbody tr').count(),12);
    assert.equal(await page.locator('[data-dose-month="1"]').innerText(),year===2025?'0,7':'ANR');
    assert.equal(await page.locator('[data-dose-month="2"]').innerText(),year===2025?'ANR':'0,2');
    assert.equal(await page.locator('[data-dose-month="12"]').innerText(),year===2025?'ANR':'Não disponível');
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false,`${year} at ${width}px fits`);
-   await page.getByRole('button',{name:'VOLTAR PARA OS ANOS',exact:true}).click();assert.equal(await page.locator('.dosimetry-owner,.dosimetry-table').count(),0);
+   await page.evaluate(()=>window.entryBack());assert.equal(await page.locator('.dosimetry-owner,.dosimetry-table').count(),0);
   }
-  await page.getByRole('button',{name:'2026',exact:true}).click();await page.getByText('Profissional de demonstração',{exact:true}).waitFor();
+  await page.getByRole('button',{name:'2026',exact:true}).click();await page.locator('.dosimetry-app[aria-busy="false"] .dosimetry-table').waitFor();
   await page.evaluate(()=>window.invalidate());await page.getByText('Sua sessão mudou. Entre novamente para consultar seu histórico individual.',{exact:true}).waitFor();
   assert.equal(await page.locator('.dosimetry-owner').count(),0);assert.equal(await page.locator('[data-dose-month="2"]').innerText(),'Não disponível');
   await page.evaluate(()=>window.entryBack());await page.evaluate(()=>window.entryBack());
@@ -45,8 +45,8 @@ test('annual banners preserve twelve monthly values, responsive layout and sessi
 
 test('late response from a previous year cannot replace the current annual banner',()=>run(async browser=>{
  const page=await browser.newPage();await open(page,'&doseRace');await page.getByRole('button',{name:'2025',exact:true}).click();
- await page.waitForFunction(()=>typeof window.completeOldDose==='function');await page.getByRole('button',{name:'VOLTAR PARA OS ANOS',exact:true}).click();
- await page.getByRole('button',{name:'2026',exact:true}).click();await page.getByText('Profissional de demonstração',{exact:true}).waitFor();
+ await page.waitForFunction(()=>typeof window.completeOldDose==='function');await page.evaluate(()=>window.entryBack());
+ await page.getByRole('button',{name:'2026',exact:true}).click();await page.locator('.dosimetry-app[aria-busy="false"] .dosimetry-table').waitFor();
  await page.evaluate(async()=>{window.completeOldDose();await new Promise(resolve=>setTimeout(resolve,100));});
  await page.getByRole('heading',{name:'Meu Histórico de Dosimetria · 2026',exact:true}).waitFor();assert.equal(await page.locator('[data-dose-month="1"]').innerText(),'ANR');
 }));

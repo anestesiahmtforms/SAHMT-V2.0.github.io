@@ -17,7 +17,11 @@ const client={async manual(){window.manualRequests=(window.manualRequests||0)+1;
  },async documents(action,input){if(action==='LIST_ADMIN'&&new URL(location.href).searchParams.has('documentsDenied'))throw Object.assign(Error('Forbidden'),{code:'DOCUMENT_FORBIDDEN',status:403});if(action==='LIST_ADMIN'&&new URL(location.href).searchParams.has('documentsOff'))throw Error('Indisponível');if(action==='UPLOAD'){const document={id:input.requestId,year:input.year,subject:input.subject,status:'STORED',mimeType:input.mimeType,size:atob(input.dataBase64).length,name:'Comprovante de demonstração',uploadedAt:Date.now()};uploads.push(document);return{document};}return{uploadsEnabled:ready,folderConfigured:true,documents:uploads};}};
 window.invalidate=()=>{valid=false;invalidated();};
 const root=document.querySelector('#app');
-if(new URL(location.href).searchParams.has('entry')){
+if(new URL(location.href).searchParams.has('hub')){
+ const {mountManagementHub}=await import('/src/management-hub.js');
+ const cleanup=mountManagementHub(root,{access:{surveys:true,institutionalSurveys:true,biosafety:true},initialPanel:'biosafety',displayName:profile.displayName,isSurveySessionCurrent:()=>valid,onExit:()=>{},
+  openOccupationalHistory:async(host,panel,isCurrent,onBack)=>(panel==='vaccinationHistory'?mountVaccination:mountDosimetry)(host,{user,profile,onBack,clientFactory:async()=>client})});
+}else if(new URL(location.href).searchParams.has('entry')){
  const {mountVaccinationEntry}=await import('/src/vaccination-entry.js');
  let cleanup;const back=()=>{cleanup?.();root.textContent='Atividades de Gestão de Pessoas preservadas';};
  root.innerHTML='<p>Atividades existentes</p>';
