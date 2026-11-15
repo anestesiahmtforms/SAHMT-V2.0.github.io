@@ -75,6 +75,10 @@ async function openYearEnd(page){
 async function assertTeamConsultations(page){
  await page.evaluate(()=>location.hash='#/management-hub/surveys');await page.locator('.management-hub-dialog[data-panel="surveys"]').waitFor();
  const dialog=page.locator('.management-hub-dialog');
+ const banner=await dialog.boundingBox(),viewport=page.viewportSize();
+ assert.ok(Math.abs(banner.y+banner.height/2-viewport.height/2)<2);
+ assert.ok(Math.abs(banner.x+banner.width/2-viewport.width/2)<2);
+ assert.ok(banner.height<420);
  const items=dialog.locator('[data-hub-item]');
  assert.equal(await items.count(),2);
  assert.equal(await items.filter({hasText:'ACESSO GERAL'}).isEnabled(),true);
