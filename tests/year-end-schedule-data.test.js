@@ -57,7 +57,7 @@ test('Carnival has its own shift counter and retains the required Natal or Revei
  await assert.rejects(repo.save({plantao:'carnaval',grupo:null}));await assert.rejects(repo.save({plantao:'carnaval',grupo:'carnaval'}));
  const first=await repo.save({plantao:'carnaval',grupo:'natal'});assert.equal(first.position,1);
  let totals=await f.store.get(base+'/summary','totals');assert.equal(totals.plantaoCarnaval,1);assert.equal(totals.grupoNatal,1);assert.equal(totals.totalRegistrations,1);
- await repo.save({plantao:'reveillon',grupo:'reveillon'});totals=await f.store.get(base+'/summary','totals');assert.equal(totals.plantaoCarnaval,0);assert.equal(totals.plantaoReveillon,1);assert.equal(totals.grupoNatal,0);
+ await assert.rejects(repo.save({plantao:'reveillon',grupo:'reveillon'}),{code:'YEAR_END_CHOICES_LOCKED'});totals=await f.store.get(base+'/summary','totals');assert.equal(totals.plantaoCarnaval,1);assert.equal(totals.plantaoReveillon,0);assert.equal(totals.grupoNatal,1);
  const exempt=f.repository('exempt','FR');const record=await exempt.repo.save({plantao:'carnaval',grupo:null});assert.equal(record.position,2);assert.equal(record.grupo,null);
 });
 
@@ -69,16 +69,15 @@ test('residents and substitutes are denied before records are loaded even with a
     assert.equal((await f.store.list(base+'/registrations')).length,0);
   }
 });
-test('duplicate submission and later updates keep one UID, original position and creation time',async()=>{
+test('duplicate submission and attempted edits preserve the original registration and totals',async()=>{
   const f=fixture(),{repo}=f.repository('one');
   const results=await Promise.all(Array.from({length:8},()=>repo.save({plantao:'natal',grupo:'reveillon'})));
   assert.deepEqual([...new Set(results.map(r=>r.position))],[1]);
   const first=await f.store.get(base+'/registrations','one');
-  await repo.save({plantao:'reveillon',grupo:'natal'});
-  const updated=await f.store.get(base+'/registrations','one');
-  assert.equal(updated.position,1);assert.equal(updated.createdAt,first.createdAt);assert.equal(updated.grupo,'natal');assert.equal(updated.plantao,'reveillon');
+  await assert.rejects(repo.save({plantao:'reveillon',grupo:'natal'}),{code:'YEAR_END_CHOICES_LOCKED'});
+  assert.deepEqual(await f.store.get(base+'/registrations','one'),first);
   const totals=await f.store.get(base+'/summary','totals');
-  assert.equal(totals.totalRegistrations,1);assert.equal(totals.plantaoNatal,0);assert.equal(totals.plantaoReveillon,1);assert.equal(totals.grupoNatal,1);assert.equal(totals.grupoReveillon,0);
+  assert.equal(totals.totalRegistrations,1);assert.equal(totals.plantaoNatal,1);assert.equal(totals.plantaoReveillon,0);assert.equal(totals.grupoNatal,0);assert.equal(totals.grupoReveillon,1);
 });
 test('wrong project, account changes, revoked profiles and invalid choices cannot write',async()=>{
   const f=fixture();assert.throws(()=>createYearEndScheduleRepository({db:{app:{options:{projectId:'sahmt-17a16'}}},auth:{app:f.project,currentUser:{uid:'one'}},uid:'one',firestore:f.api}));

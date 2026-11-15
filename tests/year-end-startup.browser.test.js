@@ -80,15 +80,15 @@ async function assertTeamConsultations(page){
  assert.equal(await items.filter({hasText:'ACESSO GERAL'}).isEnabled(),true);
  await items.filter({hasText:'ACESSO RESTRITO'}).click();
  await page.locator('.management-hub-dialog[data-panel="institutional"]').waitFor();
- assert.equal(await items.count(),4);
- for(const title of ['ESCALA FINAL DE ANO','ESCALA DE FÉRIAS 2027','CADASTRO PROFISSIONAL','CADASTRO EPIDEMIOLÓGICO']){
+ assert.equal(await items.count(),6);
+ for(const title of ['PESQUISA DE CLIMA ORGANIZACIONAL','AVALIAÇÃO DE ESTRESSE E FADIGA','ESCALA FINAL DE ANO','ESCALA DE FÉRIAS 2027','CADASTRO PROFISSIONAL','CADASTRO EPIDEMIOLÓGICO']){
   assert.equal(await items.filter({hasText:title}).isEnabled(),true,title);
  }
  await page.evaluate(()=>location.hash='#/home');await page.locator('.app-shell--home [data-route="schedule"]').waitFor();assert.equal(await page.locator('.management-hub-dialog').count(),0);
 }
 
-async function compactLayout(page){
- await page.waitForFunction(()=>document.querySelector('[data-year-end-form] fieldset')?.disabled===false);
+async function compactLayout(page,locked=false){
+ await page.waitForFunction(locked=>document.querySelector('[data-year-end-form] fieldset')?.disabled===locked,locked);
  const metrics=await page.evaluate(()=>{
   const dialog=document.querySelector('.year-end-dialog'),title=dialog.querySelector('h2'),field=dialog.querySelector('fieldset'),button=dialog.querySelector('[type="submit"]');
   const rect=element=>{const r=element.getBoundingClientRect();return {top:r.top,bottom:r.bottom,left:r.left,right:r.right};};
@@ -106,7 +106,7 @@ async function compactLayout(page){
  assert.equal(await page.locator('.year-end-option-icon').count(),5);
  assert.equal(await page.locator('[data-year-end-category="plantao"] legend').textContent(),'ESCOLHO O PLANTÃO:');
  assert.equal(await page.locator('[data-year-end-category="grupo"] legend').textContent(),'ESCOLHO O GRUPO DE TRABALHO:');
- assert.equal(await page.locator('.year-end-submit').textContent(),'CONFIRMA ESCOLHAS');
+ assert.equal(await page.locator('.year-end-submit').textContent(),locked?'ESCOLHAS CONFIRMADAS':'CONFIRMA ESCOLHAS');
 }
 
 test('temporary team banner opens a compact fixed form; only administrators see totals and registrations',{timeout:120000},async t=>{
@@ -151,15 +151,22 @@ test('temporary team banner opens a compact fixed form; only administrators see 
   await page.locator('input[name="plantao"][value="natal"]').check();const submit=page.getByRole('button',{name:'CONFIRMA ESCOLHAS',exact:true});assert.equal(await submit.isDisabled(),true);
   await page.locator('input[name="grupo"][value="reveillon"]').check();await submit.click();await page.getByText('Não foi possível conectar. Confira a internet e tente novamente.',{exact:true}).waitFor();assert.equal(preview.records.size,0);
   await page.getByRole('button',{name:'Voltar ao início',exact:true}).click();await page.locator('.app-shell--home [data-route="schedule"]').waitFor();
-  await page.goto(preview.url);await openYearEnd(page);await page.locator('input[name="plantao"][value="carnaval"]').check();await page.locator('input[name="grupo"][value="reveillon"]').check();await page.getByRole('button',{name:'CONFIRMA ESCOLHAS',exact:true}).click();await page.getByText('Escolhas confirmadas!',{exact:true}).waitFor();assert.equal(preview.records.size,1);assert.equal(preview.records.get('team').plantao,'carnaval');
-  assert.equal(await page.locator('.year-end-submit').textContent(),'CONFIRMA ESCOLHAS');
-  await page.reload();await page.waitForFunction(()=>document.querySelector('input[name="plantao"][value="carnaval"]')?.checked===true);await compactLayout(page);
+  await page.goto(preview.url);await openYearEnd(page);await page.locator('input[name="plantao"][value="carnaval"]').check();await page.locator('input[name="grupo"][value="reveillon"]').check();await page.getByRole('button',{name:'CONFIRMA ESCOLHAS',exact:true}).click();await page.getByText('Escolhas confirmadas! As escolhas são definitivas.',{exact:true}).waitFor();assert.equal(preview.records.size,1);assert.equal(preview.records.get('team').plantao,'carnaval');
+  assert.equal(await page.locator('.year-end-submit').textContent(),'ESCOLHAS CONFIRMADAS');
+  assert.equal(await page.locator('input[name="plantao"][value="natal"]').isDisabled(),true);
+  assert.equal(await page.locator('input[name="grupo"][value="natal"]').isDisabled(),true);
+  await page.setViewportSize({width:320,height:270});
+  const lockedButton=page.locator('.year-end-submit'),beforeScroll=await lockedButton.boundingBox();
+  assert.ok(await page.locator('.year-end-fields').evaluate(el=>{el.scrollTop=el.scrollHeight;return el.scrollTop;}));
+  assert.deepEqual(await lockedButton.boundingBox(),beforeScroll);
+  await page.setViewportSize({width:390,height:844});
+  await page.reload();await page.waitForFunction(()=>document.querySelector('input[name="plantao"][value="carnaval"]')?.checked===true);await compactLayout(page,true);
   await page.screenshot({path:`.local-preview/year-end-startup-carnival-${safari?'webkit':'chromium'}.png`,fullPage:true});
   await page.getByRole('button',{name:'Voltar ao início',exact:true}).click();await page.locator('.app-shell--home [data-route="schedule"]').waitFor();assert.equal(await page.getByRole('button',{name:/Governança/}).isDisabled(),false);
   await assertTeamConsultations(page);
   await page.reload();await page.locator('.app-shell--home [data-route="schedule"]').waitFor();assert.equal(await page.locator('.year-end-startup:visible').count(),0);
   const another=await browser.newPage({viewport:{width:390,height:844}});await another.goto(preview.url);await another.locator('.app-shell--home [data-route="schedule"]').waitFor();assert.equal(await another.locator('.year-end-startup:visible').count(),0);await another.close();
-  await page.goto(preview.url+'?account=shift-only');await openYearEnd(page);await compactLayout(page);assert.equal(await page.locator('[data-year-end-category="grupo"]').evaluate(el=>el.disabled),true);for(const radio of await page.locator('input[name="grupo"]').all())assert.equal(await radio.isDisabled(),true);await page.locator('input[name="plantao"][value="carnaval"]').check();await page.getByRole('button',{name:'CONFIRMA ESCOLHAS',exact:true}).click();await page.getByText('Escolhas confirmadas!',{exact:true}).waitFor();assert.equal(preview.records.get('shift-only').grupo,null);
+  await page.goto(preview.url+'?account=shift-only');await openYearEnd(page);await compactLayout(page);assert.equal(await page.locator('[data-year-end-category="grupo"]').evaluate(el=>el.disabled),true);for(const radio of await page.locator('input[name="grupo"]').all())assert.equal(await radio.isDisabled(),true);await page.locator('input[name="plantao"][value="carnaval"]').check();await page.getByRole('button',{name:'CONFIRMA ESCOLHAS',exact:true}).click();await page.getByText('Escolhas confirmadas! As escolhas são definitivas.',{exact:true}).waitFor();assert.equal(preview.records.get('shift-only').grupo,null);
   preview.records.set('admin',{uid:'admin',sigla:'ZZ',plantao:'natal',grupo:'reveillon',position:3,createdAt:Date.now()});
   for(let i=0;i<20;i++)preview.records.set('row'+i,{uid:'row'+i,sigla:'AA',plantao:'natal',grupo:'natal',position:i+4,createdAt:Date.now()});
   await page.setViewportSize({width:1366,height:900});await page.goto(preview.url+'?account=admin#/year-end-schedule');await page.locator('[data-year-end-rows] tr').first().waitFor();assert.equal(await page.locator('[data-year-end-admin]').count(),1);assert.equal(await page.locator('[data-year-end-count="plantaoCarnaval"]').textContent(),'2');

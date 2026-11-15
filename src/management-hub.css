@@ -64,7 +64,6 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 [data-epidemiological] .survey-banner{padding:16px;width:100%;box-shadow:none}
 [data-epidemiological] .survey-questions{color:#163844}
 [data-epidemiological] .survey-questions .reg-section{margin-top:16px}
-[data-epidemiological] [data-epi-report-body]:not(:empty){margin-top:12px;text-align:left}
 .management-hub-dialog:is([data-panel="surveys"],[data-panel="institutional"]) .management-hub-grid{flex:0 0 auto;grid-auto-rows:minmax(76px,1fr)}
 .management-hub-dialog[data-panel="institutional"] .management-hub-body{overflow:auto}
 .management-survey-frame{display:block;flex:1 1 auto;min-height:180px;width:100%;height:100%;border:0;border-radius:12px;background:#f1f6f6}.management-hub-dialog[data-panel="climateForm"] .management-hub-body,.management-hub-dialog[data-panel="stressForm"] .management-hub-body{padding:0;overflow:hidden}
@@ -74,6 +73,7 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .management-hub-button--festive:not(:disabled){border-color:#f3d690;background:linear-gradient(155deg,#bc4750,#8d2634 55%,#681e2c);color:#fff4d2;box-shadow:0 6px 0 #501825,0 7px 0 1px #b99c64,0 13px 20px #4b102c30,inset 0 2px 0 #fff5d54d}
 .management-hub-button--festive .management-hub-medallion{background:linear-gradient(145deg,#fff3ba,#d7aa53);color:#8b2631}.management-hub-button--festive .management-hub-arrow{background:#6c1d2a;color:#ffe9ae}
 
+.management-hub-dialog[data-panel="professional"] .management-hub-body{display:block;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
 .management-hub-dialog[data-panel="fePerformance"] .management-hub-body{display:block;overflow:auto}
 .management-hub-dialog[data-panel="surveys"] .management-hub-grid{grid-template-rows:none;grid-auto-rows:minmax(80px,1fr)}
 

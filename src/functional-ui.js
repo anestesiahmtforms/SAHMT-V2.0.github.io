@@ -47,13 +47,13 @@ const sourceIcons = {
 const sourceIcon = key => '<svg class="functional-tile-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="'+(sourceIcons[key]||sourceIcons.professionalRegistration)+'"/></svg>';
 
 function sourceCards(sources) {
-  const keys = Object.keys(sourceLabels).filter(key=>operationalContentAllowed(sourceFolders[key]));
+  const keys = Object.keys(sourceLabels);
   const states = {READY:'Dados sincronizados', PREPARING:'Em preparação', SESSION_REQUIRED:'Autenticação necessária', UNAVAILABLE:'Temporariamente indisponível'};
-  if (!keys.length) return '<p class="empty-state">Nenhuma pasta funcional está disponível.</p>';
   return '<div class="functional-source-grid">' + keys.map(key => {
     const value = sources[key]??{state:'PREPARING'};
-    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail">'
-      + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong>'+(key==='performance'?'<small>'+escapeHtml(states[value.state]||'Status não informado')+'</small>':'')+'</span>'
+    const available=operationalContentAllowed(sourceFolders[key]);
+    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail"'+(available?'':' disabled aria-disabled="true"')+'>'
+      + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong>'+(!available?'<small>Pasta inativa ou indisponível</small>':key==='performance'?'<small>'+escapeHtml(states[value.state]||'Status não informado')+'</small>':'')+'</span>'
       + '<span class="functional-chevron" aria-hidden="true">›</span></button>'
       + operationalFolderNotice(sourceFolders[key])+'</div>';
   }).join('') + '</div>';

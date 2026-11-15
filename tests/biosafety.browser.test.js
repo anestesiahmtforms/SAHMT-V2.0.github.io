@@ -5,6 +5,18 @@ const base=process.env.VACCINATION_PREVIEW_URL||'http://127.0.0.1:5178/tests/fix
 async function run(fn){const browser=await chromium.launch({headless:true,channel:process.env.SAHMT_TEST_BROWSER_CHANNEL||'msedge'});try{await fn(browser);}finally{await browser.close();}}
 async function open(page,query=''){await page.goto(base+'?entry'+query);await page.getByRole('button',{name:'BIOSSEGURANÇA',exact:true}).click();await page.getByRole('button',{name:'MEU HISTÓRICO DOSIMETRIA',exact:true}).click();await page.getByRole('button',{name:'2025',exact:true}).waitFor();}
 
+test('inactive Biossegurança still lists the three subfolders without opening their contents',()=>run(async browser=>{
+ const page=await browser.newPage();
+ await page.goto(base+'?entry&inactiveFolder');
+ await page.locator('[data-biosafety-open]').click();
+ for(const kind of ['manual','vaccination','dosimetry']){
+  const entry=page.locator('[data-'+kind+'-open]');
+  assert.equal(await entry.isVisible(),true);
+  assert.equal(await entry.isDisabled(),true);
+ }
+ assert.equal(await page.evaluate(()=>Boolean(window.manualRequests||window.doseRequests?.length)),false);
+}));
+
 test('annual banners preserve twelve monthly values, responsive layout and session privacy',()=>run(async browser=>{
  const page=await browser.newPage();
  for(const width of [320,390,768,1440]){

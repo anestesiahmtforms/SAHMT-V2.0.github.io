@@ -24,10 +24,10 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
   const hydrate=()=>{for(const input of form()?.querySelectorAll('input')||[])input.checked=(input.name!=='grupo'||participation.requireGroup)&&own?.[input.name]===input.value;};
   const paintForm=()=>{
     const f=form();if(!f)return;
-    const chosen=selection(),complete=Boolean(chosen.plantao&&(!participation.requireGroup||chosen.grupo)),same=own&&chosen.plantao===own.plantao&&chosen.grupo===own.grupo;
-    for(const fieldset of f.querySelectorAll('fieldset'))fieldset.disabled=!ready||busy||fieldset.dataset.yearEndCategory==='grupo'&&!participation.requireGroup;
-    const button=f.querySelector('button');button.disabled=!ready||busy||!complete||Boolean(same);
-    button.textContent='CONFIRMA ESCOLHAS';
+    const chosen=selection(),complete=Boolean(chosen.plantao&&(!participation.requireGroup||chosen.grupo));
+    for(const fieldset of f.querySelectorAll('fieldset'))fieldset.disabled=!ready||busy||Boolean(own)||fieldset.dataset.yearEndCategory==='grupo'&&!participation.requireGroup;
+    const button=f.querySelector('button');button.disabled=!ready||busy||!complete||Boolean(own);
+    button.textContent=own?'ESCOLHAS CONFIRMADAS':'CONFIRMA ESCOLHAS';
     f.setAttribute('aria-busy',String(busy));
   };
   const paintRows=()=>{
@@ -43,7 +43,7 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
   const render=()=>{
     root.innerHTML=`<section class="year-end${participation.isAdmin?' year-end--administrator':''}" aria-label="Escolhas para a escala final de ano">
       ${participation.canParticipate?`<form data-year-end-form>
-        <div class="year-end-fields"><fieldset data-year-end-category="plantao" disabled><legend>ESCOLHO O PLANTÃO:</legend>${options('plantao',YEAR_END_SHIFTS)}</fieldset>
+        <div class="year-end-fields" role="region" aria-label="Opções de plantão e grupo" tabindex="0"><fieldset data-year-end-category="plantao" disabled><legend>ESCOLHO O PLANTÃO:</legend>${options('plantao',YEAR_END_SHIFTS)}</fieldset>
         <fieldset data-year-end-category="grupo"${participation.requireGroup?'':' class="year-end-fieldset--inactive"'} disabled><legend>ESCOLHO O GRUPO DE TRABALHO:</legend>${options('grupo',YEAR_END_GROUPS,participation.requireGroup)}</fieldset></div>
         <div class="year-end-confirm"><div class="year-end-feedback" data-year-end-feedback role="status" aria-live="polite"></div><button type="submit" class="primary-button year-end-submit" disabled>CONFIRMA ESCOLHAS</button></div>
       </form>`:''}
@@ -71,21 +71,23 @@ export function mountYearEndSchedule(root,{createRepository,isCurrent=()=>true,o
       stop=repository.subscribe(state=>{
         if(!current())return;
         rows=participation.isAdmin?state.rows||[]:[];participants=participation.isAdmin?state.participants||[]:[];totals=state.totals;own=state.own;ready=true;
-        if(!dirty)hydrate();paintForm();paintRows();
+        if(own||!dirty)hydrate();
+        if(own)notice('Escolhas confirmadas! As escolhas são definitivas.');
+        paintForm();paintRows();
       },error=>{if(current())failed(error);});
       if(!current())stop();
     } catch(error) {if(current())failed(error);}
   }
-  const change=event=>{if(!event.target.matches('input[type="radio"]'))return;dirty=true;notice('');paintForm();};
+  const change=event=>{if(own||!event.target.matches('input[type="radio"]'))return;dirty=true;notice('');paintForm();};
   const submit=async event=>{
     if(!event.target.matches('[data-year-end-form]'))return;
-    event.preventDefault();if(!live()||!ready||busy||!form()?.reportValidity())return;
+    event.preventDefault();if(!live()||!ready||busy||own||!form()?.reportValidity())return;
     const input=selection();busy=true;notice('');paintForm();
     try {
       const result=await repository.save(input);if(!live())return;
-      own=result;dirty=false;hydrate();notice(result.updated?'Escolhas atualizadas.':'Escolhas confirmadas!');
+      own=result;dirty=false;hydrate();notice('Escolhas confirmadas! As escolhas são definitivas.');
       onConfirmed(result,participation);
-    } catch(error){if(live()){if(['YEAR_END_INELIGIBLE','permission-denied'].includes(error.code))failed(error);else notice(yearEndMessage(error),true);}}
+    } catch(error){if(live()){if(['YEAR_END_INELIGIBLE','permission-denied'].includes(error.code))failed(error);else if(error.code==='YEAR_END_CHOICES_LOCKED')void connect();else notice(yearEndMessage(error),true);}}
     finally{busy=false;if(live())paintForm();}
   };
   const click=event=>{

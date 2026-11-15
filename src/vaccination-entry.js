@@ -8,21 +8,28 @@ export function mountVaccinationEntry(root,{user,profile,folderAllowed=()=>true,
  const radiation='<svg class="document-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="m10 8-4-5a10 10 0 0 0-4 9h7m6 0h7a10 10 0 0 0-4-9l-4 5m-5 8-3 6h12l-3-6"/></svg>';
  const section=document.createElement('section');section.className='management-vaccination-launch';
  section.innerHTML='<div><p class="eyebrow">SAÚDE OCUPACIONAL</p><h4>Biossegurança</h4><p>Acesse seus históricos individuais de vacinação e dosimetria.</p></div><button type="button" class="primary-button" data-biosafety-open>'+shield+'<span>BIOSSEGURANÇA</span></button>';
- section.querySelector('[data-biosafety-open]').disabled=!folderAllowed(folder);
+ const canOpenChild=kind=>folderAllowed(folder)&&folderAllowed(childFolder[kind]);
+ if(!folderAllowed(folder))section.querySelector('[data-biosafety-open]').insertAdjacentHTML('beforeend','<small>Pasta inativa ou indisponível</small>');
  root.prepend(section);
  const live=()=>!disposed&&root.isConnected&&valid();
  function menu(){
   if(!live())return;generation++;active?.();active=null;stage='menu';loading=false;
   root.innerHTML='<section class="biosafety-panel"><header class="biosafety-header">'+shield+'<div><p class="eyebrow">GESTÃO DE PESSOAS</p><h3>BIOSSEGURANÇA</h3><p>Manual institucional e seus históricos individuais.</p></div></header><div class="biosafety-grid biosafety-manual-row"><button type="button" class="primary-button biosafety-choice biosafety-book" data-manual-open>'+book+'<span>MANUAL DE BIOSSEGURANÇA - HMT</span><span aria-hidden="true">›</span></button></div><div class="biosafety-grid"><button type="button" class="primary-button biosafety-choice" data-vaccination-open>'+shield+'<span>MEU HISTÓRICO VACINAL</span><span aria-hidden="true">›</span></button><button type="button" class="primary-button biosafety-choice" data-dosimetry-open>'+radiation+'<span>MEU HISTÓRICO DOSIMETRIA</span><span aria-hidden="true">›</span></button></div><p role="status" data-biosafety-status></p><button type="button" class="secondary-button" data-biosafety-back>VOLTAR PARA GESTÃO DE PESSOAS</button></section>';
+  for(const kind of Object.keys(childFolder)){
+   if(canOpenChild(kind))continue;
+   const button=root.querySelector('[data-'+kind+'-open]');
+   button.disabled=true;
+   button.insertAdjacentHTML('beforeend','<small>Pasta inativa ou indisponível</small>');
+  }
  }
  async function child(kind){
-  if(!live()||loading||stage!=='menu'||!folderAllowed(childFolder[kind]))return;loading=true;const ticket=++generation;
+  if(!live()||loading||stage!=='menu'||!canOpenChild(kind))return;loading=true;const ticket=++generation;
   const status=root.querySelector('[data-biosafety-status]');status.textContent='Abrindo seu histórico…';root.querySelectorAll('.biosafety-choice').forEach(b=>b.disabled=true);
-  try{const module=await(kind==='vaccination'?loadModule():kind==='dosimetry'?loadDosimetryModule():loadManualModule());if(!live()||ticket!==generation)return;stage=kind;loading=false;active=(kind==='vaccination'?module.mountVaccination:kind==='dosimetry'?module.mountDosimetry:module.mountBiosafetyManual)(root,{user,profile,onBack:menu});}
+  try{const module=await(kind==='vaccination'?loadModule():kind==='dosimetry'?loadDosimetryModule():loadManualModule());if(!live()||ticket!==generation)return;if(!canOpenChild(kind)){menu();return;}stage=kind;loading=false;active=(kind==='vaccination'?module.mountVaccination:kind==='dosimetry'?module.mountDosimetry:module.mountBiosafetyManual)(root,{user,profile,onBack:menu});}
   catch{if(live()&&ticket===generation){loading=false;menu();root.querySelector('[data-biosafety-status]').textContent='Não foi possível abrir seu histórico. Tente novamente.';}}
  }
  const click=event=>{
-  if(event.target.closest('[data-biosafety-open]')&&stage==='entry'&&live()&&folderAllowed(folder)){onOpen();menu();return;}
+  if(event.target.closest('[data-biosafety-open]')&&stage==='entry'&&live()){onOpen();menu();return;}
   if(event.target.closest('[data-biosafety-back]')){onBack();return;}
   if(event.target.closest('[data-manual-open]'))void child('manual');
   if(event.target.closest('[data-vaccination-open]'))void child('vaccination');

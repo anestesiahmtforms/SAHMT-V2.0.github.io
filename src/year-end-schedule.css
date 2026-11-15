@@ -7,15 +7,15 @@ body:has(.year-end-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .year-end-dialog__header h2{margin:0;color:#fff;text-align:center;font:900 clamp(1rem,3.8vw,1.4rem)/1.15 system-ui,sans-serif;letter-spacing:.015em;outline:none}
 .year-end-dialog__close{position:absolute;inset:0 0 auto auto;width:44px;height:44px;min-height:44px;padding:0;border:0;border-radius:50%;background:transparent;box-shadow:none;color:#fff;font:400 1.8rem/1 system-ui;cursor:pointer}
 .year-end-dialog__close:focus-visible{outline:2px solid #fff;outline-offset:-4px}
-.year-end-dialog__body{min-height:0;padding:6px 12px 12px;border:1px solid #e7d7af;border-radius:18px;background:linear-gradient(145deg,#fffdf6,#e6edf0);overflow:hidden}
+.year-end-dialog__body{display:flex;flex-direction:column;min-height:0;padding:6px 12px 12px;border:1px solid #e7d7af;border-radius:18px;background:linear-gradient(145deg,#fffdf6,#e6edf0);overflow:hidden}
 .year-end-dialog:has(.year-end--administrator){height:min(94dvh,860px)}
-.year-end-dialog:has(.year-end--administrator) .year-end-dialog__body{display:flex;flex-direction:column}
 .year-end,.year-end *{box-sizing:border-box}
-.year-end{width:100%;min-width:0;min-height:0;color:#173b53;font:inherit}
+.year-end{flex:1;display:grid;grid-template-rows:minmax(0,1fr);width:100%;min-width:0;min-height:0;color:#173b53;font:inherit}
 .year-end--administrator{flex:1;display:grid;grid-template-rows:auto minmax(0,1fr);gap:8px;min-height:0}
+.year-end--administrator form{max-height:min(58dvh,400px)}
 .year-end--administrator:not(:has(form)){grid-template-rows:minmax(0,1fr)}
-.year-end form{margin:0;min-width:0}
-.year-end-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start}
+.year-end form{display:grid;grid-template-rows:minmax(0,1fr) auto;margin:0;min-width:0;min-height:0}
+.year-end-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;align-items:start;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .year-end fieldset{min-width:0;margin:0;padding:8px;border:1px solid #d8caa7;border-radius:12px;background:#fffdf8}
 .year-end legend{width:100%;min-height:2.4em;padding:0 2px;color:#173b53;text-align:center;font-size:clamp(.66rem,2.8vw,.82rem);font-weight:900;line-height:1.2;letter-spacing:0}
 .year-end-option{position:relative;display:grid;grid-template-columns:14px minmax(0,1fr);align-items:center;gap:6px;min-height:72px;margin:0 0 6px;padding:8px 6px;border:1px solid #d8e0df;border-radius:9px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s}
@@ -39,7 +39,7 @@ body:has(.year-end-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .year-end-submit:disabled{opacity:.5;cursor:default}
 .year-end-feedback{min-height:16px;margin:0;color:#296440;text-align:center;font-size:.7rem;line-height:1.25}
 .year-end-feedback--error{color:#922831}
-.year-end-admin{min-height:0;padding-top:8px;border-top:1px solid #dbd2bd;overflow:auto;overscroll-behavior:contain}
+.year-end-admin{min-height:0;padding-top:8px;border-top:1px solid #dbd2bd;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .year-end-counts h3,.year-end-ranking h3{margin:4px 0;font-size:1rem;line-height:1.2}
 .year-end-counts>p,.year-end-ranking>p{margin:5px 0 10px;font-size:.72rem;line-height:1.4;color:#647785}
 .year-end-count-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}

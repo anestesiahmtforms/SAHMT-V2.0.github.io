@@ -21,7 +21,7 @@ if(new URL(location.href).searchParams.has('entry')){
  const {mountVaccinationEntry}=await import('/src/vaccination-entry.js');
  let cleanup;const back=()=>{cleanup?.();root.textContent='Atividades de Gestão de Pessoas preservadas';};
  root.innerHTML='<p>Atividades existentes</p>';
- cleanup=mountVaccinationEntry(root,{user,profile,onBack:back,loadManualModule:async()=>({mountBiosafetyManual:(root,args)=>mountBiosafetyManual(root,{...args,clientFactory:async()=>client})}),loadDosimetryModule:async()=>({mountDosimetry:(root,args)=>mountDosimetry(root,{...args,clientFactory:async()=>client})}),loadModule:async()=>({mountVaccination:(root,args)=>mountVaccination(root,{...args,clientFactory:async()=>client})})});
+ cleanup=mountVaccinationEntry(root,{user,profile,onBack:back,folderAllowed:()=>!new URL(location.href).searchParams.has('inactiveFolder'),loadManualModule:async()=>({mountBiosafetyManual:(root,args)=>mountBiosafetyManual(root,{...args,clientFactory:async()=>client})}),loadDosimetryModule:async()=>({mountDosimetry:(root,args)=>mountDosimetry(root,{...args,clientFactory:async()=>client})}),loadModule:async()=>({mountVaccination:(root,args)=>mountVaccination(root,{...args,clientFactory:async()=>client})})});
  window.entryBack=()=>cleanup.goBack();
 }else mountVaccination(root,{user,profile,clientFactory:async()=>client,onBack(){root.textContent='Gestão de Pessoas';}});
 </script></html>

@@ -117,7 +117,8 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
   background: linear-gradient(150deg, #fffaf0, #f1e4c7);
   box-shadow: 0 4px 0 #a88c54, 0 7px 12px #54391324, inset 0 1px 0 #fff;
 }
-.functional-tile:active { transform: translateY(2px); }
+.functional-tile:not(:disabled):active { transform: translateY(2px); }
+.functional-tile:disabled { cursor: not-allowed; opacity: .75; }
 .functional-tile:focus-visible { outline: 3px solid #1d6c59; outline-offset: 3px; }
 .functional-tile strong, .functional-tile small { display: block; }
 .functional-tile small { margin-top: 3px; color: #42635c; }

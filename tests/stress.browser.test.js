@@ -2,7 +2,7 @@ import {surveyTestBuild} from './helpers/survey-test-build.js';
 import test from 'node:test';import assert from 'node:assert/strict';import http from 'node:http';import {readFile,mkdir} from 'node:fs/promises';import {resolve,extname} from 'node:path';import {chromium} from 'playwright';
 test('stress browser: mandatory group, answers and rating, exact retry and return',async()=>{
  const root=await surveyTestBuild('stress'),server=http.createServer(async(req,res)=>{const path=new URL(req.url,'http://local').pathname;if(path.includes('..'))return res.writeHead(403).end();try{const file=resolve(root,'.'+path);res.setHeader('Content-Type',{'.html':'text/html','.js':'text/javascript','.css':'text/css'}[extname(file)]||'text/plain');res.end(await readFile(file));}catch{res.writeHead(404).end();}});await new Promise(done=>server.listen(0,'127.0.0.1',done));const origin=`http://127.0.0.1:${server.address().port}`,browser=await chromium.launch({channel:'msedge',headless:true});
- const returnURL='https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/management-hub/general';
+ const returnURL='https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/management-hub/institutional';
  try{for(const width of [320,390,768,1440]){
   const context=await browser.newContext({viewport:{width,height:900}}),page=await context.newPage(),errors=[],received=[],external=[];let release;
   const gate=new Promise(done=>release=done);page.on('pageerror',e=>errors.push(e.message));

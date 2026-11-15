@@ -2,7 +2,7 @@ import {mountParticipantGate} from './survey-participant-gate.js';
 import {INSTITUTIONAL_SURVEYS_URL, notifySurveyHost} from './survey-session-bridge.js';
 import './survey-flow.css';
 
-export function mountSurveyFlow(app, {title, questions, identify, privacy, extraIntro='', onGroup, readResponse, submit, onComplete}) {
+export function mountSurveyFlow(app, {title, questions, identify, privacy, onGroup, readResponse, submit, onComplete}) {
   const inApp = typeof onComplete === 'function';
   const embedded = !inApp && window.parent !== window;
   if (embedded) {
@@ -18,7 +18,6 @@ export function mountSurveyFlow(app, {title, questions, identify, privacy, extra
         <label class="consent"><input type="checkbox" name="consent"> Li as informações e concordo em participar voluntariamente.</label>
         <button class="primary" type="button" data-start disabled>Iniciar Pesquisa</button>
       </div>
-      ${extraIntro}
       ${embedded || inApp ? '' : `<footer class="survey-footer"><a href="${INSTITUTIONAL_SURVEYS_URL}">Voltar</a></footer>`}
     </section>
     <dialog class="survey-questions" aria-labelledby="questions-title">

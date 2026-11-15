@@ -92,11 +92,9 @@ service cloud.firestore {
     }
     function yearEndPairedRegistration(before, after) {
       let own = /databases/$(database)/documents/yearEndSchedules/2026-2027/registrations/$(request.auth.uid);
-      let present = exists(own);
-      let previous = present ? get(own).data : {};
       let next = getAfter(own).data;
-      return yearEndRecord(next, request.auth.uid) &&
-        yearEndTotalsChange(before, after, previous, next, present ? 0 : 1);
+      return !exists(own) && yearEndRecord(next, request.auth.uid) &&
+        yearEndTotalsChange(before, after, {}, next, 1);
     }
     match /users/{uid} {
       allow get: if yearEndReader() && request.auth.uid == uid;
@@ -111,15 +109,11 @@ service cloud.firestore {
     match /yearEndSchedules/{cycle}/registrations/{uid} {
       allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && (yearEndAdmin() || (yearEndMember() && request.auth.uid == uid));
       allow list: if yearEndFolderOpen_() && cycle == '2026-2027' && yearEndAdmin();
-      allow create: if cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
+      allow create: if yearEndFolderOpen_() && cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
         yearEndRecord(request.resource.data, uid) &&
         request.resource.data.createdAt == request.time && yearEndPairedTotals({}, request.resource.data, 1) &&
         request.resource.data.position == getAfter(/databases/$(database)/documents/yearEndSchedules/2026-2027/summary/totals).data.totalRegistrations;
-      allow update: if cycle == '2026-2027' && yearEndMember() && yearEndWritesReady() && request.auth.uid == uid &&
-        yearEndRecord(request.resource.data, uid) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plantao', 'grupo', 'sigla', 'updatedAt']) &&
-        yearEndPairedTotals(resource.data, request.resource.data, 0);
-      allow delete: if false;
+      allow update, delete: if false;
     }
     match /yearEndSchedules/{cycle}/control/{id} {
       allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && id == 'order' && yearEndAdmin();
@@ -128,7 +122,7 @@ service cloud.firestore {
     match /yearEndSchedules/{cycle}/summary/{id} {
       allow get: if yearEndFolderOpen_() && cycle == '2026-2027' && id == 'totals' && yearEndReader();
       allow list, create, delete: if false;
-      allow update: if cycle == '2026-2027' && id == 'totals' && yearEndMember() && yearEndWritesReady() &&
+      allow update: if yearEndFolderOpen_() && cycle == '2026-2027' && id == 'totals' && yearEndMember() && yearEndWritesReady() &&
         yearEndPairedRegistration(resource.data, request.resource.data);
     }
     match /yearEndSchedules/{cycle}/policy/{id} {

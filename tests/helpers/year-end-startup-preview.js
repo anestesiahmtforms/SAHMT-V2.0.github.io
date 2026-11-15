@@ -51,13 +51,16 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
    else if(action==='save'){
     const choices=validateYearEndChoices(input,participation);
     if(failSave){failSave=false;throw Object.assign(Error('unavailable'),{code:'unavailable'});}
-    const prior=records.get(uid);value={uid,...choices,sigla:participation.sigla,position:prior?.position||records.size+1,createdAt:prior?.createdAt||Date.now(),updated:Boolean(prior)};records.set(uid,value);
+    const prior=records.get(uid);
+    if(prior&&(prior.plantao!==choices.plantao||prior.grupo!==choices.grupo))throw Object.assign(Error('YEAR_END_CHOICES_LOCKED'),{code:'YEAR_END_CHOICES_LOCKED'});
+    value=prior||{uid,...choices,sigla:participation.sigla,position:records.size+1,createdAt:Date.now()};
+    if(!prior)records.set(uid,value);
    }else throw Error('UNKNOWN_ACTION');
    res.end(JSON.stringify(value));
   }catch(error){res.statusCode=400;res.end(JSON.stringify({code:error.code||error.message}));}
  });}};
  const server=await createServer({configFile:false,base,cacheDir:'.local-preview/vite-year-end-startup',optimizeDeps:{noDiscovery:true,entries:[]},
-  define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FA',externalManagementEnabled:false}),'import.meta.env.VITE_GOOGLE_PROJECT_AUTH_ENABLED':JSON.stringify('false'),...(homeModulesEnabled?{'import.meta.env.VITE_FG_CHECKLIST_ENABLED':JSON.stringify('true'),'import.meta.env.VITE_FH_LABELS_ENABLED':JSON.stringify('true')}:{})},plugins:[plugin],server:{host:'127.0.0.1',port:0,strictPort:false}});
+  define:{__SAHMT_DEPLOYMENT__:JSON.stringify({target:'FA',externalManagementEnabled:false}),'import.meta.env.VITE_GOOGLE_PROJECT_AUTH_ENABLED':JSON.stringify('false'),'import.meta.env.VITE_CLIMATE_SURVEY_ENABLED':JSON.stringify('true'),...(homeModulesEnabled?{'import.meta.env.VITE_FG_CHECKLIST_ENABLED':JSON.stringify('true'),'import.meta.env.VITE_FH_LABELS_ENABLED':JSON.stringify('true')}:{})},plugins:[plugin],server:{host:'127.0.0.1',port:0,strictPort:false}});
  const release=()=>{hold=false;for(const resolve of held.splice(0))resolve();};
  const releaseAuthentication=()=>{authHeld=false;for(const resolve of authWaiters.splice(0))resolve();};
  try{await server.listen();}catch(error){release();await server.close();throw error;}

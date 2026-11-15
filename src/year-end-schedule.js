@@ -77,6 +77,7 @@ export function yearEndAdministrator(profile,assignment) {
 export function yearEndMessage(error) {
   const code=error?.code||error?.message;
   return ({
+    YEAR_END_CHOICES_LOCKED:'As escolhas confirmadas são definitivas.',
     YEAR_END_INVALID_CHOICES:'Confira as escolhas obrigatórias indicadas no formulário.',
     YEAR_END_INELIGIBLE:'A Escala Final de Ano é exclusiva da equipe efetiva. Residentes e substitutos não participam deste módulo.',
     YEAR_END_POLICY_UNAVAILABLE:'A configuração de participação precisa ser conferida pela gestão.',

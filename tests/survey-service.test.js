@@ -114,14 +114,20 @@ test('FE folder pause preserves participation and points for retry without readi
  assert.equal((await responses.list('fePerformanceAwards')).length,1);
 });
 
-test('FE institutional research admits verified active users in every institutional group',async()=>{
- for(const [category,group] of [['EFETIVO','team'],['RESIDENTE_1','resident'],['RESIDENTE_2','resident'],['RESIDENTE_3','resident'],['SUBSTITUTO','team']]){
-  const {service}=await fixture(category);
+test('FE restricts climate and stress participation to effective team members',async()=>{
+ const {service}=await fixture('EFETIVO');
+ for(const survey of ['climate','stress']){
+  assert.deepEqual(await service.execute('BOOTSTRAP',{survey,cycle:'2026'},identity),{group:'team',alreadyResponded:false});
+  assert.deepEqual(await service.execute('SUBMIT',input(survey),identity),{accepted:true,alreadyResponded:false});
+ }
+ for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){
+  const {service,profiles,responses}=await fixture(category);
+  profiles.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true,role:'administrador_app'});
   for(const survey of ['climate','stress']){
-   assert.deepEqual(await service.execute('BOOTSTRAP',{survey,cycle:'2026'},identity),{group,alreadyResponded:false});
-   const payload=input(survey);
-   if(survey==='climate')payload.response.answers=Object.fromEntries([...COMMON,...questionsForSelection(group)].map(q=>[q.id,4]));
-   assert.deepEqual(await service.execute('SUBMIT',payload,identity),{accepted:true,alreadyResponded:false});
+   await assert.rejects(service.execute('BOOTSTRAP',{survey,cycle:'2026'},identity),{code:'SURVEY_FORBIDDEN'});
+   await assert.rejects(service.execute('SUBMIT',input(survey),identity),{code:'SURVEY_FORBIDDEN'});
   }
+  assert.equal((await responses.list('surveyParticipation')).length,0);
+  assert.equal((await responses.list('fePerformanceAwards')).length,0);
  }
 });
