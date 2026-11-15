@@ -1,6 +1,6 @@
 import {assertFolderReadable} from '../server/folder-read-policy.js';
 import { documentGroupsFromAccess, normalizeDocumentAccessEmail } from '../src/document-access.js';
-import {trainingPathAllowed,trainingAccessPath,trainingFolderLevel,validTrainingFolderPath,parseTrainingFolderAccess,initialTrainingFolderAccess} from '../src/html-training-folders.js';
+import {trainingPathAllowed,trainingAccessPath,trainingFolderLevel,validTrainingFolderPath,parseTrainingFolderAccess} from '../src/html-training-folders.js';
 import {Buffer} from 'node:buffer';
 import { finalizeRopAudit } from '../src/domain/rop-audit.js';
 import { copy, documentSize, fail, identifier, publication, text, version } from './domain-validation.js';
@@ -9,6 +9,7 @@ import {startReading,readingProgress,assertReadingComplete} from './reading-stat
 
 const C = Object.freeze({ training: 'htmlTrainings', versions: 'htmlTrainingVersions', content: 'htmlTrainingContent',
   state: 'htmlTrainingStates', score: 'htmlTrainingScores', pendingScores: 'htmlTrainingPendingScores', audits: 'htmlTrainingAudits', sync: 'htmlTrainingSync' });
+const defaultTrainingFolderAccess=Object.freeze({version:0,disabled:Object.freeze(['Protocolos','Diretrizes','ROPs','Documentos administrativos'].map(category=>JSON.stringify([category])))});
 const managedActions = new Set(['EDIT', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE']);
 const actions = new Set(['LIST', 'SCORE', 'OPEN', 'CONTENT', 'BEGIN', 'READ', 'ACK', 'QUIZ', 'SUBMIT', 'EDIT', 'PUBLISH', 'REVIEW', 'AUDIT_LIST', 'AUDIT_SAVE', 'SET_FOLDER_ACCESS','BUILD_FOLDER_INDEX','RECONCILE_SCORE','READING_START','READING_PROGRESS','OBLIGATION_CATALOG','OBLIGATION_ELIGIBILITY','OBLIGATION_STATUS']);
 const admin = profile => profile.role === 'administrador_app' || profile.permissions?.admin === true;
@@ -68,7 +69,7 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     }
     const access = await tx.get('documentAccessEmails', identity.email);
     const settings=await tx.get('htmlTrainingSettings','folders');
-    const folderAccess=settings===null?initialTrainingFolderAccess:parseTrainingFolderAccess(settings);
+    const folderAccess=settings===null?defaultTrainingFolderAccess:parseTrainingFolderAccess(settings);
     if(!folderAccess)fail('TRAINING_FOLDER_POLICY_UNAVAILABLE',503);
     const folderIndex=await tx.get('htmlTrainingSettings','folderIndex');
     return {profile,areaInactive,groups:documentGroupsFromAccess(access,identity.email),

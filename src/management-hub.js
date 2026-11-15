@@ -101,7 +101,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
   if(!panelFolderAllowed(panel)&&!navigationOnly.includes(panel)&&!spec.items){
    const folder=panelFolders[panel];
-   body.innerHTML=folder?renderOperationalFolderDirectory(folder):'<p role="status">Pasta inativa ou indisponível. As atividades aguardam a reativação ou a confirmação do servidor.</p>';
+   body.innerHTML=folder&&typeof renderOperationalFolderDirectory==='function'?renderOperationalFolderDirectory(folder):'<p role="status">Pasta inativa ou indisponível. As atividades aguardam a reativação ou a confirmação do servidor.</p>';
    back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
    dialog.querySelector('#management-hub-title').focus({preventScroll:true});
    return;
