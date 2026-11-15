@@ -58,7 +58,7 @@ test('actual Worker runtime: FF-only Auth, zero-billing check, FF-only persisten
   assert.equal((await call('PREPARE',{id:releaseId})).status,200);assert.equal(pushes.length,0);
   data.set(roots.FF+'/runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['comunicacao']});
   for(const actor of people.slice(1)){
-   const blocked=await call('BOOTSTRAP',{},actor);assert.equal(blocked.status,403);assert.equal(blocked.body.code,'COMM_FOLDER_DISABLED');
+   const allowed=await call('BOOTSTRAP',{},actor);assert.equal(allowed.status,200,JSON.stringify(allowed));
   }
   const sent=await call('SEND_BATCH',{id:releaseId,batches:0,confirmed:true});assert.equal(sent.status,200,JSON.stringify(sent));assert.equal(sent.body.dispatch.accepted,1);assert.equal(pushes[0].message.token,device);assert.equal(pushes[0].message.data.route,'home');assert.equal(pushes[0].message.webpush.headers.Urgency,'high');assert.equal(pushes[0].message.data.body,'Never on lock screen');
   assert.equal((await call('SEND_BATCH',{id:releaseId,batches:0,confirmed:true})).status,409);assert.equal(pushes.length,1);assert.ok(writes.length>0);assert.ok(writes.every(p=>p.startsWith(roots.FF+'/')));

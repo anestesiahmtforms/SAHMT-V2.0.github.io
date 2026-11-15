@@ -146,7 +146,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     const book='<span class="ht-book-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15M6 8h3M6 12h3m6-4h3m-3 4h3"/></svg></span>';
     const folders=level.folders.map(folder=>{
       const enabled=!areaInactive&&trainingPathAllowed(folderAccess,folder.path);
-      const inactiveLabel=enabled?'':accessAdmin()?'<small>Inativa para usuários comuns</small>':'<small>Inativa · navegação disponível</small>';
+      const inactiveLabel=enabled?'':accessAdmin()?'<small>Inativa para os demais usuários</small>':'<small>Inativa · navegação disponível</small>';
       const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong>${inactiveLabel}</span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,`class="ht-folder ht-navigation-book${enabled?'':' ht-folder-inactive'}" aria-label="${h(folder.name)}" ${!enabled?'aria-description="Inativa. Navegação disponível; atividades bloqueadas."':''}`);
       if(!accessAdmin())return entry;
        const folderActive=trainingPathAllowed(folderAccess,folder.path);
