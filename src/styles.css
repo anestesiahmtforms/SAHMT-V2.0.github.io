@@ -1512,6 +1512,9 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .management-area-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
 .management-area-dialog__header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:4px 2px 9px;border-bottom:1px solid #c7d9e1}
 .management-area-dialog__header h2{margin:0;font-size:clamp(.88rem,3.4vw,1.1rem);letter-spacing:.04em}
+.management-area-dialog__header:has(.folder-inactive-notice){display:grid;grid-template-columns:minmax(0,1fr);align-items:start}
+.management-area-dialog__header [data-management-folder-notice]{min-width:0;width:100%}
+.management-area-dialog__header .folder-inactive-notice{display:block;width:100%;box-sizing:border-box;overflow-wrap:break-word}
 .management-area-dialog__header form{flex:0 0 auto;margin:0}
 .management-area-dialog__header button{min-height:40px;padding:6px 10px}
 .management-area-dialog__body{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
