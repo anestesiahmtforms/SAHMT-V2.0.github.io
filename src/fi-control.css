@@ -9,13 +9,6 @@
 
 
 
-.fi-control .fi-folder-launch{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px;width:100%;padding:16px 20px;margin-bottom:20px;border-radius:16px;border-color:#c4e3df;background:#f0fbf8;text-align:left}
-.fi-control .fi-folder-launch:hover{background:#e2f5ef}
-.fi-folder-launch strong,.fi-folder-launch small{display:block}
-.fi-folder-launch strong{font-size:1.08rem}
-.fi-folder-launch small{margin-top:4px;color:#42686b;line-height:1.4}
-.fi-folder-launch>span:last-child{font-size:1.3rem}
-.fi-folder-icon{width:42px;height:42px;padding:9px;border-radius:12px;background:#d5eee7;color:#16584e}
 html:has(.fi-folder-dialog[open]){overflow:hidden}
 .fi-folder-dialog{
  position:fixed;inset:0;width:min(calc(100% - 32px),790px);height:min(calc(100dvh - 32px),800px);
@@ -98,7 +91,10 @@ html:has(.fi-folder-dialog[open]){overflow:hidden}
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
   margin: 16px 0 0;
 }
-.fi-control--center .fi-folder-launch,
+.fi-control--center .fi-control-navigation:has([data-fi-folder-open]) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+}
 .fi-control--center .fi-control-panel { margin: 12px 0 0; }
 
 .fi-control-center-content {

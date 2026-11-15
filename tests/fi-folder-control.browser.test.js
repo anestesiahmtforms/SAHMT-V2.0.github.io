@@ -71,7 +71,17 @@ test('the FI panel publishes independent parent and child settings through the W
   assert.ok(box.height<500&&Math.abs(box.y+box.height/2-340)<2);
   assert.equal(await center.locator('.fi-control-center-footer button').innerText(),'Voltar');
   assert.equal(await center.locator('.fi-control-navigation [data-fi-nav="management-hub"]').count(),0);
-  await page.locator('[data-fi-folder-open]').click();
+  const buttons=center.locator('.fi-control-navigation > button');
+  assert.deepEqual(await buttons.allTextContents(),['Pessoas','Administração','Controle de atualizações','Controle de pastas']);
+  for(const width of [320,390,1024]){
+   await page.setViewportSize({width,height:680});
+   const boxes=await Promise.all((await buttons.all()).map(button=>button.boundingBox()));
+   assert.ok(boxes.every(box=>box.width===boxes[0].width&&box.height===boxes[0].height));
+   assert.equal(boxes[0].x,boxes[2].x);assert.equal(boxes[1].x,boxes[3].x);
+   assert.equal(boxes[0].y,boxes[1].y);assert.equal(boxes[2].y,boxes[3].y);
+  }
+  await page.setViewportSize({width:390,height:680});
+  await buttons.last().click();
   const dialog=page.getByRole('dialog',{name:'Controle de pastas'});
   await dialog.waitFor();
   const clickAndWait=async selector=>{

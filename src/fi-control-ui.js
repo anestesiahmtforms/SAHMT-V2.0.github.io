@@ -11,19 +11,15 @@ export function renderFiControl({profile={},pilot=false,searchOnly=false,showFol
  const back=searchOnly?'<button type="button" data-fi-nav="home">Voltar à Home</button>':'<button type="button" data-fi-nav="management-hub">Voltar</button>';
  if(!searchOnly&&!admin(profile))return `<section class="fi-control"><p>Acesso reservado a administradores.</p>${back}</section>`;
  const title=searchOnly?'Buscar no ecossistema':'Central Administrativa';
- const navigation=!searchOnly&&!pilot?'<button type="button" data-fi-nav="people">Pessoas</button><button type="button" data-fi-nav="admin">Administração</button><button type="button" data-fi-nav="app-updates-control">Controle de atualizações</button>':'';
+ const hasFolderAdmin=!searchOnly&&!pilot&&showFolderAdmin;
+ const navigation=!searchOnly&&!pilot?'<button type="button" data-fi-nav="people">Pessoas</button><button type="button" data-fi-nav="admin">Administração</button><button type="button" data-fi-nav="app-updates-control">Controle de atualizações</button>'+(hasFolderAdmin?'<button type="button" data-fi-folder-open aria-haspopup="dialog" aria-controls="fi-folder-dialog">Controle de pastas</button>':''):'';
  const search=searchOnly||pilot?`<section class="fi-control-panel"><h2>Pesquisar no app</h2><p>Digite palavras-chave ou faça uma pergunta, como “Qual minha posição na escala amanhã?”. A pesquisa respeita a disponibilidade das pastas e suas permissões.</p><form data-fi-search><label>O que você procura?<input name="query" type="search" maxlength="1000" required autocomplete="off" placeholder="Ex.: protocolo de segurança"></label><button type="submit">Pesquisar</button></form><p data-fi-status role="status" aria-live="polite"></p><div data-fi-results></div></section>`:'';
- const folders=!searchOnly&&!pilot&&showFolderAdmin?`<button type="button" class="fi-folder-launch" data-fi-folder-open aria-haspopup="dialog">
-  <svg class="fi-folder-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>
-  <span><strong>Controle de pastas</strong><small>Gerencie a disponibilidade de pastas e subpastas.</small></span>
-  <span aria-hidden="true">→</span>
- </button>
- <dialog class="fi-folder-dialog" data-fi-folder-dialog aria-labelledby="fi-folder-title">
+ const folderDialog=hasFolderAdmin?`<dialog id="fi-folder-dialog" class="fi-folder-dialog" data-fi-folder-dialog aria-labelledby="fi-folder-title">
   <header class="fi-folder-header"><p>Central Administrativa</p><h2 id="fi-folder-title" tabindex="-1" autofocus>Controle de pastas</h2></header>
   <div class="fi-folder-scroll" data-fi-folder-admin></div>
   <footer class="fi-folder-footer"><button type="button" data-fi-nav="management-hub"><span aria-hidden="true">←</span> <span>Voltar</span></button></footer>
  </dialog>`:'';
- if(!searchOnly)return `<section class="fi-control fi-control--center"><header class="fi-control-heading"><div><span class="fi-control-kicker">SAHMT · ${pilot?'PILOTO FI':'CENTRAL'}</span><h1>${title}</h1></div></header><div class="fi-control-center-content">${navigation?`<nav class="fi-control-navigation" aria-label="Navegação">${navigation}</nav>`:''}${folders}${search}</div><footer class="fi-control-center-footer">${back}</footer></section>`;
+ if(!searchOnly)return `<section class="fi-control fi-control--center"><header class="fi-control-heading"><div><span class="fi-control-kicker">SAHMT · ${pilot?'PILOTO FI':'CENTRAL'}</span><h1>${title}</h1></div></header><div class="fi-control-center-content">${navigation?`<nav class="fi-control-navigation" aria-label="Navegação">${navigation}</nav>`:''}${folderDialog}${search}</div><footer class="fi-control-center-footer">${back}</footer></section>`;
  return `<section class="fi-control"><header class="fi-control-heading"><div><span class="fi-control-kicker">SAHMT · PESQUISA</span><h1>${title}</h1></div></header><nav class="fi-control-navigation" aria-label="Navegação">${back}</nav>${search}</section>`;
 }
 const isSearchPartial=data=>data?.coverage?.some(r=>r.status==='UNAVAILABLE')===true;
