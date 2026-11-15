@@ -1,3 +1,4 @@
+// The Pages build stamps each publication with a new cache ID so installed PWAs can discover it.
 const CACHE = 'sahmt-v2-shell-v295';
 const OFFLINE_SCHEDULE_CACHE = 'sahmt-v2-offline-schedule-v1';
 const BASE = '/SAHMT-V2.0.github.io/';
