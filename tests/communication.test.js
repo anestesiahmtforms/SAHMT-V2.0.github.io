@@ -49,7 +49,7 @@ test('sent history is administrator-only and excludes drafts and other authors',
  for(const [key,sender] of entries)f.store.data.set('communicationMessages/'+key,message({status:key==='draft'?'draft':'published',createdBy:{email:sender.email}}));
  for(const sender of [actor]){
   const {items}=await f.call('SENT_MESSAGES',{},sender);
-  assert.deepEqual(items.map(item=>[item.id,item.sender]),[['admin','Administrador']]);
+  assert.deepEqual(items.map(item=>[item.id,item.sender]),[['admin','Administrador'],['manager','Gestor operacional']]);
   assert.ok(items.every(item=>item.audienceValue===''));
  }
  await assert.rejects(f.call('SENT_MESSAGES',{},manager),{code:'COMM_FORBIDDEN'});
