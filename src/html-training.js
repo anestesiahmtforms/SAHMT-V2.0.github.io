@@ -147,7 +147,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     const folders=level.folders.map(folder=>{
       const enabled=!areaInactive&&trainingPathAllowed(folderAccess,folder.path);
       const inactiveLabel=enabled?'':accessAdmin()?'<small>Inativa para os demais usuários</small>':'<small>Inativa · navegação disponível</small>';
-      const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong>${inactiveLabel}</span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,`class="ht-folder ht-navigation-book${enabled?'':' ht-folder-inactive'}" aria-label="${h(folder.name)}" ${!enabled?'aria-description="Inativa. Navegação disponível; atividades bloqueadas."':''}`);
+      const inactiveDescription=accessAdmin()?'Inativa para os demais usuários':'Inativa. Navegação disponível; atividades bloqueadas.';
+      const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong>${inactiveLabel}</span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,`class="ht-folder ht-navigation-book${enabled?'':' ht-folder-inactive'}" aria-label="${h(folder.name)}" ${!enabled?`aria-description="${inactiveDescription}"`:''}`);
       if(!accessAdmin())return entry;
        const folderActive=trainingPathAllowed(folderAccess,folder.path);
        return `<div class="ht-navigation-card">${entry}${button('toggle-folder',folderActive?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${folderActive?'Desativar':'Ativar'} ${h(folder.name)}" ${folderActive&&!folderIndexReady?'disabled data-locked="true"':''}`)}</div>`;
