@@ -6,6 +6,8 @@ import {resolve} from 'node:path';
 export async function createReadingPreview({port=5188}={}){
 const store=memoryStore(),who=uid=>({uid,email:uid+'@example.invalid',emailVerified:true,provider:'google.com'});
 for(const uid of ['admin','reader']){store.seed('users',uid,{uid,active:true,access:true,role:uid==='admin'?'administrador_app':'colaborador'});store.seed('documentAccessEmails',uid+'@example.invalid',{id:uid+'@example.invalid',email:uid+'@example.invalid',active:true,groups:['GENERAL']});}
+// This preview represents a training deliberately released to participants.
+store.seed('htmlTrainingSettings','folders',{version:0,disabled:[]});
 const service=createHtmlTrainingService({store,readingRequired:true}),bank=Array.from({length:5},(_,n)=>({id:'q'+n,stem:'Pergunta de conferência '+(n+1),points:1,options:[{id:'a',text:'Alternativa A'},{id:'b',text:'Alternativa B'}],correctOptionId:'a'}));
 await service.execute('PUBLISH',{trainingId:'reading-preview',expectedVersion:0,training:{title:'Conferência de leitura completa',category:'ROPs',subcategory:'Conferência',status:'PUBLISHED',audienceGroup:'GENERAL',managerUid:'',source:{}},sections:[{id:'first',title:'Leitura de conferência',html:'<h2>Leitura completa</h2><p>Leia este trecho com a página aberta. O avanço depende do tempo e do percurso.</p><details><summary>Referências</summary><p>Esta referência também deve ser percorrida.</p></details>'}],bank,selectedQuestionIds:bank.map(q=>q.id)},who('admin'));
 const apiPlugin={name:'reading-preview-api',configureServer(server){server.middlewares.use('/reading-api',async(req,res)=>{
