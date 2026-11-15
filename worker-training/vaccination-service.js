@@ -7,7 +7,7 @@ const email = value => typeof value === 'string' ? value.trim().toLowerCase() : 
 const validUid = value => typeof value === 'string' && /^[A-Za-z0-9_.@+:%-]{1,128}$/.test(value) && !['.', '..'].includes(value);
 const checkedIdentity = identity => {
   if (!identity || identity.emailVerified !== true || identity.provider !== 'google.com' || !validUid(identity.uid) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(identity.email)) || identity.email.length > 254) fail('VAC_UNAUTHENTICATED', 401);
-  return { uid: identity.uid, email: email(identity.email) };
+  return { uid: identity.uid, email: email(identity.email), emailVerified:true, provider:'google.com' };
 };
 const recordFields = ['uid', 'email', 'displayName', 'year', 'category', 'awareness', 'truth', 'states', 'declaration', 'notes', 'version', 'createdAt', 'updatedAt'];
 const publicRecord = record => record ? Object.fromEntries(recordFields.filter(key => record[key] !== undefined).map(key => [key, structuredClone(record[key])])) : null;
@@ -17,11 +17,12 @@ const checkedRecord = (record, uid, year) => {
   return publicRecord(record);
 };
 
-export function createVaccinationService({ store, now = Date.now, adminDriveFolderUrl } = {}) {
+export function createVaccinationService({ store, now = Date.now, adminDriveFolderUrl, authorizeAccess=async()=>{}, eligibleParticipant=isVaccinationParticipant, onSaved=async()=>{} } = {}) {
   if (!store || !['get', 'list', 'transaction'].every(method => typeof store[method] === 'function')) throw new TypeError('VAC_STORE_REQUIRED');
   async function authorize(tx, identity, admin = false) {
     const profile = await tx.get('users', identity.uid);
     if (!profile || profile.active !== true || profile.access !== true || ('uid' in profile && profile.uid !== identity.uid) || ('email' in profile && email(profile.email) !== identity.email) || (admin && !isVaccinationAdmin(profile))) fail('VAC_FORBIDDEN', 403);
+    await authorizeAccess(tx,identity,profile);
     return profile;
   }
   async function execute(action, input, principal) {
@@ -42,7 +43,7 @@ export function createVaccinationService({ store, now = Date.now, adminDriveFold
         const assignment=byKey.get(await institutionalAssignmentKey(principal.email));
         return {...profile,memberCategories:assignedInstitutionalGroup(assignment,principal)?assignment.memberCategories:[]};
       }));
-      const participants = classified.filter(profile => isVaccinationParticipant(profile) && validUid(profile.uid || profile.id) && (!profile.uid || !profile.id || profile.uid === profile.id)).map(profile => {
+      const participants = classified.filter(profile => eligibleParticipant(profile) && validUid(profile.uid || profile.id) && (!profile.uid || !profile.id || profile.uid === profile.id)).map(profile => {
         const category = vaccinationProfileCategory(profile);
         return { uid: profile.uid || profile.id, email: email(profile.email), displayName: displayName(profile, { email: email(profile.email) }), active: true, access: true, memberCategories:profile.memberCategories, ...(category ? { category } : {}) };
       });
@@ -68,6 +69,7 @@ export function createVaccinationService({ store, now = Date.now, adminDriveFold
       const { expectedVersion, ...fields } = validated;
       const record = { ...fields, category, uid: identity.uid, email: identity.email, displayName: displayName(profile, identity),
         version: expectedVersion + 1, createdAt: existing?.createdAt ?? timestamp, updatedAt: timestamp };
+      await onSaved(tx,record,existing);
       if (existing) tx.set(COLLECTION, key, record); else tx.create(COLLECTION, key, record);
       return { record };
     });

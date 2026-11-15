@@ -5,7 +5,7 @@ const files=Object.fromEntries(['pdf','extraction','bindings','contacts'].map(na
 
 const pdf=await fs.readFile(files.pdf);if(pdf.subarray(0,5).toString()!=='%PDF-')throw Error('DOSIMETRY_PDF_REQUIRED');const pdfFingerprint=createHash('sha256').update(pdf).digest('hex');
 const [extraction,bindings,contacts]=await Promise.all(['extraction','bindings','contacts'].map(async key=>JSON.parse(await fs.readFile(files[key],'utf8'))));
-const token=await firebaseCliAccountToken('anestesiahmtforms2@gmail.com'),root='projects/sahmt-gestao-5ae66/databases/(default)/documents';
+const token=await firebaseCliAccountToken('anestesiahmtforms5@gmail.com'),root='projects/outros-48120/databases/(default)/documents';
 async function api(path,body){const r=await fetch('https://firestore.googleapis.com/v1/'+root+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'error',signal:AbortSignal.timeout(30000)});if(!r.ok){await r.body?.cancel();throw Error('DOSIMETRY_IMPORT_HTTP_'+r.status);}return r.json();}
 async function list(collection,mask=[]){let page='',rows=[];do{const q=new URLSearchParams({pageSize:'1000'});if(page)q.set('pageToken',page);for(const f of mask)q.append('mask.fieldPaths',f);const b=await api('/'+collection+'?'+q);rows.push(...(b.documents||[]).map(d=>({id:d.name.split('/').at(-1),...decodeFields(d.fields||{}),updateTime:d.updateTime})));page=b.nextPageToken||'';}while(page);return rows;}
 const profiles=await list('users',['uid','email','active','access']),existing=await list('occupationalDosimetry');

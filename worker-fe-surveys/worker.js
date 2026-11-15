@@ -3,8 +3,17 @@ import {createTrainingWorker} from '../worker-training/worker.js';
 import {createSurveyService} from '../worker-training/survey-service.js';
 import {createFirestoreStore} from '../worker-training/firestore.js';
 import {feServiceToken} from './auth.js';
+import {createFeBiosafetyService} from './biosafety-service.js';
 
-const runtimes=new WeakMap();
+const runtimes=new WeakMap(),biosafetyRuntimes=new WeakMap();
+function buildFeBiosafetyService(env){
+ if(!biosafetyRuntimes.has(env)){
+  const getAccessToken=feServiceToken({credentials:JSON.parse(env.FE_SERVICE_ACCOUNT_JSON)});
+  const store=createFirestoreStore({projectId:'outros-48120',getAccessToken});
+  biosafetyRuntimes.set(env,createFeBiosafetyService({store,checkFolder:(folder,tx)=>assertFeFolderReadable(folder,getAccessToken,tx,'VAC')}));
+ }
+ return biosafetyRuntimes.get(env);
+}
 function buildSurveyService(env){
  if(!runtimes.has(env)){
   let credentials;try{credentials=JSON.parse(env.FE_SERVICE_ACCOUNT_JSON);}catch{throw Error('SURVEY_CONFIG_REQUIRED');}
@@ -15,8 +24,8 @@ function buildSurveyService(env){
    if(!['users','userCategories'].includes(collection))throw Error('SURVEY_PROFILE_SCOPE_DENIED');
    return profiles.get(collection,id);
   }};
-  runtimes.set(env,createSurveyService({profileStore,
-   responseStore:createFirestoreStore({projectId:'outros-48120',getAccessToken}),
+  const responseStore=createFirestoreStore({projectId:'outros-48120',getAccessToken});
+  runtimes.set(env,createSurveyService({profileStore,responseStore,performanceProfileStore:responseStore,
    checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,getAccessToken,tx),
    performanceEnabled:true,checkPerformance:()=>assertFeFolderReadable('desempenho/fe',getAccessToken),
    reportReaderEmail:env.REPORT_READER_EMAIL}));
@@ -24,9 +33,9 @@ function buildSurveyService(env){
  return runtimes.get(env);
 }
 export function createFeSurveyWorker(options={}){
- const service=createTrainingWorker({buildSurveyService,...options});
+ const service=createTrainingWorker({buildSurveyService,buildFeBiosafetyService,...options});
  return {fetch(request,env,ctx){
-  if(new URL(request.url).pathname!=='/v1/institutional-surveys')return Response.json({code:'SURVEY_ROUTE_UNKNOWN'},{status:404,headers:{'Cache-Control':'no-store'}});
+  if(!['/v1/institutional-surveys','/v1/biosafety'].includes(new URL(request.url).pathname))return Response.json({code:'SURVEY_ROUTE_UNKNOWN'},{status:404,headers:{'Cache-Control':'no-store'}});
   return service.fetch(request,env,ctx);
  }};
 }

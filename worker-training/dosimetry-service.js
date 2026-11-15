@@ -1,7 +1,7 @@
 import {isDosimetryYear,validateDosimetryRecord} from '../src/dosimetry-domain.js';
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const email=v=>String(v||'').trim().toLowerCase();
-export function createDosimetryService({store}={}){
+export function createDosimetryService({store,authorizeAccess=async()=>{}}={}){
  if(!store?.transaction)throw Error('DOSIMETRY_STORE_REQUIRED');
  return {async execute(action,input,identity){
   if(action!=='GET_OWN'||!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).length!==1||!isDosimetryYear(input.year))fail('DOSIMETRY_INVALID_INPUT');
@@ -9,6 +9,7 @@ export function createDosimetryService({store}={}){
   return store.transaction(async tx=>{
    const profile=await tx.get('users',identity.uid);
    if(!profile||profile.uid!==identity.uid||email(profile.email)!==email(identity.email)||profile.active!==true||profile.access!==true)fail('DOSIMETRY_FORBIDDEN',403);
+   await authorizeAccess(tx,identity,profile);
    const raw=await tx.get('occupationalDosimetry',`${identity.uid}_${input.year}`);
    if(!raw)return {year:input.year,record:null};
    let record;try{record=validateDosimetryRecord(raw);}catch{fail('DOSIMETRY_RECORD_UNAVAILABLE',503);}

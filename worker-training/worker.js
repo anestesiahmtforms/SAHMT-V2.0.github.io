@@ -99,7 +99,7 @@ function documentRuntime(env){
  return runtime.documents;
 }
 const legacyTrainingCodes=new Set(['FOLDER_INDEX_REQUIRED','FOLDER_INDEX_TOO_LARGE','INSTITUTIONAL_REVIEW_REQUIRED','INVALID_INPUT','PAYLOAD_TOO_LARGE','UNSAFE_CONTENT','ALREADY_REVIEWED','ATTEMPT_LIMIT','AUDIT_IMMUTABLE','AUDIT_INVALID','AUDIT_UNAVAILABLE','BANK_QUESTIONS_REMOVED','CONTENT_UNAVAILABLE','FORBIDDEN','IDEMPOTENCY_CONFLICT','INVALID_ANSWERS','INVALID_MANAGER','NO_SUGGESTION','NOT_FOUND','NOT_PUBLISHED','READ_ORDER','RUN_CONFLICT','SCORE_UNAVAILABLE','SELF_REVIEW','STAGE_CONFLICT','UNAUTHENTICATED','VERSION_CHANGED','VERSION_CONFLICT']);
-export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildYearEndStatusService=yearEndStatusRuntime,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime,buildRegistrationService=registrationRuntime,buildRegistrationDrive=env=>folderGuard(sharedRuntime(env),registrationDriveRuntime(env),'REGDRIVE')}={}){
+export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buildService=buildRuntime,buildVaccinationService=vaccinationRuntime,buildDocumentService=documentRuntime,buildSurveyService=surveyRuntime,buildYearEndStatusService=yearEndStatusRuntime,buildFeBiosafetyService=null,retireOccupational=false,buildDosimetryService=dosimetryRuntime,buildManualService=manualRuntime,buildRegistrationService=registrationRuntime,buildRegistrationDrive=env=>folderGuard(sharedRuntime(env),registrationDriveRuntime(env),'REGDRIVE')}={}){
  const routes={
   '/v1/professional-registration':{prefix:'REGISTRATION',max:64*1024,flag:'PROFESSIONAL_REGISTRATION_ENABLED',build:buildRegistrationService,sourceProject:'sahmt-17a16'},
   '/v1/registration-drive':{prefix:'REGDRIVE',max:8*1024*1024,flag:'PROFESSIONAL_REGISTRATION_ENABLED',build:buildRegistrationDrive,sourceProject:'sahmt-17a16'},
@@ -109,6 +109,7 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
   '/v1/biosafety-manual':{prefix:'MANUAL',max:1024,flag:'BIOSAFETY_MANUAL_ENABLED',build:buildManualService},
   '/v1/dosimetry':{prefix:'DOSIMETRY',max:4096,flag:'DOSIMETRY_ENABLED',build:buildDosimetryService},
   '/v1/institutional-surveys':{prefix:'SURVEY',max:32*1024,flag:'INSTITUTIONAL_SURVEYS_ENABLED',build:buildSurveyService,sourceProject:'sahmt-17a16'},
+  ...(buildFeBiosafetyService?{'/v1/biosafety':{prefix:'VAC',max:8*1024*1024,build:buildFeBiosafetyService,sourceProject:'sahmt-17a16'}}:{}),
   '/v1/year-end-status':{prefix:'YEAR_END',max:1024,flag:'INSTITUTIONAL_SURVEYS_ENABLED',build:buildYearEndStatusService,sourceProject:'sahmt-17a16'},
  };
  return {async fetch(request,env={},context){
@@ -126,6 +127,7 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
    if(!/^application\/json(?:;|$)/i.test(request.headers.get('Content-Type')||''))throw fail(prefix+'_INPUT_INVALID',400);
    const body=await bodyJson(request,route.max,prefix);
    if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).length!==2||!Object.hasOwn(body,'action')||typeof body.action!=='string'||!body.input||Array.isArray(body.input)||typeof body.input!=='object'||!Object.hasOwn(body,'input'))throw fail(prefix+'_INPUT_INVALID',400);
+   if(retireOccupational&&prefix==='DOCUMENT'&&body.input.context==='VACCINATION')return reply({code:'DOCUMENT_MOVED_TO_FE'},410);
    if(prefix==='REGDRIVE'&&body.action==='CONNECT'&&request.headers.get('X-Requested-With')!=='SAHMT')throw fail('REGDRIVE_FORBIDDEN',403);
    const identity=await verifyIdentity(request.headers.get('Authorization'),{apiKey:route.sourceProject?env.FA_WEB_API_KEY:env.FB_WEB_API_KEY,...(route.sourceProject?{projectId:route.sourceProject}:{})});
    if(prefix==='DOCUMENT'&&body.action==='UPLOAD'&&env.DOCUMENT_UPLOADS_ENABLED!=='true')throw fail('DOCUMENT_DRIVE_NOT_CONNECTED',503);
@@ -137,12 +139,13 @@ export function createTrainingWorker({verifyIdentity=verifyTrainingIdentity,buil
   }
  }};
 }
-const legacyWorker = createTrainingWorker();
+const legacyWorker = createTrainingWorker({retireOccupational:true});
 export default {
  fetch(request,env,context){
-  if(new URL(request.url).pathname==='/v1/institutional-surveys'){
+  const {pathname}=new URL(request.url);
+  if(['/v1/vaccination','/v1/dosimetry'].includes(pathname)||pathname==='/v1/institutional-surveys'){
    const origin=request.headers.get('Origin');
-   return Response.json({code:'SURVEY_RETIRED_IN_FA'},{status:410,headers:{'Cache-Control':'no-store',Vary:'Origin',
+   return Response.json({code:pathname==='/v1/institutional-surveys'?'SURVEY_RETIRED_IN_FA':'VAC_MOVED_TO_FE'},{status:410,headers:{'Cache-Control':'no-store',Vary:'Origin',
     ...(origins.includes(origin)?{'Access-Control-Allow-Origin':origin}:{})}});
   }
   return legacyWorker.fetch(request,env,context);

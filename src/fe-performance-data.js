@@ -7,7 +7,7 @@ export function createFePerformanceRepository({uid,request,isCurrent=()=>true}={
   const result=await request();
   if(!isCurrent())throw Error('FE_PERFORMANCE_SESSION_INVALID');
   if(result?.uid!==uid||result.summary?.uid!==uid||!['READY','PREPARING'].includes(result.status)||
-    !Array.isArray(result.awards)||result.awards.some(row=>row.uid!==uid||row.category!=='PERFORMANCE'||row.points!==1||!['climate','stress','epidemiological'].includes(row.survey)))
+    !Array.isArray(result.awards)||result.awards.some(row=>row.uid!==uid||row.category!=='PERFORMANCE'||row.points!==1||!['climate','stress','epidemiological','vaccination'].includes(row.survey)))
    throw Error('FE_PERFORMANCE_SCOPE_INVALID');
   return result;
  }});

@@ -1,7 +1,7 @@
 import './biosafety-manual.css';
-import {createVaccinationClient} from './vaccination-client.js';
+import {createBiosafetyManualClient} from './vaccination-client.js';
 const h=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-export function mountBiosafetyManual(root,{user,onBack=()=>{},backLabel='VOLTAR PARA BIOSSEGURANÇA',clientFactory=createVaccinationClient}={}){
+export function mountBiosafetyManual(root,{user,onBack=()=>{},backLabel='VOLTAR PARA BIOSSEGURANÇA',clientFactory=createBiosafetyManualClient}={}){
  let disposed=false,client,unsubscribe=()=>{},generation=0,busy=true,manual=null,error='';
  root.classList.add('biosafety-manual-app');
  function render(){

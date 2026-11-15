@@ -6,6 +6,7 @@ export function vaccinationMemoryStore() {
   const store = {
     seed(c, id, value) { const k = key(c, id); data.set(k, clone(value)); revisions.set(k, (revisions.get(k) || 0) + 1); },
     async get(c, id) { return clone(data.get(key(c, id))); },
+    async getMany(c,ids){return Promise.all(ids.map(id=>store.get(c,id)));},
     async list(c, filters = []) {
       return [...data.entries()].filter(([k, value]) => k.startsWith(`${c}/`) && filters.every(f => value[f.field] === f.value))
         .map(([k, value]) => ({ id: k.slice(c.length + 1), ...clone(value) }));
@@ -16,6 +17,8 @@ export function vaccinationMemoryStore() {
         const reads = new Map(), writes = [];
         const tx = {
           async get(c, id) { const k = key(c, id); reads.set(k, revisions.get(k) || 0); return clone(data.get(k)); },
+          async getMany(c,ids){return Promise.all(ids.map(id=>tx.get(c,id)));},
+          async list(c,filters){const rows=await store.list(c,filters);for(const row of rows){const k=key(c,row.id);reads.set(k,revisions.get(k)||0);}return rows;},
           set(c, id, value) { writes.push({ c, id, value: clone(value) }); },
           create(c, id, value) { writes.push({ c, id, value: clone(value), create: true }); },
         };

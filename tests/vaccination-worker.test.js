@@ -55,14 +55,14 @@ test('service/auth failures expose only safe domain codes and controlled status'
   }
 });
 
-test('real workerd routes keep own records private, admin reports protected and document lists usable without OAuth',{timeout:60000},async()=>{
-  const project='sahmt-gestao-5ae66',root=`projects/${project}/databases/(default)/documents`,data=new Map(),calls=[];
-  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048}),credentials={project_id:project,client_email:`runtime@${project}.iam.gserviceaccount.com`,private_key:privateKey.export({type:'pkcs8',format:'pem'})};
+test('the FE workerd route keeps records private, protects reports and lists FE uploads',{timeout:60000},async()=>{
+  const project='outros-48120',issuer='sahmt-17a16',root=`projects/${project}/databases/(default)/documents`,data=new Map(),calls=[];
+  const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048}),credentials={project_id:project,client_email:`fe-survey-worker@${project}.iam.gserviceaccount.com`,private_key:privateKey.export({type:'pkcs8',format:'pem'})};
   for(const uid of ['one','two','admin'])data.set('userCategories/'+createHash('sha256').update(JSON.stringify(`${uid}@example.invalid`)).digest('hex'),{schemaVersion:1,identityStatus:'LINKED',uid,email:`${uid}@example.invalid`,memberCategories:['EFETIVO']});
   for(const uid of ['one','two','admin'])data.set(`users/${uid}`,{uid,email:`${uid}@example.invalid`,displayName:`Synthetic ${uid}`,active:true,access:true,role:uid==='admin'?'administrador_app':'colaborador'});
-  const token=uid=>{const now=Math.floor(Date.now()/1000);return Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({aud:project,iss:`https://securetoken.google.com/${project}`,sub:uid,email:`${uid}@example.invalid`,email_verified:true,iat:now,auth_time:now,exp:now+3600,firebase:{sign_in_provider:'google.com'}})).toString('base64url')+'.'+Buffer.alloc(256).toString('base64url');};
-  const bundle=await build({entryPoints:['worker-training/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
-  const mf=new Miniflare(convertV4MiniflareOptions({name:'vaccination',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],bindings:{VACCINATION_ENABLED:'true',HTML_TRAINING_ENABLED:'true',DOCUMENT_UPLOADS_ENABLED:'true',PROFESSIONAL_DRIVE_OAUTH_JSON:'invalid-json-do-not-parse-for-records',FB_WEB_API_KEY:'synthetic-key',FB_TRAINING_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
+  const token=uid=>{const now=Math.floor(Date.now()/1000);return Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({aud:issuer,iss:`https://securetoken.google.com/${issuer}`,sub:uid,email:`${uid}@example.invalid`,email_verified:true,iat:now,auth_time:now,exp:now+3600,firebase:{sign_in_provider:'google.com'}})).toString('base64url')+'.'+Buffer.alloc(256).toString('base64url');};
+  const bundle=await build({entryPoints:['worker-fe-surveys/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
+  const mf=new Miniflare(convertV4MiniflareOptions({name:'vaccination',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],bindings:{FA_WEB_API_KEY:'synthetic-key',FE_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
     const url=new URL(request.url);calls.push(url.hostname+url.pathname);
     if(url.hostname==='identitytoolkit.googleapis.com'){const value=await request.json(),claims=JSON.parse(Buffer.from(value.idToken.split('.')[1],'base64url'));return Response.json({users:[{localId:claims.sub,email:claims.email,emailVerified:true,validSince:'0'}]});}
     if(url.hostname==='oauth2.googleapis.com')return Response.json({access_token:'synthetic-service-token',expires_in:3600});
@@ -73,23 +73,22 @@ test('real workerd routes keep own records private, admin reports protected and 
     if(url.pathname.endsWith(':runQuery')){const {structuredQuery:q}=await request.json(),collection=q.from[0].collectionId,clauses=q.where?.compositeFilter?.filters||(q.where?[q.where]:[]);return Response.json([...data].filter(([key,value])=>key.startsWith(collection+'/')&&clauses.every(({fieldFilter:f})=>value[f.field.fieldPath]===decodeFields({v:f.value}).v)).map(([key,value])=>({document:{name:`${root}/${key}`,fields:encodeFields(value)}})));}
     const key=decodeURIComponent(url.pathname.split('/documents/')[1]||'');return data.has(key)?Response.json({name:`${root}/${key}`,fields:encodeFields(data.get(key))}):Response.json({error:{status:'NOT_FOUND'}},{status:404});
   }}));
-  const call=async(path,action,input,uid='one')=>{const response=await mf.dispatchFetch(`https://worker.test${path}`,{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Authorization:'Bearer '+token(uid)},body:body(action,input)});return{status:response.status,result:await response.json()};};
+  const call=async(kind,action,payload,uid='one')=>{const response=await mf.dispatchFetch('https://worker.test/v1/biosafety',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Authorization:'Bearer '+token(uid)},body:body(action,{kind,payload})});return{status:response.status,result:await response.json()};};
   try{
     const input={year:2026,category:'Equipe',awareness:false,truth:true,states:{hepatitisB:'UNKNOWN',tetanus:'PENDING',mmr:'UPDATED',influenza:'NOT_ADHERED'},declaration:'WILL_UPDATE',notes:'Synthetic only',expectedVersion:0};
-    const saved=await call('/v1/vaccination','SAVE',input);assert.equal(saved.status,200,JSON.stringify(saved.result));assert.equal(saved.result.record.uid,'one');assert.equal(saved.result.record.version,1);
-    assert.equal((await call('/v1/vaccination','BOOTSTRAP',{year:2026},'two')).result.record,null);
-    assert.equal((await call('/v1/vaccination','REPORT',{year:2026})).status,403);
-    const report=await call('/v1/vaccination','REPORT',{year:2026},'admin');assert.equal(report.status,200);assert.equal(report.result.records.length,1);
-    const docs=await call('/v1/professional-documents','LIST_OWN',{context:'VACCINATION',year:2026});assert.equal(docs.status,200,JSON.stringify(docs.result));assert.equal(docs.result.uploadsEnabled,false);assert.deepEqual(docs.result.documents,[]);
-    assert.equal((await call('/v1/professional-documents','LIST_ADMIN',{context:'VACCINATION',year:2026})).status,403);
-    data.set('runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['gestao/area-gestao-de-pessoas/biosseguranca/vacinacao']});
+    const saved=await call('vaccination','SAVE',input);assert.equal(saved.status,200,JSON.stringify(saved.result));assert.equal(saved.result.record.uid,'one');assert.equal(saved.result.record.version,1);
+    assert.equal((await call('vaccination','BOOTSTRAP',{year:2026},'two')).result.record,null);
+    assert.equal((await call('vaccination','REPORT',{year:2026})).status,403);
+    const report=await call('vaccination','REPORT',{year:2026},'admin');assert.equal(report.status,200);assert.equal(report.result.records.length,1);
+    const docs=await call('documents','LIST_OWN',{context:'VACCINATION',year:2026});assert.equal(docs.status,200,JSON.stringify(docs.result));assert.equal(docs.result.uploadsEnabled,true);assert.deepEqual(docs.result.documents,[]);
+    assert.equal((await call('documents','LIST_ADMIN',{context:'VACCINATION',year:2026})).status,403);
+    data.set('runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['consultas/biosseguranca/vacinacao']});
     calls.length=0;
-    assert.equal((await call('/v1/vaccination','REPORT',{year:2026},'admin')).status,200);
+    assert.equal((await call('vaccination','REPORT',{year:2026},'admin')).status,200);
     calls.length=0;
-    assert.deepEqual(await call('/v1/professional-documents','LIST_OWN',{context:'VACCINATION',year:2026}),{status:403,result:{code:'DOCUMENT_FOLDER_DISABLED'}});
-    assert.ok(calls.filter(path=>path.startsWith('firestore.googleapis.com')).every(path=>path.endsWith('/runtimePolicy/folders')||path.endsWith('/users/one')));
-    assert.equal((await call('/v1/professional-documents','LIST_OWN',{context:'CERTIFICATES',year:2026})).status,200);
-    const training=await call('/v1/training','LIST',{},'admin');assert.equal(training.status,200,JSON.stringify(training.result));assert.deepEqual(training.result.trainings,[]);
+    assert.deepEqual(await call('documents','LIST_OWN',{context:'VACCINATION',year:2026}),{status:403,result:{code:'VAC_FOLDER_DISABLED'}});
+    assert.equal(calls.some(path=>path.includes('feVaccinationProofs')||path.endsWith(':runQuery')),false);
+    assert.equal((await call('documents','LIST_OWN',{context:'CERTIFICATES',year:2026})).status,400);
     assert.equal(calls.some(path=>path.startsWith('www.googleapis.com')||path.includes('userinfo')),false);
   }finally{await mf.dispose();}
 });

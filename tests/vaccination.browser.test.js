@@ -42,5 +42,5 @@ test('responsive admin indicators and own document compression/preview',()=>brow
  const bytes=await page.evaluate(async()=>{const c=document.createElement('canvas');c.width=3200;c.height=2400;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.fillStyle='#000';x.font='120px Arial';x.fillText('COMPROVANTE DE DEMONSTRAÇÃO',50,250);return Array.from(new Uint8Array(await(await new Promise(r=>c.toBlob(r,'image/png'))).arrayBuffer()));});
  await page.locator('input[data-vac-file="attachment"]').setInputFiles({name:'fixture.png',mimeType:'image/png',buffer:Buffer.from(bytes)});
  await page.locator('.vac-preview img').waitFor();assert.match(await page.locator('.vac-preview').innerText(),/1600 × 1200/);
- await page.getByRole('button',{name:'Enviar comprovante',exact:true}).click();await page.getByText('Comprovante salvo no Drive.',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'Enviar comprovante',exact:true}).click();await page.getByText('Comprovante salvo em FE.',{exact:true}).waitFor();
 }));

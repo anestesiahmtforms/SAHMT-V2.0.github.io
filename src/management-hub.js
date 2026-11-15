@@ -73,7 +73,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const consultationsAllowed=()=>institutionalAllowed()||restrictedAllowed();
  const itemAllowed=item=>item.panel==='surveys'?consultationsAllowed():item.panel==='institutional'?restrictedAllowed():(!item.access||access[item.access]===true);
  const biosafetyPanels=['biosafety','vaccinationHistory','dosimetryHistory'];
- const biosafetyFolder='gestao/area-gestao-de-pessoas/biosseguranca';
+ const biosafetyFolder='consultas/biosseguranca';
  const panelFolders={biosafety:biosafetyFolder,vaccinationHistory:biosafetyFolder+'/vacinacao',dosimetryHistory:biosafetyFolder+'/dosimetria',functional:'funcional',management:'gestao',communication:'comunicacao',results:'indicadores',records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',general:'consultas/pesquisas',fePerformance:'desempenho/fe',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027'};
  const panelFolderAllowed=name=>(name!=='fePerformance'||folderAllowed('consultas/pesquisas'))&&
   (!biosafetyPanels.includes(name)||folderAllowed('consultas'))&&(!Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]));

@@ -24,7 +24,7 @@ export async function loadFunctionalResult({key,year,uid,subjectUid,faAuth,isCur
     const {crm,crmState,rqe,formation}=record.answers||{};
     return {record:{cycle:record.cycle,crm,crmState,rqe,formation}};
   }
-  const client=await createFunctionalOccupationalReader(faAuth.currentUser,{isCurrent});
+  const client=await createFunctionalOccupationalReader(faAuth.currentUser,{isCurrent,auth:faAuth});
   try{
     const {record}=await client.read(key,year);
     return {record:record?.year===year&&(key==='dosimetry'||record.uid===uid)?record:null};
