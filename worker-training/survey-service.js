@@ -45,7 +45,7 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
       const [summary,reference,awards,vaccinationAwards,vaccinationTotals]=await Promise.all([
         responseStore.get('fePerformanceSummaries',identity.uid),responseStore.get('fePerformanceReference','current'),
         responseStore.list('fePerformanceAwards',byUid,200),
-        responseStore.list('feVaccinationPerformanceAwards',byUid,200),responseStore.list('feVaccinationPerformanceSummaries',[],1000)
+        responseStore.list('feVaccinationUpdatedPerformanceAwards',byUid,200),responseStore.list('feVaccinationUpdatedPerformanceSummaries',[],1000)
       ]);
       if(!(await authorize(identity,undefined,performanceProfileStore)).administrator)await checkPerformance();
       const totals=vaccinationTotals.length?await responseStore.getMany('fePerformanceSummaries',vaccinationTotals.map(row=>row.uid)):[];

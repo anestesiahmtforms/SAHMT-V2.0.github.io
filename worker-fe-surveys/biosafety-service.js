@@ -2,7 +2,7 @@ import {createVaccinationService} from '../worker-training/vaccination-service.j
 import {createDosimetryService} from '../worker-training/dosimetry-service.js';
 import {assignedInstitutionalGroup,institutionalAssignmentKey,institutionalGroup} from '../src/institutional-group.js';
 import {createVaccinationProofService} from './vaccination-proofs.js';
-import {awardFeParticipation} from './performance-award.js';
+import {awardUpdatedVaccinations} from './vaccination-performance.js';
 
 const root = 'consultas/biosseguranca';
 const fail = (code,status=403) => { throw Object.assign(Error(code),{code,status}); };
@@ -24,9 +24,7 @@ export function createFeBiosafetyService({store,checkFolder,now=Date.now}) {
   const vaccination = createVaccinationService({
     store,now,authorizeAccess:vaccinationAccess,
     eligibleParticipant:profile=>profile.active===true&&profile.access===true&&institutionalGroup(profile.memberCategories)==='team',
-    onSaved:(tx,record,existing)=>existing ? undefined : awardFeParticipation(tx,{
-      uid:record.uid,survey:'vaccination',cycle:String(record.year),at:record.createdAt,prefix:'feVaccinationPerformance'
-    })
+    onSaved:awardUpdatedVaccinations
   });
   const dosimetry = createDosimetryService({
     store,authorizeAccess:(tx,identity,profile)=>checkAccess(tx,identity,profile,'dosimetria')

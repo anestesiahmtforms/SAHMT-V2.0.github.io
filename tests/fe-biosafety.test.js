@@ -21,20 +21,31 @@ async function fixture(){
  const service=createFeBiosafetyService({store,now,checkFolder:async()=>{}});
  return {store,request:(kind,action,payload,actor='team')=>service.execute(action,{kind,payload},principal(actor)),service};
 }
-test('the first accepted vaccine record per year awards one FE-local point and never updates the export ledger',async()=>{
+test('updated vaccines award at most four FE-local points per year without a completion bonus',async()=>{
  const {store,request}=await fixture();
- const concurrent=await Promise.allSettled([request('vaccination','SAVE',input),request('vaccination','SAVE',input)]);
+ const pending={...input,states:Object.fromEntries(Object.keys(input.states).map(id=>[id,'PENDING']))};
+ await request('vaccination','SAVE',pending);
+ assert.equal((await store.list('feVaccinationUpdatedPerformanceAwards')).length,0);
+ const concurrent=await Promise.allSettled([request('vaccination','SAVE',{...input,expectedVersion:1}),request('vaccination','SAVE',{...input,expectedVersion:1})]);
  assert.equal(concurrent.filter(item=>item.status==='fulfilled').length,1);
- await request('vaccination','SAVE',{...input,expectedVersion:1});
+ assert.equal((await store.get('feVaccinationUpdatedPerformanceSummaries','team')).total,1);
+ const updated={...input,states:Object.fromEntries(Object.keys(input.states).map(id=>[id,'UPDATED']))};
+ await request('vaccination','SAVE',{...updated,expectedVersion:2});
+ await request('vaccination','SAVE',{...pending,expectedVersion:3});
+ await request('vaccination','SAVE',{...updated,expectedVersion:4});
+ assert.equal((await store.get('feVaccinationUpdatedPerformanceSummaries','team')).total,4);
  await request('vaccination','SAVE',{...input,year:2027});
  await request('dosimetry','GET_OWN',{year:2026});
- assert.equal((await store.get('feVaccinationPerformanceSummaries','team')).total,2);
- assert.equal((await store.list('feVaccinationPerformanceAwards')).length,2);
+ assert.equal((await store.get('feVaccinationUpdatedPerformanceSummaries','team')).total,5);
+ assert.equal((await store.list('feVaccinationUpdatedPerformanceAwards')).length,5);
  assert.equal((await store.list('fePerformanceAwards')).length,0);
+ store.seed('feVaccinationPerformanceSummaries','team',{uid:'team',total:1});
+ store.seed('feVaccinationPerformanceAwards','legacy',{uid:'team',survey:'vaccination',points:1,createdAt:now()});
  const surveyService=createSurveyService({profileStore:store,responseStore:store,now,performanceEnabled:true});
  const result=await surveyService.execute('GET_PERFORMANCE',{},principal('team'));
- assert.equal(result.summary.total,2);assert.equal(result.reference.maxTotal,2);
- assert.deepEqual(result.awards.map(award=>award.survey),['vaccination','vaccination']);
+ assert.equal(result.summary.total,5);assert.equal(result.reference.maxTotal,5);
+ assert.equal(result.awards.length,5);
+ assert.ok(result.awards.every(award=>award.survey==='vaccination'&&award.points===1));
 });
 
 test('FE proves membership before reading histories, executing writes or serving private vaccination uploads',async()=>{
