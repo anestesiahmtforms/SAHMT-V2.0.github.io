@@ -42,6 +42,16 @@ test('FJ publication preserves release markings, times and event highlights when
   assert.equal(plan.writes[0].currentDocument.updateTime, '2026-11-06T14:00:00Z');
 });
 
+test('FJ seed dates become native sheet dates while publication retains ISO date keys', async () => {
+  const script = await load('FJ', ['ScheduleSourceSync.gs', 'Setup.gs']);
+  const calls = [];
+  script.context.Utilities = {parseDate:(day, timezone, format)=>{calls.push([day, timezone, format]);return new Date(day+'T03:00:00Z');}};
+  assert.equal(script.run("sahmtSeedDate_('15/11/2026')").toISOString(), '2026-11-15T03:00:00.000Z');
+  assert.deepEqual(calls, [['2026-11-15', 'America/Sao_Paulo', 'yyyy-MM-dd']]);
+  assert.equal(script.run("scheduleSourceDate_('15/11/2026')"), '2026-11-15');
+  assert.equal(script.run("scheduleSourceDate_('2026-11-15')"), '2026-11-15');
+});
+
 test('initial scripts block activation/publication until the cutover is explicitly enabled', async () => {
   const fi = await load('FI', ['OperationalSheetControl.gs']);
   const fj = await load('FJ', ['ScheduleSourceSync.gs']);

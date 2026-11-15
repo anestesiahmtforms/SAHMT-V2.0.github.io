@@ -5,8 +5,16 @@ export const HISTORY_HEADERS=Object.freeze({
  Eventos:['Evento ID','Mensagem ID','Integrante UID','Tipo','Data e hora (UTC)','Detalhes'],
  Controle:['Chave','Valor']
 });
-const stamp=v=>Number.isSafeInteger(v)&&v>0?new Date(v).toISOString():'';
-const instant=v=>typeof v==='string'&&v&&Number.isFinite(Date.parse(v))?Date.parse(v):null;
+const stamp=v=>Number.isSafeInteger(v)&&v>0
+ ? new Date(v).toISOString().replace(/^(\d{4})-(\d{2})-(\d{2})T(.+)Z$/, '$3/$2/$1 $4 UTC')
+ : '';
+const instant=v=>{
+ if(typeof v!=='string'||!v)return null;
+ const match=/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}:\d{2}:\d{2}\.\d{3}) UTC$/.exec(v);
+ const iso=match?`${match[3]}-${match[2]}-${match[1]}T${match[4]}Z`:v;
+ const time=Date.parse(iso);
+ return Number.isFinite(time)&&(!match||new Date(time).toISOString()===iso)?time:null;
+};
 const numeric=v=>v!==''&&v!==undefined&&Number.isFinite(Number(v))?Number(v):null;
 export function historyMessageRow(message,binding={}){
  const recorded=Number.isSafeInteger(binding.recipientStart)&&binding.recipientStart>=2&&Number.isSafeInteger(binding.recipientCount)&&binding.recipientCount>=0;

@@ -1,3 +1,4 @@
+import {formatDisplayDateTime} from '../src/date-format.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -6,7 +7,7 @@ const source=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
 const code=source.slice(source.indexOf('async function loadHome()'),source.indexOf('async function loadSchedule()'));
 function fixture(){
  let cache=null,reads=0;const handlers={},content={innerHTML:'',isConnected:true},date={value:'',addEventListener:(name,fn)=>handlers[name]=fn};
- const ctx=vm.createContext({session:{status:'signed-in',user:{uid:'one'}},cleanupCurrentModule:null,Date,
+ const ctx=vm.createContext({formatDisplayDateTime,session:{status:'signed-in',user:{uid:'one'}},cleanupCurrentModule:null,Date,
   document:{querySelector:id=>id==='#schedule-content'?content:id==='#schedule-date'?date:{addEventListener:(event,fn)=>handlers[id]=fn}},localDateKey:()=> '2026-11-08',shiftDateKey:()=> '2026-11-09',
   homeScheduleCache:{read:(uid,day)=>{assert.equal(uid,'one');reads++;return cache;}},escapeHtml:s=>s,
   buildScheduleView:()=>({positions:[{sigla:'AB'}]}),renderSchedulePositionGrid:(view,options)=>{assert.equal(options.eventsWritable,false);return '<div>AB</div>';},fitSchedulePositionGrid(){},

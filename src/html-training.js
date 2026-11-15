@@ -1,3 +1,4 @@
+import {formatDisplayDate} from './date-format.js';
 import './html-training.css';
 import { deployment } from './deployment-context.js';
 import { escapeHtml as h, canManageTraining, isTrainingAdmin, readerDocument } from './html-training-model.js';
@@ -227,7 +228,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
             onError(err){if(!current(token))return;if(err.status===401||err.status===403){fail(err);return;}const label=root.querySelector('[data-reading-status]');if(label)label.textContent=err.message||'Não foi possível validar a leitura. Reabra o documento para continuar.';}
           });
         }
-      });frame.srcdoc=readerDocument(content?.sections?.[readIndex]?.html,uid,new Date().toLocaleDateString('pt-BR'));}
+      });frame.srcdoc=readerDocument(content?.sections?.[readIndex]?.html,uid,formatDisplayDate(new Date()));}
     }
     if(mode==='editor')root.querySelectorAll('[data-section]').forEach(frame=>{frame.srcdoc=readerDocument(editor.sections[Number(frame.dataset.section)].html,uid,'',true);});
     renderBusy();

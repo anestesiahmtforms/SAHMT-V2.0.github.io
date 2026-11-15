@@ -1,3 +1,4 @@
+import {formatDisplayDateTime} from './date-format.js';
 import './year-end-schedule.css';
 import {YEAR_END_SHIFTS,YEAR_END_GROUPS,sortYearEndRegistrations,yearEndPendingParticipants,yearEndMessage} from './year-end-schedule.js';
 import {yearEndOptionIcon} from './year-end-icons.js';
@@ -5,9 +6,7 @@ import {yearEndOptionIcon} from './year-end-icons.js';
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const label=(options,id)=>options.find(o=>o.id===id)?.label||'—';
 const date=value=>{
-  if(!value)return '—';
-  const d=typeof value.toDate==='function'?value.toDate():new Date(value);
-  return Number.isNaN(d.getTime())?'—':new Intl.DateTimeFormat('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',timeZone:'America/Sao_Paulo'}).format(d);
+  return formatDisplayDateTime(value,{fallback:'—'});
 };
 const options=(name,items,required=true)=>items.map(o=>`<label class="year-end-option"><input type="radio" name="${name}" value="${o.id}"${required?' required':''}><span class="year-end-option__content"><strong>${yearEndOptionIcon(o.id)}<span class="year-end-option__name">${h(o.label)}</span></strong><span class="year-end-dates">${h(o.dates)}</span>${o.detail?`<small>${h(o.detail)}</small>`:''}</span><span class="year-end-check" aria-hidden="true">✓</span></label>`).join('');
 

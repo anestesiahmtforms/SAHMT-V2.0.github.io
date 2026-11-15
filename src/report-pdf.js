@@ -1,3 +1,4 @@
+import {formatDisplayDateTime} from './date-format.js';
 function safeFileName(value) {
   return String(value || 'SAHMT-Relatorio')
     .normalize('NFD')
@@ -55,7 +56,7 @@ export function createAndSharePdf({title, period, fileName, columns, rows, orien
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(8);
       pdf.setTextColor(82, 101, 120);
-      pdf.text(`Gerado em ${new Date().toLocaleString('pt-BR')}`, margin, pageHeight - 7);
+      pdf.text(`Gerado em ${formatDisplayDateTime(new Date())}`, margin, pageHeight - 7);
       pdf.text(`Página ${pdf.internal.getCurrentPageInfo().pageNumber}`, pageWidth - margin, pageHeight - 7, {align: 'right'});
     }
   });

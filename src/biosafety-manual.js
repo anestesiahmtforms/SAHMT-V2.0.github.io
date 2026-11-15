@@ -1,3 +1,4 @@
+import {formatDisplayDate} from './date-format.js';
 import './biosafety-manual.css';
 import {createBiosafetyManualClient} from './vaccination-client.js';
 const h=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -6,7 +7,7 @@ export function mountBiosafetyManual(root,{user,onBack=()=>{},backLabel='VOLTAR 
  root.classList.add('biosafety-manual-app');
  function render(){
   if(disposed)return;
-  root.innerHTML=`<section class="biosafety-manual-panel"><header class="biosafety-manual-header"><div><p class="eyebrow">BIOSSEGURANÇA · HMT</p><h2>MANUAL DE BIOSSEGURANÇA - HMT</h2></div><button class="secondary-button" type="button" data-manual-back>${h(backLabel)}</button></header>${busy?'<p role="status">Carregando o manual…</p>':error?`<p role="alert" class="biosafety-manual-alert">${h(error)}</p>`:manual?`<p class="biosafety-manual-meta">${h(manual.documentCode)} · Versão ${h(manual.revision)} · Emissão: ${h(manual.issuedOn.split('-').reverse().join('/'))}</p><iframe class="biosafety-manual-frame" title="Manual de Biossegurança HMT em HTML" sandbox="" referrerpolicy="no-referrer"></iframe>`:''}</section>`;
+  root.innerHTML=`<section class="biosafety-manual-panel"><header class="biosafety-manual-header"><div><p class="eyebrow">BIOSSEGURANÇA · HMT</p><h2>MANUAL DE BIOSSEGURANÇA - HMT</h2></div><button class="secondary-button" type="button" data-manual-back>${h(backLabel)}</button></header>${busy?'<p role="status">Carregando o manual…</p>':error?`<p role="alert" class="biosafety-manual-alert">${h(error)}</p>`:manual?`<p class="biosafety-manual-meta">${h(manual.documentCode)} · Versão ${h(manual.revision)} · Emissão: ${h(formatDisplayDate(manual.issuedOn))}</p><iframe class="biosafety-manual-frame" title="Manual de Biossegurança HMT em HTML" sandbox="" referrerpolicy="no-referrer"></iframe>`:''}</section>`;
   root.setAttribute('aria-busy',String(busy));
   const frame=root.querySelector('iframe');if(frame&&manual)frame.srcdoc=manual.html;
  }

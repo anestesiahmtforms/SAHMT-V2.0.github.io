@@ -1,3 +1,4 @@
+import {formatDisplayDateTime} from './date-format.js';
 import {trainingParticipationState} from './training-participation-state.js';
 import {createLiveReportSession} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
@@ -23,8 +24,7 @@ const numberLabel = value => Number(value).toLocaleString('pt-BR', {maximumFract
 const checklistTitle = award => { const day = String(award.day || award.activityId || award.transferId || '').match(/\d{4}-\d{2}-\d{2}/)?.[0]; return day ? 'Checklist · ' + day.split('-').reverse().join('/') : 'Checklist'; };
 const pointLabel = value => `${numberLabel(value)} ponto${Number(value) === 1 ? '' : 's'}`;
 function dateLabel(value) {
-  const date = value?.toDate?.() || (value?.seconds !== undefined ? new Date(value.seconds * 1000) : new Date(value || ''));
-  return Number.isFinite(date.getTime()) ? date.toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'}) : 'Data ainda não confirmada';
+  return formatDisplayDateTime(value, {fallback: 'Data ainda não confirmada', seconds: true});
 }
 /** Calendar fields use the same Sao Paulo day as the trusted Apps Script config. */
 export function evaluationCalendarInput(value) {

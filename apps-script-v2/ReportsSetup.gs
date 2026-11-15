@@ -83,6 +83,6 @@ function applyReportColumnFormats_(sheet, config) {
     else if (currencyFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('"R$" #,##0.00;[Red]-"R$" #,##0.00');
     else if (integerFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('0');
     else if (decimalFields.has(field)) sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('0.############');
-    else if (field === 'date') sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('yyyy-mm-dd');
+    else if (field === 'date') sheet.getRange(2, column, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('dd/mm/yyyy');
   });
 }

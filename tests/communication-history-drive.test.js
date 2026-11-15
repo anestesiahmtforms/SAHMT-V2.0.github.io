@@ -35,6 +35,26 @@ test('archive adapter rejects a provider redirect without forwarding credentials
  await assert.rejects(drive.verify(),{code:'COMM_HISTORY_UNAVAILABLE',archiveApi:'DRIVE',archiveHttpStatus:307});
  assert.deepEqual(calls,['www.googleapis.com']);
 });
+test('archive date migration is restricted to timestamp columns and retains exact UTC milliseconds',async()=>{
+ let edits;
+ const drive=api.createCommunicationHistoryDrive({spreadsheetId:sheetId,getToken:async()=> 'synthetic',fetchImpl:async(url,options)=>{
+  if(url.endsWith('?fields=sheets(properties(sheetId,title))'))return Response.json({sheets:['Mensagens','Destinatarios','Eventos'].map((title,sheetId)=>({properties:{title,sheetId}}))});
+  if(url.endsWith(':batchUpdate')){
+   edits=JSON.parse(options.body).requests;
+   return Response.json({replies:edits.map(()=>({findReplace:{occurrencesChanged:1}}))});
+  }
+  const u=new URL(url);
+  if(u.hostname==='www.googleapis.com')return Response.json({id:sheetId,mimeType:'application/vnd.google-apps.spreadsheet',parents:[HISTORY_FOLDER],trashed:false,permissions:[{type:'user',role:'owner',emailAddress:'anestesiahmtforms6@gmail.com'}]});
+  return Response.json({valueRanges:Object.values(HISTORY_HEADERS).map(headers=>({values:[headers]}))});
+ }});
+ assert.deepEqual(await drive.formatExistingDates(),{changed:5});
+ assert.deepEqual(edits.map(e=>[e.findReplace.range.sheetId,e.findReplace.range.startColumnIndex]),[[0,1],[0,16],[1,5],[1,6],[2,4]]);
+ for(const {findReplace:change} of edits){
+  assert.equal(change.includeFormulas,false);
+  assert.equal(change.range.startRowIndex,1);
+  assert.equal('2026-11-15T23:45:01.123Z'.replace(new RegExp(change.find),change.replacement),'15/11/2026 23:45:01.123 UTC');
+ }
+});
 test('archive fixed-range retry preserves literal text and cannot duplicate events',async()=>{
  assert.equal(typeof api.createCommunicationHistoryDrive,'function');
  const f=fixture({failWrite:true}),drive=f.create(),values=[['event-1','message-1','uid-1','READ','2026-11-15T12:00:00.000Z','=FORMULA()']],data=[{range:'Eventos!A2:F2',values}];

@@ -16,18 +16,24 @@ function prepararEscalaFJ() {
   const headers = ['date'].concat(Array.from({length:17},function(_,index){return 'pos'+(index+1);}));
   const rows = source.scheduleDays.sort(function(a,b){return String(a.date).localeCompare(String(b.date));}).map(function(record){
     const positions=record.positions||[];
-    return [record.date].concat(Array.from({length:17},function(_,index){const item=positions.find(function(position){return position.position===index+1;});return item?item.sigla:'';}));
+    return [sahmtSeedDate_(record.date)].concat(Array.from({length:17},function(_,index){const item=positions.find(function(position){return position.position===index+1;});return item?item.sigla:'';}));
   });
   sheet.getRange(1,1,1,headers.length).setValues([headers]);
   if(rows.length){sheet.getRange(2,1,rows.length,headers.length).setNumberFormat('@');sheet.getRange(2,1,rows.length,headers.length).setValues(rows.map(sahmtSafeSeedRow_));}
-  const vacation = book.insertSheet('FÉRIAS'), vacationRows = source.vacations.filter(function(record){return record.active===true;}).map(function(record){return [record.start,record.end,JSON.stringify(record.siglas||[]),String(record.label||'')];});
+  sheet.getRange(2,1,Math.max(1,sheet.getMaxRows()-1),1).setNumberFormat('dd/MM/yyyy');
+  const vacation = book.insertSheet('FÉRIAS'), vacationRows = source.vacations.filter(function(record){return record.active===true;}).map(function(record){return [sahmtSeedDate_(record.start),sahmtSeedDate_(record.end),JSON.stringify(record.siglas||[]),String(record.label||'')];});
   vacation.getRange(1,1,1,4).setValues([['start','end','siglas','label']]);
   if(vacationRows.length){vacation.getRange(2,1,vacationRows.length,4).setNumberFormat('@');vacation.getRange(2,1,vacationRows.length,4).setValues(vacationRows.map(sahmtSafeSeedRow_));}
+  vacation.getRange(2,1,Math.max(1,vacation.getMaxRows()-1),2).setNumberFormat('dd/MM/yyyy');
   sheet.setFrozenRows(1); vacation.setFrozenRows(1);
   properties.setProperties({FJ_SOURCE_SPREADSHEET_ID:book.getId(),FJ_CUTOVER_ENABLED:'NO',SAHMT_V2_SCHEDULE_SYNC_ALLOWED_EMAILS:SAHMT_V2_CONFIG.ownerEmail});
   const status = {station:'FJ',spreadsheetId:book.getId(),scheduleRows:rows.length,vacationRows:vacationRows.length,cutoverEnabled:false};
   console.log(JSON.stringify(status));
   return status;
+}
+
+function sahmtSeedDate_(value) {
+  return Utilities.parseDate(scheduleSourceDate_(value), 'America/Sao_Paulo', 'yyyy-MM-dd');
 }
 
 /** setValues interprets a leading equals sign as a formula even for imported text. */

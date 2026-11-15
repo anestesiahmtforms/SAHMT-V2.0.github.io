@@ -108,6 +108,7 @@ function upsertSparkReportRows_(spreadsheet, pending) {
     if (additions.length) {
       sheet.getRange(lastRow + 1, 1, additions.length, batch.config.fields.length).setValues(additions);
     }
+    applyReportColumnFormats_(sheet, batch.config);
   });
 }
 
@@ -119,6 +120,11 @@ function reportValuesForSpark_(config, job, record) {
     else if (field === 'resourceType') value = job.resourceType;
     else if (field === 'idRegistro') value = job.resourceId;
     else value = record[field];
+    // Date-only Firestore strings need native cells for Sheets display formats.
+    if (field === 'date' && typeof value === 'string') {
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+      if (match) value = Utilities.parseDate(value, 'America/Sao_Paulo', 'yyyy-MM-dd');
+    }
     if (Array.isArray(value)) value = value.join(', ');
     if (value instanceof Date) return value;
     if (typeof value === 'string' && /^[=+@\-]/.test(value)) return "'" + value;

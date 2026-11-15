@@ -1,6 +1,17 @@
 import {createPrivateKey,sign} from 'node:crypto';
 export const SPREADSHEET_ID='1NFR4jJUV2HRWD68hrh3zT8g6N1i3sGrQ5LXexf-Xm8w';
 const fail=()=>Object.assign(Error('VACATIONS_SHEETS_UNAVAILABLE'),{code:'VACATIONS_SHEETS_UNAVAILABLE',status:503});
+// Sheets text is localized at the boundary; the service keeps ISO timestamps.
+function auditSheetTimestamp(value){
+ const date=new Date(value);if(!Number.isFinite(date.getTime()))throw fail();
+ const parts=Object.fromEntries(new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',fractionalSecondDigits:3,hourCycle:'h23',timeZoneName:'longOffset'}).formatToParts(date).map(p=>[p.type,p.value]));
+ const offset=parts.timeZoneName==='GMT'?'+00:00':parts.timeZoneName.replace('GMT','');
+ return `${parts.day}/${parts.month}/${parts.year} ${parts.hour}:${parts.minute}:${parts.second}.${parts.fractionalSecond} ${offset}`;
+}
+function auditServiceTimestamp(value){
+ const text=String(value||''),match=/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}:\d{2}:\d{2}\.\d{3}) ([+-]\d{2}:\d{2})$/.exec(text);
+ return match?new Date(`${match[3]}-${match[2]}-${match[1]}T${match[4]}${match[5]}`).toISOString():text;
+}
 export function vacationServiceToken({credentials,fetchImpl=fetch,now=Date.now,includeSheets=false}){
  if(credentials?.project_id!=='outros-48120'||credentials.client_email!=='fe-survey-worker@outros-48120.iam.gserviceaccount.com')throw fail();
  const key=createPrivateKey(credentials.private_key);let cached,pending;const b=v=>Buffer.from(JSON.stringify(v)).toString('base64url');
@@ -30,12 +41,12 @@ export function createVacationSheets({getAccessToken,fetchImpl=fetch}){
  }
  return {
   async read(){const d=await request('/values:batchGet?'+new URLSearchParams([['ranges',"'FERIAS 2027'!A1:K52"],['ranges',"'REGRAS'!A1:F100"],['valueRenderOption','FORMATTED_VALUE']]));if(d.valueRanges?.length!==2)throw fail();return {values:d.valueRanges[0].values||[],rules:d.valueRanges[1].values||[]};},
-  async audit(){const d=await request('/values/'+encodeURIComponent("'AUDITORIA_PWA'!A1:J2000")+'?valueRenderOption=FORMATTED_VALUE');return (d.values||[]).slice(1).filter(r=>r.some(Boolean)).slice(-200).reverse().map(r=>({at:String(r[0]||''),type:String(r[1]||''),sigla:String(r[2]||''),slot:String(r[3]||''),result:String(r[4]||''),justification:String(r[5]||''),actor:String(r[7]||''),previousValue:String(r[8]||''),operationId:String(r[9]||'')}));},
+  async audit(){const d=await request('/values/'+encodeURIComponent("'AUDITORIA_PWA'!A1:J2000")+'?valueRenderOption=FORMATTED_VALUE');return (d.values||[]).slice(1).filter(r=>r.some(Boolean)).slice(-200).reverse().map(r=>({at:auditServiceTimestamp(r[0]),type:String(r[1]||''),sigla:String(r[2]||''),slot:String(r[3]||''),result:String(r[4]||''),justification:String(r[5]||''),actor:String(r[7]||''),previousValue:String(r[8]||''),operationId:String(r[9]||'')}));},
   async update({updates,justification,actor,operationId,at}){
    // One atomic Sheets batch: literal text (never formulas) plus the audit row.
    await request(':batchUpdate',{requests:updates.flatMap(({slot,value,previousValue})=>[
     {updateCells:{range:{sheetId:1610343798,startRowIndex:slot.row-1,endRowIndex:slot.row,startColumnIndex:slot.column-1,endColumnIndex:slot.column},rows:[{values:[{userEnteredValue:{stringValue:value}}]}],fields:'userEnteredValue'}},
-    {appendCells:{sheetId:303176100,rows:[{values:[at,'fe_admin_override',value,`${slot.month}-${slot.week}-${slot.slot}`,'OK',justification,actor.uid,actor.email,previousValue,operationId].map(v=>({userEnteredValue:{stringValue:String(v)}}))}],fields:'userEnteredValue'}},
+    {appendCells:{sheetId:303176100,rows:[{values:[auditSheetTimestamp(at),'fe_admin_override',value,`${slot.month}-${slot.week}-${slot.slot}`,'OK',justification,actor.uid,actor.email,previousValue,operationId].map(v=>({userEnteredValue:{stringValue:String(v)}}))}],fields:'userEnteredValue'}},
    ])});
   },
  };

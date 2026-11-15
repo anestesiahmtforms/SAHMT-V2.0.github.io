@@ -1,7 +1,8 @@
+import {formatDisplayDateTime} from './date-format.js';
 import {fePerformancePresentation} from './fe-performance-data.js';
 const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number=value=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(value);
-const date=value=>{const parsed=new Date(value);return Number.isFinite(parsed.getTime())?parsed.toLocaleString('pt-BR'):'Aguardando confirmação';};
+const date=value=>{return formatDisplayDateTime(value,{fallback:'Aguardando confirmação'});};
 const surveyName={climate:'Pesquisa de clima',stress:'Pesquisa de estresse e fadiga',epidemiological:'Consulta epidemiológica',vaccination:'Vacina atualizada'};
 const states={loading:'Carregando seu desempenho FE…',preparing:'O Desempenho FE está em preparação.',pending:'As pontuações estão sendo confirmadas.',offline:'Conecte-se à internet para confirmar seu saldo FE.',blocked:'Não foi possível confirmar seu acesso ao Desempenho FE.'};
 

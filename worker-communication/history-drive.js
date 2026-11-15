@@ -64,6 +64,23 @@ export function createCommunicationHistoryDrive({getToken,fetchImpl=fetch,spread
   if(requests.length)await request(root+':batchUpdate',{requests});
  }
  return {verify,
+  async formatExistingDates(){
+   await verify();
+   const meta=await request(root+'?fields=sheets(properties(sheetId,title))');
+   const columns={Mensagens:[1,16],Destinatarios:[5,6],Eventos:[4]};
+   const requests=[];
+   for(const [name,dates] of Object.entries(columns)){
+    const sheetId=meta.sheets?.find(sheet=>sheet.properties?.title===name)?.properties.sheetId;
+    if(!Number.isSafeInteger(sheetId))throw fail('COMM_HISTORY_SCHEMA_INVALID',503);
+    for(const column of dates)requests.push({findReplace:{
+     range:{sheetId,startRowIndex:1,startColumnIndex:column,endColumnIndex:column+1},
+     find:'^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3})Z$',
+     replacement:'$3/$2/$1 $4 UTC',searchByRegex:true,matchEntireCell:true,includeFormulas:false
+    }});
+   }
+   const result=await request(root+':batchUpdate',{requests});
+   return {changed:(result.replies||[]).reduce((count,reply)=>count+(reply.findReplace?.occurrencesChanged||0),0)};
+  },
   async write(data){checkedData(data);await verify();await ensureRows(data);await request(root+'/values:batchUpdate',{valueInputOption:'RAW',data});return {saved:true};},
   async readMessages({before,limit=20,filters={}}={}){
    if(!integer(before,2,200001)||!integer(limit,1,50)||!filters||Array.isArray(filters)||Object.keys(filters).some(k=>!['from','to','kind','audience','recipient','search'].includes(k)))throw fail('COMM_INVALID_INPUT');

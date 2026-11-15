@@ -1,3 +1,4 @@
+import {formatDisplayDateTime} from './date-format.js';
 import {mountFunctionalDosimetryImport} from './functional-dosimetry-import.js';
 import {mountFunctionalDosimetry} from './functional-dosimetry.js';
 import {requestFunctionalDosimetry} from './functional-client.js';
@@ -77,7 +78,7 @@ function performanceDetail({total,percentage,updatedAt}) {
     medium:'Você atingiu valores médios de desempenho, seu esforço e maior engajamento contribuirá para melhoria contínua dos nossos processos de qualidade e segurança.',
     high:'Você demonstra empenho e engajamento nos processos da equipe. O SAHMT agradece pelo seu apoio!'
   };
-  const updated=new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short',timeZone:'America/Sao_Paulo'}).format(updatedAt);
+  const updated=formatDisplayDateTime(updatedAt);
   return '<div class="functional-performance"><p class="functional-performance-total"><span>PONTOS TOTAIS ADQUIRIDOS</span><strong>'+pointsFormat.format(total)+'</strong></p>'
     + '<p class="functional-performance-relative"><strong class="functional-performance-percent" data-tone="'+tone+'">'+percentage+'%</strong><span>Da maior pontuação da Equipe</span></p>'
     + '<div><p><strong>Margens de avaliação</strong></p><ul class="functional-performance-bands">'

@@ -22,3 +22,12 @@ test('recipient archive keeps stable identity, original group and first-read tim
  const parsed=api.parseHistoryRecipient(api.historyRecipientRow(message,recipient));
  assert.equal(parsed.uid,'one');assert.equal(parsed.institutionalGroup,'team');assert.equal(parsed.readAt,recipient.readAt);assert.equal(parsed.completedAt,null);
 });
+test('archive date presentation is Brazilian and reads both previous ISO and localized rows',()=>{
+ const row=api.historyMessageRow(message);
+ assert.equal(row[1],'15/11/2026 11:00:00.000 UTC');
+ assert.equal(api.parseHistoryMessage(row).publishAt,message.publishAt);
+ row[1]=new Date(message.publishAt).toISOString();
+ assert.equal(api.parseHistoryMessage(row).publishAt,message.publishAt);
+ row[1]='31/02/2026 11:00:00.000 UTC';
+ assert.equal(api.parseHistoryMessage(row).publishAt,null);
+});

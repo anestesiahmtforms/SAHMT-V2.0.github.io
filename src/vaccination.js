@@ -1,10 +1,11 @@
+import {formatDisplayDateTime} from './date-format.js';
 import './vaccination.css';
 import {VACCINES,VACCINATION_CATEGORIES,VACCINATION_YEARS,VACCINATION_STATUSES,VACCINATION_DECLARATIONS,validateVaccinationInput,vaccinationProfileCategory} from './vaccination-domain.js';
 import {createVaccinationClient} from './vaccination-client.js';
 import {prepareDocumentFile,documentBase64,documentSizeLabel} from './document-image.js';
 const h=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const label=id=>({tetanus:'Antitetânica',mmr:'Triviral'}[id]||VACCINES.find(v=>v.id===id)?.label||id);
-const date=value=>value?new Intl.DateTimeFormat('pt-BR',{dateStyle:'short',timeStyle:'short'}).format(new Date(value)):'—';
+const date=value=>formatDisplayDateTime(value,{fallback:'—'});
 const pct=value=>value===null?'Sem respostas':new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1}).format(value)+'%';
 const btn=(action,text,extra='')=>`<button type="button" data-vac="${action}" ${extra}>${text}</button>`;
 const shield='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M12 3 3 7v6c0 5 9 9 9 9s9-4 9-9V7l-9-4Z"/><path d="M12 8v8M8 12h8"/></svg>';

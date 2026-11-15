@@ -1,3 +1,4 @@
+import {formatDisplayDate} from '../src/date-format.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
@@ -35,7 +36,7 @@ function trainings({holdOpen = false, holdBegin = false, completed = false,admin
     throw Error(action);
   };
   const source = readFileSync(new URL('../src/html-training.js', import.meta.url), 'utf8');
-  const ctx = vm.createContext({...model, ...activity, crypto:{randomUUID}, h: model.escapeHtml, trainingCategories, trainingFolderLevel, trainingPathAllowed, trainingAccessPath, validTrainingFolderPath, renderTrainingDocumentCard, mountTrainingAudit() {}, root, api});
+  const ctx = vm.createContext({formatDisplayDate, ...model, ...activity, crypto:{randomUUID}, h: model.escapeHtml, trainingCategories, trainingFolderLevel, trainingPathAllowed, trainingAccessPath, validTrainingFolderPath, renderTrainingDocumentCard, mountTrainingAudit() {}, root, api});
   vm.runInContext(source.replace(/^import[^\n]+\n/gm, '').replaceAll('export ', '').replaceAll('import.meta.env', '{}'), ctx);
   let notifyPolicy;
   const controller = ctx.mountHtmlTrainings(root, {user: {uid: 'one'},profile:admin?{role:'administrador_app'}:{}, api,

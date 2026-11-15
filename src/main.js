@@ -1,3 +1,4 @@
+import {formatDisplayDate, formatDisplayDateTime} from './date-format.js';
 import {homeScheduleCache} from './home-entry-cache.js';
 import {operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalContentAllowed, watchOperationalFolderPolicy, setOperationalFolderSession, operationalFolderNotice} from './operational-folder-runtime.js';
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
@@ -1143,7 +1144,7 @@ async function loadHome() {
     const cached=homeScheduleCache.read(uid,dateInput.value);
     if(!cached){content.innerHTML='<p class="empty-state">Sem cópia local para esta data. Abra a Escala para consultar.</p>';return;}
     const view=buildScheduleView(cached.schedule,dateInput.value,cached.vacations,[]);
-    const saved=new Date(cached.savedAt).toLocaleString('pt-BR');
+    const saved=formatDisplayDateTime(cached.savedAt);
     content.innerHTML='<p class="record-meta" data-home-cache-status>Cópia deste aparelho · '+escapeHtml(saved)+'</p>'+(view.positions.length?renderSchedulePositionGrid(view,{mode:'home',schedule:cached.schedule,eventsWritable:false}):'<p class="empty-state">A última escala salva não contém posições.</p>');
     fitSchedulePositionGrid(content);
   };
@@ -2018,11 +2019,11 @@ async function loadModule(route) {
       }
     } else {
       const heading = (item) => route === 'events'
-        ? `${item.memberName || 'Evento'}${item.date ? ` · ${item.date}` : ''}`
+        ? `${item.memberName || 'Evento'}${item.date ? ` · ${formatRecordDate(item.date)}` : ''}`
         : route === 'labels'
           ? `${item.patientName || 'Etiqueta'}${item.date ? ` · ${formatRecordDate(item.date)}` : ''}`
           : route === 'checklist'
-            ? `${item.stationName || item.stationId || 'Checklist'}${item.date ? ` · ${item.date}` : ''}`
+            ? `${item.stationName || item.stationId || 'Checklist'}${item.date ? ` · ${formatRecordDate(item.date)}` : ''}`
             : item.title || item.name || item.label || item.sigla || item.id;
     content.innerHTML = items.length ? `<ul class="record-list">${items.map((item) => `<li><strong>${escapeHtml(heading(item))}</strong>${route === 'labels' ? `<small>${escapeHtml(item.type || '')}${item.encounterCode ? ` · Atendimento ${escapeHtml(item.encounterCode)}` : ''}</small><small>${escapeHtml(item.creditor || '')}${item.staffSiglas?.length ? ` · ${escapeHtml(item.staffSiglas.join(', '))}` : ''}</small>` : item.description || item.occurrence ? `<small>${escapeHtml(item.description || item.occurrence)}</small>` : ''}${item.status ? `<small class="record-meta">${escapeHtml(item.status)}</small>` : ''}</li>`).join('')}</ul>` : '<p class="empty-state">Nenhum registro disponível.</p>';
     }
@@ -3384,7 +3385,7 @@ function exportLabelReport() {
     if (/^[=+@\-]/.test(text)) text = `'${text}`;
     return `"${text.replaceAll('"', '""')}"`;
   };
-  const rows = [columns, ...loadedLabelRecords.map((item) => [item.date, item.patientName, item.procedureCode, item.encounterCode, item.type, item.amount ?? '', item.insurance, item.creditor, item.staffSiglas?.join(', ') || ''])];
+  const rows = [columns, ...loadedLabelRecords.map((item) => [formatRecordDate(item.date), item.patientName, item.procedureCode, item.encounterCode, item.type, item.amount ?? '', item.insurance, item.creditor, item.staffSiglas?.join(', ') || ''])];
   const blob = new Blob(['\ufeff', rows.map((row) => row.map(cell).join(';')).join('\r\n')], {type: 'text/csv;charset=utf-8'});
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -3447,8 +3448,8 @@ async function shareReportPdf(kind) {
     ? ['#', 'Data', 'Nome do Paciente', ...optionalLabelColumns.map(([label]) => label)]
     : ['#', 'Data', 'Sigla da escala', 'Sigla do membro', 'Membro/Situação', 'Tipo', 'Descrição', 'Múltiplo', 'Substituto', 'Turno', 'Pagador', 'Credor', 'Valor (R$)'];
   const rows = isLabel
-    ? pdfRecords.map((item, index) => [index + 1, item.date, item.patientName, ...optionalLabelColumns.map(([, getValue]) => getValue(item) || '')])
-    : pdfRecords.map((item, index) => [index + 1, item.date, item.scheduleSigla || '', item.memberSigla || '', item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, item.amountToPay == null ? '' : Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})]);
+    ? pdfRecords.map((item, index) => [index + 1, formatRecordDate(item.date), item.patientName, ...optionalLabelColumns.map(([, getValue]) => getValue(item) || '')])
+    : pdfRecords.map((item, index) => [index + 1, formatRecordDate(item.date), item.scheduleSigla || '', item.memberSigla || '', item.memberStatus, item.eventType, item.description, item.delayMultiple ?? '', item.substitute, item.shift, item.payer, item.creditor, item.amountToPay == null ? '' : Number(item.amountToPay).toLocaleString('pt-BR', {minimumFractionDigits: 2})]);
   const alertRowIndexes = isLabel ? pdfRecords.flatMap((item, index) => ['Particular', 'Complementação'].includes(item.type) ? [index] : []) : [];
   const alertCount = alertRowIndexes.length;
   button.disabled = true;
@@ -3464,7 +3465,7 @@ async function shareReportPdf(kind) {
     const {createAndSharePdf} = await loadReportPdfModule();
     if (!reportScopeCurrent(reportScope)) return;
     const title = isLabel ? 'ETIQUETAS SAHMT' : 'SAHMT · EVENTOS';
-    const periodLabel = isLabel && mode === 'monthly' ? formatReportMonth(period) : period;
+    const periodLabel = mode === 'monthly' ? formatReportMonth(period) : formatRecordDate(period);
     const reportPeriod = `${mode === 'daily' ? 'Relatório diário' : 'Relatório mensal'} de ${periodLabel} · ${pdfRecords.length} entrada(s)${isLabel ? ` · ${alertCount} alerta(s)` : ''}${partial ? ' · PARCIAL: há registros ainda não carregados' : ''}`;
     const result = await createAndSharePdf({title, period: reportPeriod, fileName: `SAHMT-${isLabel ? 'Etiquetas' : 'Eventos'}-${period}`, columns, rows, orientation: isLabel ? 'landscape' : undefined, alertRowIndexes, labelDateGroups});
     status.textContent = result === 'shared' ? 'PDF aberto no compartilhamento do aparelho.' : 'PDF gerado e baixado neste aparelho.';
@@ -3958,17 +3959,11 @@ async function loadActivityInteractions(panel, activityId) {
 }
 
 function formatRecordDate(value) {
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    const [year, month, day] = value.split('-');
-    return `${day}/${month}/${year}`;
-  }
-  const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('pt-BR', {timeZone: 'America/Sao_Paulo'}).format(date);
+  return formatDisplayDate(value);
 }
 
 function interactionDateTime(value) {
-  const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-  return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat('pt-BR', {timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short'}).format(date);
+  return formatDisplayDateTime(value);
 }
 
 function todayInputValue() {

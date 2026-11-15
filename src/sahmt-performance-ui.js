@@ -1,9 +1,8 @@
+import {formatDisplayDateTime} from './date-format.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number = value => Number.isFinite(value) ? new Intl.NumberFormat('pt-BR', {maximumFractionDigits:2}).format(value) : '—';
 const time = value => {
-  if (!value) return 'Data indisponível';
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat('pt-BR', {dateStyle:'short',timeStyle:'short',timeZone:'America/Sao_Paulo'}).format(date) : 'Data indisponível';
+  return formatDisplayDateTime(value, {fallback: 'Data indisponível'});
 };
 export const SAHMT_PERFORMANCE_CATEGORIES = Object.freeze([
   {id:'OPERATIONS',label:'ATIVIDADES OPERACIONAIS',source:'Checklist e escala · FG / FI'},

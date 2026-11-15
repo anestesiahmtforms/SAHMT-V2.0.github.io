@@ -1,3 +1,4 @@
+import {formatDisplayDate} from './date-format.js';
 const CONFIG = Object.freeze({
   events: {label: 'Eventos', title: 'RELATÓRIO'},
   labels: {label: 'Etiquetas', title: 'RELATÓRIO'},
@@ -15,7 +16,7 @@ function summarize(kind, record) {
     labels: ['patientName', 'type', 'encounterCode', 'date'],
     checklist: ['stationName', 'condition', 'occurrence', 'date']
   }[kind];
-  return fields.map(field => displayValue(record?.[field])).filter(Boolean).join(' · ');
+  return fields.map(field => field === 'date' ? formatDisplayDate(record?.[field]) : displayValue(record?.[field])).filter(Boolean).join(' · ');
 }
 
 export function createOfflineReportView({kind, period, day = '', records = [], hasSnapshot = false} = {}) {
@@ -35,7 +36,7 @@ export function createOfflineReportView({kind, period, day = '', records = [], h
     available: true,
     title,
     message: lines.length
-      ? `Cópia local de ${day || 'hoje'} · ${lines.length} registro(s)\n\n${lines.join('\n')}`
+      ? `Cópia local de ${formatDisplayDate(day) || 'hoje'} · ${lines.length} registro(s)\n\n${lines.join('\n')}`
       : `Nenhum registro de ${config.label.toLowerCase()} deste dia está disponível na cópia deste aparelho. Esta abertura não consultou o Firestore.`
   };
 }

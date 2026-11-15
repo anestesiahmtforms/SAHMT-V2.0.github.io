@@ -1,3 +1,4 @@
+import {formatDisplayDate} from './date-format.js';
 const EQUIPMENT_STATUS = Object.freeze({
   OPERATIONAL: 'Operacional', MAINTENANCE: 'Em manutenção', OUT_OF_SERVICE: 'Fora de serviço', RETIRED: 'Retirado'
 });
@@ -9,8 +10,7 @@ function escapeHtml(value) {
 
 function displayDate(value) {
   if (!value) return 'Sem prazo';
-  const date = typeof value?.toDate === 'function' ? value.toDate() : new Date(value);
-  return Number.isNaN(date.getTime()) ? 'Data inválida' : new Intl.DateTimeFormat('pt-BR', {timeZone: 'America/Sao_Paulo'}).format(date);
+  return formatDisplayDate(value, {fallback: 'Data inválida'});
 }
 
 export async function mountEquipmentManager(target, {managementAreaId, uid}) {

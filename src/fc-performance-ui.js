@@ -1,8 +1,9 @@
+import {formatDisplayDateTime} from './date-format.js';
 import {fcPerformancePresentation} from './fc-performance-data.js';
 const escape=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const number=value=>new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(value);
 const modalities={OCCURRENCE:'Registro de ocorrência',ACKNOWLEDGEMENT:'Ciência de análise',SUGGESTION:'Sugestão aprovada'};
-function date(value){const d=value?.toDate?.()??value;return d instanceof Date&&Number.isFinite(d.getTime())?d.toLocaleString('pt-BR'):'Aguardando confirmação';}
+function date(value){return formatDisplayDateTime(value,{fallback:'Aguardando confirmação'});}
 const messages={loading:'Carregando seu desempenho…',preparing:'O Desempenho FC está em preparação.',pending:'As pontuações estão sendo confirmadas. Aguarde a atualização do saldo.',offline:'Conecte-se à internet para confirmar seu saldo atual.',blocked:'Não foi possível confirmar seu acesso ao Desempenho FC.'};
 export function fcPerformanceMarkup(snapshot){
  const view=snapshot?fcPerformancePresentation(snapshot):{state:'loading'};

@@ -1,3 +1,4 @@
+import {formatDisplayDateTime} from './date-format.js';
 const DAY_KEY = /^\d{4}-\d{2}-\d{2}$/;
 const REPORT_MODULES = new Set(['events', 'labels']);
 
@@ -31,7 +32,7 @@ function recordList(records, describe, emptyMessage = 'Nenhum registro deste dia
 }
 
 function cacheStamp(snapshot) {
-  return snapshot?.cachedAt ? `<small class="record-meta">Cópia salva em ${html(new Date(snapshot.cachedAt).toLocaleString('pt-BR'))}</small>` : '';
+  return snapshot?.cachedAt ? `<small class="record-meta">Cópia salva em ${html(formatDisplayDateTime(snapshot.cachedAt))}</small>` : '';
 }
 
 export function mountOfflineOperationalDashboard(host, markup) {

@@ -67,7 +67,15 @@ async function runtime(env,fetchImpl,buildService,actor,headers){
    try{await historyDrive.verify();verified=true;}
    catch(error){code=error.code||'COMM_HISTORY_UNAVAILABLE';archiveApi=error.archiveApi||'';archiveHttpStatus=error.archiveHttpStatus||0;}
    await store.transaction(tx=>tx.set('communicationHistoryHealth','2026',{verified,code,archiveApi,archiveHttpStatus,checkedAt:Date.now()}));
-   if(verified)await history.recover();
+   if(verified){
+    const presentation=await store.get('communicationHistoryPresentation','2026');
+    if(presentation?.format!=='dd/mm/yyyy'){
+     const result=await historyDrive.formatExistingDates();
+     await store.transaction(tx=>tx.set('communicationHistoryPresentation','2026',{format:'dd/mm/yyyy',changed:result.changed,verifiedAt:Date.now()}));
+     return;
+    }
+    await history.recover();
+   }
   }
  };
 }
