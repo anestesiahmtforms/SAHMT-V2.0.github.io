@@ -108,3 +108,5 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 
 .management-hub-dialog[data-panel="institutional"] .management-hub-header{display:block}
 .management-hub-dialog[data-panel="institutional"] .management-hub-header [data-hub-heading-icon],.management-hub-dialog[data-panel="institutional"] .management-hub-user-row{display:none}
+
+@media(max-width:520px){.management-hub-dialog[data-panel="institutional"] .management-hub-arrow{display:none}}
