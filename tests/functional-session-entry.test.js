@@ -1,3 +1,4 @@
+import {renderOperationalFolderDirectory} from '../src/operational-folder-directory.js';
 import {formatDisplayDateTime} from '../src/date-format.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,7 +29,7 @@ test('a group excluded from FK completes other sessions without FK credential ex
  controller.observeTarget('FK',null);assert.equal(controller.snapshot().complete,true);
 });
 
-function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUid=person.uid,administrator=false,readTeam=async()=>({snapshot:null,recognition:null})}={}){
+function ui({folderAllowed=()=>true,connected=true,refresh=async()=>{},initialReadFails=false,profileUid=person.uid,administrator=false,readTeam=async()=>({snapshot:null,recognition:null})}={}){
  const source=readFileSync(new URL('../src/functional-ui.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');
  const updates=[],auth={currentUser:{uid:person.uid}},sources={innerHTML:''},status={textContent:''};
  let recovery=0,reads=0,authChanged;
@@ -44,11 +45,11 @@ function ui({connected=true,refresh=async()=>{},initialReadFails=false,profileUi
  const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s],closest:()=>({querySelector:()=>header})};
  const openPicker=()=>listeners.get('click')({target:{closest:s=>s==='[data-fk-team]'?button:null}});
  const choose=value=>listeners.get('change')({target:{value,matches:s=>s==='[data-fk-subject]'}});
- const context=vm.createContext({formatDisplayDateTime,setTimeout,clearTimeout,env:{VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED:'true'},
+ const context=vm.createContext({renderOperationalFolderDirectory,formatDisplayDateTime,setTimeout,clearTimeout,env:{VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED:'true'},
   onAuthStateChanged:(_auth,callback)=>{authChanged=callback;return()=>{};},
   getFunctionalAuth:()=>auth,getFunctionalFirestore:()=>({}),waitForGoogleProjectSession:async()=>connected,
   readFunctionalTeamOverview:readTeam,listFunctionalTeam:async()=>[{uid:'ana',name:'Ana'},{uid:'bia',name:'Bia'}],
-  refreshFunctionalOverview:refresh,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
+  refreshFunctionalOverview:refresh,operationalContentAllowed:folderAllowed,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
   getDocFromServer:async path=>{if(path.startsWith('functionalRecognition'))return {exists:()=>true,data:()=>({uid:person.uid,message:'Mensagem própria'})};reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}},biosafetyManual:{state:'READY'}}})};}});
  vm.runInContext(source,context);
  return {root,sources,status,owner,recognition,select,openPicker,choose,detail,detailBody,detailTitle,openSource,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
@@ -130,4 +131,28 @@ test('FK clears visible data when the destination session changes',async()=>{
  assert.equal(f.owner.hidden,true);
  assert.equal(f.recognition.hidden,true);
  assert.equal(f.recognition.textContent,'');
+});
+
+
+test('inactive Funcional keeps the nested directory visible without starting source reads',async()=>{
+ let refreshes=0;
+ const f=ui({folderAllowed:()=>false,refresh:async()=>refreshes++});
+ const cleanup=await f.run();
+ assert.match(f.root.innerHTML,/<summary>Biossegurança<\/summary>[\s\S]*<summary>Dosimetria<\/summary>/);
+ assert.match(f.root.innerHTML,/Pesquisas institucionais/);
+ assert.doesNotMatch(f.root.innerHTML,/data-fk-dose-admin|iframe/);
+ assert.equal(refreshes,0);
+ cleanup();
+});
+
+test('inactive functional subfolder opens its status without launching a result request',async()=>{
+ const f=ui({folderAllowed:id=>id!=='funcional/cadastro-profissional'});
+ const cleanup=await f.run();
+ assert.match(f.root.innerHTML,/data-fk-source="professionalRegistration"[^>]*>/);
+ assert.doesNotMatch(f.root.innerHTML,/data-fk-source="professionalRegistration"[^>]*disabled/);
+ f.openSource('professionalRegistration');
+ assert.equal(f.detail.open,true);
+ assert.match(f.detailBody.innerHTML,/Cadastro profissional/);
+ assert.doesNotMatch(f.detailBody.innerHTML,/data-fk-result|Consultando/);
+ cleanup();
 });

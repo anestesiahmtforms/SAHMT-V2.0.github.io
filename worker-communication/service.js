@@ -348,6 +348,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(!input||Array.isArray(input)||typeof input!=='object')throw fail('COMM_INVALID_INPUT');
   const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGE_READ','PENDING_ACTIVITIES','VERIFY_ACTIVITY','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
   if(!regular.has(action))admin(a);
+  if(!regular.has(action)&&operationalNoticeIdentity(a)&&!['CREATE_EVENT','DIRECTORY','SAVE_MESSAGE'].includes(action))throw fail('COMM_FORBIDDEN',403);
   if(action==='SENT_MESSAGES'&&!communicationSenderRole(a.email))throw fail('COMM_FORBIDDEN',403);
   // Validate authorization before accessing directory, rate records or messages.
   const ownProfile=await profile(a.uid,a.email);a={...a,sourceUid:ownProfile.uid};await admit(a,action);

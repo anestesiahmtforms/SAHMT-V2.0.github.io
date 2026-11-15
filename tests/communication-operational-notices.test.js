@@ -50,6 +50,14 @@ test('a criação de evento respeita os públicos locais e o mesmo envio só pub
  const directory=await f.call('DIRECTORY');
  assert.equal(directory.items.find(user=>user.uid===person.sourceUid).institutionalGroup,'team');
 });
+test('gestor operacional cannot administer history or mandatory activities',async()=>{
+ const f=fixture();
+ for(const action of ['ACTIVITY_CATALOG','PREVIEW_ACTIVITY','CREATE_ACTIVITY','CANCEL_ACTIVITY','SENT_MESSAGES','SENT_DETAIL','HISTORY_RETRY','SETTINGS','SAVE_SETTINGS','MESSAGES','GROUPS','HISTORY','AUDIT']){
+  await assert.rejects(f.call(action,{}),{code:'COMM_FORBIDDEN'});
+ }
+ assert.equal(f.store.data.has('communicationActivityPreviews/undefined'),false);
+ assert.equal(f.queued.length,0);
+});
 
 test('aviso de liberação rejeita as escalas anterior e posterior mesmo quando já marcadas',async()=>{
  const f=fixture();

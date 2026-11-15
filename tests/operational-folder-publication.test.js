@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {publishFolderAvailability,inspectFolderPublication} from '../worker-folder-policy/publication.js';
-import {operationalFolderAllowed} from '../src/operational-folders.js';
+import {operationalFolders,operationalFolderAllowed} from '../src/operational-folders.js';
 import {createFolderPolicyWorker,createFolderPolicyStore} from '../worker-folder-policy/worker.js';
 import {encodeFields} from '../worker-training/firestore.js';
 
@@ -171,4 +171,67 @@ test('inspection is available through the authenticated administrator endpoint',
  assert.equal(report.stations.length,9);
  assert.ok(report.stations.every(row=>row.state==='missing'));
  assert.equal(store.writes.length,0);
+});
+
+
+test('activating an inherited-disabled subfolder opens its path and preserves every other inactive branch',async()=>{
+ const store=memory(),root='operacao',selected='operacao/checklist/desempenho';
+ await run(store,{id:root,enabled:false,revision:0});
+ const before=(await store.read('FA')).value;
+ await run(store,{id:selected,enabled:true,revision:1});
+ const policy=(await store.read('FA')).value;
+ assert.equal(policy.revision,2);
+ for(const folder of Object.keys(operationalFolders)){
+  const onPath=selected===folder||selected.startsWith(folder+'/');
+  assert.equal(operationalFolderAllowed(policy,folder),onPath?true:operationalFolderAllowed(before,folder),folder);
+ }
+ for(const target of ['FA','FB','FC','FD','FE','FF','FG','FH','FI','FJ'])assert.deepEqual((await store.read(target)).value,policy);
+});
+
+test('effective activation clears multiple disabled ancestors and keeps explicitly disabled descendants',async()=>{
+ const store=memory(),root='funcional',selected=root+'/biosseguranca',child=selected+'/manual';
+ await run(store,{id:child,enabled:false,revision:0});
+ await run(store,{id:selected,enabled:false,revision:1});
+ await run(store,{id:root,enabled:false,revision:2});
+ await run(store,{id:selected,enabled:true,revision:3});
+ const policy=(await store.read('FA')).value;
+ assert.equal(operationalFolderAllowed(policy,root),true);
+ assert.equal(operationalFolderAllowed(policy,selected),true);
+ assert.equal(operationalFolderAllowed(policy,selected+'/vacinacao'),true);
+ assert.equal(operationalFolderAllowed(policy,child),false);
+ assert.equal(operationalFolderAllowed(policy,root+'/cadastro-profissional'),false);
+ assert.equal(operationalFolderAllowed(policy,root+'/pesquisas-institucionais/clima'),false);
+ await run(store,{id:child,enabled:true,revision:4});
+ assert.equal(operationalFolderAllowed((await store.read('FA')).value,child),true);
+});
+
+test('child activation remains blocked during failed preparation and resumes with inactive siblings preserved',async()=>{
+ const store=memory(),selected='operacao/checklist/desempenho';
+ await run(store,{id:'operacao',enabled:false,revision:0});
+ store.fail('FJ');
+ assert.deepEqual(await run(store,{id:selected,enabled:true,revision:1}),{revision:2,pending:true});
+ for(const target of ['FA','FB','FC','FD','FE','FF','FG','FH','FI','FJ']){
+  const policy=(await store.read(target)).value;
+  assert.equal(operationalFolderAllowed(policy,selected),false,target);
+  assert.equal(operationalFolderAllowed(policy,'operacao/etiquetas'),false,target);
+ }
+ store.fail(null);
+ assert.deepEqual(await run(store,{resume:true,revision:2}),{revision:2,pending:false});
+ for(const target of ['FA','FB','FC','FD','FE','FF','FG','FH','FI','FJ']){
+  const policy=(await store.read(target)).value;
+  assert.equal(operationalFolderAllowed(policy,selected),true,target);
+  assert.equal(operationalFolderAllowed(policy,'operacao/etiquetas'),false,target);
+  assert.equal(operationalFolderAllowed(policy,'operacao/escala/ferias'),false,target);
+ }
+});
+
+
+test('deep effective activation removes every disabled strict ancestor',async()=>{
+ const store=memory(),root='funcional',parent=root+'/biosseguranca',selected=parent+'/dosimetria';
+ await run(store,{id:root,enabled:false,revision:0});
+ await run(store,{id:parent,enabled:false,revision:1});
+ await run(store,{id:selected,enabled:true,revision:2});
+ const policy=(await store.read('FA')).value;
+ for(const id of [root,parent,selected])assert.equal(operationalFolderAllowed(policy,id),true,id);
+ for(const id of [root+'/desempenho',parent+'/manual',parent+'/vacinacao'])assert.equal(operationalFolderAllowed(policy,id),false,id);
 });

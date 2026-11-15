@@ -1,6 +1,6 @@
 import {BUILTIN_GROUPS, adminIdentity} from '../communication/domain.js';
 import {communicationEntryFromSession} from './communication-entry.js';
-import {communicationSenderRole} from './communication-operational-notices.js';
+import {communicationSenderRole, operationalNoticeIdentity} from './communication-operational-notices.js';
 import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-text.js';
 import {communicationLimitMessage} from './communication-usage.js';
 import {openActivityComposer} from './communication-activity-ui.js';
@@ -42,6 +42,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   const active = () => !disposed && isCurrent();
   const dialog = root.closest('.management-hub-dialog');
   const canCreateEvents = adminMode && adminIdentity(appSession?.user) && Boolean(communicationSenderRole(appSession.user.email));
+  const canManageCommunication = canCreateEvents && !operationalNoticeIdentity(appSession.user);
 
   async function pendingEventKey(payload) {
     const uid = appSession?.user?.uid;
@@ -106,7 +107,8 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     composeState = undefined;
     activityState = undefined;
     if (canCreateEvents) {
-      render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button><button type="button" data-create-activity>TREINAMENTOS E ENQUETES</button><button type="button" data-sent-messages>MENSAGENS ENVIADAS</button></div>', {menu: true});
+      render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button>'+
+        (canManageCommunication?'<button type="button" data-create-activity>TREINAMENTOS E ENQUETES</button><button type="button" data-sent-messages>MENSAGENS ENVIADAS</button>':'')+'</div>', {menu: true});
       return;
     }
     void inbox();
@@ -261,12 +263,12 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   }
 
   function loadSentMessages() {
-    if (!canCreateEvents) return;
+    if (!canManageCommunication) return;
     openCommunicationHistory({root, client, render, status, report, isCurrent: active, audienceOptions, onRecover: recoverGoogle});
   }
 
   function activityForm() {
-    if (!canCreateEvents) return;
+    if (!canManageCommunication) return;
     composeState = undefined;
     activityState ??= {};
     openActivityComposer({root, client, render, status, report, isCurrent: active, audienceOptions,

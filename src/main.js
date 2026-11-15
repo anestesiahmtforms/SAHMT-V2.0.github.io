@@ -1,6 +1,6 @@
 import {formatDisplayDate, formatDisplayDateTime} from './date-format.js';
 import {homeScheduleCache} from './home-entry-cache.js';
-import {operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalContentAllowed, watchOperationalFolderPolicy, setOperationalFolderSession, operationalFolderNotice} from './operational-folder-runtime.js';
+import {operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalRouteActivityAllowed, operationalContentAllowed, watchOperationalFolderPolicy, setOperationalFolderSession, operationalFolderNotice} from './operational-folder-runtime.js';
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
 import {isChecklistScienceOpen} from './checklist-science-clock.js';
 import {createAccountMode} from './account-mode.js';
@@ -10,6 +10,7 @@ import {mountVaccinationEntry} from './vaccination-entry.js';
 import {discardLegacyOfflineData} from './discard-legacy-offline-data.js';
 import './styles.css';
 import {operationalRouteFolder, operationalFolders} from './operational-folders.js';
+import {renderOperationalFolderDirectory} from './operational-folder-directory.js';
 import './home-layout.css';
 import './performance-ui.css';
 import './fc-performance.css';
@@ -282,7 +283,7 @@ const reportPermissions = {
   checklist: ['checklistRead', 'checklistWrite', 'checklistSign', 'checklistManage']
 };
 function reportAllowed(kind) {
-  return (typeof operationalFolderRouteAllowed!=='function'||operationalFolderRouteAllowed(kind)) &&
+  return (typeof operationalRouteActivityAllowed!=='function'||operationalRouteActivityAllowed(kind)) &&
     session.status === 'signed-in' && Boolean(session.user?.uid) && featureEnabledForRoute(kind, appFeatures) &&
     (reportPermissions[kind].some(can) || (kind === 'events' && canManageScheduleEvents()));
 }
@@ -775,7 +776,7 @@ function moduleCards() {
       && (commonModules.includes(route) || permissionFor[route]?.some(can))
     && (route === 'management' || featureEnabledForRoute(route, appFeatures))).sort(([a], [b]) => ['checklist','schedule','labels','management'].indexOf(a) - ['checklist','schedule','labels','management'].indexOf(b)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(route==='management'?'management-hub':route)?' disabled aria-disabled="true" title="Pasta desativada ou sem confirmação do servidor"':route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',people:'PS',admin:'AD'}[route]}</span>`}
-    <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
+    <span><strong>${title}</strong><small>${typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(route)?'Pasta inativa ou indisponível · Navegação disponível':subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`).join('');
 }
 
@@ -916,7 +917,7 @@ function fitSchedulePositionGrid(container) {
 }
 
 function canManageScheduleEvents() {
-  if(typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed('events'))return false;
+  if(typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed('events'))return false;
   return featureEnabledForRoute('events', appFeatures) && scheduleReleaseIdentity(session.profile, session.user);
 }
 
@@ -925,7 +926,7 @@ function canEditScheduleEvents() {
 }
 
 function canReadScheduleEvents() {
-  if(typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed('events'))return false;
+  if(typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed('events'))return false;
   return featureEnabledForRoute('events', appFeatures) && (can('eventsRead') || can('eventsWrite') || scheduleReleaseIdentity(session.profile, session.user));
 }
 
@@ -1948,7 +1949,7 @@ async function loadModule(route) {
       const areaSlug=location.hash.split('/')[2];
       if(items.some(item=>item.id===areaSlug))selectedManagementAreaId=areaSlug;
       if (!items.some((item) => item.id === selectedManagementAreaId)) selectedManagementAreaId = items[0]?.id || '';
-      const areas = items.map((item) => `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}"${typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+item.id)?' disabled aria-disabled="true"':''} aria-pressed="${item.id === selectedManagementAreaId}">${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
+      const areas = items.map((item) => `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}">${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}${typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+item.id)?' · Pasta inativa':''}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
       const existingAreaIds = new Set(items.map((item) => item.id));
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
@@ -1961,7 +1962,7 @@ async function loadModule(route) {
         session.status === 'signed-in' && session.user?.uid === requestUid && session.profile?.active === true && session.profile?.access === true && featureEnabledForRoute('management', appFeatures);
       const {mountManagementEvaluationAccess} = await import('./performance-ui.js');
       if (!evaluationCurrent()) return;
-      cleanupCurrentModule = mountManagementEvaluationAccess(evaluationHost, {uid: requestUid, profile: session.profile, areas: items, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: evaluationCurrent});
+      cleanupCurrentModule = (typeof operationalContentAllowed!=='function'||operationalContentAllowed('gestao'))?mountManagementEvaluationAccess(evaluationHost, {uid: requestUid, profile: session.profile, areas: items, isAdmin: () => can('admin'), canReviewSuggestions: () => can('managementManage') || can('qualityManage'), isCurrent: evaluationCurrent}):()=>{};
       const areaDialog = content.querySelector('#management-area-dialog');
       const evaluationDialog = evaluationHost.querySelector('.evaluation-governance-dialog');
       const refreshLocalCatalogAfterClose = () => {
@@ -2057,7 +2058,7 @@ async function loadAdminModule(content) {
     const {listUserProfiles, listAccessRequests,listMemberCategoryAssignments,listLabelModuleProfiles} = await import('./fi-admin-data.js');
     const [rawProfiles, accessRequests] = await Promise.all([listUserProfiles(), listAccessRequests()]);
     let labelProfiles=[],labelProfileLoadFailed=false;
-    if (can('labelsManage')&&(typeof operationalFolderRouteAllowed!=='function'||operationalFolderRouteAllowed('labels'))) {
+    if (can('labelsManage')&&(typeof operationalRouteActivityAllowed!=='function'||operationalRouteActivityAllowed('labels'))) {
       try { labelProfiles=await listLabelModuleProfiles({uid:session.user.uid}); }
       catch { labelProfileLoadFailed=true; }
     }
@@ -3477,7 +3478,6 @@ async function shareReportPdf(kind) {
 }
 
 async function loadManagementAreaActivities(area) {
-  if(typeof operationalContentAllowed==='function'&&area&&!operationalContentAllowed('gestao/'+area.id))return;
   cleanupDocumentTraining?.(); cleanupDocumentTraining=null;
   const detail = document.querySelector('#management-area-detail');
   const loadId = ++managementActivityLoad;
@@ -3485,13 +3485,11 @@ async function loadManagementAreaActivities(area) {
   if (!detail) return;
   if (!area) { detail.innerHTML = '<p class="empty-state">Selecione uma área.</p>'; return; }
   if(typeof operationalFolderNotice==='function'){
-    const status=detail.closest('.management-area-dialog')?.querySelector('[data-management-folder-notice]');
+    const status=detail.closest?.('.management-area-dialog')?.querySelector('[data-management-folder-notice]');
     if(status)status.innerHTML=operationalFolderNotice('gestao/'+area.id);
   }
-  if(typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+area.id)){
-    detail.innerHTML='<p class="empty-state" role="status">Esta pasta está desativada.</p>';
-    return;
-  }
+  const activityForm=detail.closest?.('.management-area-dialog')?.querySelector('[data-module-form]');
+  if(activityForm)activityForm.hidden=typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+area.id);
   if (deployment.target === 'FB' && area.id === 'area-gestao-de-documentos') {
     detail.innerHTML = '<p class="loading" role="status">Carregando treinamentos…</p>';
     try {
@@ -3514,6 +3512,12 @@ async function loadManagementAreaActivities(area) {
       detail.querySelector('[data-retry-document-training]')?.addEventListener('click', () => { void loadManagementAreaActivities(area); });
       detail.querySelector('[data-repair-document-training]')?.addEventListener('click', () => { repairAppFiles({target: deployment.target, hash: route}); });
     }
+    return;
+  }
+  if(typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+area.id)){
+    detail.innerHTML=renderOperationalFolderDirectory('gestao/'+area.id);
+    const form=detail.closest('.management-area-dialog')?.querySelector('[data-module-form]');
+    if(form)form.hidden=true;
     return;
   }
   detail.innerHTML = `<header class="management-detail-heading"><div><p class="eyebrow">ATIVIDADES</p><h3>${escapeHtml(area.name || area.title || area.id)}</h3></div>${can('managementActivityWrite') ? '<button class="secondary-button" type="button" id="new-area-activity">Nova atividade</button>' : ''}</header><p class="loading">Carregando atividades…</p>`;
@@ -5427,6 +5431,12 @@ async function render() {
   if (!authLimited && !(requestedRoute === 'occurrences' ? hasOccurrencePermission() : featureEnabledForRoute(requestedRoute, appFeatures))) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está desativada pela Administração.`;
     navigate('home');
+    return;
+  }
+  if(!authLimited&&typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(requestedRoute)&&!['management','functional'].includes(requestedRoute)){
+    const folder=operationalRouteFolder(requestedRoute);
+    app.innerHTML='<main class="main-content">'+operationalFolderNotice(folder)+renderOperationalFolderDirectory(folder,{allowed:id=>id!=='operacao/checklist/desempenho'||canOpenRestrictedModule('fg-performance')})+'<button type="button" class="secondary-button" data-folder-return>VOLTAR</button></main>';
+    app.querySelector('[data-folder-return]')?.addEventListener('click',()=>navigate('home'));
     return;
   }
   if(authLimited){}

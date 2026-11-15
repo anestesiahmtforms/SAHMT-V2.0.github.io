@@ -72,11 +72,11 @@ test('ordinary users see own inbox only; Governance hides administrative card en
  }finally{await browser.close();}
 });
 
-test('o administrador e o gestor podem abrir o histórico e consultar os dois remetentes',async()=>{
+test('o administrador consulta os remetentes e o gestor vê somente criar evento',async()=>{
  const browser=await chromium.launch({headless:true,channel:'msedge'});
  try{
   const page=await browser.newPage({viewport:{width:390,height:844}});
-  for(const params of ['hub','hub&manager']){
+  for(const params of ['hub']){
    await page.goto(url+'?'+params);
    await open(page,'CENTRAL DE COMUNICAÇÃO');
    await open(page,'MENSAGENS ENVIADAS');
@@ -94,6 +94,15 @@ test('o administrador e o gestor podem abrir o histórico e consultar os dois re
    await back.click();
    await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO'}).waitFor();
   }
+  await page.goto(url+'?hub&manager');
+  await open(page,'CENTRAL DE COMUNICAÇÃO');
+  await page.getByRole('button',{name:'CRIAR E ENVIAR EVENTO',exact:true}).waitFor();
+  assert.deepEqual(await page.locator('.comm-menu button').allTextContents(),['CRIAR E ENVIAR EVENTO']);
+  await open(page,'CRIAR E ENVIAR EVENTO');
+  await page.getByLabel('Título',{exact:true}).fill('Aviso operacional');
+  await page.getByLabel('Descrição do aviso').fill('Descrição operacional de teste');
+  await open(page,'ENVIAR');
+  await page.getByRole('button',{name:'ENVIADO',exact:true}).waitFor();
  }finally{await browser.close();}
 });
 

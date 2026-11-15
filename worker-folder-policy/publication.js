@@ -5,6 +5,18 @@ export const folderPolicyTargets=Object.freeze(['FG','FH','FI','FJ','FF','FC','F
 const fail=(code,status)=>Object.assign(Error(code),{code,status});
 const conflict=()=>fail('FOLDER_POLICY_CONFLICT',409);
 const ordered=values=>[...new Set(values)].sort();
+// Enabling a child releases its ancestor path while retaining every inactive sibling branch.
+function enableFolderBranch(disabled,id) {
+ const ancestors=id.split('/').slice(0,-1).map((_,index)=>id.split('/').slice(0,index+1).join('/'));
+ disabled.delete(id);
+ for(const ancestor of ancestors){
+  if(!disabled.delete(ancestor))continue;
+  const branch=ancestor+'/'+id.slice(ancestor.length+1).split('/')[0];
+  for(const sibling of Object.keys(operationalFolders)){
+   if(sibling!==branch&&sibling.startsWith(ancestor+'/')&&!sibling.slice(ancestor.length+1).includes('/'))disabled.add(sibling);
+  }
+ }
+}
 function comparable(value) {
  if(Array.isArray(value))return value.map(comparable);
  if(!value||typeof value!=='object')return value;
@@ -85,7 +97,7 @@ export async function publishFolderAvailability({store,actor,data}) {
   }
   const disabled=new Set(current.disabled);
   if(!input.initialize){
-   if(input.enabled)disabled.delete(input.id);else disabled.add(input.id);
+   if(input.enabled)enableFolderBranch(disabled,input.id);else disabled.add(input.id);
   }
   const next=ordered(disabled);
   if(!input.initialize&&equals(next,current.disabled))return {revision:current.revision,pending:false};

@@ -51,7 +51,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
   query=fold(filter.value);
   const pending=!!policy?.pending;
   description.textContent=pending?'Atualização pendente. Retome a atualização para confirmar a mudança nos serviços.':
-   policy?'Pastas desativadas e suas subpastas continuam acessíveis no modo Administrador.':'Aguardando a confirmação do servidor.';
+   policy?'Todos os usuários autorizados podem navegar pelas pastas e subpastas inativas. As atividades ficam bloqueadas até a reativação. Ativar uma subpasta libera o caminho até ela e mantém os outros ramos inativos.':'Aguardando a confirmação do servidor.';
   initializeButton.hidden=policy?.revision!==0;
   resumeButton.hidden=!pending;
   for(const button of [inspectButton,initializeButton,resumeButton])button.disabled=busy;
@@ -65,12 +65,12 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
   const row=({id,title,parents})=>{
    const ownActive=!policy.disabled?.includes(id);
    const effective=operationalFolderAllowed(policy,id);
-   const state=effective?'Ativa':ownActive?'Desativada pela pasta principal':'Desativada';
-   const action=ownActive?(effective?'Desativar':'Desativar também'):'Ativar';
+   const state=effective?'Atividades habilitadas':ownActive?'Atividades bloqueadas pela pasta principal':'Atividades bloqueadas';
+   const action=effective?'Desativar':'Ativar';
    return `<li class="fi-folder-row">
     <div class="fi-folder-name"><strong>${title}</strong>${parents?`<small>${parents}</small>`:''}</div>
     <span class="fi-folder-state" data-state="${effective?'active':ownActive?'inherited':'disabled'}">${state}</span>
-   <button type="button" data-operational-folder="${id}" data-enable="${!ownActive}" aria-label="${action} ${title}" ${busy||pending?'disabled':''}>${action}</button>
+   <button type="button" data-operational-folder="${id}" data-enable="${!effective}" aria-label="${action} ${title}" ${busy||pending?'disabled':''}>${action}</button>
    </li>`;
   };
   const total=Object.keys(operationalFolders).length;
@@ -82,7 +82,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
    if(folders.length===1)return `<ul class="fi-folder-standalone">${row(folders[0])}</ul>`;
    const active=matches.filter(folder=>operationalFolderAllowed(policy,folder.id)).length;
    return `<details class="fi-folder-group" data-folder-group="${id}" ${query||openGroups.has(id)?'open':''}>
-    <summary><strong>${operationalFolders[id]}</strong><span>${active} de ${matches.length} ativas</span></summary>
+    <summary><strong>${operationalFolders[id]}</strong><span>${active} de ${matches.length} com atividades habilitadas</span></summary>
     <ul>${matches.map(row).join('')}</ul>
    </details>`;
   }).join(''):'';
@@ -100,7 +100,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
   const inspect=button.hasAttribute('data-operational-folder-inspect');
   if(!inspect&&!policy)return;
   const initialize=button.hasAttribute('data-operational-folder-initialize');
-  const data=inspect?{}:initialize?{initialize:true,revision:0}:id?{id,enabled:policy.disabled.includes(id),revision:policy.revision}:{resume:true,revision:policy.revision};
+  const data=inspect?{}:initialize?{initialize:true,revision:0}:id?{id,enabled:!operationalFolderAllowed(policy,id),revision:policy.revision}:{resume:true,revision:policy.revision};
   const restoreFocus=id&&root.ownerDocument.activeElement===button;
   busy=true;message=inspect?'Conferindo serviços…':'Enviando atualização…';render();
   try {

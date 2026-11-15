@@ -215,7 +215,7 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.equal(await page.evaluate(()=>window.trainingBack()),true);
   await page.evaluate(()=>window.mount());
   await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();
-  assert.equal(await page.getByRole('button',{name:'Protocolos',exact:true}).isDisabled(),true);
+  assert.equal(await page.getByRole('button',{name:'Protocolos',exact:true}).isDisabled(),false);
   await page.evaluate(()=>window.mount('admin'));
   await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();
   await page.getByRole('button',{name:'Ativar Protocolos',exact:true}).click();

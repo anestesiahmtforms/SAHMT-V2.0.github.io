@@ -68,15 +68,20 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   let catalog=[], inactiveTrainings=[], active=null, state=null, questions=[], content=null, editor=null, mode='catalog', error='', notice='', folderPath=[], readIndex=0, confirm=false, answers={}, suggestion='', submitRequest=null, editorParent='catalog';
   const uid=user?.uid, activityStates=new Map();
   let requestedTraining=initialTrainingId;
+  let areaInactive=false,restrictedNavigationAllowed=false;
   let progressGeneration=0,folderAccess={version:0,disabled:[]},folderControlAvailable=false,folderPaths=[],folderIndexReady=true;
   let watchingPolicy=false, confirmedPolicy=null, unsubscribePolicy;
   let readingPlan=null,readingTracker=null;
   const stopReading=()=>{readingTracker?.cleanup();readingTracker=null;};
   const accessAdmin=()=>isTrainingAdmin(profile)&&folderControlAvailable;
-  const pathAllowed=path=>accessAdmin()||trainingPathAllowed(folderAccess,path);
+  const pathAllowed=path=>accessAdmin()||!areaInactive&&trainingPathAllowed(folderAccess,path);
   const contentAllowed=training=>pathAllowed(trainingAccessPath(training));
   const inactiveForOthers=path=>accessAdmin()&&!trainingPathAllowed(folderAccess,path);
-  const folderLevel=()=>trainingFolderLevel([...catalog.filter(contentAllowed),...inactiveTrainings],folderPath,accessAdmin()?folderPaths:[]);
+  const navigationAllowed=path=>path[0]!=='Documentos administrativos'||path[1]!=='Acesso restrito'||accessAdmin()||restrictedNavigationAllowed;
+  const folderLevel=()=>{
+    const level=trainingFolderLevel([...catalog.filter(contentAllowed),...inactiveTrainings],folderPath,accessAdmin()?folderPaths:[]);
+    return {...level,folders:level.folders.filter(folder=>navigationAllowed(folder.path))};
+  };
   const activityFor=training=>{const entry=activityStates.get(training.id);return htmlTrainingActivityState(training,entry?.version===training.version?entry.state:null,uid);};
   function refreshVisibleActivities(){
     const token=revision,generation=++progressGeneration;
@@ -134,14 +139,14 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   function catalogue(){
     const level=folderLevel(),leaf=level.folders.length===0&&level.trainings.length>0,visible=level.trainings;
     const folderButton=(path,label,extra='')=>{
-      const enabled=trainingPathAllowed(folderAccess,path),locked=path.length&&!pathAllowed(path);
-      return button('folder',label,`data-folder="${h(JSON.stringify(path))}" data-folder-enabled="${enabled}" ${locked?'disabled aria-disabled="true" aria-description="Desativado" data-locked="true"':''} ${extra}`);
+      const enabled=!areaInactive&&trainingPathAllowed(folderAccess,path);
+      return button('folder',label,`data-folder="${h(JSON.stringify(path))}" data-folder-enabled="${enabled}" ${!enabled&&!accessAdmin()?'aria-description="Atividades desativadas"':''} ${extra}`);
     };
     const book='<span class="ht-book-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15M6 8h3M6 12h3m6-4h3m-3 4h3"/></svg></span>';
     const folders=level.folders.map(folder=>{
       const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong>${inactiveForOthers(folder.path)?'<small>Inativa para os demais usuários</small>':''}</span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,`class="ht-folder ht-navigation-book" aria-label="${h(folder.name)}" ${inactiveForOthers(folder.path)?'aria-description="Inativa para os demais usuários"':''}`);
       if(!accessAdmin())return entry;
-      const enabled=!folderAccess.disabled.includes(JSON.stringify(folder.path));
+      const enabled=trainingPathAllowed(folderAccess,folder.path);
       return `<div class="ht-navigation-card">${entry}${button('toggle-folder',enabled?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${enabled?'Desativar':'Ativar'} ${h(folder.name)}" ${enabled&&!folderIndexReady?'disabled data-locked="true"':''}`)}</div>`;
     }).join('');
     const documents=visible.map(t=>contentAllowed(t)
@@ -247,6 +252,9 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     if(watchingPolicy&&access.version!==confirmedPolicy?.version)return;
     folderAccess=watchingPolicy?confirmedPolicy:access;
     folderControlAvailable=res.canManageFolders===true;
+    areaInactive=res.areaInactive===true&&!accessAdmin();
+    restrictedNavigationAllowed=res.restrictedNavigationAllowed===true;
+    if(!navigationAllowed(folderPath))folderPath=folderPath.slice(0,1);
     folderPaths=res.folderPaths||[];folderIndexReady=res.folderIndexReady!==false;
     catalog=(res.trainings||[]).filter(contentAllowed);
     inactiveTrainings=(res.inactiveTrainings||[]).filter(t=>!contentAllowed(t));
@@ -254,7 +262,11 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
       const id=requestedTraining;
       requestedTraining='';
       if(catalog.some(training=>training.id===id)){await open(id);return;}
-      error='O treinamento indicado está indisponível para esta conta.';
+      const inactive=inactiveTrainings.find(training=>training.id===id);
+      if(inactive){
+        folderPath=trainingAccessPath(inactive);
+        notice='As atividades deste treinamento est\u00e3o desativadas. Aguarde a libera\u00e7\u00e3o pelo administrador.';
+      }else error='O treinamento indicado está indisponível para esta conta.';
       onActivityExit();
     }
     render();refreshVisibleActivities();
@@ -328,7 +340,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
         return;
       }
 
-      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||(path.length&&!validTrainingFolderPath(path)))return;if(!pathAllowed(path))return;folderPath=path;render();refreshVisibleActivities();return;}
+      if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||(path.length&&!validTrainingFolderPath(path))||!navigationAllowed(path))return;folderPath=path;render();refreshVisibleActivities();return;}
       if(action==='open')return open(b.dataset.id);
       if(action==='edit'){
         const training=catalog.find(t=>t.id===b.dataset.id)||((active?.id===b.dataset.id)?active:null);

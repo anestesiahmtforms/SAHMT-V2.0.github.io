@@ -12,7 +12,7 @@ const source=main.slice(start,end).replace("await import('./html-training.js')",
 const area={id:'area-gestao-de-documentos'};
 function harness({failure,automatic=true}={}){
   const repairs=[],handlers=new Map();
-  const detail={isConnected:true,innerHTML:'',querySelector:selector=>({addEventListener:(event,fn)=>handlers.set(selector,fn)})};
+  const detail={isConnected:true,innerHTML:'',closest:()=>null,querySelector:selector=>({addEventListener:(event,fn)=>handlers.set(selector,fn)})};
   const session={user:{uid:'user-1'},profile:{}};
   const ctx=vm.createContext({cleanupDocumentTraining:null,managementActivityLoad:0,document:{querySelector:()=>detail},session,deployment:{target:'FB'},staleModuleFailure,
     repairAppFiles:options=>{repairs.push(options);return options.automatic?automatic:true;},
@@ -44,4 +44,14 @@ test('a failed import after a session change cannot redirect the next user',asyn
 });
 test('a successful import mounts the training controller normally',async()=>{
   const h=harness();await h.open();assert.equal(typeof h.ctx.cleanupDocumentTraining,'function');assert.equal(h.repairs.length,0);
+});
+
+
+test('an inactive parent still mounts the authorized training directory controller',async()=>{
+ const h=harness();
+ h.ctx.operationalContentAllowed=()=>false;
+ h.ctx.operationalFolderNotice=()=>'';
+ await h.open();
+ assert.equal(typeof h.ctx.cleanupDocumentTraining,'function');
+ assert.equal(h.repairs.length,0);
 });

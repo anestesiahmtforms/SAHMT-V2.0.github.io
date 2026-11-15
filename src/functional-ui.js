@@ -9,6 +9,7 @@ import {getFunctionalAuth} from './functional-firebase.js';
 import {waitForGoogleProjectSession} from './google-project-auth-runtime.js';
 import {refreshFunctionalOverview,readFunctionalTeamOverview} from './functional-client.js';
 import {listFunctionalTeam} from './functional-access.js';
+import {renderOperationalFolderDirectory} from './operational-folder-directory.js';
 import {operationalContentAllowed,operationalFolderNotice} from './operational-folder-runtime.js';
 import {loadFunctionalResult,renderFunctionalResult,resultYears} from './functional-results.js';
 
@@ -56,7 +57,7 @@ function sourceCards(sources) {
   return '<div class="functional-source-grid">' + keys.map(key => {
     const value = sources[key]??{state:'PREPARING'};
     const available=operationalContentAllowed(sourceFolders[key]);
-    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail"'+(available?'':' disabled aria-disabled="true"')+'>'
+    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail">'
       + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong>'+(!available?'<small>Pasta inativa ou indisponível</small>':key==='performance'?'<small>'+escapeHtml(states[value.state]||'Status não informado')+'</small>':'')+'</span>'
       + '<span class="functional-chevron" aria-hidden="true">›</span></button>'
       + operationalFolderNotice(sourceFolders[key])+'</div>';
@@ -111,6 +112,10 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   };
   activeFunctionalMountCleanup?.();
   activeFunctionalMountCleanup = cleanup;
+  if(!operationalContentAllowed('funcional')){
+    paint(operationalFolderNotice('funcional')+renderOperationalFolderDirectory('funcional'));
+    return cleanup;
+  }
   paint('<section class="functional-page"><p role="status">Confirmando o acesso individual em FK…</p></section>');
   try {
     const fkAuth=getFunctionalAuth();
@@ -215,11 +220,14 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   }
 
   function hasSource(key) {
-    return visibleSources&&Object.hasOwn(sourceFolders,key)&&
-      operationalContentAllowed(sourceFolders[key]);
+    return visibleSources&&Object.hasOwn(sourceFolders,key);
   }
 
   function renderSourceDetail(){
+    if(!operationalContentAllowed(sourceFolders[openSource])){
+      detailDialog.querySelector('[data-fk-detail-body]').innerHTML=operationalFolderNotice(sourceFolders[openSource])+renderOperationalFolderDirectory(sourceFolders[openSource]);
+      return;
+    }
     const value=visibleSources[openSource]??{state:'PREPARING'};
     detailDialog.querySelector('[data-fk-detail-body]').innerHTML=value.state==='READY'
       ?performanceDetail(value.data):'<p>Aguardando a consolidação dos pontos de FB, FC, FE, FG e FJ.</p>';
@@ -227,7 +235,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
 
   async function fetchResult(year) {
     const key=openSource, ticket=++resultRequest;
-    const current=()=>ownSession()&&detailDialog.open&&openSource===key&&resultRequest===ticket;
+    const current=()=>ownSession()&&operationalContentAllowed(sourceFolders[key])&&detailDialog.open&&openSource===key&&resultRequest===ticket;
     const body=detailDialog.querySelector('[data-fk-detail-body]');
     const output=body.querySelector('[data-fk-result]');
     if(!output)return;
@@ -327,6 +335,11 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       openSource=key;
       detailDialog.querySelector('#fk-detail-title').textContent=sourceLabels[key];
       detailDialog.querySelector('[data-fk-detail-icon]').innerHTML=sourceIcon(key);
+      if(!operationalContentAllowed(sourceFolders[key])){
+        detailDialog.querySelector('[data-fk-detail-body]').innerHTML=operationalFolderNotice(sourceFolders[key])+renderOperationalFolderDirectory(sourceFolders[key]);
+        detailDialog.showModal();
+        return;
+      }
       if(key==='dosimetry'){
         detailDialog.querySelector('[data-fk-detail-body]').innerHTML='<div data-fk-dose-host></div>';
         detailDialog.showModal();

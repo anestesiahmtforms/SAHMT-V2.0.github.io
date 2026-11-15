@@ -74,8 +74,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const panelFolderAllowed=name=>(name!=='fePerformance'||folderAllowed('consultas/pesquisas'))&&
   (!biosafetyPanels.includes(name)||folderAllowed('consultas'))&&(!Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]));
  const navigationOnly=['surveys','institutional','general','records','biosafety'];
- const panelOpens=name=>navigationOnly.includes(name)||panelFolderAllowed(name);
- const panelAllowed=name=>panelOpens(name)&&profilePanelAllowed(name);
+ const panelAllowed=name=>profilePanelAllowed(name);
  const profilePanelAllowed=name=>biosafetyPanels.includes(name)?access.biosafety===true:teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='professional'?access.surveys===true:name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2><div data-hub-folder-notice></div></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
@@ -96,9 +95,15 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    if(['surveys','institutional'].includes(panel)&&!itemAllowed(item))return '';
    if(['performance','faPerformance','fcPerformance'].includes(item.access)&&access[item.access]!==true)return '';
    const available=panelFolderAllowed(item.panel||item.route);
-   const allowed=itemAllowed(item)&&panelOpens(item.panel||item.route);
+   const allowed=itemAllowed(item);
    return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="'+(available?'Acesso não liberado para este perfil':'Pasta inativa ou sem confirmação do servidor')+'"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+(!available?'<small class="management-survey-subtitle">Pasta inativa ou indisponível</small>':'')+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
+  if(!panelFolderAllowed(panel)&&!navigationOnly.includes(panel)&&!spec.items){
+   body.innerHTML='<p role="status">Pasta inativa ou indisponível. As atividades aguardam a reativação ou a confirmação do servidor.</p>';
+   back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
+   dialog.querySelector('#management-hub-title').focus({preventScroll:true});
+   return;
+  }
   if(panel==='communication'&&communicationAllowed&&panelFolderAllowed('communication')&&openCommunication){
    body.innerHTML='<div data-comm-host></div>';
    const host=body.querySelector('[data-comm-host]'),current=()=>!disposed&&ticket===renderId&&panel==='communication'&&isSurveySessionCurrent();
@@ -125,7 +130,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    void import('./year-end-schedule-ui.js').then(({mountYearEndSchedule})=>{if(!current())return;cleanupYearEnd=mountYearEndSchedule(body,{isCurrent:current,onConfirmed:onYearEndConfirmed,connectAccess:connectYearEndAccess,createRepository:current=>createYearEndRepository(current)});}).catch(()=>{if(current())body.innerHTML='<p role="alert">Não foi possível abrir a escala. Volte e tente novamente.</p>';});
   }
   if(panel==='general'&&institutionalAllowed()){
-   const surveyCard=(kind,panel,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+panel+'"'+(panelFolderAllowed(panel)?'':' disabled aria-disabled="true"')+'><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+(panelFolderAllowed(panel)?subtitle:'Pasta inativa ou indisponível')+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
+   const surveyCard=(kind,panel,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+panel+'"><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong><span class="management-survey-subtitle">'+(panelFolderAllowed(panel)?subtitle:'Pasta inativa ou indisponível')+'</span></span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
    body.innerHTML='<div class="management-surveys">'+(climateEnabled&&access.fePerformance===true?'<div class="management-survey-links">'+surveyCard('performance','fePerformance','DESEMPENHO FE','Minha pontuação nas pesquisas')+'</div>':'<p class="management-surveys-pending">Nenhuma opção disponível nesta área no momento.</p>')+'</div>';
   }
   if(teamSurveyPanels.includes(panel)&&access.teamSurveys){
@@ -185,7 +190,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   if(survey){if(panel==='general'&&climateEnabled&&institutionalAllowed()&&survey.dataset.surveyPanel==='fePerformance'&&panelAllowed(survey.dataset.surveyPanel)){panel=survey.dataset.surveyPanel;render();}return;}
   const button=event.target.closest('[data-hub-item]');if(!button||button.disabled)return;
   const item=panels[panel].items?.[Number(button.dataset.hubItem)];
-  if(!item||!itemAllowed(item)||!panelOpens(item.panel||item.route))return;
+  if(!item||!itemAllowed(item))return;
   if(item.panel){panel=item.panel;render();}else if(item.route)onNavigate(item.route);
  };
  const backClick=()=>{if(!cleanupRegistration.goBack?.())goBack();};

@@ -507,3 +507,81 @@ test('folder changes racing an existing reading revoke writes and preserve progr
  await assert.rejects(h.exec('READ',{trainingId:'rop-one',runId:begun.state.run.id,index:0}),{code:'FORBIDDEN'});
  assert.equal((await h.store.get('htmlTrainingStates','rop-one_participant')).run.readCount,0);
 });
+
+
+test('inactive document area permits only ACL-filtered navigation metadata without protected reads',async()=>{
+ const h=await setup();
+ const privateItem=publication();privateItem.trainingId='restricted';privateItem.training.audienceGroup='RESTRICTED';
+ privateItem.training.title='Restricted title';await h.exec('PUBLISH',privateItem,'admin');
+ await h.exec('BUILD_FOLDER_INDEX',{},'admin');
+ for(const disabled of [['gestao'],['gestao/area-gestao-de-documentos']]){
+  h.store.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled});
+  const reads=traceReads(h.store),list=await h.exec('LIST');
+  assert.equal(list.areaInactive,true);assert.deepEqual(list.trainings,[]);
+  assert.deepEqual(list.inactiveTrainings,[{id:'rop-one',title:'ROP One',folderPath:['ROPs','Recovery']}]);
+  for(const action of ['OPEN','CONTENT','BEGIN','READ','ACK','QUIZ','SUBMIT','EDIT','READING_START','READING_PROGRESS','AUDIT_LIST','SCORE'])
+   await assert.rejects(h.exec(action,{trainingId:'rop-one',version:1}),{code:'FOLDER_DISABLED'});
+  assert.deepEqual(reads.filter(path=>/^htmlTraining(?:s|Versions|Content|States|Audits|Scores)\//.test(path)),[]);
+ }
+ h.store.seed('runtimePolicy','folders',{schemaVersion:1,revision:2,disabled:[]});
+ assert.equal((await h.exec('LIST')).trainings.length,1);
+ assert.equal((await h.exec('OPEN',{trainingId:'rop-one'})).training.id,'rop-one');
+});
+
+test('inactive area navigation fails closed for malformed policy or incomplete index',async()=>{
+ const h=await setup();h.store.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:['gestao']});
+ h.store.seed('htmlTrainingSettings','folderIndex',{schemaVersion:1,complete:false,entries:{}});
+ const reads=traceReads(h.store);
+ await assert.rejects(h.exec('LIST'),{code:'FOLDER_INDEX_REQUIRED'});
+ assert.deepEqual(reads.filter(path=>path.startsWith('htmlTrainings/')),[]);
+ h.store.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:'invalid'});
+ await assert.rejects(h.exec('LIST'),{code:'FOLDER_POLICY_INVALID'});
+});
+
+
+test('restricted navigation is allowed only for its source group, administrators or authorized assigned items',async()=>{
+ const h=await setup();
+ assert.equal((await h.exec('LIST')).restrictedNavigationAllowed,false);
+ h.store.seed('documentAccessEmails','other@example.invalid',{id:'other@example.invalid',email:'other@example.invalid',active:true,groups:['RESTRICTED']});
+ assert.equal((await h.exec('LIST',{},'other')).restrictedNavigationAllowed,true);
+ assert.equal((await h.exec('LIST',{},'admin')).restrictedNavigationAllowed,true);
+ const restricted=publication(1);restricted.training.category='Documentos administrativos';restricted.training.folderPath=['Documentos administrativos','Acesso restrito','Private'];restricted.training.audienceGroup='RESTRICTED';
+ await h.exec('PUBLISH',restricted,'admin');
+ await h.exec('SET_FOLDER_ACCESS',{path:['Documentos administrativos'],enabled:false,expectedVersion:0},'admin');
+ assert.equal((await h.exec('LIST')).restrictedNavigationAllowed,false);
+ assert.equal((await h.exec('LIST',{},'manager')).restrictedNavigationAllowed,true);
+ h.store.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:['gestao']});
+ assert.equal((await h.exec('LIST')).restrictedNavigationAllowed,false);
+ assert.equal((await h.exec('LIST',{},'manager')).restrictedNavigationAllowed,true);
+ assert.equal((await h.exec('LIST',{},'other')).restrictedNavigationAllowed,true);
+});
+
+
+test('activating an inherited inactive training branch enables it while preserving sibling and descendant blocks with CAS',async()=>{
+ const h=await setup();
+ for(const [id,path] of [['adults',['ROPs','Recovery','Adults']],['children',['ROPs','Recovery','Children']],['diagnostics',['ROPs','Diagnostics']]]){
+  const item=publication();item.trainingId=id;item.training.folderPath=path;await h.exec('PUBLISH',item,'admin');
+ }
+ await h.exec('BUILD_FOLDER_INDEX',{},'admin');
+ h.store.seed('htmlTrainingSettings','folders',{version:5,disabled:[JSON.stringify(['ROPs']),JSON.stringify(['ROPs','Recovery']),JSON.stringify(['ROPs','Recovery','Adults']),JSON.stringify(['ROPs','Recovery','Adults','Airway'])]});
+ const {folderAccess}=await h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery','Adults'],enabled:true,expectedVersion:5},'admin');
+ assert.equal(folderAccess.version,6);
+ const disabled=folderAccess.disabled.map(key=>JSON.parse(key));
+ assert.equal(disabled.some(path=>JSON.stringify(path)===JSON.stringify(['ROPs'])),false);
+ assert.equal(disabled.some(path=>JSON.stringify(path)===JSON.stringify(['ROPs','Recovery'])),false);
+ for(const path of [['ROPs','Recovery','Children'],['ROPs','Diagnostics'],['ROPs','Cultura de seguran\u00e7a'],['ROPs','Recovery','Adults','Airway']])
+  assert.equal(folderAccess.disabled.includes(JSON.stringify(path)),true,JSON.stringify(path));
+ assert.equal((await h.exec('OPEN',{trainingId:'adults'})).training.id,'adults');
+ await assert.rejects(h.exec('OPEN',{trainingId:'children'}),{code:'FORBIDDEN'});
+ await assert.rejects(h.exec('OPEN',{trainingId:'diagnostics'}),{code:'FORBIDDEN'});
+ await assert.rejects(h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery','Children'],enabled:true,expectedVersion:5},'admin'),{code:'VERSION_CONFLICT'});
+ assert.equal((await h.store.get('htmlTrainingSettings','folders')).version,6);
+});
+
+test('splitting disabled ancestors requires a complete index but exact activation still works without it',async()=>{
+ const h=await setup();h.store.seed('htmlTrainingSettings','folderIndex',{schemaVersion:1,complete:false,entries:{}});
+ h.store.seed('htmlTrainingSettings','folders',{version:1,disabled:[JSON.stringify(['ROPs'])]});
+ await assert.rejects(h.exec('SET_FOLDER_ACCESS',{path:['ROPs','Recovery'],enabled:true,expectedVersion:1},'admin'),{code:'FOLDER_INDEX_REQUIRED'});
+ assert.equal((await h.store.get('htmlTrainingSettings','folders')).version,1);
+ assert.deepEqual((await h.exec('SET_FOLDER_ACCESS',{path:['ROPs'],enabled:true,expectedVersion:1},'admin')).folderAccess,{version:2,disabled:[]});
+});

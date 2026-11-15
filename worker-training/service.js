@@ -1,6 +1,6 @@
 import {assertFolderReadable} from '../server/folder-read-policy.js';
 import { documentGroupsFromAccess, normalizeDocumentAccessEmail } from '../src/document-access.js';
-import {trainingPathAllowed,trainingAccessPath,validTrainingFolderPath,parseTrainingFolderAccess} from '../src/html-training-folders.js';
+import {trainingPathAllowed,trainingAccessPath,trainingFolderLevel,validTrainingFolderPath,parseTrainingFolderAccess} from '../src/html-training-folders.js';
 import {Buffer} from 'node:buffer';
 import { finalizeRopAudit } from '../src/domain/rop-audit.js';
 import { copy, documentSize, fail, identifier, publication, text, version } from './domain-validation.js';
@@ -51,24 +51,32 @@ function checkedIdentity(identity) {
 export function createHtmlTrainingService({ store, now = Date.now, uuid = () => globalThis.crypto.randomUUID(), readingRequired = false } = {}) {
   if (!store || !['get', 'list', 'transaction'].every(method => typeof store[method] === 'function')) throw new TypeError('TRAINING_STORE_REQUIRED');
 
-  async function authorize(tx, identity) {
+  async function authorize(tx, identity, action) {
     const profile = await tx.get('users', identity.uid);
     if (!profile || profile.active !== true || profile.access !== true || (profile.uid && profile.uid !== identity.uid)) fail('FORBIDDEN', 403);
+    let areaInactive=false;
     if(!admin(profile)){
       const areaPolicy=await tx.get('runtimePolicy','folders');
-      if(areaPolicy!==null)assertFolderReadable(areaPolicy,'gestao/area-gestao-de-documentos');
+      if(areaPolicy!==null){
+        try{assertFolderReadable(areaPolicy,'gestao/area-gestao-de-documentos');}
+        catch(error){
+          // LIST reads only the trusted navigation index when the area is inactive.
+          if(action!=='LIST'||error.code!=='FOLDER_DISABLED')throw error;
+          areaInactive=true;
+        }
+      }
     }
     const access = await tx.get('documentAccessEmails', identity.email);
     const settings=await tx.get('htmlTrainingSettings','folders');
     const folderAccess=settings===null?{version:0,disabled:[]}:parseTrainingFolderAccess(settings);
     if(!folderAccess)fail('TRAINING_FOLDER_POLICY_UNAVAILABLE',503);
     const folderIndex=await tx.get('htmlTrainingSettings','folderIndex');
-    return {profile,groups:documentGroupsFromAccess(access,identity.email),
+    return {profile,areaInactive,groups:documentGroupsFromAccess(access,identity.email),
       folderAccess:folderAccess||{version:0,disabled:[]},folderPolicyValid:!!folderAccess,folderIndex};
   }
-  const folderAllowed=(auth,path)=>admin(auth.profile)||trainingPathAllowed(auth.folderAccess,path);
+  const folderAllowed=(auth,path)=>admin(auth.profile)||!auth.areaInactive&&trainingPathAllowed(auth.folderAccess,path);
   function requireIndexWhenDisabled(auth){
-    if(!admin(auth.profile)&&auth.folderAccess.disabled.length&&!validFolderIndex(auth.folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
+    if(!admin(auth.profile)&&(auth.areaInactive||auth.folderAccess.disabled.length)&&!validFolderIndex(auth.folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
   }
   function assertIndexedRead(auth,id){
     requireIndexWhenDisabled(auth);
@@ -150,7 +158,7 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
     const publish = action === 'PUBLISH' ? publication(input) : null;
     const runId = action === 'BEGIN' ? identifier(uuid()) : null;
     return store.transaction(async tx => {
-      const auth = await authorize(tx, identity);
+      const auth = await authorize(tx, identity, action);
       if(action.startsWith('OBLIGATION_')){
         const exact=keys=>Object.keys(input).length===keys.length&&keys.every(k=>Object.hasOwn(input,k));
         if(action==='OBLIGATION_CATALOG'){
@@ -231,9 +239,18 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
         if(!validTrainingFolderPath(path)||JSON.stringify(trainingAccessPath({folderPath:path}))!==JSON.stringify(path)||typeof input.enabled!=='boolean')fail('INVALID_INPUT');
         version(input.expectedVersion);
         if(input.expectedVersion!==auth.folderAccess.version)fail('VERSION_CONFLICT',409);
-        if(!input.enabled&&!validFolderIndex(auth.folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
+        const blockedAncestor=input.enabled&&path.slice(0,-1).some((_,index)=>auth.folderAccess.disabled.includes(JSON.stringify(path.slice(0,index+1))));
+        if((!input.enabled||blockedAncestor)&&!validFolderIndex(auth.folderIndex))fail('FOLDER_INDEX_REQUIRED',409);
         const key=JSON.stringify(path),disabled=new Set(auth.folderAccess.disabled);
-        if(input.enabled)disabled.delete(key);else disabled.add(key);
+        if(input.enabled){
+          disabled.delete(key);
+          for(let index=0;index<path.length-1;index++){
+            const ancestor=path.slice(0,index+1),ancestorKey=JSON.stringify(ancestor);
+            if(!disabled.delete(ancestorKey))continue;
+            const branch=path.slice(0,index+2),children=trainingFolderLevel([],ancestor,Object.values(auth.folderIndex.entries)).folders;
+            for(const sibling of children)if(JSON.stringify(sibling.path)!==JSON.stringify(branch))disabled.add(JSON.stringify(sibling.path));
+          }
+        }else disabled.add(key);
         const folderAccess={version:auth.folderAccess.version+1,disabled:[...disabled].sort()};
         documentSize(folderAccess);
         tx.set('htmlTrainingSettings','folders',{...folderAccess,updatedAt:timestamp,updatedByUid:identity.uid});
@@ -279,8 +296,12 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
           if (training && canRead(auth, training, identity.uid)) trainings.push(publicTraining(training, auth.profile, identity.uid));
         }
         const disabledPaths=auth.folderAccess.disabled.map(key=>JSON.parse(key));
+        const restrictedNavigationAllowed=admin(auth.profile)||auth.groups.includes('RESTRICTED')||[...trainings,...inactiveTrainings].some(training=>{
+          const path=trainingAccessPath(training);
+          return path[0]==='Documentos administrativos'&&path[1]==='Acesso restrito';
+        });
         return { trainings: trainings.sort((a, b) => a.title.localeCompare(b.title)),inactiveTrainings,folderAccess:auth.folderAccess,
-          canManageFolders:admin(auth.profile),folderIndexReady:indexed,
+          canManageFolders:admin(auth.profile),folderIndexReady:indexed,areaInactive:auth.areaInactive,restrictedNavigationAllowed,
           folderPaths:admin(auth.profile)?[...entries.map(([,path])=>path),...disabledPaths]:[] };
       }
       const trainingId = identifier(input.trainingId);

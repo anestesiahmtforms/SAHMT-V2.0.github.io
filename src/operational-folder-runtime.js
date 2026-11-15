@@ -12,7 +12,9 @@ export function setOperationalFolderSession(session) {
 }
 const subscribers=new Set();
 export const operationalFolderPolicy=()=>policy;
-export function operationalFolderRouteAllowed(route) {
+// Folder availability controls activity; route/profile ACLs control navigation.
+export function operationalFolderRouteAllowed() { return true; }
+export function operationalRouteActivityAllowed(route) {
  const id=operationalRouteFolder(route);
  return !id||operationalContentAllowed(id);
 }
@@ -20,10 +22,12 @@ export function operationalContentAllowed(id) {
  return !operationalFolderPolicyEnabled||administrator||operationalFolderAllowed(policy,id);
 }
 export function operationalFolderNotice(id) {
- if(!operationalFolderPolicyEnabled||!administrator||!Object.hasOwn(operationalFolders,id)||!policy)return '';
+ if(!operationalFolderPolicyEnabled||!Object.hasOwn(operationalFolders,id))return '';
+ if(!policy)return administrator?'':'<aside class="notice folder-inactive-notice" role="status">Atividades indisponíveis enquanto o servidor confirma a situação da pasta. A navegação continua disponível.</aside>';
  const blocker=id.split('/').map((_,index,parts)=>parts.slice(0,index+1).join('/')).find(folder=>policy.disabled.includes(folder));
  if(!blocker)return '';
- const label=blocker===id?'Pasta inativa para os demais usuários.':'Subpasta inativa por causa da pasta principal.';
+ const label=blocker===id?(administrator?'Pasta inativa para os demais usuários.':'Pasta inativa.'):'Subpasta inativa por causa da pasta principal.';
+ if(!administrator)return '<aside class="notice folder-inactive-notice" role="status"><strong>'+label+'</strong> Você pode navegar pelas subpastas. As atividades permanecem bloqueadas até a reativação.</aside>';
  return '<aside class="notice folder-inactive-notice"><strong>'+label+'</strong> <a href="'+(deployment.target==='FB'?deployment.faBase:'')+'#/fi-control/'+
   encodeURIComponent(blocker)+'">Reativar no Controle de Pastas</a></aside>';
 }
