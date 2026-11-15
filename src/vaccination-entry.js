@@ -1,5 +1,5 @@
 /** Keep existing activities until the professional opens Biossegurança. */
-export function mountVaccinationEntry(root,{user,profile,folderAllowed=()=>true,valid=()=>true,onOpen=()=>{},onBack=()=>{},loadModule=()=>import('./vaccination.js'),loadDosimetryModule=()=>import('./dosimetry.js'),loadManualModule=()=>import('./biosafety-manual.js')}={}){
+export function mountVaccinationEntry(root,{user,profile,manualOnly=false,folderAllowed=()=>true,valid=()=>true,onOpen=()=>{},onBack=()=>{},loadModule=()=>import('./vaccination.js'),loadDosimetryModule=()=>import('./dosimetry.js'),loadManualModule=()=>import('./biosafety-manual.js')}={}){
  const folder='gestao/area-gestao-de-pessoas/biosseguranca';
  const childFolder={vaccination:folder+'/vacinacao',dosimetry:folder+'/dosimetria',manual:folder+'/manual'};
  let disposed=false,active=null,loading=false,stage='entry',generation=0;
@@ -7,9 +7,13 @@ export function mountVaccinationEntry(root,{user,profile,folderAllowed=()=>true,
  const book='<svg class="document-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 5C8 2 4 3 2 4v16c3-2 7-2 10 0 3-2 7-2 10 0V4c-2-1-6-2-10 1Zm0 0v15M6 8h3M6 12h3m6-4h3m-3 4h3"/></svg>';
  const radiation='<svg class="document-action-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="2"/><path d="m10 8-4-5a10 10 0 0 0-4 9h7m6 0h7a10 10 0 0 0-4-9l-4 5m-5 8-3 6h12l-3-6"/></svg>';
  const section=document.createElement('section');section.className='management-vaccination-launch';
- section.innerHTML='<div><p class="eyebrow">SAÚDE OCUPACIONAL</p><h4>Biossegurança</h4><p>Acesse seus históricos individuais de vacinação e dosimetria.</p></div><button type="button" class="primary-button" data-biosafety-open>'+shield+'<span>BIOSSEGURANÇA</span></button>';
+ section.innerHTML=manualOnly?'<button type="button" class="primary-button" data-biosafety-open>'+book+'<span>MANUAL DE BIOSSEGURANÇA - HMT</span></button>':'<div><p class="eyebrow">SAÚDE OCUPACIONAL</p><h4>Biossegurança</h4><p>Acesse seus históricos individuais de vacinação e dosimetria.</p></div><button type="button" class="primary-button" data-biosafety-open>'+shield+'<span>BIOSSEGURANÇA</span></button>';
  const canOpenChild=kind=>folderAllowed(folder)&&folderAllowed(childFolder[kind]);
- if(!folderAllowed(folder))section.querySelector('[data-biosafety-open]').insertAdjacentHTML('beforeend','<small>Pasta inativa ou indisponível</small>');
+ const launcher=section.querySelector('[data-biosafety-open]');
+ if(manualOnly?!canOpenChild('manual'):!folderAllowed(folder)){
+  launcher.disabled=manualOnly;
+  launcher.insertAdjacentHTML('beforeend','<small>Pasta inativa ou indisponível</small>');
+ }
  root.prepend(section);
  const live=()=>!disposed&&root.isConnected&&valid();
  function menu(){
@@ -23,13 +27,15 @@ export function mountVaccinationEntry(root,{user,profile,folderAllowed=()=>true,
   }
  }
  async function child(kind){
-  if(!live()||loading||stage!=='menu'||!canOpenChild(kind))return;loading=true;const ticket=++generation;
-  const status=root.querySelector('[data-biosafety-status]');status.textContent='Abrindo seu histórico…';root.querySelectorAll('.biosafety-choice').forEach(b=>b.disabled=true);
-  try{const module=await(kind==='vaccination'?loadModule():kind==='dosimetry'?loadDosimetryModule():loadManualModule());if(!live()||ticket!==generation)return;if(!canOpenChild(kind)){menu();return;}stage=kind;loading=false;active=(kind==='vaccination'?module.mountVaccination:kind==='dosimetry'?module.mountDosimetry:module.mountBiosafetyManual)(root,{user,profile,onBack:menu});}
-  catch{if(live()&&ticket===generation){loading=false;menu();root.querySelector('[data-biosafety-status]').textContent='Não foi possível abrir seu histórico. Tente novamente.';}}
+  if(!live()||loading||stage!==(manualOnly?'entry':'menu')||!canOpenChild(kind))return;loading=true;const ticket=++generation;
+  const status=manualOnly?launcher:root.querySelector('[data-biosafety-status]');
+  if(manualOnly){launcher.disabled=true;launcher.setAttribute('aria-busy','true');}
+  else status.textContent='Abrindo seu histórico…';root.querySelectorAll('.biosafety-choice').forEach(b=>b.disabled=true);
+  try{const module=await(kind==='vaccination'?loadModule():kind==='dosimetry'?loadDosimetryModule():loadManualModule());if(!live()||ticket!==generation)return;if(!canOpenChild(kind)){if(!manualOnly)menu();return;}if(manualOnly)onOpen();stage=kind;loading=false;active=(kind==='vaccination'?module.mountVaccination:kind==='dosimetry'?module.mountDosimetry:module.mountBiosafetyManual)(root,{user,profile,onBack:manualOnly?onBack:menu,...(manualOnly?{backLabel:'VOLTAR PARA GESTÃO DE PESSOAS'}:{})});}
+  catch{if(live()&&ticket===generation){loading=false;if(manualOnly){launcher.disabled=false;launcher.removeAttribute('aria-busy');launcher.textContent='Tentar abrir o Manual de Biossegurança novamente';}else{menu();root.querySelector('[data-biosafety-status]').textContent='Não foi possível abrir seu histórico. Tente novamente.';}}}
  }
  const click=event=>{
-  if(event.target.closest('[data-biosafety-open]')&&stage==='entry'&&live()){onOpen();menu();return;}
+  if(event.target.closest('[data-biosafety-open]')&&stage==='entry'&&live()){if(manualOnly)void child('manual');else{onOpen();menu();}return;}
   if(event.target.closest('[data-biosafety-back]')){onBack();return;}
   if(event.target.closest('[data-manual-open]'))void child('manual');
   if(event.target.closest('[data-vaccination-open]'))void child('vaccination');
@@ -37,5 +43,5 @@ export function mountVaccinationEntry(root,{user,profile,folderAllowed=()=>true,
  };
  root.addEventListener('click',click);
  const cleanup=()=>{disposed=true;generation++;root.removeEventListener('click',click);active?.();active=null;section.remove();};
- cleanup.goBack=()=>{if(stage==='entry')return false;if(active?.goBack)return active.goBack();if(stage!=='menu'){menu();return true;}onBack();return true;};return cleanup;
+ cleanup.goBack=()=>{if(stage==='entry')return false;if(manualOnly){onBack();return true;}if(active?.goBack)return active.goBack();if(stage!=='menu'){menu();return true;}onBack();return true;};return cleanup;
 }

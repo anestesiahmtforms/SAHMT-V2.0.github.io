@@ -1564,9 +1564,20 @@ async function loadModule(route) {
       },
       performSurvey:async(survey,action,response)=>{const {callInstitutionalSurvey}=await import('./institutional-survey-client.js');return callInstitutionalSurvey({uid,isCurrent:()=>currentHub()&&(action==='GET_PERFORMANCE'||epidemiologicalAllowed),survey,action,response});},
       performIndicators:async(action,input,signal)=>{const {callSahmtPerformanceApi}=await import('./sahmt-performance-api.js');return callSahmtPerformanceApi({uid,isCurrent:()=>currentHub()&&isSahmtPerformanceAction(action),action,input,signal});},
+      openOccupationalHistory:async(host,panel,isCurrent,onBack)=>{
+        const vaccination=panel==='vaccinationHistory';
+        const module=await(vaccination?import('./vaccination.js'):import('./dosimetry.js'));
+        if(!currentHub()||!isCurrent())return()=>{};
+        const mount=vaccination?module.mountVaccination:module.mountDosimetry;
+        const user=session.user;
+        return mount(host,{user,profile:session.profile,onBack,clientFactory:async()=>{
+          const {createVaccinationClient}=await import('./vaccination-client.js');
+          return createVaccinationClient(user,{isCurrent:()=>currentHub()&&isCurrent()});
+        }});
+      },
       performRegistration:async(kind,action,input,signal)=>{const {callRegistrationApi}=await import('./registration-client.js');return callRegistrationApi({uid,isCurrent:()=>currentHub()&&(kind==='epidemiological'?epidemiologicalAllowed:consultationsAllowed),kind,action,input,signal});},
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}history.replaceState(history.state,'','#/management-hub'+(panel==='home'?'':'/'+panel));}});
     return;
   }
@@ -3885,7 +3896,7 @@ async function loadManagementAreaActivities(area) {
 
   if(deployment.target==='FB'&&area.id==='area-gestao-de-pessoas'&&loadId===managementActivityLoad&&detail.isConnected&&session.user?.uid===requestUid){
     let previousCleanup=cleanupDocumentTraining;
-    const entryCleanup=mountVaccinationEntry(detail,{user:session.user,profile:session.profile,folderAllowed:operationalContentAllowed,
+    const entryCleanup=mountVaccinationEntry(detail,{manualOnly:true,user:session.user,profile:session.profile,folderAllowed:operationalContentAllowed,
       valid:()=>loadId===managementActivityLoad&&detail.isConnected&&session.user?.uid===requestUid&&session.status==='signed-in',
       onOpen:()=>{previousCleanup?.();previousCleanup=null;},onBack:()=>{void loadManagementAreaActivities(area);}});
     const cleanup=()=>{previousCleanup?.();previousCleanup=null;entryCleanup();};

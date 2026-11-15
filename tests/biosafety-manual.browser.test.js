@@ -1,6 +1,16 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {chromium} from 'playwright';
 const base=process.env.VACCINATION_PREVIEW_URL||'http://127.0.0.1:5178/tests/fixtures/vaccination-preview.html';
 async function run(fn){const browser=await chromium.launch({headless:true,channel:process.env.SAHMT_TEST_BROWSER_CHANNEL||'msedge'});try{await fn(browser);}finally{await browser.close();}}
+test('the standalone manual in Gestão de Pessoas opens directly and returns to its area',()=>run(async browser=>{
+ const page=await browser.newPage();await page.goto(base+'?entry&manualOnly');
+ const manual=page.getByRole('button',{name:'MANUAL DE BIOSSEGURANÇA - HMT',exact:true});
+ await manual.click();
+ await page.frameLocator('iframe').getByRole('heading',{name:'Manual de demonstração',exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'MEU HISTÓRICO VACINAL'}).count(),0);
+ await page.getByRole('button',{name:'VOLTAR PARA GESTÃO DE PESSOAS',exact:true}).click();
+ await page.getByText('Atividades de Gestão de Pessoas preservadas',{exact:true}).waitFor();
+}));
+
 async function menu(page,query=''){await page.goto(base+'?entry'+query);await page.getByRole('button',{name:'BIOSSEGURANÇA',exact:true}).click();}
 test('manual button is above both histories, has an icon and opens an isolated HTML reader with one-level back',()=>run(async browser=>{
  const page=await browser.newPage();

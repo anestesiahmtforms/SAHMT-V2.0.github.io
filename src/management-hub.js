@@ -44,8 +44,15 @@ const panels={
   {label:'CADASTRO PROFISSIONAL - SAHMT',icon:'professional',panel:'professional',access:'surveys'},
   {label:'CADASTRO EPIDEMIOLÓGICO - SAHMT',icon:'epidemiological',panel:'epidemiological',access:'epidemiological'},
   {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'},
-  {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'}
+  {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'},
+  {label:'BIOSSEGURANÇA',icon:'wellbeing',panel:'biosafety',access:'biosafety'}
  ]},
+ biosafety:{title:'Biossegurança',icon:'wellbeing',parent:'institutional',items:[
+  {label:'MEU HISTÓRICO VACINAL',icon:'professional',panel:'vaccinationHistory',access:'biosafety'},
+  {label:'MEU HISTÓRICO DE DOSIMETRIA',icon:'indicators',panel:'dosimetryHistory',access:'biosafety'}
+ ]},
+ vaccinationHistory:{title:'Meu histórico vacinal',icon:'professional',parent:'biosafety'},
+ dosimetryHistory:{title:'Meu histórico de dosimetria',icon:'indicators',parent:'biosafety'},
  yearEnd:{title:'Escala Final de Ano',icon:'festive',parent:'institutional'},
  vacations2027:{title:'Escala de Férias 2027',icon:'calendar',parent:'institutional'},
  professional:{title:'Cadastro Profissional - SAHMT',icon:'professional',parent:'institutional'},
@@ -57,7 +64,7 @@ const panels={
 };
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
-export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderNotice=()=>''}={}){
+export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},openOccupationalHistory=null,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderNotice=()=>''}={}){
  access={...access,communication:communicationAllowed,teamSurveys:climateEnabled&&access.teamSurveys===true};
  if(initialPanel==='indicators')initialPanel='records';
  const institutionalAllowed=()=>access.institutionalSurveys===true;
@@ -65,12 +72,15 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const restrictedAllowed=()=>panels.institutional.items.some(item=>access[item.access]===true);
  const consultationsAllowed=()=>institutionalAllowed()||restrictedAllowed();
  const itemAllowed=item=>item.panel==='surveys'?consultationsAllowed():item.panel==='institutional'?restrictedAllowed():(!item.access||access[item.access]===true);
- const panelFolders={functional:'funcional',management:'gestao',communication:'comunicacao',results:'indicadores',records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',general:'consultas/pesquisas',fePerformance:'desempenho/fe',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027'};
- const panelFolderAllowed=name=>(name!=='fePerformance'||folderAllowed('consultas/pesquisas'))&&(!Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]));
- const navigationOnly=['surveys','institutional','general','records'];
+ const biosafetyPanels=['biosafety','vaccinationHistory','dosimetryHistory'];
+ const biosafetyFolder='gestao/area-gestao-de-pessoas/biosseguranca';
+ const panelFolders={biosafety:biosafetyFolder,vaccinationHistory:biosafetyFolder+'/vacinacao',dosimetryHistory:biosafetyFolder+'/dosimetria',functional:'funcional',management:'gestao',communication:'comunicacao',results:'indicadores',records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',general:'consultas/pesquisas',fePerformance:'desempenho/fe',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027'};
+ const panelFolderAllowed=name=>(name!=='fePerformance'||folderAllowed('consultas/pesquisas'))&&
+  (!biosafetyPanels.includes(name)||folderAllowed('consultas'))&&(!Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]));
+ const navigationOnly=['surveys','institutional','general','records','biosafety'];
  const panelOpens=name=>navigationOnly.includes(name)||panelFolderAllowed(name);
  const panelAllowed=name=>panelOpens(name)&&profilePanelAllowed(name);
- const profilePanelAllowed=name=>teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='professional'?access.surveys===true:name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
+ const profilePanelAllowed=name=>biosafetyPanels.includes(name)?access.biosafety===true:teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='professional'?access.surveys===true:name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2><div data-hub-folder-notice></div></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');
@@ -102,6 +112,16 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    body.innerHTML='<p role="status">Carregando escala de férias…</p>';
    const current=()=>!disposed&&ticket===renderId&&panel==='vacations2027'&&isSurveySessionCurrent();
    void import('./vacations-2027-ui.js').then(({mountVacations2027})=>{if(current())cleanupRegistration=mountVacations2027(body,{request:performVacations,isCurrent:current});}).catch(()=>{if(current())body.innerHTML='<p role="alert">Não foi possível abrir a escala. Volte e tente novamente.</p>';});
+  }
+  if(['vaccinationHistory','dosimetryHistory'].includes(panel)&&openOccupationalHistory){
+   const activePanel=panel;
+   const current=()=>!disposed&&ticket===renderId&&panel===activePanel&&isSurveySessionCurrent()&&panelFolderAllowed(activePanel);
+   body.innerHTML='<div data-occupational-history><p role="status">Preparando seu histórico…</p></div>';
+   const host=body.querySelector('[data-occupational-history]');
+   void openOccupationalHistory(host,activePanel,current,goBack).then(cleanup=>{
+    if(current())cleanupRegistration=cleanup;
+    else cleanup?.();
+   }).catch(()=>{if(current())host.innerHTML='<p role="alert">Não foi possível preparar o histórico. Volte e tente novamente.</p>';});
   }
   if(panel==='yearEnd'&&access.yearEndSchedule===true){
    body.innerHTML='<p role="status">Preparando a escala…</p>';
@@ -172,9 +192,10 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   if(!item||!itemAllowed(item)||!panelOpens(item.panel||item.route))return;
   if(item.panel){panel=item.panel;render();}else if(item.route)onNavigate(item.route);
  };
- const cancel=event=>{event.preventDefault();goBack();};
+ const backClick=()=>{if(!cleanupRegistration.goBack?.())goBack();};
+ const cancel=event=>{event.preventDefault();backClick();};
  const close=()=>{if(!disposed)onExit();};
- body.addEventListener('click',click);back.addEventListener('click',goBack);dialog.addEventListener('cancel',cancel);dialog.addEventListener('close',close);
+ body.addEventListener('click',click);back.addEventListener('click',backClick);dialog.addEventListener('cancel',cancel);dialog.addEventListener('close',close);
  render();if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
- return ()=>{disposed=true;renderId++;cleanupYearEnd();cleanupRegistration();cleanupIndicators();cleanupSurvey();body.removeEventListener('click',click);back.removeEventListener('click',goBack);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('close',close);if(dialog.open&&typeof dialog.close==='function')dialog.close();root.replaceChildren();};
+ return ()=>{disposed=true;renderId++;cleanupYearEnd();cleanupRegistration();cleanupIndicators();cleanupSurvey();body.removeEventListener('click',click);back.removeEventListener('click',backClick);dialog.removeEventListener('cancel',cancel);dialog.removeEventListener('close',close);if(dialog.open&&typeof dialog.close==='function')dialog.close();root.replaceChildren();};
 }

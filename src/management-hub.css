@@ -74,16 +74,17 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 
 .management-hub-dialog[data-panel="professional"] .management-hub-body{display:block;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
 .management-hub-dialog[data-panel="fePerformance"] .management-hub-body{display:block;overflow:auto}
+.management-hub-dialog:is([data-panel="vaccinationHistory"],[data-panel="dosimetryHistory"]) .management-hub-body{display:block;overflow:auto}
 
 .management-hub-dialog[data-panel="results"] .management-hub-grid{flex:0 0 auto;grid-auto-rows:minmax(80px,110px)}
 
-.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"]){
+.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"],[data-panel="biosafety"]){
  inset:0;width:min(92vw,560px);height:fit-content;
  max-height:calc(100dvh - var(--hub-edge) - var(--hub-edge));gap:14px
 }
-.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"]) .management-hub-content-panel{height:auto}
-.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"]) .management-hub-body{overflow-y:auto}
-.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"]) .management-hub-grid{
+.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"],[data-panel="biosafety"]) .management-hub-content-panel{height:auto}
+.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"],[data-panel="biosafety"]) .management-hub-body{overflow-y:auto}
+.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"],[data-panel="biosafety"]) .management-hub-grid{
  flex:0 0 auto;grid-template-rows:none;grid-auto-rows:minmax(64px,auto);gap:12px
 }
-.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"]) .management-hub-button{height:auto;min-height:64px;padding:12px 14px;font-size:.92rem}
+.management-hub-dialog:is([data-panel="records"],[data-panel="surveys"],[data-panel="biosafety"]) .management-hub-button{height:auto;min-height:64px;padding:12px 14px;font-size:.92rem}

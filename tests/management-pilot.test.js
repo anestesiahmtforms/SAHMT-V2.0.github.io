@@ -38,6 +38,19 @@ test('inactive folders stay visible while profile gates hide restricted content'
  const direct=hub({...publicAccess,teamSurveys:true},'climateForm',null,true,folderAllowed);
  assert.equal(direct.dialog.dataset.panel,'home');
 });
+test('Biossegurança is in restricted FE with two histories and parent-aware folder blocking',()=>{
+ const access={institutionalSurveys:true,biosafety:true};
+ const allowed=hub(access,'institutional');
+ assert.match(allowed.body.innerHTML,/BIOSSEGURANÇA/);
+ assert.doesNotMatch(hub({institutionalSurveys:true},'institutional').body.innerHTML,/BIOSSEGURANÇA/);
+ assert.equal(hub({institutionalSurveys:true},'dosimetryHistory').dialog.dataset.panel,'home');
+ const list=hub(access,'biosafety',null,true,id=>!id.endsWith('/dosimetria'));
+ assert.match(list.body.innerHTML,/MEU HISTÓRICO VACINAL/);
+ assert.match(list.body.innerHTML,/data-hub-item="1" disabled[^]*MEU HISTÓRICO DE DOSIMETRIA/);
+ assert.doesNotMatch(list.body.innerHTML,/MANUAL/);
+ list.handlers['back-click']();
+ assert.equal(list.dialog.dataset.panel,'institutional');
+});
 test('FE performance is available only inside FE institutional surveys',()=>{
  const source=readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8');
  const metadata=source.slice(source.indexOf('const panels='),source.indexOf('// Surveys reuse'));
