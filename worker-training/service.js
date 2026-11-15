@@ -157,8 +157,12 @@ export function createHtmlTrainingService({ store, now = Date.now, uuid = () => 
           if(!exact([]))fail('INVALID_INPUT');
           if(!admin(auth.profile))fail('FORBIDDEN',403);
           const rows=await tx.list(C.training,[],1000);
-          return {items:rows.filter(t=>t.status==='PUBLISHED'&&trainingPathAllowed(auth.folderAccess,trainingAccessPath(t)))
-            .map(t=>({kind:'TRAINING',id:t.id,title:t.title,version:t.version,maxScore:t.maxScore}))};
+          return {items:rows.filter(t=>t.status==='PUBLISHED').flatMap(t=>{
+            const folderPath=trainingAccessPath(t);
+            return trainingPathAllowed(auth.folderAccess,folderPath)
+              ? [{kind:'TRAINING',id:t.id,title:t.title,version:t.version,maxScore:t.maxScore,folderPath}]
+              : [];
+          })};
         }
         const eligibility=action==='OBLIGATION_ELIGIBILITY';
         if(!exact(['trainingId','version','minimumScore',...(eligibility?['recipients']:[])]))fail('INVALID_INPUT');

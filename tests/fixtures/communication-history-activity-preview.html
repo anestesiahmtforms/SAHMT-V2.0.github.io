@@ -2,7 +2,8 @@
 import {mountCommunication} from '../../src/communication-ui.js';
 const params=new URLSearchParams(location.search),admin=!params.has('common');
 const person={uid:'synthetic-person',displayName:'Pessoa Teste',email:'pessoa@example.test',institutionalGroup:'team'};
-const training={kind:'TRAINING',id:'training-synthetic',title:'Treinamento publicado',version:'v2',maxScore:10};
+const training={kind:'TRAINING',id:'training-synthetic',title:'Treinamento publicado',version:2,maxScore:10,folderPath:['ROPs','Comunicação']};
+const secondTraining={...training,id:'training-other',title:'Cirurgia Segura',folderPath:['Protocolos','Protocolos do SAHMT']};
 const survey={kind:'SURVEY',id:'survey-synthetic',title:'Enquete publicada',cycle:'2026-11'};
 const now=1794700000000;
 const message={id:'synthetic-message',title:'Convocação sintética',message:'Corpo integral\nSegunda linha https://example.test',publishAt:now,audienceType:'ALL',senderEmail:'admin@example.test',status:'published',activity:{...survey}};
@@ -12,7 +13,7 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{host.innerHT
  window.calls.push({action,input:structuredClone(input)});
  if(action==='BOOTSTRAP')return {isAdmin:admin};
  if(action==='DIRECTORY')return {items:[person],cursor:null};
- if(action==='ACTIVITY_CATALOG')return {items:[input.kind==='TRAINING'?training:survey]};
+ if(action==='ACTIVITY_CATALOG')return {items:input.kind==='TRAINING'?[training,secondTraining]:[survey]};
  if(action==='PREVIEW_ACTIVITY'){await new Promise(resolve=>setTimeout(resolve,30));return {previewId:'preview-'+(++previewCount),activity:input.activity,recipients:[person],excluded:[{uid:'excluded-person',reason:'FORBIDDEN'}]};}
  if(action==='CREATE_ACTIVITY'){creates++;if(params.has('lost')&&creates===1)throw Error('Resposta perdida');return {message:{...message,id:input.id},syncQueued:true};}
  if(action==='SENT_MESSAGES')return {items:input.cursor?[{...message,id:'legacy-message',title:'Histórico legado',activity:null,historyRow:4}]:[{...message,historyRow:3}],cursor:input.cursor?null:'next'};

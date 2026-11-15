@@ -1,5 +1,6 @@
 import {Buffer} from 'node:buffer';
 import {GOOGLE_PROJECT_CONFIG} from '../src/google-project-auth-config.js';
+import {validTrainingFolderPath} from '../src/html-training-folders.js';
 import {validateObligation} from '../communication/obligations.js';
 
 const sources=Object.freeze({
@@ -53,7 +54,11 @@ export function createActivitySource({fetchImpl=fetch,headers={},actor}={}){
    const items=result.items.map(item=>{
     if(item?.kind!==kind)throw failure('COMM_SOURCE_UNAVAILABLE');
     let value;try{value=checked(kind==='TRAINING'?{kind,id:item.id,title:item.title,version:item.version,maxScore:item.maxScore,minimumScore:item.maxScore}:{kind,id:item.id,title:item.title,cycle:item.cycle});}catch{throw failure('COMM_SOURCE_UNAVAILABLE');}
-    if(kind==='TRAINING')delete value.minimumScore;return value;
+    if(kind==='TRAINING'){
+     delete value.minimumScore;
+     if(validTrainingFolderPath(item.folderPath))value.folderPath=item.folderPath;
+    }
+    return value;
    });
    return {items};
   },

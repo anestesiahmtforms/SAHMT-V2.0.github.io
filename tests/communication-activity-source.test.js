@@ -41,6 +41,13 @@ test('survey source uses FA token, filters answer payloads, and never accepts a 
  assert.match(h.calls.at(-1).url,/sahmt-fe-surveys\.anestesiahmtforms5/);
  await assert.rejects(h.source.catalog({kind:'https://evil.invalid'}),{code:'COMM_INVALID_ACTIVITY'});
 });
+test('training catalog forwards canonical folder metadata without adding arbitrary links',async()=>{
+ const {minimumScore,...item}=activity;
+ const h=remote({result:{items:[{...item,folderPath:['ROPs','Comunicação'],url:'https://example.invalid'}]}});
+ assert.deepEqual(await h.source.catalog({kind:'TRAINING'}),{items:[{...item,folderPath:['ROPs','Comunicação']}]});
+ const legacy=remote({result:{items:[item]}});
+ assert.deepEqual(await legacy.source.catalog({kind:'TRAINING'}),{items:[item]});
+});
 test('eligibility uses bounded batches, preserves excluded IDs, and refuses incomplete source replies',async()=>{
  const calls=[],recipients=Array.from({length:17},(_,n)=>({uid:`ff-${n}`,email:`person${n}@example.invalid`,institutionalGroup:'team'}));
  const source=createActivitySource({actor,headers:{'X-SAHMT-FB-Authorization':token()},fetchImpl:async(url,options)=>{
@@ -90,6 +97,7 @@ test('training eligibility resolves source UID by email and uses document access
  const h=trainingFixture(),input={trainingId:activity.id,version:1,minimumScore:4,recipients:[{uid:actor.uid,email:actor.email}]};
  assert.deepEqual(await h.service.execute('OBLIGATION_ELIGIBILITY',input,h.admin),{eligibleUids:[actor.uid],excluded:[]});
  await assert.rejects(h.service.execute('OBLIGATION_CATALOG',{},identity),{code:'FORBIDDEN'});
+ assert.deepEqual(await h.service.execute('OBLIGATION_CATALOG',{},h.admin),{items:[{kind:'TRAINING',id:activity.id,title:activity.title,version:1,maxScore:5,folderPath:['ROPs']}]});
  h.store.seed('documentAccessEmails',identity.email,{id:identity.email,email:identity.email,active:true,groups:['RESTRICTED']});
  assert.deepEqual(await h.service.execute('OBLIGATION_ELIGIBILITY',input,h.admin),{eligibleUids:[],excluded:[{uid:actor.uid,reason:'FORBIDDEN'}]});
  h.store.seed('htmlTrainingSettings','folders',{version:1,disabled:[JSON.stringify(['ROPs'])]});

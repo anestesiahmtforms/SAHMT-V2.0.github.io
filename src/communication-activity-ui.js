@@ -1,4 +1,7 @@
 import {escapeNoticeHtml as esc} from './communication-notice-text.js';
+import {mountTrainingPicker, trainingPickerMarkup} from './communication-training-picker.js';
+import {trainingActivityRoute} from './training-activity-route.js';
+import {deployment} from './deployment-context.js';
 
 const reasons = {FORBIDDEN:'Sem permissão para esta atividade',NOT_AUTHORIZED:'Sem permissão para esta atividade',INACTIVE:'Integrante inativo',ACTIVITY_UNAVAILABLE:'Atividade indisponível',ATTEMPTS_EXHAUSTED:'Tentativas esgotadas',SOURCE_UNAVAILABLE:'Não foi possível verificar a origem'};
 export function activityDescription(activity) {
@@ -14,8 +17,10 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     <label>Título<input name="title" maxlength="120" required value="${esc(state.title || '')}"></label>
     <label>Orientação<textarea name="description" maxlength="4000" required>${esc(state.description || '')}</textarea></label>
     <label>Tipo de atividade<select name="kind"><option value="TRAINING">TREINAMENTO</option><option value="SURVEY"${state.kind==='SURVEY'?' selected':''}>ENQUETE</option></select></label>
+    ${trainingPickerMarkup}
     <label>Atividade publicada<select name="activity" required><option value="">Carregando atividades…</option></select></label>
     <p data-activity-meta class="comm-note"></p>
+    <a data-open-selected-training target="_blank" rel="noopener" hidden>Conferir treinamento em nova aba</a>
     <label data-minimum-label>Nota mínima<input name="minimumScore" type="number" min="0.01" step="any" required value="${esc(state.minimumScore ?? '')}"></label>
     <label>Público<select name="audience">${audienceOptions.map(o=>`<option value="${esc(o.id)}"${o.id===state.audience?' selected':''}>${esc(o.name)}</option>`).join('')}</select></label>
     <label>Destinatário<select name="recipient" disabled><option value="">Selecione Individual</option></select></label>
@@ -27,10 +32,19 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
   const form=root.querySelector('[data-activity-form]'),f=form.elements;
   const current=()=>isCurrent()&&form.isConnected;
   let catalog=[],catalogTicket=0,recipientTicket=0;
+  const pickerElement=form.querySelector('[data-training-picker]');
+  const openTraining=form.querySelector('[data-open-selected-training]');
+  const picker=mountTrainingPicker(pickerElement,id=>{
+    if(!current()||f.activity.disabled)return;
+    f.activity.value=id;
+    f.activity.dispatchEvent(new Event('change',{bubbles:true}));
+    f.activity.focus();
+  });
   const remember=()=>Object.assign(state,{title:f.title.value.trim(),description:f.description.value.trim(),kind:f.kind.value,audience:f.audience.value,recipient:f.recipient.value,activityId:f.activity.value,minimumScore:f.minimumScore.value});
   const busy=()=>{
     const locked=state.sending||state.sent||Boolean(state.pending);
-    for(const element of form.querySelectorAll('input,textarea,select'))element.disabled=locked||Boolean(state.loading);
+    for(const element of form.querySelectorAll('input[name],textarea[name],select'))element.disabled=locked||Boolean(state.loading);
+    picker.setDisabled(locked||Boolean(state.loading)||!catalog.length);
     f.recipient.disabled=locked||state.loading||f.audience.value!=='USER'||!f.recipient.options.length||f.recipient.options.length===1;
     f.preview.disabled=locked||state.loading||state.previewing||!catalog.length;
     form.querySelector('[data-reload-activities]').disabled=locked||state.loading||state.previewing;
@@ -42,8 +56,13 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
   function metadata(){
     const activity=catalog.find(item=>item.id===f.activity.value),training=f.kind.value==='TRAINING';
     form.querySelector('[data-minimum-label]').hidden=!training;f.minimumScore.required=training;
+    pickerElement.hidden=!training;
+    openTraining.hidden=!training||!activity;
+    if(training&&activity)openTraining.href=deployment.fbBase+trainingActivityRoute(activity.id);
+    else openTraining.removeAttribute('href');
     f.minimumScore.max=activity?.maxScore??'';
-    form.querySelector('[data-activity-meta]').textContent=activity?(training?`Versão ${activity.version} · Pontuação máxima: ${activity.maxScore}`:`Ciclo ${activity.cycle} · Sem nota mínima`):'Selecione uma atividade existente e publicada.';
+    const location=training&&activity?.folderPath?.length?` · ${activity.folderPath.join(' › ')}`:'';
+    form.querySelector('[data-activity-meta]').textContent=activity?(training?`Versão ${activity.version} · Pontuação máxima: ${activity.maxScore}${location}`:`Ciclo ${activity.cycle} · Sem nota mínima`):'Selecione uma atividade existente e publicada.';
   }
   function showPreview(){
     const p=state.preview;if(!p)return;
@@ -65,9 +84,9 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     finally{if(current()&&ticket===recipientTicket)busy();}
   }
   async function load(){
-    const ticket=++catalogTicket;state.loading=true;busy();
+    const ticket=++catalogTicket;catalog=[];picker.update([]);state.loading=true;busy();
     try{const result=await client.request('ACTIVITY_CATALOG',{kind:f.kind.value});if(!current()||ticket!==catalogTicket)return;
-      catalog=result.items;f.activity.innerHTML='<option value="">Selecione uma atividade</option>'+catalog.map(item=>`<option value="${esc(item.id)}">${esc(item.title)}</option>`).join('');f.activity.value=state.activityId||'';metadata();
+      catalog=result.items;picker.update(f.kind.value==='TRAINING'?catalog:[]);f.activity.innerHTML='<option value="">Selecione uma atividade</option>'+catalog.map(item=>`<option value="${esc(item.id)}">${esc(item.title)}</option>`).join('');f.activity.value=state.activityId||'';metadata();
       status(catalog.length?'':'Nenhuma atividade publicada disponível para este tipo.');
     }catch(error){if(current()&&ticket===catalogTicket){catalog=[];f.activity.innerHTML='<option value="">Atividades indisponíveis</option>';report(error,'Não foi possível consultar a origem. Recarregue as atividades para tentar novamente.');}}
     finally{if(current()&&ticket===catalogTicket){state.loading=false;busy();}}
@@ -84,7 +103,9 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
   form.addEventListener('submit',async event=>{
     event.preventDefault();if(state.previewing||state.pending||state.sent||state.loading)return;
     remember();const selected=catalog.find(item=>item.id===state.activityId);if(!selected)return;
-    const activity={...selected,...(state.kind==='TRAINING'?{minimumScore:Number(state.minimumScore)}:{})};
+    const activity=state.kind==='TRAINING'
+      ? {kind:selected.kind,id:selected.id,title:selected.title,version:selected.version,maxScore:selected.maxScore,minimumScore:Number(state.minimumScore)}
+      : selected;
     if(state.kind==='TRAINING'&&!(activity.minimumScore>0&&activity.minimumScore<=activity.maxScore))return status('Informe uma nota mínima maior que zero e até a pontuação máxima.',true);
     state.previewing=true;busy();status('Conferindo permissão e destinatários…');
     const selection=JSON.stringify([state.title,state.description,state.kind,state.activityId,state.minimumScore,state.audience,state.recipient]);

@@ -85,6 +85,7 @@ import './functional-ui.css';
 import {renderFiAdminDialog, mountFiAdminDialog} from './fi-admin-dialog.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {communicationFeatureEnabled,communicationAdminSession} from './communication-link.js';
+import {trainingActivityRoute} from './training-activity-route.js';
 import './communication.css';
 import {loadCommunicationModules,preloadCommunicationModules} from './communication-loader.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
@@ -5265,7 +5266,7 @@ function syncObligationBanner(){
         const panel=Object.hasOwn(surveyPanels,activity.id)?surveyPanels[activity.id]:'';
         const base=activity.kind==='TRAINING'?deployment.fbBase:deployment.faBase;
         const route=activity.kind==='TRAINING'
-          ? '#/management/area-gestao-de-documentos/required/'+encodeURIComponent(activity.id)
+          ? trainingActivityRoute(activity.id)
           : panel?'#/management-hub/'+panel+'/required':'';
         if(!route)return;
         const target=route+'/'+encodeURIComponent(item.id);

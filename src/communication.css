@@ -324,6 +324,16 @@
 .communication--activity [data-activity-preview]:not(:empty) { border:2px solid #b99b5e; border-radius:10px; padding:12px; margin-top:10px; background:#fff9e8; }
 .comm-recipient-preview { padding-inline-start:24px; overflow-wrap:anywhere; }
 .communication--activity [data-confirm-activity] { background:#a92928; color:white; margin:6px 0; }
+.comm-training-picker { border:1px solid #b3c4ce; border-radius:10px; background:#f4f8fa; min-width:0; }
+.comm-training-picker summary { padding:12px; cursor:pointer; font-weight:750; }
+.comm-training-picker fieldset { display:grid; gap:8px; min-width:0; padding:0 10px 10px; margin:0; border:0; }
+.comm-training-picker h3 { margin:0; font-size:.9rem; overflow-wrap:anywhere; }
+.comm-training-picker [data-training-results] { display:grid; gap:6px; }
+.comm-training-picker button { width:100%; text-align:left; overflow-wrap:anywhere; }
+.comm-training-picker small { display:block; color:#456173; }
+.comm-training-picker [data-training-feedback] { margin:0; }
+.communication--activity [data-open-selected-training] { color:#15476a; font-size:.875rem; justify-self:start; }
+.communication--activity [data-activity-meta] { overflow-wrap:anywhere; }
 .comm-history-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .comm-history-filters label { margin:0; font-size:.85rem; }
 .comm-history-search { grid-column:1/-1; }

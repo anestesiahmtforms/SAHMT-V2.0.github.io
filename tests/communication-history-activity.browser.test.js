@@ -12,13 +12,46 @@ test('Central real components: catalog, preview, exact retry, history, receipts 
  const setup=async(query='')=>{await page.goto(url+query);await open('TREINAMENTOS E ENQUETES');await page.getByLabel('Atividade publicada').selectOption('training-synthetic');await page.getByLabel('Título',{exact:true}).fill('Convocação nova');await page.getByLabel('Orientação').fill('Conclua a atividade selecionada.');await page.getByLabel('Nota mínima').fill('7');};
  try{
   await t.test('published source metadata and preview precede send; lost response retains exact request',async()=>{
-   await setup('?lost');await page.getByText('Versão v2 · Pontuação máxima: 10',{exact:true}).waitFor();assert.equal(await page.locator('input[type=url]').count(),0);
+   await setup('?lost');await page.getByText('Versão 2 · Pontuação máxima: 10 · ROPs › Comunicação',{exact:true}).waitFor();
    await open('CONFERIR DESTINATÁRIOS');await page.getByText('1 destinatário(s) elegível(is)',{exact:true}).waitFor();
    assert.match(await page.locator('[data-activity-preview]').innerText(),/Pessoa Teste.*pessoa@example.test/);assert.match(await page.locator('[data-activity-preview]').innerText(),/excluded-person — Sem permissão/);
    assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='CREATE_ACTIVITY')),false);
    await open('CONFIRMAR E ENVIAR');await page.getByRole('button',{name:'CONFIRMAR MESMO ENVIO',exact:true}).waitFor();await open('CONFIRMAR MESMO ENVIO');await page.getByRole('button',{name:'ENVIADO',exact:true}).waitFor();
    const sends=await page.evaluate(()=>window.calls.filter(c=>c.action==='CREATE_ACTIVITY'));assert.equal(sends.length,2);assert.deepEqual(sends[0].input,sends[1].input);assert.match(sends[0].input.id,/^activity-/);
    assert.equal(await page.locator('[data-activity-form]').evaluate(form=>form.scrollWidth<=form.clientWidth),true);
+  });
+  await t.test('browse folders, search and use only app links resolving to published trainings',async()=>{
+   await setup();
+   const picker=page.locator('[data-training-picker]');
+   await picker.locator('summary').click();
+   await picker.getByRole('button',{name:/Pasta: Protocolos \(/}).click();
+   await picker.getByRole('button',{name:/Pasta: Protocolos do SAHMT/}).click();
+   await picker.getByRole('heading',{name:'Protocolos › Protocolos do SAHMT'}).waitFor();
+   await picker.getByRole('button',{name:'Voltar uma pasta'}).click();
+   await picker.getByRole('heading',{name:'Protocolos',exact:true}).waitFor();
+   await picker.getByLabel('Buscar por nome ou pasta').fill('comunicacao');
+   await picker.getByRole('button',{name:/Treinamento publicado/}).waitFor();
+   assert.equal(await picker.getByRole('button',{name:/Cirurgia Segura/}).count(),0);
+   await picker.getByRole('button',{name:/Treinamento publicado/}).click();
+   assert.equal(await page.getByLabel('Atividade publicada').inputValue(),'training-synthetic');
+   await open('CONFERIR DESTINATÁRIOS');
+   await page.getByRole('button',{name:'CONFIRMAR E ENVIAR',exact:true}).waitFor();
+   await picker.locator('summary').click();
+   const route='#/management/area-gestao-de-documentos/required/training-other';
+   const link=picker.getByLabel('Link do treinamento no SAHMT');
+   await link.fill('https://example.test/'+route);
+   await open('Vincular pelo link');
+   await picker.getByText(/Escolha um link direto/).waitFor();
+   assert.equal(await page.locator('[data-confirm-activity]').count(),1);
+   await link.fill('https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/gestao/'+route);
+   await link.press('Enter');
+   assert.equal(await page.getByLabel('Atividade publicada').inputValue(),'training-other');
+   assert.equal(await page.getByRole('link',{name:'Conferir treinamento em nova aba'}).getAttribute('href'),'/SAHMT-V2.0.github.io/gestao/'+route);
+   assert.equal(await page.locator('[data-confirm-activity]').count(),0);
+   await open('CONFERIR DESTINATÁRIOS');
+   await page.getByRole('button',{name:'CONFIRMAR E ENVIAR',exact:true}).waitFor();
+   const activity=await page.evaluate(()=>window.calls.filter(c=>c.action==='PREVIEW_ACTIVITY').at(-1).input.activity);
+   assert.deepEqual(activity,{kind:'TRAINING',id:'training-other',title:'Cirurgia Segura',version:2,maxScore:10,minimumScore:7});
   });
   await t.test('editing invalidates preview; surveys have cycle and no minimum; no late send',async()=>{
    await setup();await open('CONFERIR DESTINATÁRIOS');await page.getByRole('button',{name:'CONFIRMAR E ENVIAR',exact:true}).waitFor();await page.getByLabel('Título',{exact:true}).fill('Título alterado');assert.equal(await page.locator('[data-confirm-activity]').count(),0);
