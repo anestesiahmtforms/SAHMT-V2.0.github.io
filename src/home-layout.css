@@ -23,8 +23,8 @@
   padding:var(--home-gap) 0 calc(var(--home-gap) + 6px);
 }
 .app-shell--home .content-grid{min-height:0;height:100%}
-.app-shell--home .modules-section{flex:1 1 0;min-height:0;padding:0}
-.app-shell--home .module-grid{flex:1 1 0;min-height:0;grid-auto-rows:minmax(44px,1fr);gap:var(--home-gap)}
+.app-shell--home .modules-section{box-sizing:border-box;width:100%;min-width:0;flex:1 1 0;min-height:0;padding:0}
+.app-shell--home .module-grid{box-sizing:border-box;width:100%;min-width:0;flex:1 1 0;min-height:0;grid-auto-rows:minmax(44px,1fr);gap:var(--home-gap)}
 .app-shell--home .module-card,.app-shell--home .module-card:nth-child(n){
   box-sizing:border-box;
   height:100%;
