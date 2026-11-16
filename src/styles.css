@@ -2711,6 +2711,8 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .operational-folder-inactive>summary small{margin-left:auto;padding:3px 7px;border:1px solid #bda66f;border-radius:999px;background:#fff8e6;color:#69542a;font-size:.62rem;font-weight:850;line-height:1.2;text-align:center}
 .operational-folder-inactive>summary:focus-visible{outline:3px solid #1762a1;outline-offset:-3px}
 .operational-folder-inactive>p[role=status]{margin:0;padding:9px 14px;color:#586b70;font-size:.8rem;line-height:1.35}
+.management-area-card.is-inactive{opacity:.68;filter:saturate(.62);border-style:dashed;cursor:pointer}
+.management-area-card.is-inactive:focus-visible{opacity:1;filter:none;outline:3px solid #1762a1;outline-offset:2px}
 .functional-tile--inactive{opacity:.68;filter:saturate(.62);border-style:dashed!important;cursor:pointer}
 .functional-tile--inactive:focus-visible{opacity:1;filter:none}
 .functional-tile--inactive small{color:#69542a!important}

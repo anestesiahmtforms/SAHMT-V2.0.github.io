@@ -813,6 +813,10 @@ function can(permission) {
 // permissions remain independent; this release never grants administrator rights.
 function canOpenRestrictedModule(route) {
   if (route === 'fg-performance') return canManageChecklistPermissions();
+  // Governance is a navigable folder tree for every approved profile. The
+  // folder policy blocks inactive activities; the existing permission checks
+  // below continue to govern active module actions.
+  if (route === 'management') return canUseGovernanceHub(session);
   if (['management','qmentum','training','fb-performance','fc-performance'].includes(route) && !can('admin')) return false;
   if (route === 'fc-performance') return fcPerformanceEnabled && canUseManagementPilot(session);
   if (can('admin')) return true;
@@ -1592,7 +1596,7 @@ async function loadModule(route) {
         return result;
       },
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')&&canUseManagementPilot(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:hasOccurrencePermission(),qmentum:canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:canUseGovernanceHub(session),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:canUseGovernanceHub(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:canUseGovernanceHub(session),qmentum:canUseGovernanceHub(session),fcPerformance:canOpenRestrictedModule('fc-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{
         if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}
         const prefix='#/management-hub'+(panel==='home'?'':'/'+panel);
@@ -1884,7 +1888,9 @@ async function loadModule(route) {
       const qualityArea = await data.getManagementArea('area-gestao-da-qualidade');
       items = qualityArea ? [qualityArea] : [];
     } else if (route === 'management' && !['managementManage', 'managementRead', 'managementActivityWrite', 'managementIndicatorsRead', 'managementIndicatorsWrite', 'managementPlansManage', 'documentsManage', 'equipmentManage', 'qualityManage', 'financeRead', 'financeWrite', 'financeManage'].some(can)) {
-      items = [];
+      // The area catalog is navigable even for users without activity rights.
+      // Inactive roots open as folders; active content still follows its own ACL.
+      items = MANAGEMENT_AREA_SEED.map(area=>({...area,active:true}));
     } else {
       loadedTrainingCatalog = [];
       if (route === 'checklist') {
@@ -1894,6 +1900,11 @@ async function loadModule(route) {
         items = Array.isArray(cached) ? [...cached] : [];
       } else items = await data.listModuleRecords(route, session.user.uid, {pageSize: 50});
       if (route === 'checklist') checklistModuleStations = items;
+    }
+    if(route==='management'){
+      const areas=new Map(MANAGEMENT_AREA_SEED.map(area=>[area.id,{...area,active:true}]));
+      for(const area of items||[])areas.set(area.id,{...areas.get(area.id),...area});
+      items=[...areas.values()];
     }
     if (route === 'checklist') {
       const reportDialog = document.querySelector('#checklist-report-dialog');
@@ -1949,7 +1960,7 @@ async function loadModule(route) {
       const areaSlug=location.hash.split('/')[2];
       if(items.some(item=>item.id===areaSlug))selectedManagementAreaId=areaSlug;
       if (!items.some((item) => item.id === selectedManagementAreaId)) selectedManagementAreaId = items[0]?.id || '';
-      const areas = items.map((item) => `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}">${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}${typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+item.id)?' · Pasta inativa':''}</small></span><span class="arrow" aria-hidden="true">›</span></button>`).join('');
+      const areas = items.map((item) => {const inactive=typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+item.id);return `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}${inactive?' is-inactive':''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}"${inactive?' aria-description="Pasta inativa. Navegação disponível; atividades bloqueadas."':''}>${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}${inactive?' · Pasta inativa':''}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;}).join('');
       const existingAreaIds = new Set(items.map((item) => item.id));
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
@@ -5427,18 +5438,20 @@ async function render() {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
   }
+  const governanceNavigation = canUseGovernanceHub(session) &&
+    (requestedRoute === 'management' || ['occurrences','qmentum'].includes(requestedRoute) && !operationalRouteActivityAllowed(requestedRoute));
   if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
-  if (!authLimited && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance'].includes(requestedRoute) && !canOpenRestrictedModule(requestedRoute)) {
+  if (!authLimited && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance'].includes(requestedRoute) && !governanceNavigation && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
     navigate('home');
     return;
   }
-  if (!authLimited && requestedRoute === 'occurrences' && !hasOccurrencePermission()) {
+  if (!authLimited && requestedRoute === 'occurrences' && !governanceNavigation && !hasOccurrencePermission()) {
     notice = 'Registro de Ocorrências exige autorização específica no perfil.';
     navigate('home');
     return;
   }
-  if (!authLimited && !(requestedRoute === 'occurrences' ? hasOccurrencePermission() : featureEnabledForRoute(requestedRoute, appFeatures))) {
+  if (!authLimited && !governanceNavigation && !(requestedRoute === 'occurrences' ? hasOccurrencePermission() : featureEnabledForRoute(requestedRoute, appFeatures))) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está desativada pela Administração.`;
     navigate('home');
     return;
