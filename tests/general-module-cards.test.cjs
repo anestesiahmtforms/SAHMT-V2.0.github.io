@@ -64,7 +64,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
   vm.runInContext(pilot+'\n'+features.replace(/^export /gm, '') + '\n' + main.slice(labelStart, labelEnd), context);
   const loadModule = extractFunction('loadModule', {async: true}).replace(/import\((['"])([^'"]+)\1\)/g, 'fakeImport("$2")');
   vm.runInContext([
-    extractFunction('can'), extractFunction('canOpenRestrictedModule'), extractFunction('hasOccurrencePermission'), extractFunction('moduleCards'), extractFunction('managementUtilityCards'),
+    extractFunction('can'), extractFunction('canBrowseInactiveGovernanceFolder'), extractFunction('canOpenRestrictedModule'), extractFunction('hasOccurrencePermission'), extractFunction('moduleCards'), extractFunction('managementUtilityCards'),
     extractFunction('actionForm'), loadModule,
     'globalThis.realModuleUi = {can, moduleCards, managementUtilityCards, actionForm, loadModule};'
   ].join('\n'), context);
@@ -122,7 +122,7 @@ function renderHarness(session, route='management') {
     loadModule: async route => loads.push(route), bindModuleForm: async () => {},
     updateInformationBanner() {}, updateOutboxStatus: async () => {}, syncOutbox: async () => {}, navigator: {onLine: true}
   });
-  vm.runInContext(pilot+'\n'+features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('canOpenRestrictedModule')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
+  vm.runInContext(pilot+'\n'+features.replace(/^export /gm, '') + `\n${extractFunction('can')}\n${extractFunction('canBrowseInactiveGovernanceFolder')}\n${extractFunction('canOpenRestrictedModule')}\n${extractFunction('render', {async: true})}\nglobalThis.runRender = render;`, context);
   return {context, navigations, loads, shells};
 }
 

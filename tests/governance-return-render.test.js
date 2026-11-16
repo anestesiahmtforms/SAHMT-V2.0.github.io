@@ -81,7 +81,8 @@ function harness({route='management',target='FB',session=authorized()}={}){
     fakeEffectiveTeamMember:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,
     fakeFunctionalAccess:async()=>({allowed:true,group:session.profile?.role==='administrador_app'?null:'EQUIPE'})
   });
-  const code=(router+'\n'+cards+'\n'+occurrencePermission+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
+  const inactiveFolderHelper=main.slice(main.indexOf('function canBrowseInactiveGovernanceFolder('),main.indexOf('\n}',main.indexOf('function canBrowseInactiveGovernanceFolder('))+2);
+  const code=(router+'\n'+cards+'\n'+occurrencePermission+'\n'+inactiveFolderHelper+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
     .replaceAll('import.meta.env','env').replace("import('./management-hub.js')",'Promise.resolve({mountManagementHub:mountHub})')
     .replace("import('./functional-access.js')",'Promise.resolve({getFunctionalAccess:fakeFunctionalAccess,isEffectiveTeamMember:fakeEffectiveTeamMember})');
   vm.runInContext(code,ctx);
