@@ -250,7 +250,6 @@ let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
-let cleanupCommunicationHomeBanners = null;
 let obligationBanner = null;
 let obligationBannerUid = '';
 let cleanupDocumentTraining = null;
@@ -5368,8 +5367,8 @@ function syncObligationBanner(){
 
 async function render() {
   if(typeof syncObligationBanner==='function')syncObligationBanner();
-  cleanupCommunicationHomeBanners?.();
-  cleanupCommunicationHomeBanners=null;
+  globalThis.communicationHomeBannerCleanup?.();
+  globalThis.communicationHomeBannerCleanup=null;
   if(typeof setOperationalFolderSession==='function')setOperationalFolderSession(session);
   const generation=++evaluationModuleGeneration,requestRoute=currentRoute();
   const current=()=>generation===evaluationModuleGeneration&&requestRoute===currentRoute();
@@ -5595,7 +5594,7 @@ async function render() {
         try{
           const [{mountCommunicationHomeBanners},{createCommunicationClient}]=await Promise.all([import('./communication-home-banners.js'),import('./communication-client.js')]);
           if(!isCurrent())return;
-          cleanupCommunicationHomeBanners=mountCommunicationHomeBanners(bannerRoot,{uid,isCurrent,client:createCommunicationClient({isCurrent})});
+          globalThis.communicationHomeBannerCleanup=mountCommunicationHomeBanners(bannerRoot,{uid,isCurrent,client:createCommunicationClient({isCurrent})});
         }catch(error){if(isCurrent())console.warn('[SAHMT] Não foi possível carregar as mensagens da Home:',error?.code||error?.message);}
       }
     }else {
