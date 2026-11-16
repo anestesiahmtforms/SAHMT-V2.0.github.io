@@ -109,6 +109,7 @@ function renderHarness(session, route='management') {
   const navigations = [], loads = [], shells = [];
   const context = vm.createContext({env:{BASE_URL:'/',VITE_FK_FUNCTIONAL_ENABLED:'true'},googleProjectAuthEnabled:true,isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,
     deployment:{target:'FA',externalManagementEnabled:false},googleAccessPanel:null,
+    operationalRouteFolder:()=>null,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',
     operationalDrafts:{flush:async()=>{},restore:async()=>{}},deniedOperationalModules:new Set(),
     session, appFeatures: {}, secondaryDomainProjects: {}, selectedManagementAreaId: '', evaluationModuleGeneration: 0,
     liveReports: new Map(), reportStates: new Map(), reportPayloads: new Map(),
