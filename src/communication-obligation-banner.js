@@ -41,7 +41,10 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  }
  function render(){
   if(!alive())return;
-  if(!items.length&&!error){blocking=false;restoreInert();node.remove();return;}
+  // A failed inbox lookup is not evidence of an administrator-issued activity.
+  // Keep an existing obligation visible across transient errors, but never create
+  // a banner from an empty/unknown inbox response.
+  if(!items.length){blocking=false;restoreInert();node.remove();return;}
   if(!node.isConnected)root.append(node);
   const item=current();selectedId=item?.id||null;
   const options=items.map(value=>{const option=doc.createElement('option');option.value=value.id;option.textContent=value.title||value.activity?.title||'Atividade';return option;});
