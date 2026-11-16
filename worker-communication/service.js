@@ -86,7 +86,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   const saved=await store.transaction(async tx=>{
    const old=await tx.get('communicationMessages',key),dispatch=await tx.get('communicationDispatches',key);
    if((event||release||activityInput)&&old){
-    const sameNotice=old.status==='published'&&(release||old.createdBy?.sourceUid===a.sourceUid)&&
+    const sameNotice=old.status==='published'&&(release||old.createdBy?.sourceUid===a.sourceUid||event&&key.startsWith('event-checklist-conference-'))&&
      ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field])&&(!activityInput||old.previewId===activityInput.previewId&&old.fingerprint===activityInput.fingerprint&&JSON.stringify(old.activity)===JSON.stringify(m.activity));
     if(!sameNotice)throw fail('COMM_CONFLICT',409);
     const mayStart=release&&dispatch?.status==='queueing'&&isCurrentMessage(old,now())&&

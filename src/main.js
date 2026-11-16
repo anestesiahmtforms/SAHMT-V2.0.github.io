@@ -250,6 +250,7 @@ let checklistReportContext = null;
 let stopChecklistQrScan = null;
 let qrDecoderPromise = null;
 let cleanupCurrentModule = null;
+let cleanupCommunicationHomeBanners = null;
 let obligationBanner = null;
 let obligationBannerUid = '';
 let cleanupDocumentTraining = null;
@@ -1120,7 +1121,8 @@ function shellView() {
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
   const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button></div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
-  const labelSharePanel = route === 'labels' && pendingLabelPdfShare?.uid === session.user?.uid ? `<section class="label-share-ready" aria-label="PDF da etiqueta salva"><p>${pendingLabelPdfShare.file ? 'Etiqueta confirmada. PDF pronto para compartilhar.' : `Etiqueta confirmada, mas o PDF não foi preparado. ${escapeHtml(pendingLabelPdfShare.error || '')}`}</p><small>Toque em compartilhar, escolha WhatsApp, selecione o grupo e confirme o envio.</small><button class="primary-button" type="button" id="share-saved-label-pdf" ${pendingLabelPdfShare.file ? '' : 'disabled'}>COMPARTILHAR PDF</button><button class="secondary-button" type="button" id="dismiss-saved-label-pdf">Dispensar</button><p class="label-share-status" id="label-share-status" role="status" aria-live="polite"></p></section>` : '';
+  const pendingLabelShare = typeof pendingLabelPdfShare === 'undefined' ? null : pendingLabelPdfShare;
+  const labelSharePanel = route === 'labels' && pendingLabelShare?.uid === session.user?.uid ? `<section class="label-share-ready" aria-label="PDF da etiqueta salva"><p>${pendingLabelShare.file ? 'Etiqueta confirmada. PDF pronto para compartilhar.' : `Etiqueta confirmada, mas o PDF não foi preparado. ${escapeHtml(pendingLabelShare.error || '')}`}</p><small>Toque em compartilhar, escolha WhatsApp, selecione o grupo e confirme o envio.</small><button class="primary-button" type="button" id="share-saved-label-pdf" ${pendingLabelShare.file ? '' : 'disabled'}>COMPARTILHAR PDF</button><button class="secondary-button" type="button" id="dismiss-saved-label-pdf">Dispensar</button><p class="label-share-status" id="label-share-status" role="status" aria-live="polite"></p></section>` : '';
   const labelReport = route === 'labels' && ['labelsRead','labelsWrite','labelsManage'].some(can) ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily"><span class="label-action-icon" aria-hidden="true">📄</span><span>RELATÓRIO DIÁRIO</span></button><button type="button" data-label-report-launch="monthly"><span class="label-action-icon" aria-hidden="true">🗓️</span><span>RELATÓRIO MENSAL</span></button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';
   const labelAccessPanel = route === 'labels' && !['labelsRead','labelsWrite','labelsManage'].some(can) ? `<section class="panel" role="status"><p>${!session.labelProfileLoaded ? 'Verificando seu acesso a Etiquetas…' : session.labelProfileError ? 'Não foi possível confirmar seu acesso a Etiquetas. Tente novamente.' : 'Seu acesso a Etiquetas precisa ser liberado pela administração de FH.'}</p>${session.labelProfileLoaded ? '<button type="button" class="secondary-button" data-retry-fh-label-access>Verificar acesso novamente</button>' : ''}</section>` : '';
   const view = ['home','schedule'].includes(route) ? `<section class="content-grid">
@@ -1130,6 +1132,7 @@ function shellView() {
 
       </article>` : ''}
       ${route === 'home' ? `<section class="modules-section">
+        ${typeof communicationFeatureEnabled!=='undefined'&&communicationFeatureEnabled&&session.status==='signed-in'&&profile.active===true&&profile.access===true ? '<div class="comm-home-notices" data-comm-home-notices aria-live="polite"></div>' : ''}
         <div class="module-grid">${moduleCards()}<button type="button" class="module-card" data-ecosystem-search ${typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'?'data-route="fi-search"':'disabled aria-disabled="true" title="Busca preparada para configuração posterior"'}><img class="module-icon" src="${import.meta.env.BASE_URL}assets/modules/home-search.svg" alt="" width="40" height="40"><span><strong>BUSCAR NO ECOSISTEMA</strong><small>${typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'?'Pesquisar materiais e registros':'Busca em preparação'}</small></span><span class="arrow" aria-hidden="true">›</span></button></div>
         ${typeof communicationFeatureEnabled!=='undefined'&&communicationFeatureEnabled&&session.status==='signed-in'&&profile.active===true&&profile.access===true ? '<button type="button" class="secondary-button comm-inbox-shortcut" data-route="communications"><span class="comm-inbox-shortcut__icon" aria-hidden="true"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8l-6 3v-3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z M7 9h10 M7 13h6"/></svg></span><span>MENSAGENS RECEBIDAS</span></button>' : ''}
       </section>` : ''}
@@ -5365,6 +5368,8 @@ function syncObligationBanner(){
 
 async function render() {
   if(typeof syncObligationBanner==='function')syncObligationBanner();
+  cleanupCommunicationHomeBanners?.();
+  cleanupCommunicationHomeBanners=null;
   if(typeof setOperationalFolderSession==='function')setOperationalFolderSession(session);
   const generation=++evaluationModuleGeneration,requestRoute=currentRoute();
   const current=()=>generation===evaluationModuleGeneration&&requestRoute===currentRoute();
@@ -5580,7 +5585,20 @@ async function render() {
   }
   void updateOutboxStatus();
   if (['home','schedule'].includes(currentRoute())) {
-    if(currentRoute()==='home')await loadHome();else {
+    if(currentRoute()==='home'){
+      await loadHome();
+      if(!current())return;
+      const bannerRoot=document.querySelector('[data-comm-home-notices]');
+      const uid=session.user?.uid;
+      if(bannerRoot&&uid&&communicationFeatureEnabled&&session.profile?.active===true&&session.profile?.access===true){
+        const isCurrent=()=>current()&&currentRoute()==='home'&&session.status==='signed-in'&&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
+        try{
+          const [{mountCommunicationHomeBanners},{createCommunicationClient}]=await Promise.all([import('./communication-home-banners.js'),import('./communication-client.js')]);
+          if(!isCurrent())return;
+          cleanupCommunicationHomeBanners=mountCommunicationHomeBanners(bannerRoot,{uid,isCurrent,client:createCommunicationClient({isCurrent})});
+        }catch(error){if(isCurrent())console.warn('[SAHMT] Não foi possível carregar as mensagens da Home:',error?.code||error?.message);}
+      }
+    }else {
       bindScheduleEventPanels();
       await bindModuleForm('events');
       if (!current()) return;

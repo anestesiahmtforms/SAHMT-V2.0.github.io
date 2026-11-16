@@ -29,6 +29,8 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   let loading = false;
   let lastLoadAt = 0;
   let loadError = '';
+  const acknowledging = new Set();
+  const acknowledgementErrors = new Map();
   const active = () => !disposed && root.isConnected && isCurrent();
   const dismissed = readDismissed(uid);
 
@@ -37,12 +39,15 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     const merged = new Map(items.map(item => [item.id, item]));
     for (const item of pushedItems) if (!merged.has(item.id)) merged.set(item.id, item);
     visibleItems = [...merged.values()].filter(item => !dismissed.has(item.id)).sort((a, b) => Number(b.publishAt || 0) - Number(a.publishAt || 0));
-    root.innerHTML = visibleItems.map(item => `<article class="comm-home-notice${item.priority === 'URGENT' ? ' comm-home-notice--urgent' : ''}" role="status" aria-label="Novo aviso institucional">
-      <header><strong>🔔 NOVO AVISO · ${escapeHtml(item.category)}</strong><button type="button" class="comm-home-notice__close" data-dismiss-comm="${escapeHtml(item.id)}" aria-label="Fechar aviso">×</button></header>
-      <h2>${escapeHtml(item.title)}</h2><p>${linkedNoticeText(item.message)}</p>
-      ${item.linkUrl&&/^https:\/\//.test(item.linkUrl)?`<a class="comm-home-notice__destination" href="${escapeHtml(item.linkUrl)}"${item.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(item.linkLabel||'ABRIR DESTINO')}</a>`:''}
-      <a class="comm-home-notice__details" href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>
-    </article>`).join('') + (hasMore ? '<a class="comm-home-notice__more" href="#/communications">Ver mais mensagens recebidas</a>' : '') + (loadError ? `<article class="comm-home-notice" role="status"><p>${escapeHtml(loadError)} <a href="#/communications">ABRIR CENTRAL DE COMUNICAÇÃO</a></p></article>` : '');
+    root.innerHTML = visibleItems.map(item => {
+      const checklistConference = item.id.startsWith('event-checklist-conference-');
+      return `<article class="comm-home-notice${item.priority === 'URGENT' ? ' comm-home-notice--urgent' : ''}${checklistConference ? ' comm-home-notice--checklist-conference' : ''}" role="status" aria-label="${checklistConference ? 'Conferência do Checklist' : 'Novo aviso institucional'}">
+        <header><strong>${checklistConference ? '📋 CONFERÊNCIA DO CHECKLIST' : `🔔 NOVO AVISO · ${escapeHtml(item.category)}`}</strong>${checklistConference ? '' : `<button type="button" class="comm-home-notice__close" data-dismiss-comm="${escapeHtml(item.id)}" aria-label="Fechar aviso">×</button>`}</header>
+        <h2>${escapeHtml(item.title)}</h2><p>${linkedNoticeText(item.message)}</p>
+        ${item.linkUrl&&/^https:\/\//.test(item.linkUrl)?`<a class="comm-home-notice__destination" href="${escapeHtml(item.linkUrl)}"${item.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(item.linkLabel||'ABRIR DESTINO')}</a>`:''}
+        ${checklistConference ? `<p class="comm-home-notice__ack-status" role="status">${escapeHtml(acknowledgementErrors.get(item.id) || '')}</p><button type="button" class="comm-home-notice__ack" data-ack-comm="${escapeHtml(item.id)}" ${acknowledging.has(item.id) ? 'disabled' : ''}>${acknowledging.has(item.id) ? 'REGISTRANDO…' : 'OK'}</button>` : `<a class="comm-home-notice__details" href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>`}
+      </article>`;
+    }).join('') + (hasMore ? '<a class="comm-home-notice__more" href="#/communications">Ver mais mensagens recebidas</a>' : '') + (loadError ? `<article class="comm-home-notice" role="status"><p>${escapeHtml(loadError)} <a href="#/communications">ABRIR CENTRAL DE COMUNICAÇÃO</a></p></article>` : '');
   }
 
   async function appendPushedMessage(id) {
@@ -91,6 +96,29 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   }
 
   const onClick = event => {
+    const acknowledge = event.target.closest('[data-ack-comm]');
+    if (acknowledge && root.contains(acknowledge)) {
+      const id = acknowledge.dataset.ackComm;
+      if (!id || acknowledging.has(id)) return;
+      acknowledging.add(id);
+      acknowledgementErrors.delete(id);
+      render(visibleItems);
+      void client.request('MESSAGE_READ', {id}).then(result => {
+        if (!active()) return;
+        if (result.recorded !== true) throw new Error('O servidor ainda não confirmou o registro de leitura. Tente novamente.');
+        dismissed.add(id);
+        saveDismissed(uid, dismissed);
+        acknowledgementErrors.delete(id);
+      }).catch(error => {
+        if (active()) acknowledgementErrors.set(id, ['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code)
+          ? 'Conecte sua conta à Central para registrar a leitura.'
+          : error.message || 'Não foi possível registrar a leitura. Tente novamente.');
+      }).finally(() => {
+        acknowledging.delete(id);
+        if (active()) render(visibleItems);
+      });
+      return;
+    }
     const button = event.target.closest('[data-dismiss-comm]');
     if (!button || !root.contains(button)) return;
     const id = button.dataset.dismissComm;
