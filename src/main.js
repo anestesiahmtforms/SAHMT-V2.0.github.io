@@ -146,7 +146,7 @@ const labels = {
   qmentum: ['INDICADORES OBRIGATÓRIOS QMENTUM', 'Indicadores institucionais por unidade e competência'],
   'fg-performance': ['Desempenho FG', 'Checklist'],
   'fc-performance': ['Desempenho FC', 'Pontuação das ações em FC'],
-  checklist: ['Checklist', 'Registro e acompanhamento operacional'],
+  checklist: ['Checklist', 'Acompanhar operações'],
   training: ['Desempenho', 'Pontuação, participações e atividades'],
   occurrences: ['REGISTRO DE OCORRÊNCIAS', 'Relato de ocorrências e não conformidades'],
   people: ['Pessoas', 'Contatos e cadastros da equipe'],
