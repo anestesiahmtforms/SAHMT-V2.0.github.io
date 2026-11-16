@@ -813,10 +813,6 @@ function can(permission) {
 // permissions remain independent; this release never grants administrator rights.
 function canOpenRestrictedModule(route) {
   if (route === 'fg-performance') return canManageChecklistPermissions();
-  // Governance is a navigable folder tree for every approved profile. The
-  // folder policy blocks inactive activities; the existing permission checks
-  // below continue to govern active module actions.
-  if (route === 'management') return canUseGovernanceHub(session);
   if (['management','qmentum','training','fb-performance','fc-performance'].includes(route) && !can('admin')) return false;
   if (route === 'fc-performance') return fcPerformanceEnabled && canUseManagementPilot(session);
   if (can('admin')) return true;
@@ -827,6 +823,11 @@ function canOpenRestrictedModule(route) {
   return !!release && session.status === 'signed-in' && session.profile?.active === true
     && session.profile?.access === true && !!session.user?.uid && session.profile?.uid === session.user.uid
     && session.profile?.permissions?.[release] === true && session.profile?.permissions?.[readPermission] === true;
+}
+
+function canBrowseInactiveGovernanceFolder(folder) {
+  return canUseGovernanceHub(session) && typeof operationalContentAllowed === 'function'
+    && !operationalContentAllowed(folder);
 }
 
 function canManageChecklistPermissions() {
@@ -1596,7 +1597,7 @@ async function loadModule(route) {
         return result;
       },
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:canUseGovernanceHub(session),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:canUseGovernanceHub(session),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:canUseGovernanceHub(session),qmentum:canUseGovernanceHub(session),fcPerformance:canOpenRestrictedModule('fc-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),inactiveFolderNavigation:canUseGovernanceHub(session),inactiveConsultations:canBrowseInactiveGovernanceFolder('consultas'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:canBrowseInactiveGovernanceFolder('gestao')||(can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures)),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:canBrowseInactiveGovernanceFolder('registros')||(can('admin')&&canUseManagementPilot(session)),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:canBrowseInactiveGovernanceFolder('registros/ocorrencias')||hasOccurrencePermission(),qmentum:canBrowseInactiveGovernanceFolder('registros/qmentum')||canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{
         if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}
         const prefix='#/management-hub'+(panel==='home'?'':'/'+panel);
@@ -5438,8 +5439,9 @@ async function render() {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
   }
-  const governanceNavigation = canUseGovernanceHub(session) &&
-    (requestedRoute === 'management' || ['occurrences','qmentum'].includes(requestedRoute) && !operationalRouteActivityAllowed(requestedRoute));
+  const governanceNavigation = requestedRoute === 'management'&&canBrowseInactiveGovernanceFolder('gestao')
+    || requestedRoute === 'occurrences'&&canBrowseInactiveGovernanceFolder('registros/ocorrencias')
+    || requestedRoute === 'qmentum'&&canBrowseInactiveGovernanceFolder('registros/qmentum');
   if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
   if (!authLimited && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance'].includes(requestedRoute) && !governanceNavigation && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;

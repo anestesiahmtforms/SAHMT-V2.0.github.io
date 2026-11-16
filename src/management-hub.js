@@ -66,16 +66,17 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  if(initialPanel==='indicators')initialPanel='records';
  const institutionalAllowed=()=>access.institutionalSurveys===true;
  const teamSurveyPanels=['climateForm','stressForm'];
- const restrictedAllowed=()=>panels.institutional.items.some(item=>access[item.access]===true);
+ const restrictedAllowed=()=>access.inactiveConsultations===true||panels.institutional.items.some(item=>access[item.access]===true);
  const consultationsAllowed=()=>institutionalAllowed()||restrictedAllowed();
  const itemAllowed=item=>item.panel==='surveys'?consultationsAllowed():item.panel==='institutional'?restrictedAllowed():(!item.access||access[item.access]===true);
  const biosafetyPanels=['vaccinationHistory'];
  const biosafetyFolder='consultas/biosseguranca';
- const panelFolders={biosafety:biosafetyFolder,vaccinationHistory:biosafetyFolder+'/vacinacao',functional:'funcional',management:'gestao',communication:'comunicacao',results:'indicadores',records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',general:'consultas/pesquisas',fePerformance:'desempenho/fe',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027'};
+ const panelFolders={biosafety:biosafetyFolder,vaccinationHistory:biosafetyFolder+'/vacinacao',functional:'funcional',management:'gestao',communication:'comunicacao',results:'indicadores',records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',institutional:'consultas',general:'consultas/pesquisas',fePerformance:'desempenho/fe',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027'};
  const panelFolderAllowed=name=>(name!=='fePerformance'||folderAllowed('consultas/pesquisas'))&&
   (!biosafetyPanels.includes(name)||folderAllowed('consultas'))&&(!Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]));
  const navigationOnly=['surveys','institutional','general','records','biosafety'];
- const panelAllowed=name=>profilePanelAllowed(name);
+ const panelAllowed=name=>profilePanelAllowed(name)||(access.inactiveFolderNavigation===true&&Object.hasOwn(panelFolders,name)&&!folderAllowed(panelFolders[name]));
+ const itemNavigable=item=>itemAllowed(item)||(access.inactiveFolderNavigation===true&&Object.hasOwn(panelFolders,item.panel||item.route)&&!panelFolderAllowed(item.panel||item.route));
  const profilePanelAllowed=name=>biosafetyPanels.includes(name)?access.biosafety===true:teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='professional'?access.surveys===true:name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2><div data-hub-folder-notice></div></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
@@ -93,10 +94,10 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    if(item.access==='functional'&&access.functional!==true)return '';
    if(item.access==='communication'&&!communicationAllowed)return '';
    if(item.access==='fiControl'&&access.fiControl!==true)return '';
-   if(['surveys','institutional'].includes(panel)&&!itemAllowed(item))return '';
+   if(['surveys','institutional'].includes(panel)&&!itemNavigable(item))return '';
    if(['performance','faPerformance','fcPerformance'].includes(item.access)&&access[item.access]!==true)return '';
    const available=panelFolderAllowed(item.panel||item.route);
-   const allowed=itemAllowed(item);
+   const allowed=itemNavigable(item);
    return '<button type="button" class="management-hub-button '+(item.className||'')+(!available?' management-hub-button--inactive':'')+'" data-hub-item="'+index+'"'+(!available?' aria-description="Pasta inativa. A navegação continua disponível; atividades bloqueadas."':'')+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+(!available?'<small class="management-survey-subtitle">INATIVA · NAVEGAÇÃO DISPONÍVEL</small>':'')+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
   if(!panelFolderAllowed(panel)&&!navigationOnly.includes(panel)&&!spec.items){
@@ -192,7 +193,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   if(survey){if(panel==='general'&&climateEnabled&&institutionalAllowed()&&survey.dataset.surveyPanel==='fePerformance'&&panelAllowed(survey.dataset.surveyPanel)){panel=survey.dataset.surveyPanel;render();}return;}
   const button=event.target.closest('[data-hub-item]');if(!button||button.disabled)return;
   const item=panels[panel].items?.[Number(button.dataset.hubItem)];
-  if(!item||!itemAllowed(item))return;
+  if(!item||!itemNavigable(item))return;
   if(item.panel){panel=item.panel;render();}else if(item.route)onNavigate(item.route);
  };
  const backClick=()=>{if(!cleanupRegistration.goBack?.())goBack();};
