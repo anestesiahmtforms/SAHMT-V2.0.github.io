@@ -15,6 +15,7 @@ function doPost(event) {
     if (payload.action === 'SYNC_TEAM_PERFORMANCE' && Object.keys(payload).length === 1) return json_(syncTeamPerformance_());
     if (payload.action === 'SYNC_OVERVIEW') return json_(syncOwnOverview_(payload.faIdToken));
     if (payload.action === 'READ_TEAM_OVERVIEW') return json_(readTeamOverview_(payload.faIdToken, payload.subjectUid));
+    if (payload.action === 'FUNCTIONAL_FOLDER_POLICY') return json_(functionalFolderPolicy_(payload.faIdToken,payload.operation,payload.input));
     if (payload.action === 'FUNCTIONAL_DOSIMETRY_IMPORT' && Object.keys(payload).length === 3) return json_(functionalDosimetryImport_(payload.faIdToken, payload.input));
     if (payload.action === 'FUNCTIONAL_DOSIMETRY' && Object.keys(payload).length === 3) return json_(functionalDosimetry_(payload.faIdToken, payload.input));
     if (payload.action === 'FUNCTIONAL_SURVEY_SUBMIT') return json_(submitFunctionalSurvey_(payload));
@@ -22,6 +23,68 @@ function doPost(event) {
   } catch (error) {
     return json_({ code: /^FK_[A-Z0-9_]+$/.test(String(error && error.message)) ? String(error.message) : 'FK_REQUEST_UNAVAILABLE' });
   }
+}
+
+var FK_FUNCTIONAL_FOLDERS_=['funcional','funcional/desempenho','funcional/cadastro-profissional','funcional/cadastro-epidemiologico',
+  'funcional/pesquisas-institucionais','funcional/pesquisas-institucionais/clima','funcional/pesquisas-institucionais/estresse-fadiga',
+  'funcional/biosseguranca','funcional/biosseguranca/manual','funcional/biosseguranca/vacinacao','funcional/biosseguranca/dosimetria'];
+
+function functionalFolderPolicy_(idToken,operation,input) {
+  if(!['INSPECT','PUBLISH'].includes(operation)||!input||Array.isArray(input)||typeof input!=='object')throw new Error('FK_FOLDER_POLICY_INPUT');
+  var access=authorizeFaUser_(idToken);
+  if(access.administrator!==true)throw new Error('FK_FOLDER_POLICY_FORBIDDEN');
+  var path='https://firestore.googleapis.com/v1/projects/'+FK_PROJECT_+'/databases/(default)/documents/runtimePolicy/folders';
+  var token=getFkSnapshotAccessToken_();
+  function read(){
+    var response=UrlFetchApp.fetch(path,{method:'get',headers:{Authorization:'Bearer '+token},muteHttpExceptions:true});
+    if(response.getResponseCode()===404)return null;
+    if(response.getResponseCode()!==200)throw new Error('FK_FOLDER_POLICY_UNAVAILABLE');
+    var document=JSON.parse(response.getContentText());
+    if(typeof document.updateTime!=='string')throw new Error('FK_FOLDER_POLICY_UNAVAILABLE');
+    return {value:decodeFirestoreFields_(document.fields||{}),updateTime:document.updateTime};
+  }
+  function valid(policy){
+    if(!policy||policy.schemaVersion!==1||!Number.isSafeInteger(policy.revision)||policy.revision<1||!Array.isArray(policy.disabled)||
+      new Set(policy.disabled).size!==policy.disabled.length||policy.disabled.some(function(id){return typeof id!=='string'||FK_FUNCTIONAL_FOLDERS_.indexOf(id)<0;}))
+      throw new Error('FK_FOLDER_POLICY_UNAVAILABLE');
+    return policy;
+  }
+  var record=read(),current=record?valid(record.value):{schemaVersion:1,revision:0,disabled:['funcional']};
+  if(operation==='INSPECT'){
+    if(Object.keys(input).length)throw new Error('FK_FOLDER_POLICY_INPUT');
+    return {code:'FK_FOLDER_POLICY_READY',revision:current.revision,disabled:current.disabled,initialized:!!record,pending:false};
+  }
+  var initialize=input.initialize===true&&input.revision===0&&Object.keys(input).length===2;
+  var change=Object.keys(input).length===3&&typeof input.id==='string'&&FK_FUNCTIONAL_FOLDERS_.indexOf(input.id)>=0&&typeof input.enabled==='boolean'&&Number.isSafeInteger(input.revision);
+  if(!initialize&&!change)throw new Error('FK_FOLDER_POLICY_INPUT');
+  if(initialize){if(record)throw new Error('FK_FOLDER_POLICY_CONFLICT');}
+  else if(!record||input.revision!==current.revision||current.revision>=Number.MAX_SAFE_INTEGER)throw new Error('FK_FOLDER_POLICY_CONFLICT');
+  var disabled=new Set(initialize?['funcional']:current.disabled);
+  if(change){
+    if(input.enabled)enableFunctionalFolderBranch_(disabled,input.id);else disabled.add(input.id);
+  }
+  var next={schemaVersion:1,revision:initialize?1:current.revision+1,disabled:Array.from(disabled).sort()};
+  if(!initialize&&JSON.stringify(next.disabled)===JSON.stringify(current.disabled))return {code:'FK_FOLDER_POLICY_UPDATED',revision:current.revision,initialized:true,pending:false};
+  var url=path+(record?'?currentDocument.updateTime='+encodeURIComponent(record.updateTime):'?currentDocument.exists=false');
+  var write=UrlFetchApp.fetch(url,{method:'patch',contentType:'application/json',headers:{Authorization:'Bearer '+token},payload:JSON.stringify({fields:toFirestoreFields_(next)}),muteHttpExceptions:true});
+  if([409,412].indexOf(write.getResponseCode())>=0)throw new Error('FK_FOLDER_POLICY_CONFLICT');
+  if(write.getResponseCode()!==200)throw new Error('FK_FOLDER_POLICY_UNAVAILABLE');
+  var saved=read();if(!saved||saved.value.revision!==next.revision||JSON.stringify(saved.value.disabled)!==JSON.stringify(next.disabled))throw new Error('FK_FOLDER_POLICY_UNAVAILABLE');
+  return {code:'FK_FOLDER_POLICY_UPDATED',revision:next.revision,initialized:true,pending:false};
+}
+
+function enableFunctionalFolderBranch_(disabled,id) {
+  var parts=id.split('/'),ancestors=[];
+  for(var length=1;length<parts.length;length++)ancestors.push(parts.slice(0,length).join('/'));
+  disabled.delete(id);var openingPath=false;
+  ancestors.forEach(function(ancestor){
+    if(disabled.delete(ancestor))openingPath=true;
+    if(!openingPath)return;
+    var branch=ancestor+'/'+id.slice(ancestor.length+1).split('/')[0];
+    FK_FUNCTIONAL_FOLDERS_.forEach(function(sibling){
+      if(sibling!==branch&&sibling.indexOf(ancestor+'/')===0&&!sibling.slice(ancestor.length+1).includes('/'))disabled.add(sibling);
+    });
+  });
 }
 
 function authorizeFaUser_(idToken) {
@@ -77,6 +140,8 @@ function submitFunctionalSurvey_(payload) {
   if (!allowed || payload.cycle !== '2026' || typeof payload.faIdToken !== 'string') throw new Error('FK_SURVEY_INPUT_INVALID');
   var access = authorizeFaUser_(payload.faIdToken);
   if (access.group !== 'EQUIPE' && access.group !== 'ADMINISTRADOR') throw new Error('FK_SURVEY_ACCESS_DENIED');
+  var surveyFolder={climate:'funcional/pesquisas-institucionais/clima',stress:'funcional/pesquisas-institucionais/estresse-fadiga',epidemiological:'funcional/cadastro-epidemiologico'}[payload.survey];
+  assertFunctionalFolderEnabled_(access,surveyFolder);
   var response = validateFunctionalSurveyResponse_(payload.survey, payload.response);
   var uid = access.uid, survey = payload.survey, cycle = payload.cycle;
   var participationId = uid + '_' + survey + '_' + cycle;
@@ -109,6 +174,20 @@ function submitFunctionalSurvey_(payload) {
   if (result.getResponseCode() === 409 || /ALREADY_EXISTS|FAILED_PRECONDITION/i.test(body))
     return {code:'FK_SURVEY_SAVED', uid:uid, survey:survey, alreadyResponded:true};
   throw new Error('FK_SURVEY_WRITE_FAILED');
+}
+
+/** FK owns this gate; the FA runtime policy is never consulted for FK activities. */
+function assertFunctionalFolderEnabled_(access,folderId) {
+  if(access&&access.administrator)return;
+  var response=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FK_PROJECT_+'/databases/(default)/documents/runtimePolicy/folders',{
+    method:'get',headers:{Authorization:'Bearer '+getFkSnapshotAccessToken_()},muteHttpExceptions:true});
+  if(response.getResponseCode()===404)throw new Error('FK_FOLDER_DISABLED');
+  if(response.getResponseCode()!==200)throw new Error('FK_FOLDER_POLICY_UNAVAILABLE');
+  var policy=decodeFirestoreFields_(JSON.parse(response.getContentText()).fields||{});
+  if(policy.schemaVersion!==1||!Number.isSafeInteger(policy.revision)||policy.revision<1||!Array.isArray(policy.disabled)||
+    policy.disabled.some(function(id){return typeof id!=='string'||id!=='funcional'&&!id.startsWith('funcional/');}))throw new Error('FK_FOLDER_POLICY_UNAVAILABLE');
+  var parts=folderId.split('/');
+  for(var length=1;length<=parts.length;length++)if(policy.disabled.indexOf(parts.slice(0,length).join('/'))!==-1)throw new Error('FK_FOLDER_DISABLED');
 }
 
 function validateFunctionalSurveyResponse_(survey, input) {
@@ -515,9 +594,7 @@ function functionalDosimetry_(idToken,input){
   var subject=readFaDocument_(idToken,'users/'+input.subjectUid),email=normalizeEmail_(subject&&subject.email);
   if(!subject||subject.uid!==input.subjectUid||!email||subject.active!==true||subject.access!==true)throw new Error('FK_TEAM_MEMBER_DENIED');
   if(!(access.administrator&&access.uid===input.subjectUid)){var assignment=readFaDocument_(idToken,'userCategories/'+sha256Hex_(JSON.stringify(email)));if(!isEffectiveAssignment_(assignment,input.subjectUid,email))throw new Error('FK_TEAM_MEMBER_DENIED');}
-  if(!access.administrator){var policyResponse=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/projects/'+FA_PROJECT_+'/databases/(default)/documents/runtimePolicy/folders',{method:'get',headers:{Authorization:'Bearer '+idToken},muteHttpExceptions:true});
-   if(policyResponse.getResponseCode()===200){var policy=decodeFirestoreFields_(JSON.parse(policyResponse.getContentText()).fields||{});if(policy.schemaVersion!==1||!Number.isSafeInteger(policy.revision)||policy.revision<1||!Array.isArray(policy.disabled)||policy.disabled.some(function(k){return typeof k!=='string';}))throw new Error('FK_DOSIMETRY_UNAVAILABLE');if(['funcional','funcional/biosseguranca','funcional/biosseguranca/dosimetria'].some(function(k){return policy.disabled.indexOf(k)>=0;}))throw new Error('FK_DOSIMETRY_FOLDER_DISABLED');}
-   else if(policyResponse.getResponseCode()!==404)throw new Error('FK_DOSIMETRY_UNAVAILABLE');}
+  assertFunctionalFolderEnabled_(access,'funcional/biosseguranca/dosimetria');
   return {actor:access,email:email};}
  var authorized=authorize(),root='projects/'+FK_PROJECT_+'/databases/(default)/documents/';
  var response=UrlFetchApp.fetch('https://firestore.googleapis.com/v1/'+root+'occupationalDosimetry/'+input.subjectUid+'_'+input.year,{method:'get',headers:{Authorization:'Bearer '+getFkSnapshotAccessToken_()},muteHttpExceptions:true});

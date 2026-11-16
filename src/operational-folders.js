@@ -53,6 +53,15 @@ export const operationalFolders = Object.freeze({
  'operacao/escala/ferias':'Férias da escala diária'
 });
 
+// FK has an independent policy document in the Funcional project's Firestore.
+// These IDs remain in the shared registry for route labels and path validation,
+// but are excluded from the FA policy and its publisher.
+export const functionalFolders=Object.freeze(Object.fromEntries(
+ Object.entries(operationalFolders).filter(([id])=>id==='funcional'||id.startsWith('funcional/'))
+));
+export const functionalFolderRoots=Object.freeze(['funcional']);
+export const initialFunctionalFolderPolicy=Object.freeze({schemaVersion:1,revision:0,disabled:functionalFolderRoots});
+
 export const consolidatedPerformanceFolders = Object.freeze([
  'desempenho/sahmt',
  'desempenho/fb',
@@ -89,7 +98,6 @@ const routes = Object.freeze({
 // folder policy; their own role checks continue to control who can enter.
 export const governanceFolderRoots=Object.freeze([
  'gestao','indicadores','registros','consultas','desempenho',
- 'funcional/desempenho','funcional/pesquisas-institucionais',
  'operacao/checklist/desempenho'
 ]);
 export const initialOperationalFolderPolicy=Object.freeze({schemaVersion:1,revision:0,disabled:governanceFolderRoots});
@@ -100,3 +108,13 @@ export const operationalFolderAllowed=(policy,id)=>{
  return folderReadable(policy,id);
 };
 export const operationalRouteFolder=route=>Object.hasOwn(routes,route)?routes[route]:null;
+export const functionalFolderAllowed=(policy,id)=>{
+ if(policy===null||policy===undefined)return false;
+ if(policy===initialFunctionalFolderPolicy){
+  return typeof id!=='string'||!functionalFolderRoots.some(folder=>id===folder||id.startsWith(folder+'/'));
+ }
+ return folderReadable(policy,id);
+};
+export const functionalFolderPolicyValid=policy=>policy===initialFunctionalFolderPolicy||
+ !!policy&&policy.schemaVersion===1&&Number.isSafeInteger(policy.revision)&&policy.revision>=1&&Array.isArray(policy.disabled)&&
+ policy.disabled.every(id=>typeof id==='string'&&Object.hasOwn(functionalFolders,id));

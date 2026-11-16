@@ -7,6 +7,13 @@ service cloud.firestore {
         request.auth.token.firebase.sign_in_provider == 'google.com';
     }
 
+    // FK owns its governance availability document; clients may read only the
+    // single policy record and can never mutate it directly.
+    match /runtimePolicy/folders {
+      allow get: if signedGoogle();
+      allow list, create, update, delete: if false;
+    }
+
     match /functionalProfiles/{uid} {
       allow get: if signedGoogle() && request.auth.uid == uid && resource.data.uid == uid;
       allow list, create, update, delete: if false;

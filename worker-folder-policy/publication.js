@@ -34,7 +34,7 @@ function parseRequest(input) {
  if(!input||typeof input!=='object'||!Number.isSafeInteger(input.revision)||input.revision<0)throw fail('FOLDER_POLICY_INPUT',400);
  if(input.resume===true&&Object.keys(input).length===2)return input;
  if(input.initialize===true&&input.revision===0&&Object.keys(input).length===2)return input;
- if(Object.keys(input).length!==3||typeof input.id!=='string'||!Object.hasOwn(operationalFolders,input.id)||typeof input.enabled!=='boolean')
+ if(Object.keys(input).length!==3||typeof input.id!=='string'||!Object.hasOwn(operationalFolders,input.id)||input.id==='funcional'||input.id.startsWith('funcional/')||typeof input.enabled!=='boolean')
   throw fail('FOLDER_POLICY_INPUT',400);
  return input;
 }

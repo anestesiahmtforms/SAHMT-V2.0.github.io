@@ -3,7 +3,7 @@ import {subscribeOperationalFolderPolicy} from './operational-folder-runtime.js'
 
 const fold=value=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().trim();
 const groups=new Map();
-for(const [id,title] of Object.entries(operationalFolders).filter(([id])=>id!=='comunicacao')){
+for(const [id,title] of Object.entries(operationalFolders).filter(([id])=>id!=='comunicacao'&&id!=='funcional'&&!id.startsWith('funcional/'))){
  const path=id.split('/');
  const group=path[0];
  const parents=path.slice(0,-1).map((_,index)=>operationalFolders[path.slice(0,index+1).join('/')]).filter(Boolean).join(' / ');

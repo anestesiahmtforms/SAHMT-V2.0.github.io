@@ -36,7 +36,7 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
     const headers = cors(origin, env || {});
     const url = new URL(request.url);
     const route = url.pathname;
-    if (!['/v1/functional/refresh','/v1/functional/survey','/v1/functional/team-overview','/v1/functional/dosimetry'].includes(route)) return Response.json({code:'NOT_FOUND'}, {status:404,headers});
+    if (!['/v1/functional/refresh','/v1/functional/survey','/v1/functional/team-overview','/v1/functional/dosimetry','/v1/functional/folders'].includes(route)) return Response.json({code:'NOT_FOUND'}, {status:404,headers});
     if (request.method === 'OPTIONS') return new Response(null, {status:origin === env.FK_AUTH_ORIGIN ? 204 : 403,headers});
     if (request.method !== 'POST' || origin !== env.FK_AUTH_ORIGIN) return Response.json({code:'REQUEST_REJECTED'}, {status:403,headers});
     if (!env.APPS_SCRIPT_URL || !env.FK_HMAC_SECRET || env.FK_HMAC_SECRET.length < 32)
@@ -51,6 +51,20 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
       input = JSON.parse(raw);
     } catch { return Response.json({code:'REQUEST_INVALID'}, {status:400,headers}); }
     const validToken = typeof input?.faIdToken === 'string' && input.faIdToken.length >= 100 && input.faIdToken.length <= 10000 && !/[\s\x00-\x1f]/.test(input.faIdToken);
+    if(route==='/v1/functional/folders'){
+      if(!input||Object.keys(input).length!==3||!validToken||!['INSPECT','PUBLISH'].includes(input.operation)||
+        !input.input||Array.isArray(input.input)||typeof input.input!=='object')return Response.json({code:'REQUEST_INVALID'},{status:400,headers});
+      try{
+        const payload={action:'FUNCTIONAL_FOLDER_POLICY',faIdToken:input.faIdToken,operation:input.operation,input:input.input};input.faIdToken='';
+        const body=await signedEnvelope(payload,env.FK_HMAC_SECRET,clock());payload.faIdToken='';
+        const response=await fetchImpl(env.APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'application/json'},body,redirect:'follow',signal:AbortSignal.timeout(30000)});
+        if(!response.ok)throw Error();const text=await response.text();if(text.length>12000)throw Error();const result=JSON.parse(text);
+        if(['FK_FOLDER_POLICY_READY','FK_FOLDER_POLICY_UPDATED'].includes(result.code))return Response.json(result,{headers});
+        const errors={FK_AUTH_DENIED:403,FK_FOLDER_POLICY_FORBIDDEN:403,FK_FOLDER_DISABLED:403,FK_FOLDER_POLICY_INPUT:400,FK_FOLDER_POLICY_CONFLICT:409};
+        if(Object.hasOwn(errors,result.code))return Response.json({code:result.code},{status:errors[result.code],headers});
+        throw Error();
+      }catch{return Response.json({code:'FK_FOLDER_POLICY_UNAVAILABLE'},{status:503,headers});}
+    }
     if(route==='/v1/functional/dosimetry'){
       if(!input||Object.keys(input).length!==2||!Object.hasOwn(input,'input')||!validToken||
          !input.input||typeof input.input!=='object'||Array.isArray(input.input))return Response.json({code:'REQUEST_INVALID'},{status:400,headers});
@@ -61,7 +75,7 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
         const body=await signedEnvelope(payload,env.FK_HMAC_SECRET,clock());payload.faIdToken='';
         const response=await fetchImpl(env.APPS_SCRIPT_URL,{method:'POST',headers:{'Content-Type':'application/json'},body,redirect:'follow',signal:AbortSignal.timeout(30000)});
         if(!response.ok)throw Error();const text=await response.text();if(text.length>200000)throw Error();const result=JSON.parse(text);
-        const errors={FK_AUTH_DENIED:403,FK_TEAM_MEMBER_DENIED:403,FK_DOSIMETRY_INPUT_INVALID:400,FK_DOSIMETRY_CONFLICT:409,FK_DOSIMETRY_BINDING_REQUIRED:400,FK_DOSIMETRY_FOLDER_DISABLED:403};
+        const errors={FK_AUTH_DENIED:403,FK_TEAM_MEMBER_DENIED:403,FK_DOSIMETRY_INPUT_INVALID:400,FK_DOSIMETRY_CONFLICT:409,FK_DOSIMETRY_BINDING_REQUIRED:400,FK_DOSIMETRY_FOLDER_DISABLED:403,FK_FOLDER_DISABLED:403};
         if(Object.hasOwn(errors,result.code))return Response.json({code:result.code},{status:errors[result.code],headers});
         if(batch){
           if(result.year!==input.input.year)throw Error();
@@ -98,6 +112,8 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
           return Response.json({code:'FK_SURVEY_ACCESS_DENIED'},{status:403,headers});
         if(result.code==='FK_SURVEY_INPUT_INVALID')
           return Response.json({code:'FK_SURVEY_INPUT_INVALID'},{status:400,headers});
+        if(result.code==='FK_FOLDER_DISABLED')
+          return Response.json({code:'FK_FOLDER_DISABLED'},{status:403,headers});
         throw new Error('SURVEY_UPSTREAM_UNAVAILABLE');
       } catch {
         return Response.json({code:'FK_SURVEY_UNAVAILABLE'},{status:503,headers});

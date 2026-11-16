@@ -35,3 +35,11 @@ export async function requestFunctionalDosimetry({faAuth,uid,input,isCurrent=()=
  if(result?.uid!==input.subjectUid||result.year!==input.year||result.record!==null&&(result.record?.uid!==input.subjectUid||result.record?.year!==input.year))throw Error('FK_DOSIMETRY_SCOPE_INVALID');
  return result;
 }
+
+export async function requestFunctionalFolderPolicy({faAuth,uid,operation,input={},isCurrent=()=>true,fetchImpl=fetch}={}){
+ if(!['INSPECT','PUBLISH'].includes(operation))throw Error('FK_FOLDER_POLICY_INPUT');
+ const endpoint=refreshEndpoint&&new URL('folders',refreshEndpoint);
+ const result=await requestFunctional(endpoint,{faAuth,uid,isCurrent,fetchImpl,input:{operation,input}});
+ if(!['FK_FOLDER_POLICY_READY','FK_FOLDER_POLICY_UPDATED'].includes(result?.code))throw Error('FK_FOLDER_POLICY_UNAVAILABLE');
+ return result;
+}

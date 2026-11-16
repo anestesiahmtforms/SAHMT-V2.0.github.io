@@ -1,14 +1,18 @@
 import {deployment} from './deployment-context.js';
 import {initialOperationalFolderPolicy,operationalFolderAllowed,operationalRouteFolder,operationalFolders} from './operational-folders.js';
 import {governanceSessionReady} from './governance-access.js';
+import {functionalFolderContentAllowed,functionalFolderNotice,setFunctionalFolderSession,watchFunctionalFolderPolicy} from './functional-folder-policy.js';
 
-export const operationalFolderPolicyEnabled=['FA','FB'].includes(deployment.target)&&import.meta.env?.VITE_FOLDER_POLICY_ENABLED==='true';
+// Folder availability is a permanent governance rule for FA and FB. Keeping it
+// behind a build flag silently re-enables every activity when CI omits that flag.
+export const operationalFolderPolicyEnabled=['FA','FB'].includes(deployment.target);
 
 let owner='',policy=null,dispose,epoch=0;
 let administrator=false;
 export function setOperationalFolderSession(session) {
  administrator=governanceSessionReady(session)&&session.accountMode!=='team'&&
   (session.profile.role==='administrador_app'||session.profile.permissions?.admin===true);
+ setFunctionalFolderSession(session);
 }
 const subscribers=new Set();
 export const operationalFolderPolicy=()=>policy;
@@ -19,12 +23,14 @@ export function operationalRouteActivityAllowed(route) {
  return !id||operationalContentAllowed(id);
 }
 export function operationalContentAllowed(id) {
+ if(typeof id==='string'&&(id==='funcional'||id.startsWith('funcional/')))return functionalFolderContentAllowed(id);
  // These centers are permanently exempt from folder availability. Access to
  // them remains governed by the role checks in the route and module ACLs.
  if(id==='comunicacao'||id==='fi-control')return true;
  return !operationalFolderPolicyEnabled||administrator||operationalFolderAllowed(policy,id);
 }
 export function operationalFolderNotice(id) {
+ if(typeof id==='string'&&(id==='funcional'||id.startsWith('funcional/')))return functionalFolderNotice(id);
  if(id==='comunicacao'||id==='fi-control')return '';
  if(!operationalFolderPolicyEnabled||!Object.hasOwn(operationalFolders,id))return '';
  if(!policy)return administrator?'':'<aside class="notice folder-inactive-notice" role="status">Atividades indisponíveis enquanto o servidor confirma a situação da pasta. A navegação continua disponível.</aside>';
@@ -52,6 +58,7 @@ function update(next,onChange) {
 }
 
 export function watchOperationalFolderPolicy(uid,onChange) {
+ watchFunctionalFolderPolicy(uid,onChange);
  if(!operationalFolderPolicyEnabled||owner===uid)return;
  const generation=++epoch;
  owner=uid;

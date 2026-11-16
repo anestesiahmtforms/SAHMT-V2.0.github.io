@@ -12,7 +12,7 @@ export function renderFiControl({profile={},pilot=false,searchOnly=false,showFol
  if(!searchOnly&&!admin(profile))return `<section class="fi-control"><p>Acesso reservado a administradores.</p>${back}</section>`;
  const title=searchOnly?'Buscar no ecossistema':'Central Administrativa';
  const hasFolderAdmin=!searchOnly&&!pilot&&showFolderAdmin;
- const navigation=!searchOnly&&!pilot?'<button type="button" data-fi-nav="people">Pessoas</button><button type="button" data-fi-nav="admin">Administração</button><button type="button" data-fi-nav="app-updates-control">Controle de atualizações</button>'+(hasFolderAdmin?'<button type="button" data-fi-folder-open aria-haspopup="dialog" aria-controls="fi-folder-dialog">Controle de pastas</button>':''):'';
+ const navigation=!searchOnly&&!pilot?'<button type="button" data-fi-nav="people">Pessoas</button><button type="button" data-fi-nav="admin">Administração</button><button type="button" data-fi-nav="app-updates-control">Controle de atualizações</button>'+(hasFolderAdmin?'<button type="button" data-fi-folder-open aria-haspopup="dialog" aria-controls="fi-folder-dialog">Controle de pastas</button>':'')+'<button type="button" data-fi-functional-folders>Pastas do Funcional FK</button>':'';
  const search=searchOnly||pilot?`<section class="fi-control-panel"><h2>Pesquisar no app</h2><p>Digite palavras-chave ou faça uma pergunta, como “Qual minha posição na escala amanhã?”. A pesquisa respeita a disponibilidade das pastas e suas permissões.</p><form data-fi-search><label>O que você procura?<input name="query" type="search" maxlength="1000" required autocomplete="off" placeholder="Ex.: protocolo de segurança"></label><button type="submit">Pesquisar</button></form><p data-fi-status role="status" aria-live="polite"></p><div data-fi-results></div></section>`:'';
  const folderDialog=hasFolderAdmin?`<dialog id="fi-folder-dialog" class="fi-folder-dialog" data-fi-folder-dialog aria-labelledby="fi-folder-title">
   <header class="fi-folder-header"><p>Central Administrativa</p><h2 id="fi-folder-title" tabindex="-1" autofocus>Controle de pastas</h2></header>
@@ -53,7 +53,7 @@ export function renderFiResults(data,limit=pageSize){
  const more=visible.length<results.length?'<button type="button" data-fi-more>Ver mais resultados</button>':'';
  return `<p role="status">${summary}</p>${visible.map(r=>{const url=passiveLink(r.url),source=Object.hasOwn(sourceNames,r.source)?sourceNames[r.source]:'';return `<article class="fi-result" tabindex="-1"><h3>${esc(r.title)}</h3>${source?`<p class="fi-muted">${source}</p>`:''}${r.readOnly?'<span class="fi-readonly">Inativo — somente consulta</span>':''}<p>${esc(r.snippet)}</p>${url?`<a href="${esc(url)}"${url.startsWith('https:')?' target="_blank" rel="noopener noreferrer"':''}>Abrir material para consulta</a>`:'<p class="fi-muted">Somente a descrição está disponível neste resultado.</p>'}</article>`;}).join('')}${more}${unique.map(note=>`<p class="fi-muted">${esc(note)}</p>`).join('')}`;
 }
-export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{},profile={},pilot=false,searchOnly=false,folderAdmin=null,folderId}){
+export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{},profile={},pilot=false,searchOnly=false,folderAdmin=null,folderId,functionalFolderRequest=request}){
  host.innerHTML=renderFiControl({profile,pilot,searchOnly,showFolderAdmin:typeof folderAdmin==='function'});let disposed=false,searchGeneration=0;
  const current=()=>!disposed&&isCurrent(),search=host.querySelector('[data-fi-search]'),status=host.querySelector('[data-fi-status]');
  const resultHost=host.querySelector('[data-fi-results]');
@@ -66,11 +66,14 @@ export function mountFiControl(host,{request,isCurrent=()=>true,onNavigate=()=>{
   resultHost.querySelectorAll('.fi-result')[firstNew]?.focus();
  });
  const folderHost=host.querySelector('[data-fi-folder-admin]');
- const cleanupFolders=folderHost?folderAdmin(folderHost,{request,isCurrent:current,folderId}):null;
+ const cleanupFolders=folderHost?folderAdmin(folderHost,{request:folderId?.startsWith('funcional')?functionalFolderRequest:request,isCurrent:current,folderId}):null;
  const folderDialog=host.querySelector('[data-fi-folder-dialog]');
  if(folderId&&folderDialog&&!folderDialog.open)folderDialog.showModal();
  host.querySelector('[data-fi-folder-open]')?.addEventListener('click',()=>{
   if(current()&&!folderDialog.open)folderDialog.showModal();
+ });
+ host.querySelector('[data-fi-functional-folders]')?.addEventListener('click',()=>{
+  if(current())location.hash='#/fi-control/funcional';
  });
  folderDialog?.addEventListener('cancel',event=>{
   event.preventDefault();

@@ -5353,17 +5353,27 @@ async function render() {
       const [{mountFiControl},{fiControlRequest}]=await Promise.all([import('./fi-control-ui.js'),import('./fi-control-client.js'),import('./fi-control.css')]);
       if(!isCurrent())return;
       const request=(action,input)=>fiControlRequest(action,input,uid,{pilot});
-      const serviceStatus=pilot||(!searchOnly&&operationalFolderPolicyEnabled)?await request('service.status',{}):null;
+      let serviceStatus=null;
+      if(pilot||(!searchOnly&&operationalFolderPolicyEnabled)){
+        try{serviceStatus=await request('service.status',{});}catch{if(!isCurrent())return;}
+      }
       if(!isCurrent())return;
       const host=document.querySelector('#fi-control-content');
-      const folderAdmin=!searchOnly&&!pilot&&serviceStatus?.folderManagement===true
-        ? (await import('./operational-folder-admin.js')).mountOperationalFolderAdmin : null;
-      if(!isCurrent())return;
       const folderId=typeof operationalFolderNotice==='function'&&!searchOnly
         ? Object.keys(operationalFolders).find(id=>encodeURIComponent(id)===location.hash.split('/')[2])
         : undefined;
       if(!isCurrent())return;
-      cleanupCurrentModule=mountFiControl(host,{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot,searchOnly,folderAdmin,folderId});
+      const folderAdmin=!searchOnly&&!pilot&&folderId?.startsWith('funcional')
+        ? (await import('./functional-folder-admin.js')).mountFunctionalFolderAdmin
+        : !searchOnly&&!pilot&&serviceStatus?.folderManagement===true
+          ? (await import('./operational-folder-admin.js')).mountOperationalFolderAdmin
+          : null;
+      if(!isCurrent())return;
+      const functionalFolderRequest=async(action,input)=>{
+        const [{requestFunctionalFolderPolicy},{auth:faAuth}]=await Promise.all([import('./functional-client.js'),import('./firebase-auth.js')]);
+        return requestFunctionalFolderPolicy({faAuth,uid,operation:action==='functionalFolders.inspect'?'INSPECT':'PUBLISH',input,isCurrent});
+      };
+      cleanupCurrentModule=mountFiControl(host,{request,isCurrent,onNavigate:navigate,profile:session.profile,pilot,searchOnly,folderAdmin,folderId,functionalFolderRequest});
     }catch{if(isCurrent()){const host=document.querySelector('#fi-control-content');host.innerHTML='<p role="status">Não foi possível abrir esta tela.</p><button type="button" class="secondary-button">'+(searchOnly?'Voltar à Home':'Voltar à Governança')+'</button>';host.querySelector('button').addEventListener('click',()=>navigate(searchOnly?'home':'management-hub'));}}
     return;
   }
