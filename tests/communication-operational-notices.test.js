@@ -13,8 +13,9 @@ function memory(){
  const get=async(c,k)=>structuredClone(data.get(c+'/'+k)||null);
  const page=async(c,{cursor='',limit=20,filters=[]}={})=>[...data].filter(([key,v])=>key.startsWith(c+'/')&&key.slice(c.length+1)>cursor&&filters.every(([field,value])=>v[field]===value)).sort(([a],[b])=>a.localeCompare(b)).slice(0,limit).map(([key,v])=>({...structuredClone(v),id:key.slice(c.length+1)}));
  const countPublished=async(start,end)=>[...data].filter(([key,v])=>key.startsWith('communicationMessages/')&&v.firstPublishedAt>=start&&v.firstPublishedAt<end).length;
+ const eligibleRecipients=async()=>[...data].filter(([key,v])=>key.startsWith('users/')&&v.active===true&&v.access===true).map(([key,v])=>({...structuredClone(v),id:key.slice('users/'.length)}));
  const transaction=work=>{const result=lock.then(async()=>{const writes=[];const value=await work({get,countPublished,set:(c,k,v)=>writes.push([c+'/'+k,v]),create:(c,k,v)=>{assert.equal(data.has(c+'/'+k),false);writes.push([c+'/'+k,v]);}});for(const [key,v]of writes)data.set(key,structuredClone(v));return value;});lock=result.catch(()=>{});return result;};
- return {data,get,page,countPublished,transaction};
+ return {data,get,page,eligibleRecipients,countPublished,transaction};
 }
 function fixture({scheduleSource}={}){
  const store=memory(),fa=memory(),queued=[],sent=[];let sequence=0;
