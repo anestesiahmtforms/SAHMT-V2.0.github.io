@@ -7,7 +7,7 @@ function safeFileName(value) {
     .replace(/^-+|-+$/g, '') || 'SAHMT-Relatorio';
 }
 
-export function createAndSharePdf({title, period, fileName, columns, rows, orientation = columns.length > 6 ? 'landscape' : 'portrait', alertRowIndexes = [], labelDateGroups = []}) {
+function renderReportPdf({title, period, fileName, columns, rows, orientation = columns.length > 6 ? 'landscape' : 'portrait', alertRowIndexes = [], labelDateGroups = []}) {
   const pdf = new jsPDF({orientation, unit: 'mm', format: 'a4'});
   const isMonthlyLabels = Array.isArray(labelDateGroups) && labelDateGroups.length === rows.length && rows.length > 0;
   const margin = 12;
@@ -61,7 +61,20 @@ export function createAndSharePdf({title, period, fileName, columns, rows, orien
     }
   });
 
-  const name = `${safeFileName(fileName)}.pdf`;
+  return pdf;
+}
+
+export function createReportPdfFile(options) {
+  if (typeof File !== 'function') throw new Error('Este aparelho não permite preparar o PDF para compartilhamento.');
+  const pdf = renderReportPdf(options);
+  const name = `${safeFileName(options.fileName)}.pdf`;
+  return new File([pdf.output('blob')], name, {type: 'application/pdf'});
+}
+
+export function createAndSharePdf(options) {
+  const {title, period} = options;
+  const pdf = renderReportPdf(options);
+  const name = `${safeFileName(options.fileName)}.pdf`;
   if (typeof File === 'function' && typeof navigator.share === 'function') {
     const file = new File([pdf.output('blob')], name, {type: 'application/pdf'});
     if (typeof navigator.canShare === 'function' && navigator.canShare({files: [file]})) {

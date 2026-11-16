@@ -238,6 +238,7 @@ let loadedLabelRecords = [];
 let labelReportCursor = null;
 let labelReportLoadingMore = false;
 let loadedLabelStaffSiglas = [];
+let pendingLabelPdfShare = null;
 let labelManualConfirmation = {uid: '', status: ''};
 let labelCameraConfirmation = {uid: '', status: ''};
 let labelEntryGeneration = 0;
@@ -1119,6 +1120,7 @@ function shellView() {
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
   const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button></div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
+  const labelSharePanel = route === 'labels' && pendingLabelPdfShare?.uid === session.user?.uid ? `<section class="label-share-ready" aria-label="PDF da etiqueta salva"><p>${pendingLabelPdfShare.file ? 'Etiqueta confirmada. PDF pronto para compartilhar.' : `Etiqueta confirmada, mas o PDF não foi preparado. ${escapeHtml(pendingLabelPdfShare.error || '')}`}</p><small>Toque em compartilhar, escolha WhatsApp, selecione o grupo e confirme o envio.</small><button class="primary-button" type="button" id="share-saved-label-pdf" ${pendingLabelPdfShare.file ? '' : 'disabled'}>COMPARTILHAR PDF</button><button class="secondary-button" type="button" id="dismiss-saved-label-pdf">Dispensar</button><p class="label-share-status" id="label-share-status" role="status" aria-live="polite"></p></section>` : '';
   const labelReport = route === 'labels' && ['labelsRead','labelsWrite','labelsManage'].some(can) ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily"><span class="label-action-icon" aria-hidden="true">📄</span><span>RELATÓRIO DIÁRIO</span></button><button type="button" data-label-report-launch="monthly"><span class="label-action-icon" aria-hidden="true">🗓️</span><span>RELATÓRIO MENSAL</span></button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';
   const labelAccessPanel = route === 'labels' && !['labelsRead','labelsWrite','labelsManage'].some(can) ? `<section class="panel" role="status"><p>${!session.labelProfileLoaded ? 'Verificando seu acesso a Etiquetas…' : session.labelProfileError ? 'Não foi possível confirmar seu acesso a Etiquetas. Tente novamente.' : 'Seu acesso a Etiquetas precisa ser liberado pela administração de FH.'}</p>${session.labelProfileLoaded ? '<button type="button" class="secondary-button" data-retry-fh-label-access>Verificar acesso novamente</button>' : ''}</section>` : '';
   const view = ['home','schedule'].includes(route) ? `<section class="content-grid">
@@ -1131,7 +1133,7 @@ function shellView() {
         <div class="module-grid">${moduleCards()}<button type="button" class="module-card" data-ecosystem-search ${typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'?'data-route="fi-search"':'disabled aria-disabled="true" title="Busca preparada para configuração posterior"'}><img class="module-icon" src="${import.meta.env.BASE_URL}assets/modules/home-search.svg" alt="" width="40" height="40"><span><strong>BUSCAR NO ECOSISTEMA</strong><small>${typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'?'Pesquisar materiais e registros':'Busca em preparação'}</small></span><span class="arrow" aria-hidden="true">›</span></button></div>
         ${typeof communicationFeatureEnabled!=='undefined'&&communicationFeatureEnabled&&session.status==='signed-in'&&profile.active===true&&profile.access===true ? '<button type="button" class="secondary-button comm-inbox-shortcut" data-route="communications"><span class="comm-inbox-shortcut__icon" aria-hidden="true"><svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-8l-6 3v-3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z M7 9h10 M7 13h6"/></svg></span><span>MENSAGENS RECEBIDAS</span></button>' : ''}
       </section>` : ''}
-    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${labelAccessPanel}${actionForm(route)}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
+    </section>` : `<section class="module-view panel${route === 'events' ? ' module-view--events' : route === 'labels' ? ' module-view--labels' : route === 'checklist' ? ' module-view--checklist' : route === 'management' ? ' module-view--management' : route === 'training' ? ' module-view--training' : route === 'occurrences' ? ' module-view--occurrences' : ''}">${route === 'events' || route === 'labels' || route === 'checklist' || route === 'management' || route === 'training' || route === 'occurrences' ? '' : `<p class="eyebrow">SAHMT</p><h2>${escapeHtml(title)}</h2><p>${escapeHtml(labels[route]?.[1] || 'Área administrativa do SAHMT.')}</p>`}${route === 'checklist' ? checklistCalendar : ''}${route === 'checklist' ? '' : checklistVisual}${route === 'management' ? '<div class="management-menu-scroll" aria-label="Áreas de Gestão">' : ''}${managementUtilities}${eventSchedule}${route === 'checklist' || route === 'labels' || route === 'management' || route === 'training' ? '' : actionForm(route)}${route === 'checklist' ? '' : eventReport}${route === 'checklist' || route === 'labels' ? '' : labelReport}${route === 'checklist' ? `${checklistVisual}${checklistQrLauncher}${checklistReportLaunchers}${checklistReportDialog}` : route === 'labels' ? `${labelAccessPanel}${actionForm(route)}${labelSharePanel}${labelReport}` : '<div id="module-content" class="module-content"><p class="loading">Carregando informações…</p></div>'}${route === 'management' ? '</div>' : ''}<button class="secondary-button${route === 'events' ? ' events-home-button' : route === 'labels' ? ' labels-home-button' : route === 'checklist' ? ' checklist-home-button' : route === 'management' ? ' management-home-button' : route === 'training' ? ' training-home-button' : route === 'occurrences' ? ' occurrences-home-button' : ''}" data-route="${route === 'management' || route === 'training' ? 'management-hub' : 'home'}">${route === 'management' || route === 'training' ? 'VOLTAR' : route === 'events' || route === 'checklist' || route === 'labels' || route === 'occurrences' ? 'HOME' : 'Voltar para Home'}</button></section>`;
   const identityCard = `<div class="identity-card">${route === 'home' ? '' : `<button class="brand" data-route="home" aria-label="Voltar ao início"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt=""><span>SAHMT</span></button>`}<div class="identity-card__user-row"><div class="identity-card__user">${escapeHtml(profile.displayName || session.user.displayName || 'Usuário')}</div><div class="sync-pill" id="outbox-status" role="status"></div></div>${modeSelector}${route === 'events' ? '<h2 class="events-header-operational"><span>EVENTOS</span><small>Operacional</small></h2>' : route === 'labels' ? '<h2 class="events-header-operational">ETIQUETAS</h2>' : route === 'checklist' ? '<h2 class="events-header-operational checklist-title">CHECKLIST</h2>' : route === 'training' ? '<h2 class="events-header-operational training-title">DESEMPENHO</h2>' : route === 'management' ? '<h2 class="events-header-operational">GESTÃO</h2>' : route === 'occurrences' ? '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2>' : ''}</div>`;
   return `<div class="app-shell${route === 'home' ? ' app-shell--home' : route === 'schedule' ? ' app-shell--schedule' : ''}${route === 'events' ? ' app-shell--events' : route === 'labels' ? ' app-shell--labels' : route === 'checklist' ? ' app-shell--checklist' : route === 'management' ? ' app-shell--management' : route === 'training' ? ' app-shell--training' : route === 'occurrences' ? ' app-shell--occurrences' : ''}">
     ${route === 'home' ? `<div class="home-top-stack"><div class="home-logo-stage" aria-label="Logo animada SAHMT"><span class="home-welcome__orbit home-welcome__orbit--outer"></span><span class="home-welcome__orbit home-welcome__orbit--inner"></span><span class="home-welcome__pulse"></span><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="" width="72" height="72"><span class="home-welcome__glint" aria-hidden="true"></span><span class="app-version" data-app-version aria-label="Versão do app ${APP_VERSION}">${APP_VERSION}</span></div><header class="topbar home-identity-topbar">${identityCard}</header></div>` : `<header class="topbar">${identityCard}</header>`}
@@ -1790,6 +1792,33 @@ async function loadModule(route) {
   }
   if (route === 'labels') {
     if (!['labelsRead','labelsWrite','labelsManage'].some(can)) return;
+    document.querySelector('#share-saved-label-pdf')?.addEventListener('click', async () => {
+      const pending = pendingLabelPdfShare;
+      const status = document.querySelector('#label-share-status');
+      const file = pending?.uid === session.user?.uid ? pending.file : null;
+      if (!file) return;
+      if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && navigator.canShare({files: [file]})) {
+        if (status?.isConnected) status.textContent = 'Escolha WhatsApp, selecione o grupo e toque em Enviar.';
+        try {
+          await navigator.share({files: [file], title: 'Relatório Diário - Etiquetas SAHMT', text: 'Relatório Diário - Etiquetas SAHMT'});
+          if (status?.isConnected) status.textContent = 'Compartilhamento encerrado. Confira o resultado no WhatsApp; o app não recebe confirmação do envio ao grupo.';
+        } catch (error) {
+          if (status?.isConnected) status.textContent = error?.name === 'AbortError' ? 'Compartilhamento cancelado. O registro permanece salvo.' : `Não foi possível abrir o compartilhamento. ${error?.message || ''}`;
+        }
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = file.name;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      if (status?.isConnected) status.textContent = 'PDF baixado. Abra o WhatsApp, selecione o grupo e anexe o arquivo.';
+    });
+    document.querySelector('#dismiss-saved-label-pdf')?.addEventListener('click', () => {
+      if (pendingLabelPdfShare?.uid === session.user?.uid) pendingLabelPdfShare = null;
+      void render();
+    });
     content?.remove();
     const reportDialog = document.querySelector('#label-report-dialog');
     reportDialog?.addEventListener('close', () => {
@@ -3423,6 +3452,25 @@ function formatReportMonth(value) {
   return match ? `${match[2]}-${match[1]}` : value;
 }
 
+async function createLabelRecordPdfFile(record) {
+  const optionalLabelColumns = [
+    ['Convênio', (item) => item.insurance], ['Cirurgia', (item) => item.procedureCode],
+    ['Atendimento', (item) => item.encounterCode], ['Tipo', (item) => item.type],
+    ['Valor', (item) => item.amount == null ? '' : `R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`],
+    ['Credor', (item) => item.creditor], ['Plantonista(s)', (item) => item.staffSiglas?.join(', ')]
+  ].filter(([, getValue]) => String(getValue(record) ?? '').trim());
+  const columns = ['#', 'Data', 'Nome do Paciente', ...optionalLabelColumns.map(([label]) => label)];
+  const rows = [[1, formatRecordDate(record.date), record.patientName, ...optionalLabelColumns.map(([, getValue]) => getValue(record) || '')]];
+  const alertRowIndexes = ['Particular', 'Complementação'].includes(record.type) ? [0] : [];
+  const period = `Relatório diário de ${formatRecordDate(record.date)} · 1 entrada(s) · ${alertRowIndexes.length} alerta(s)`;
+  const {createReportPdfFile} = await loadReportPdfModule();
+  return createReportPdfFile({
+    title: 'ETIQUETAS SAHMT', period,
+    fileName: `SAHMT-Etiquetas-${record.date}`,
+    columns, rows, orientation: 'landscape', alertRowIndexes
+  });
+}
+
 async function shareReportPdf(kind) {
   const isLabel = kind === 'labels';
   const button = document.querySelector(isLabel ? '#share-labels-pdf' : '#share-events-pdf');
@@ -4319,6 +4367,16 @@ async function bindModuleForm(route) {
       await operationalDrafts.clearSubmitted?.(draftCheckpoint);
       if (session.user?.uid !== actorUid) return;
       if (route === 'labels' && !currentLabelSave()) return;
+      if (route === 'labels' && !values.editLabelId && !result.pendingFirestore) {
+        const pending = {uid: actorUid, record: {...record, staffSiglas: [...(record.staffSiglas || [])]}, file: null, error: ''};
+        pendingLabelPdfShare = pending;
+        try {
+          pending.file = await createLabelRecordPdfFile(pending.record);
+        } catch (error) {
+          pending.error = error?.message || 'Use o relatório diário para gerar o PDF.';
+        }
+        if (session.user?.uid !== actorUid || !currentLabelSave()) return;
+      }
       notice = result.pendingFirestore
         ? 'Registro salvo neste aparelho. Confirme o envio na área Sincronização quando o serviço voltar.'
         : route === 'events' ? '' : 'Registro confirmado no Firestore.';
