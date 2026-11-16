@@ -2718,5 +2718,5 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .functional-tile--inactive small{color:#69542a!important}
 .management-hub-button--inactive{opacity:.68;filter:saturate(.62)}
 .app-shell--home .module-card>span:nth-of-type(1){grid-template-columns:minmax(0,1fr);min-width:0;overflow:hidden}
-.app-shell--home .module-card strong,.app-shell--home .module-card small{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+.app-shell--home .module-card strong,.app-shell--home .module-card small{display:block;min-width:0;width:100%;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .app-shell--home .module-card strong{white-space:nowrap}

@@ -7,7 +7,7 @@ import {createYearEndStartupPreview} from './helpers/year-end-startup-preview.js
 const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit',engine=safari?webkit:chromium;
 
 test('the owner can switch between administrator and team views without replacing the login',{timeout:60000},async()=>{
- const preview=await createYearEndStartupPreview();let browser;
+ const preview=await createYearEndStartupPreview({activeGovernance:true});let browser;
  try{
   preview.records.set('mode-owner',{uid:'mode-owner',sigla:'FR',plantao:'natal',grupo:null,position:1,createdAt:Date.now()});
   preview.release();
@@ -55,7 +55,7 @@ test('the owner can switch between administrator and team views without replacin
 });
 
 test('banner recovers without FE login; team Governance opens schedules and consultations',{timeout:60000},async()=>{
- const preview=await createYearEndStartupPreview({statusFailures:1,requireSecondaryConnect:true});let browser;
+ const preview=await createYearEndStartupPreview({statusFailures:1,requireSecondaryConnect:true,activeGovernance:true});let browser;
  try{
   preview.release();browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();page.setDefaultTimeout(12000);
   const origin=new URL(preview.url).origin;await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
@@ -122,7 +122,7 @@ test('temporary team banner opens a compact fixed form; only administrators see 
  let preview,browser,page,closing;
  const cleanup=()=>closing??=Promise.allSettled([browser?.close(),preview?.close()]);t.signal.addEventListener('abort',()=>{void cleanup();},{once:true});
  try{
-  preview=await createYearEndStartupPreview({holdAuthentication:true});browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});
+  preview=await createYearEndStartupPreview({holdAuthentication:true,activeGovernance:true});browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});
   const context=await browser.newContext({viewport:{width:390,height:844}});page=await context.newPage();page.setDefaultTimeout(10000);const errors=[];page.on('pageerror',error=>errors.push(error.message));
   const origin=new URL(preview.url).origin;await context.route('**/*',route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
   await page.goto(preview.url);await page.locator('.startup-logo').waitFor();

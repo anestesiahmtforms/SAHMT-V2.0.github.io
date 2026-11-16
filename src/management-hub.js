@@ -66,7 +66,8 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  if(initialPanel==='indicators')initialPanel='records';
  const institutionalAllowed=()=>access.institutionalSurveys===true;
  const teamSurveyPanels=['climateForm','stressForm'];
- const restrictedAllowed=()=>access.inactiveConsultations===true||panels.institutional.items.some(item=>access[item.access]===true);
+ const restrictedPanels=new Set(['institutional','professional','epidemiological','climateForm','stressForm','yearEnd','vacations2027','vaccinationHistory','fePerformance']);
+ const restrictedAllowed=()=>panels.institutional.items.some(item=>access[item.access]===true);
  const consultationsAllowed=()=>institutionalAllowed()||restrictedAllowed();
  const itemAllowed=item=>item.panel==='surveys'?consultationsAllowed():item.panel==='institutional'?restrictedAllowed():(!item.access||access[item.access]===true);
  const biosafetyPanels=['vaccinationHistory'];
@@ -75,8 +76,8 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const panelFolderAllowed=name=>(name!=='fePerformance'||folderAllowed('consultas/pesquisas'))&&
   (!biosafetyPanels.includes(name)||folderAllowed('consultas'))&&(!Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]));
  const navigationOnly=['surveys','institutional','general','records','biosafety'];
- const panelAllowed=name=>profilePanelAllowed(name)||(access.inactiveFolderNavigation===true&&Object.hasOwn(panelFolders,name)&&!folderAllowed(panelFolders[name]));
- const itemNavigable=item=>itemAllowed(item)||(access.inactiveFolderNavigation===true&&Object.hasOwn(panelFolders,item.panel||item.route)&&!panelFolderAllowed(item.panel||item.route));
+ const panelAllowed=name=>profilePanelAllowed(name)||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(name)&&Object.hasOwn(panelFolders,name)&&!folderAllowed(panelFolders[name]));
+ const itemNavigable=item=>itemAllowed(item)||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(item.panel||item.route)&&Object.hasOwn(panelFolders,item.panel||item.route)&&!panelFolderAllowed(item.panel||item.route));
  const profilePanelAllowed=name=>biosafetyPanels.includes(name)?access.biosafety===true:teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='professional'?access.surveys===true:name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2><div data-hub-folder-notice></div></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';

@@ -774,10 +774,13 @@ function moduleCards() {
   return [...Object.entries(labels), ['schedule', ['Escala diária', 'Consultar escala e eventos do dia']]].filter(([route]) => !['events', 'people', 'admin', 'occurrences', 'qmentum', 'fg-performance', 'fc-performance'].includes(route)
     && !['training', 'management-hub'].includes(route)
       && (commonModules.includes(route) || permissionFor[route]?.some(can))
-    && (route === 'management' || featureEnabledForRoute(route, appFeatures))).sort(([a], [b]) => ['checklist','schedule','labels','management'].indexOf(a) - ['checklist','schedule','labels','management'].indexOf(b)).map(([route, [title, subtitle]]) => `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}"${typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(route==='management'?'management-hub':route)?' disabled aria-disabled="true" title="Pasta desativada ou sem confirmação do servidor"':route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
+      && (route === 'management' || featureEnabledForRoute(route, appFeatures))).sort(([a], [b]) => ['checklist','schedule','labels','management'].indexOf(a) - ['checklist','schedule','labels','management'].indexOf(b)).map(([route, [title, subtitle]]) => {
+    const activityBlocked=typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(route);
+    const routeDescription=activityBlocked?subtitle+'. Pasta inativa; as atividades estão bloqueadas até a reativação.':subtitle;
+    return `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}" aria-description="${escapeHtml(routeDescription)}"${typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(route==='management'?'management-hub':route)?' disabled aria-disabled="true" title="Pasta desativada ou sem confirmação do servidor"':route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',people:'PS',admin:'AD'}[route]}</span>`}
-    <span><strong>${title}</strong><small>${typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(route)?'Pasta inativa ou indisponível · Navegação disponível':subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
-  </button>`).join('');
+    <span><strong>${title}</strong><small>${activityBlocked?'Pasta inativa · Navegação livre':subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
+  </button>`;}).join('');
 }
 
 function hasOccurrencePermission() {
@@ -5398,8 +5401,10 @@ async function render() {
   if(requestedRoute!=='year-end-schedule')yearEndStartup.setSession({...session,status:'signed-out'});
   if(!authLimited&&requestedRoute==='labels'&&!session.labelProfileLoaded)void loadOwnLabelModuleProfile(session.user?.uid);
   if(!authLimited&&requestedRoute==='checklist'&&!session.checklistProfileLoaded)void loadOwnChecklistModuleProfile(session.user?.uid);
+  const governanceNavigation = ['management','training','occurrences','qmentum','fg-performance','fc-performance']
+    .some(route=>route===requestedRoute&&canBrowseInactiveGovernanceFolder(operationalRouteFolder(route)));
   if (session.accountMode === 'team' && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance',
-    'people', 'admin', 'app-updates-control'].includes(requestedRoute)) {
+    'people', 'admin', 'app-updates-control'].includes(requestedRoute) && !governanceNavigation) {
     navigate('home');
     return;
   }
@@ -5434,14 +5439,11 @@ async function render() {
     navigate('home');return;
   }
   if (deployment.target === 'FB' && ['qmentum','fg-performance','fc-performance'].includes(requestedRoute)) { location.replace(deployment.faBase + '#/' + requestedRoute); return; }
-  if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute)) { navigate(requestedRoute); return; }
+  if (deployment.target === 'FA' && deployment.externalManagementEnabled && ['management','training'].includes(requestedRoute) && !governanceNavigation) { navigate(requestedRoute); return; }
   if (deniedOperationalModules.has(requestedRoute)) {
     notice = 'O acesso a este módulo foi recusado pelo servidor. Revalide seu acesso na área Sincronização.';
     navigate('home'); return;
   }
-  const governanceNavigation = requestedRoute === 'management'&&canBrowseInactiveGovernanceFolder('gestao')
-    || requestedRoute === 'occurrences'&&canBrowseInactiveGovernanceFolder('registros/ocorrencias')
-    || requestedRoute === 'qmentum'&&canBrowseInactiveGovernanceFolder('registros/qmentum');
   if (authLimited) {app.innerHTML = shellView(); document.querySelectorAll('[data-route]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.route)));}
   if (!authLimited && ['management', 'training', 'qmentum', 'fg-performance', 'fc-performance'].includes(requestedRoute) && !governanceNavigation && !canOpenRestrictedModule(requestedRoute)) {
     notice = `${labels[requestedRoute]?.[0] || 'Esta área'} está temporariamente desativada para usuários comuns.`;
@@ -5458,7 +5460,7 @@ async function render() {
     navigate('home');
     return;
   }
-  if(!authLimited&&typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(requestedRoute)&&!['management','functional'].includes(requestedRoute)){
+  if(!authLimited&&typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(requestedRoute)&&requestedRoute!=='functional'){
     const folder=operationalRouteFolder(requestedRoute);
     app.innerHTML='<main class="main-content">'+operationalFolderNotice(folder)+renderOperationalFolderDirectory(folder,{allowed:id=>id!=='operacao/checklist/desempenho'||canOpenRestrictedModule('fg-performance')})+'<button type="button" class="secondary-button" data-folder-return>VOLTAR</button></main>';
     app.querySelector('[data-folder-return]')?.addEventListener('click',()=>navigate('home'));

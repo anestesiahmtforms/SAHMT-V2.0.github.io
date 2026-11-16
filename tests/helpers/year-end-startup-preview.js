@@ -2,7 +2,7 @@ import {createServer} from 'vite';
 import {validateYearEndChoices} from '../../src/year-end-schedule.js';
 import {emptyYearEndTotals,changeYearEndTotals} from '../../src/year-end-schedule-totals.js';
 
-export async function createYearEndStartupPreview({holdAuthentication=false,statusFailures=0,requireSecondaryConnect=false,homeModulesEnabled=false}={}){
+export async function createYearEndStartupPreview({holdAuthentication=false,statusFailures=0,requireSecondaryConnect=false,homeModulesEnabled=false,activeGovernance=false}={}){
  const base='/SAHMT-V2.0.github.io/',records=new Map(),held=[],requests=[];
  let hold=true,failSave=true,authHeld=holdAuthentication;const authWaiters=[];
  const stubs={
@@ -31,6 +31,7 @@ export async function createYearEndStartupPreview({holdAuthentication=false,stat
    return {uid,open:async()=>{const p=await api('open');access={...p,isAdmin:!participantOnly&&p.isAdmin};return access;},readOwn:()=>api('read'),subscribe(callback,onError){let active=true;Promise.all([api('read'),api('totals'),access.isAdmin?api('rows'):Promise.resolve([])]).then(([own,totals,rows])=>{if(active)callback({own,totals,rows,fromCache:false});},e=>{if(active)onError(e);});return()=>{active=false;};},save:input=>api('save',input)};
   }`
  };
+ if(activeGovernance)stubs['operational-folder-runtime.js']=`export const operationalFolderPolicyEnabled=false,operationalFolderPolicy=()=>null,operationalFolderRouteAllowed=()=>true,operationalRouteActivityAllowed=()=>true,operationalContentAllowed=()=>true;export function watchOperationalFolderPolicy(){return()=>{}}export function setOperationalFolderSession(){}export function operationalFolderNotice(){return ''}export function assertOperationalContentAllowed(){return true}export function subscribeOperationalFolderPolicy(){return()=>{}}`;
  const plugin={name:'year-end-startup-preview',enforce:'pre',load(id){const match=id.replaceAll('\\','/').match(/\/src\/([^/?]+\.js)$/);if(match&&stubs[match[1]])return stubs[match[1]];},configureServer(server){server.middlewares.use(async(req,res,next)=>{
   const path=req.url?.split('?')[0];
   if(path===base+'tests/year-end-startup.html'){res.setHeader('Content-Type','text/html');res.end('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><div id="app"></div><script type="module" src="'+base+'src/main.js"></script></html>');return;}
