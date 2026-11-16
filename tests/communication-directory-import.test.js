@@ -7,7 +7,7 @@ test('initial import keeps local audience IDs, maps groups by email and binds FF
  const p=buildCommunicationDirectoryImport(snapshot());
  assert.equal(p.summary.users,1);assert.equal(p.summary.missingAffiliations,0);
  const read=path=>decodeFields(p.writes.find(w=>w.update?.name.endsWith(path)).update.fields);
- assert.equal(read('/users/local-a').ffUid,'ff-a');assert.equal(read('/users/local-a').institutionalGroup,'resident');
+ assert.equal(read('/users/local-a').ffUid,'ff-a');assert.equal(read('/users/local-a').institutionalGroup,'resident');assert.deepEqual(read('/users/local-a').memberCategories,['RESIDENTE_2','GESTOR']);
  assert.deepEqual(read('/managementAreas/area-a').memberUids,['local-a']);assert.equal(read('/communicationDevices/device-a').sourceUid,'local-a');
  assert.ok(p.writes.every(w=>(w.update?.name||w.delete).startsWith('projects/sahmt-comunicacao-ff/databases/comunicacao/documents/')));
 });

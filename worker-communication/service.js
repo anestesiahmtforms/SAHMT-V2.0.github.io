@@ -423,8 +423,8 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    if(action==='GROUPS'&&!input.cursor)result.items.unshift(...BUILTIN_GROUPS.map(g=>({...g,builtin:true,active:true,memberUids:[]})));return result;
   }
   if(action==='DIRECTORY'){
-   const rows=await store.page('users',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true],['access',true]],fields:['uid','email','displayName','role','active','access','institutionalGroup']}),page=rows.slice(0,PAGE_SIZE);
-   return {items:page.filter(user=>!isSystemOwnerEmail(user.email)),cursor:rows.length>PAGE_SIZE?page.at(-1)?.id||null:null};
+   const users=await store.eligibleRecipients();
+   return {items:users.filter(user=>!isSystemOwnerEmail(user.email)),cursor:null};
   }
   if(action==='PUSH_DEVICE_DIRECTORY')return pushDeviceDirectory(input);
   if(action==='AREAS')return paged(await store.page('managementAreas',{cursor:input.cursor||'',limit:PAGE_SIZE+1,filters:[['active',true]],fields:['name','title','active']}));

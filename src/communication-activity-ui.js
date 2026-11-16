@@ -2,6 +2,7 @@ import {escapeNoticeHtml as esc} from './communication-notice-text.js';
 import {mountTrainingPicker, trainingPickerMarkup} from './communication-training-picker.js';
 import {trainingActivityRoute} from './training-activity-route.js';
 import {deployment} from './deployment-context.js';
+import {communicationRecipientOptions} from './communication-recipient-directory.js';
 
 const reasons = {FORBIDDEN:'Sem permissão para esta atividade',NOT_AUTHORIZED:'Sem permissão para esta atividade',INACTIVE:'Integrante inativo',ACTIVITY_UNAVAILABLE:'Atividade indisponível',ATTEMPTS_EXHAUSTED:'Tentativas esgotadas',SOURCE_UNAVAILABLE:'Não foi possível verificar a origem'};
 export function activityDescription(activity) {
@@ -13,7 +14,14 @@ export function activityDescription(activity) {
 export function openActivityComposer({root,client,render,status,report,isCurrent,audienceOptions,loadDirectory,state,onRecover}) {
   state.id ??= `activity-${crypto.randomUUID()}`;
   state.kind ??= 'TRAINING'; state.audience ??= 'ALL';
+  const trainingModule=new URL(deployment.fbBase+'#/management/area-gestao-de-documentos',root.ownerDocument.location.origin).href;
+  const surveysModule=new URL(deployment.faBase+'#/management-hub/surveys',root.ownerDocument.location.origin).href;
   render('TREINAMENTOS E ENQUETES', `<form data-activity-form>
+    <nav class="comm-activity-sources" aria-label="Módulos de origem das atividades">
+      <strong>Ative ou publique a atividade no módulo de origem e depois atualize esta lista:</strong>
+      <a href="${esc(trainingModule)}" target="_blank" rel="noopener noreferrer">ABRIR GRUPO DE GESTÃO · TREINAMENTOS</a>
+      <a href="${esc(surveysModule)}" target="_blank" rel="noopener noreferrer">ABRIR ENQUETES E CONSULTAS</a>
+    </nav>
     <label>Título<input name="title" maxlength="120" required value="${esc(state.title || '')}"></label>
     <label>Orientação<textarea name="description" maxlength="4000" required>${esc(state.description || '')}</textarea></label>
     <label>Tipo de atividade<select name="kind"><option value="TRAINING">TREINAMENTO</option><option value="SURVEY"${state.kind==='SURVEY'?' selected':''}>ENQUETE</option></select></label>
@@ -79,7 +87,7 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     if(!f.recipient.required){f.recipient.innerHTML='<option value="">Selecione Individual</option>';busy();return;}
     f.recipient.innerHTML='<option value="">Carregando destinatários…</option>';busy();
     try{const users=await loadDirectory();if(!current()||ticket!==recipientTicket)return;
-      f.recipient.innerHTML='<option value="">Selecione um destinatário</option>'+users.map(p=>`<option value="${esc(p.uid)}">${esc(p.displayName||p.email)} · ${esc(p.email||p.institutionalGroup)}</option>`).join('');f.recipient.value=state.recipient||'';
+      f.recipient.innerHTML=communicationRecipientOptions(users,{selected:state.recipient});
     }catch(error){if(current()&&ticket===recipientTicket)report(error,'Não foi possível carregar os integrantes. Recarregue as atividades para tentar novamente.');}
     finally{if(current()&&ticket===recipientTicket)busy();}
   }
@@ -87,7 +95,7 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     const ticket=++catalogTicket;catalog=[];picker.update([]);state.loading=true;busy();
     try{const result=await client.request('ACTIVITY_CATALOG',{kind:f.kind.value});if(!current()||ticket!==catalogTicket)return;
       catalog=result.items;picker.update(f.kind.value==='TRAINING'?catalog:[]);f.activity.innerHTML='<option value="">Selecione uma atividade</option>'+catalog.map(item=>`<option value="${esc(item.id)}">${esc(item.title)}</option>`).join('');f.activity.value=state.activityId||'';metadata();
-      status(catalog.length?'':'Nenhuma atividade publicada disponível para este tipo.');
+      status(catalog.length?'':'Nenhuma atividade publicada disponível. Abra o módulo de origem acima, ative ou publique a atividade e use RECARREGAR ATIVIDADES.');
     }catch(error){if(current()&&ticket===catalogTicket){catalog=[];f.activity.innerHTML='<option value="">Atividades indisponíveis</option>';report(error,'Não foi possível consultar a origem. Recarregue as atividades para tentar novamente.');}}
     finally{if(current()&&ticket===catalogTicket){state.loading=false;busy();}}
   }

@@ -5,6 +5,7 @@ import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-
 import {communicationLimitMessage} from './communication-usage.js';
 import {openActivityComposer} from './communication-activity-ui.js';
 import {openCommunicationHistory, communicationDate} from './communication-history-ui.js';
+import {communicationRecipientOptions} from './communication-recipient-directory.js';
 import './communication.css';
 
 const errors = {
@@ -107,6 +108,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     composeState = undefined;
     activityState = undefined;
     if (canCreateEvents) {
+      if(!directory){const request=loadDirectory();directory=request;void request.catch(()=>{if(directory===request)directory=undefined;});}
       render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button>'+
         (canManageCommunication?'<button type="button" data-create-activity>TREINAMENTOS E ENQUETES</button><button type="button" data-sent-messages>MENSAGENS ENVIADAS</button>':'')+'</div>', {menu: true});
       return;
@@ -155,16 +157,8 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     try {
       const users = await request;
       if (!active() || !form.isConnected || audienceType.value !== 'USER') return;
-      const label = user => user.displayName?.trim() || user.email;
-      const groups = BUILTIN_GROUPS.map(group => {
-        const members = users.filter(user => `institutional-${user.institutionalGroup}` === group.id)
-          .sort((a, b) => label(a).localeCompare(label(b), 'pt-BR', {sensitivity: 'base'}));
-        if (!members.length) return '';
-        return `<optgroup label="${group.name}">${members.map(user => `<option value="${esc(user.uid)}">${esc(label(user))}</option>`).join('')}</optgroup>`;
-      }).join('');
-      audienceValue.innerHTML = `<option value="">${groups ? 'Selecione um destinatário' : 'Nenhum destinatário disponível'}</option>${groups}`;
-      audienceValue.value = [...audienceValue.options].some(option => option.value === selected) ? selected : '';
-      if (groups) form.dataset.recipientsReady = 'true';
+      audienceValue.innerHTML = communicationRecipientOptions(users,{selected});
+      if (audienceValue.querySelector('optgroup')) form.dataset.recipientsReady = 'true';
       setComposeControls(form);
     } catch (error) {
       if (directory === request) directory = undefined;

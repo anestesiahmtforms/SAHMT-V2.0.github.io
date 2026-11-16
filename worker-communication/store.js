@@ -85,7 +85,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
  }
  async function eligibleRecipients(){
   if(source)throw fail('COMM_SOURCE_DENIED',403);
-  const query={from:[{collectionId:'users'}],limit:201,select:{fields:['uid','email','displayName','institutionalGroup','role','active','access'].map(fieldPath=>({fieldPath}))},where:{compositeFilter:{op:'AND',filters:['active','access'].map(fieldPath=>({fieldFilter:{field:{fieldPath},op:'EQUAL',value:{booleanValue:true}}}))}}};
+  const query={from:[{collectionId:'users'}],limit:201,select:{fields:['uid','email','displayName','institutionalGroup','memberCategories','role','active','access'].map(fieldPath=>({fieldPath}))},where:{compositeFilter:{op:'AND',filters:['active','access'].map(fieldPath=>({fieldFilter:{field:{fieldPath},op:'EQUAL',value:{booleanValue:true}}}))}}};
   const data=await request(':runQuery',{structuredQuery:query});
   const rows=data.filter(row=>row.document).map(({document})=>({...decodeFields(document.fields||{}),id:document.name.split('/').at(-1)}));
   if(rows.length>200)throw fail('COMM_AUDIENCE_LIMIT',409);

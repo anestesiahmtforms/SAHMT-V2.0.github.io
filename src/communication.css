@@ -321,6 +321,9 @@
 /* Activity confirmations and historical receipts keep a bounded scroll area on small screens. */
 .management-hub-dialog[data-panel=communication]:has(.communication--activity) .management-hub-body { overflow-y:auto; }
 .communication--activity .comm-content { max-height:calc(100dvh - 180px); overflow-y:auto; padding:3px; }
+.comm-activity-sources{display:grid;gap:7px;margin:0 0 12px;padding:10px;border:1px solid #c9b47a;border-radius:10px;background:#fff9e8;font-size:.84rem;line-height:1.35}
+.comm-activity-sources a{display:block;padding:9px 10px;border-radius:8px;background:#e7f0f5;color:#123954;font-weight:800;text-decoration:none}
+.comm-activity-sources a:focus-visible{outline:3px solid #c18a28;outline-offset:2px}
 .communication--activity [data-activity-preview]:not(:empty) { border:2px solid #b99b5e; border-radius:10px; padding:12px; margin-top:10px; background:#fff9e8; }
 .comm-recipient-preview { padding-inline-start:24px; overflow-wrap:anywhere; }
 .communication--activity [data-confirm-activity] { background:#a92928; color:white; margin:6px 0; }

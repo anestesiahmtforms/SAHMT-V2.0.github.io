@@ -18,7 +18,8 @@ export function buildCommunicationDirectoryImport(snapshot){
   const group=assignedInstitutionalGroup(assignments.get(email),{uid:[...fbUidEmail].find(([,value])=>value===email)?.[0],email});
   if(original.active&&original.access&&!group&&!isSystemOwnerEmail(email))missingAffiliations++;
   const auth=authByEmail.get(email),old=existingFfByEmail.get(email);
-  const profile={...clean(original),...(old?clean(old):{}),uid:original.uid,email,institutionalGroup:group||'',...(auth?{ffUid:auth.localId}:{}),directoryOrigin:'FF_LOCAL_INITIAL_IMPORT',directoryImportedAt:snapshot.at};
+  const assignment=assignments.get(email);
+  const profile={...clean(original),...(old?clean(old):{}),uid:original.uid,email,institutionalGroup:group||'',memberCategories:group?assignment.memberCategories:[],...(auth?{ffUid:auth.localId}:{}),directoryOrigin:'FF_LOCAL_INITIAL_IMPORT',directoryImportedAt:snapshot.at};
   writes.push({update:{name:base('FF')+'/users/'+original.uid,fields:encodeFields(profile)},currentDocument:old?.id===original.uid?{updateTime:old.updateTime}:{exists:false}});
   if(old&&old.id!==original.uid)writes.push({delete:base('FF')+'/users/'+old.id,currentDocument:{updateTime:old.updateTime}});
   byEmail.set(email,original.uid);
