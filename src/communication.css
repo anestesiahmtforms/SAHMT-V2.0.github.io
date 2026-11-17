@@ -336,6 +336,8 @@
 .comm-training-picker small { display:block; color:#456173; }
 .comm-training-picker [data-training-feedback] { margin:0; }
 .communication--activity [data-open-selected-training] { color:#15476a; font-size:.875rem; justify-self:start; }
+.communication--activity [data-activity-link] { color:#15476a; font-size:.78rem; overflow-wrap:anywhere; }
+.communication--activity .comm-activity-outgoing-message { white-space:pre-wrap; overflow-wrap:anywhere; padding:10px; border-left:3px solid #b99b5e; background:#fff9e8; border-radius:6px; }
 .communication--activity [data-activity-meta] { overflow-wrap:anywhere; }
 .comm-history-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 .comm-history-filters label { margin:0; font-size:.85rem; }

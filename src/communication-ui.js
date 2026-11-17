@@ -16,6 +16,7 @@ const errors = {
   COMM_IDENTITY_MISMATCH: 'Recupere o acesso usando a mesma conta Google aberta no SAHMT.',
   COMM_SOURCE_UNAVAILABLE: 'A origem da atividade está indisponível. Recarregue e tente novamente.',
   COMM_SOURCE_FORBIDDEN: 'Sua conta não tem acesso à origem da atividade. Recupere o acesso com a conta autorizada.',
+  COMM_HISTORY_CONFIG_REQUIRED: 'O catálogo não está disponível porque o histórico do FF ainda não está configurado. Confira a planilha e o identificador do histórico nas configurações do Worker.',
   COMM_ACTIVITY_UNAVAILABLE: 'A atividade não está disponível. Recarregue e escolha outra atividade publicada.',
   COMM_INVALID_ACTIVITY: 'Confira a atividade publicada e a nota mínima informada.',
   COMM_HISTORY_UNAVAILABLE: 'O histórico está indisponível. Tente novamente.',

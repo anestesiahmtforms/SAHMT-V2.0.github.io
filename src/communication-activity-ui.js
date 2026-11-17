@@ -5,6 +5,20 @@ import {deployment} from './deployment-context.js';
 import {communicationRecipientOptions} from './communication-recipient-directory.js';
 
 const reasons = {FORBIDDEN:'Sem permissão para esta atividade',NOT_AUTHORIZED:'Sem permissão para esta atividade',INACTIVE:'Integrante inativo',ACTIVITY_UNAVAILABLE:'Atividade indisponível',ATTEMPTS_EXHAUSTED:'Tentativas esgotadas',SOURCE_UNAVAILABLE:'Não foi possível verificar a origem'};
+const surveyPanels=Object.freeze({climate:'climateForm',stress:'stressForm',epidemiological:'epidemiological'});
+function activityAccessUrl(activity,messageId,origin){
+  if(!activity)return '';
+  const base=activity.kind==='TRAINING'
+    ? deployment.fbBase+trainingActivityRoute(activity.id)+'/'+encodeURIComponent(messageId)
+    : Object.hasOwn(surveyPanels,activity.id)
+      ? deployment.faBase+'#/management-hub/'+surveyPanels[activity.id]+'/required/'+encodeURIComponent(messageId)
+      : '';
+  return base?new URL(base,origin).href:'';
+}
+function messageWithActivityLink(description,activity,messageId,origin){
+  const link=activityAccessUrl(activity,messageId,origin);
+  return link?`${description.trim()}\n\nAcesse a atividade: ${link}`:description.trim();
+}
 export function activityDescription(activity) {
   if (!activity) return '';
   return activity.kind === 'TRAINING' ? `${activity.title} · Versão ${activity.version} · Nota mínima ${activity.minimumScore} de ${activity.maxScore}` : `${activity.title} · Ciclo ${activity.cycle} · Conclusão pelo envio aceito das respostas`;
@@ -28,6 +42,8 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     ${trainingPickerMarkup}
     <label>Atividade publicada<select name="activity" required><option value="">Carregando atividades…</option></select></label>
     <p data-activity-meta class="comm-note"></p>
+    <label data-activity-link-label hidden>Link de acesso que será enviado<input data-activity-link type="url" readonly></label>
+    <p data-activity-link-note class="comm-note" hidden>O link será incluído automaticamente na mensagem e abrirá esta atividade no SAHMT.</p>
     <a data-open-selected-training target="_blank" rel="noopener" hidden>Conferir treinamento em nova aba</a>
     <label data-minimum-label>Nota mínima<input name="minimumScore" type="number" min="0.01" step="any" required value="${esc(state.minimumScore ?? '')}"></label>
     <label>Público<select name="audience">${audienceOptions.map(o=>`<option value="${esc(o.id)}"${o.id===state.audience?' selected':''}>${esc(o.name)}</option>`).join('')}</select></label>
@@ -42,6 +58,9 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
   let catalog=[],catalogTicket=0,recipientTicket=0;
   const pickerElement=form.querySelector('[data-training-picker]');
   const openTraining=form.querySelector('[data-open-selected-training]');
+  const activityLink=form.querySelector('[data-activity-link]');
+  const activityLinkLabel=form.querySelector('[data-activity-link-label]');
+  const activityLinkNote=form.querySelector('[data-activity-link-note]');
   const picker=mountTrainingPicker(pickerElement,id=>{
     if(!current()||f.activity.disabled)return;
     f.activity.value=id;
@@ -68,13 +87,19 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     openTraining.hidden=!training||!activity;
     if(training&&activity)openTraining.href=deployment.fbBase+trainingActivityRoute(activity.id);
     else openTraining.removeAttribute('href');
+    const link=activityAccessUrl(activity,state.id,root.ownerDocument.location.origin);
+    activityLink.value=link;
+    activityLinkLabel.hidden=!link;
+    activityLinkNote.hidden=!link;
     f.minimumScore.max=activity?.maxScore??'';
     const location=training&&activity?.folderPath?.length?` · ${activity.folderPath.join(' › ')}`:'';
     form.querySelector('[data-activity-meta]').textContent=activity?(training?`Versão ${activity.version} · Pontuação máxima: ${activity.maxScore}${location}`:`Ciclo ${activity.cycle} · Sem nota mínima`):'Selecione uma atividade existente e publicada.';
   }
   function showPreview(){
     const p=state.preview;if(!p)return;
+    const outgoingMessage=messageWithActivityLink(state.description,p.activity,state.id,root.ownerDocument.location.origin);
     form.querySelector('[data-activity-preview]').innerHTML=`<h3>Confirme a convocação</h3><p><strong>${esc(state.title)}</strong></p><p>${esc(activityDescription(p.activity))}</p>
+      <p><strong>Mensagem enviada:</strong></p><p class="comm-activity-outgoing-message">${esc(outgoingMessage)}</p>
       <p><strong>${p.recipients.length} destinatário(s) elegível(is)</strong></p><ul class="comm-recipient-preview">${p.recipients.map(person=>`<li>${esc(person.displayName||person.email||person.uid)} · ${esc(person.email)} · ${esc(person.institutionalGroup)}</li>`).join('')}</ul>
       <p>${p.excluded.length} excluído(s)</p>${p.excluded.length?`<ul>${p.excluded.map(person=>`<li>${esc(person.uid)} — ${esc(reasons[person.reason]||`Indisponível para esta atividade (${person.reason})`)}</li>`).join('')}</ul>`:''}
       <p class="comm-note">Os destinatários acima serão fixados no envio. Uma conclusão anterior válida da mesma versão ou ciclo será reconhecida.</p>
@@ -130,7 +155,9 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     if(button.hasAttribute('data-reload-activities')){remember();state.preview=null;form.querySelector('[data-activity-preview]').replaceChildren();void load();void recipients();return;}
     if(button.hasAttribute('data-edit-activity')){state.preview=null;form.querySelector('[data-activity-preview]').replaceChildren();return;}
     if(!button.hasAttribute('data-confirm-activity')||state.sending||state.sent||!state.preview?.recipients.length)return;
-    state.pending??={id:state.id,previewId:state.preview.previewId,title:state.title,description:state.description,confirmed:true};
+    const description=messageWithActivityLink(state.description,state.preview.activity,state.id,root.ownerDocument.location.origin);
+    if(description.length>4000){status('A orientação excede o limite após incluir o link. Reduza o texto e confira os destinatários novamente.',true);state.preview=null;form.querySelector('[data-activity-preview]').replaceChildren();return;}
+    state.pending??={id:state.id,previewId:state.preview.previewId,title:state.title,description,confirmed:true};
     state.sending=true;busy();status('Enviando convocação…');
     try{const result=await client.request('CREATE_ACTIVITY',state.pending);if(!current())return;state.sent=true;state.pending=null;showPreview();status(result.syncQueued?'Convocação publicada. Arquivamento no histórico pendente de sincronização.':'Convocação publicada no app.');}
     catch(error){if(!current())return;
