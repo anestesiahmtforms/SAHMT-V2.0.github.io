@@ -477,8 +477,8 @@ html:has(.app-shell--events),body:has(.app-shell--events){overflow:hidden;oversc
 .app-shell--labels .label-share-ready{position:fixed;z-index:180;inset:auto 12px calc(58px + env(safe-area-inset-bottom,0px));display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;width:min(100% - 24px,520px);margin-inline:auto;padding:12px;border:2px solid #76c6b5;border-radius:16px;background:linear-gradient(145deg,#f2fffb,#fff);box-shadow:0 12px 34px #001b3570;color:#173957}
 .app-shell--labels .label-share-ready p{grid-column:1/-1;margin:0;font-size:.86rem;font-weight:800}
 .app-shell--labels .label-share-ready small{grid-column:1/-1;color:#43566a;font-size:.76rem}
-.app-shell--labels .label-share-ready #share-saved-label-pdf{grid-column:1;min-height:44px}
-.app-shell--labels .label-share-ready #dismiss-saved-label-pdf{grid-column:2;min-height:42px;padding-inline:12px}
+.app-shell--labels .label-share-ready #share-saved-label-image{grid-column:1;min-height:44px}
+.app-shell--labels .label-share-ready #dismiss-saved-label-image{grid-column:2;min-height:42px;padding-inline:12px}
 .app-shell--labels .label-share-ready .label-share-group{grid-column:1/-1;display:flex;min-height:42px;align-items:center;justify-content:center;padding:8px 12px;text-align:center;text-decoration:none;font-size:.78rem;font-weight:850}
 .app-shell--labels .label-share-ready .label-share-status{grid-column:1/-1;font-size:.76rem;font-weight:650}
 .app-shell--labels .label-report-dialog .record-list{margin:0}

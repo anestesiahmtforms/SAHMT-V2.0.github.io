@@ -238,7 +238,7 @@ let loadedLabelRecords = [];
 let labelReportCursor = null;
 let labelReportLoadingMore = false;
 let loadedLabelStaffSiglas = [];
-let pendingLabelPdfShare = null;
+let pendingLabelImageShare = null;
 let labelManualConfirmation = {uid: '', status: ''};
 let labelCameraConfirmation = {uid: '', status: ''};
 let labelEntryGeneration = 0;
@@ -1120,8 +1120,8 @@ function shellView() {
   const checklistQrLauncher = route === 'checklist' && can('checklistWrite') ? `<button class="checklist-qr-launcher" id="checklist-scan-qr" type="button" aria-label="Abrir leitor de QR Code"><svg viewBox="0 0 64 64" role="img" aria-label="Imagem de QR Code"><path d="M5 5h20v20H5zM39 5h20v20H39zM5 39h20v20H5zM31 31h8v8h-8zM43 31h6v6h-6zM53 31h6v12h-6zM31 43h6v6h-6zM41 41h8v8h-8zM53 49h6v10h-6zM31 53h6v6h-6zM39 53h10v6H39z" fill="currentColor"/><path d="M10 10h10v10H10zM44 10h10v10H44zM10 44h10v10H10z" fill="var(--paper,#fffaf0)"/></svg><span>LER QR Code</span></button>` : '';
   const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button></div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
-  const pendingLabelShare = typeof pendingLabelPdfShare === 'undefined' ? null : pendingLabelPdfShare;
-  const labelSharePanel = route === 'labels' && pendingLabelShare?.uid === session.user?.uid ? `<section class="label-share-ready" aria-label="PDF da etiqueta salva"><p>${pendingLabelShare.file ? 'Etiqueta confirmada. PDF pronto para compartilhar.' : `Etiqueta confirmada, mas o PDF não foi preparado. ${escapeHtml(pendingLabelShare.error || '')}`}</p><small>Toque em compartilhar, escolha WhatsApp e confirme o envio. Se precisar, abra diretamente o grupo.</small><button class="primary-button" type="button" id="share-saved-label-pdf" ${pendingLabelShare.file ? '' : 'disabled'}>COMPARTILHAR PDF</button><button class="secondary-button" type="button" id="dismiss-saved-label-pdf">Dispensar</button>${pendingLabelShare.file ? '<a class="secondary-button label-share-group" href="https://chat.whatsapp.com/FWCMkpY6AvgIj41Nnchy87" target="_blank" rel="noopener noreferrer">ABRIR GRUPO PARTICULAR/COMPLEMENTAÇÃO/PLANTÃO-SAHMT</a>' : ''}<p class="label-share-status" id="label-share-status" role="status" aria-live="polite"></p></section>` : '';
+  const pendingLabelShare = pendingLabelImageShare;
+  const labelSharePanel = route === 'labels' && pendingLabelShare?.uid === session.user?.uid ? `<section class="label-share-ready" aria-label="Imagem do registro de Etiquetas salva"><p>${pendingLabelShare.file ? 'Registro confirmado. Imagem leve pronta para compartilhar.' : `Registro confirmado, mas a imagem não foi preparada. ${escapeHtml(pendingLabelShare.error || '')}`}</p><small>Toque para compartilhar a imagem, escolha WhatsApp e selecione o grupo Particular/Complementação/Plantão-SAHMT. O envio continua sob sua confirmação.</small><button class="primary-button" type="button" id="share-saved-label-image" ${pendingLabelShare.file ? '' : 'disabled'}>COMPARTILHAR IMAGEM NO WHATSAPP</button><button class="secondary-button" type="button" id="dismiss-saved-label-image">Dispensar</button>${pendingLabelShare.file ? '<a class="secondary-button label-share-group" href="https://chat.whatsapp.com/FWCMkpY6AvgIj41Nnchy87" target="_blank" rel="noopener noreferrer">ABRIR GRUPO PARTICULAR/COMPLEMENTAÇÃO/PLANTÃO-SAHMT</a>' : ''}<p class="label-share-status" id="label-share-status" role="status" aria-live="polite"></p></section>` : '';
   const labelReport = route === 'labels' && ['labelsRead','labelsWrite','labelsManage'].some(can) ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily"><span class="label-action-icon" aria-hidden="true">📄</span><span>RELATÓRIO DIÁRIO</span></button><button type="button" data-label-report-launch="monthly"><span class="label-action-icon" aria-hidden="true">🗓️</span><span>RELATÓRIO MENSAL</span></button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';
   const labelAccessPanel = route === 'labels' && !['labelsRead','labelsWrite','labelsManage'].some(can) ? `<section class="panel" role="status"><p>${!session.labelProfileLoaded ? 'Verificando seu acesso a Etiquetas…' : session.labelProfileError ? 'Não foi possível confirmar seu acesso a Etiquetas. Tente novamente.' : 'Seu acesso a Etiquetas precisa ser liberado pela administração de FH.'}</p>${session.labelProfileLoaded ? '<button type="button" class="secondary-button" data-retry-fh-label-access>Verificar acesso novamente</button>' : ''}</section>` : '';
   const view = ['home','schedule'].includes(route) ? `<section class="content-grid">
@@ -1794,16 +1794,16 @@ async function loadModule(route) {
   }
   if (route === 'labels') {
     if (!['labelsRead','labelsWrite','labelsManage'].some(can)) return;
-    document.querySelector('#share-saved-label-pdf')?.addEventListener('click', async () => {
-      const pending = pendingLabelPdfShare;
+    document.querySelector('#share-saved-label-image')?.addEventListener('click', async () => {
+      const pending = pendingLabelImageShare;
       const status = document.querySelector('#label-share-status');
       const file = pending?.uid === session.user?.uid ? pending.file : null;
       if (!file) return;
       if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function' && navigator.canShare({files: [file]})) {
-        if (status?.isConnected) status.textContent = 'Escolha WhatsApp, selecione o grupo e toque em Enviar.';
+        if (status?.isConnected) status.textContent = 'Imagem pronta. Escolha WhatsApp, abra o grupo Particular/Complementação/Plantão-SAHMT e toque em Enviar.';
         try {
-          await navigator.share({files: [file], title: 'Relatório Diário - Etiquetas SAHMT', text: 'Relatório Diário - Etiquetas SAHMT'});
-          if (status?.isConnected) status.textContent = 'Compartilhamento encerrado. Confira o resultado no WhatsApp; o app não recebe confirmação do envio ao grupo.';
+          await navigator.share({files: [file], title: 'Relatório Diário - Etiquetas SAHMT', text: 'Relatório Diário - Etiquetas SAHMT · Particular/Complementação/Plantão-SAHMT'});
+          if (status?.isConnected) status.textContent = 'Compartilhamento encerrado. Confira o envio no WhatsApp; o app não recebe confirmação do envio ao grupo.';
         } catch (error) {
           if (status?.isConnected) status.textContent = error?.name === 'AbortError' ? 'Compartilhamento cancelado. O registro permanece salvo.' : `Não foi possível abrir o compartilhamento. ${error?.message || ''}`;
         }
@@ -1815,10 +1815,10 @@ async function loadModule(route) {
       link.download = file.name;
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      if (status?.isConnected) status.textContent = 'PDF baixado. Abra o WhatsApp, selecione o grupo e anexe o arquivo.';
+      if (status?.isConnected) status.textContent = 'Imagem JPG baixada. Abra o grupo no WhatsApp e escolha a imagem na galeria.';
     });
-    document.querySelector('#dismiss-saved-label-pdf')?.addEventListener('click', () => {
-      if (pendingLabelPdfShare?.uid === session.user?.uid) pendingLabelPdfShare = null;
+    document.querySelector('#dismiss-saved-label-image')?.addEventListener('click', () => {
+      if (pendingLabelImageShare?.uid === session.user?.uid) pendingLabelImageShare = null;
       void render();
     });
     content?.remove();
@@ -3454,23 +3454,72 @@ function formatReportMonth(value) {
   return match ? `${match[2]}-${match[1]}` : value;
 }
 
-async function createLabelRecordPdfFile(record) {
-  const optionalLabelColumns = [
-    ['Convênio', (item) => item.insurance], ['Cirurgia', (item) => item.procedureCode],
-    ['Atendimento', (item) => item.encounterCode], ['Tipo', (item) => item.type],
-    ['Valor', (item) => item.amount == null ? '' : `R$ ${Number(item.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`],
-    ['Credor', (item) => item.creditor], ['Plantonista(s)', (item) => item.staffSiglas?.join(', ')]
-  ].filter(([, getValue]) => String(getValue(record) ?? '').trim());
-  const columns = ['#', 'Data', 'Nome do Paciente', ...optionalLabelColumns.map(([label]) => label)];
-  const rows = [[1, formatRecordDate(record.date), record.patientName, ...optionalLabelColumns.map(([, getValue]) => getValue(record) || '')]];
-  const alertRowIndexes = ['Particular', 'Complementação'].includes(record.type) ? [0] : [];
-  const period = `Relatório diário de ${formatRecordDate(record.date)} · 1 entrada(s) · ${alertRowIndexes.length} alerta(s)`;
-  const {createReportPdfFile} = await loadReportPdfModule();
-  return createReportPdfFile({
-    title: 'ETIQUETAS SAHMT', period,
-    fileName: `SAHMT-Etiquetas-${record.date}`,
-    columns, rows, orientation: 'landscape', alertRowIndexes
-  });
+function wrapCanvasText(context, value, maxWidth) {
+  const words = String(value || '—').split(/\s+/);
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && context.measureText(candidate).width > maxWidth) { lines.push(line); line = word; }
+    else line = candidate;
+  }
+  if (line) lines.push(line);
+  return lines.length ? lines : ['—'];
+}
+
+async function createLabelRecordImageFile(record) {
+  const fields = [
+    ['DATA', formatRecordDate(record.date)], ['NOME DO PACIENTE', record.patientName],
+    ['CONVÊNIO', record.insurance], ['CIRURGIA', record.procedureCode],
+    ['ATENDIMENTO', record.encounterCode], ['TIPO', record.type],
+    ['CREDOR', record.creditor], ['PLANTONISTA(S)', record.staffSiglas?.join(', ')],
+    ...(record.amount != null ? [['VALOR EM REAL', `R$ ${Number(record.amount).toLocaleString('pt-BR', {minimumFractionDigits: 2})}`]] : [])
+  ];
+  const width = 960, pad = 28, inner = width - pad * 2, rowHeight = 52;
+  const height = 160 + fields.length * 84 + (record.createdByName ? 68 : 0);
+  const canvas = document.createElement('canvas');
+  canvas.width = width; canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Não foi possível preparar a imagem neste aparelho.');
+  context.fillStyle = '#f3f7f5'; context.fillRect(0, 0, width, height);
+  const header = context.createLinearGradient(0, 0, width, 0);
+  header.addColorStop(0, '#155b65'); header.addColorStop(1, '#16867d');
+  context.fillStyle = header; context.fillRect(0, 0, width, 112);
+  context.fillStyle = '#ffffff'; context.font = '800 24px system-ui, sans-serif';
+  context.fillText('SAHMT  ·  RELATÓRIO DIÁRIO - ETIQUETAS', pad, 46);
+  context.font = '500 19px system-ui, sans-serif';
+  context.fillText(`Registro de ${formatRecordDate(record.date)}`, pad, 80);
+  const cardY = 128, cardHeight = height - cardY - pad;
+  context.fillStyle = '#eaf4f0'; context.strokeStyle = '#d8e4df'; context.lineWidth = 2;
+  context.beginPath(); context.roundRect(pad, cardY, inner, cardHeight, 24); context.fill(); context.stroke();
+  context.fillStyle = '#16867d'; context.beginPath(); context.arc(pad + 26, cardY + 28, 17, 0, Math.PI * 2); context.fill();
+  context.fillStyle = '#fff'; context.font = '900 20px system-ui, sans-serif'; context.textAlign = 'center'; context.fillText('1', pad + 26, cardY + 35); context.textAlign = 'left';
+  let y = cardY + 58;
+  for (const [label, rawValue] of fields) {
+    const value = String(rawValue || '—');
+    context.font = '800 15px system-ui, sans-serif';
+    const lines = wrapCanvasText(context, value, inner * 0.54);
+    const rowH = Math.max(rowHeight, lines.length * 22 + 22);
+    context.fillStyle = '#ffffff'; context.strokeStyle = '#e0ebe8'; context.lineWidth = 1;
+    context.beginPath(); context.roundRect(pad + 14, y, inner - 28, rowH - 6, 14); context.fill(); context.stroke();
+    context.fillStyle = '#5e7078'; context.font = '900 14px system-ui, sans-serif'; context.textAlign = 'left';
+    context.fillText(label, pad + 30, y + rowH / 2 + 5);
+    context.fillStyle = '#293b43'; context.font = '850 17px system-ui, sans-serif'; context.textAlign = 'right';
+    const textX = width - pad - 30;
+    lines.forEach((line, index) => context.fillText(line, textX, y + rowH / 2 + 6 + (index - (lines.length - 1) / 2) * 20));
+    y += rowH;
+  }
+  if (record.createdByName) {
+    const responsibleY = y + 2;
+    context.fillStyle = '#ffffff'; context.strokeStyle = '#e0ebe8'; context.beginPath(); context.roundRect(pad + 14, responsibleY, inner - 28, 48, 14); context.fill(); context.stroke();
+    context.fillStyle = '#5e7078'; context.font = '900 13px system-ui, sans-serif'; context.textAlign = 'left';
+    context.fillText('RESPONSÁVEL PELO REGISTRO', pad + 30, responsibleY + 29);
+    context.fillStyle = '#ad3b3b'; context.font = '900 16px system-ui, sans-serif'; context.textAlign = 'right';
+    context.fillText(String(record.createdByName), width - pad - 30, responsibleY + 29, inner * 0.54);
+  }
+  const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.58));
+  if (!blob) throw new Error('O aparelho não conseguiu gerar a imagem do registro.');
+  return new File([blob], `SAHMT-Etiquetas-${record.date}.jpg`, {type: 'image/jpeg', lastModified: Date.now()});
 }
 
 async function shareReportPdf(kind) {
@@ -4371,11 +4420,11 @@ async function bindModuleForm(route) {
       if (route === 'labels' && !currentLabelSave()) return;
       if (route === 'labels' && !values.editLabelId && !result.pendingFirestore) {
         const pending = {uid: actorUid, record: {...record, staffSiglas: [...(record.staffSiglas || [])]}, file: null, error: ''};
-        pendingLabelPdfShare = pending;
+        pendingLabelImageShare = pending;
         try {
-          pending.file = await createLabelRecordPdfFile(pending.record);
+          pending.file = await createLabelRecordImageFile(pending.record);
         } catch (error) {
-          pending.error = error?.message || 'Use o relatório diário para gerar o PDF.';
+          pending.error = error?.message || 'Tente compartilhar novamente pelo Relatório Diário.';
         }
         if (session.user?.uid !== actorUid || !currentLabelSave()) return;
       }
