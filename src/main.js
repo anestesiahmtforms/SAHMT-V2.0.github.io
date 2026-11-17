@@ -3000,6 +3000,8 @@ async function openChecklistQrScanner(stations, day, {deviceId = '', zoom = 2} =
     cleanup();
     status.textContent = error.name === 'NotAllowedError'
       ? 'Permissão da câmera negada. Autorize a câmera para este app nos ajustes do navegador.'
+      : error.name === 'TimeoutError'
+        ? 'A câmera demorou para responder. Verifique se o navegador está aguardando sua autorização, feche este leitor e tente novamente.'
       : `Não foi possível iniciar o leitor. ${error.message || ''}`;
   }
 }

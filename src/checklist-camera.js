@@ -40,10 +40,22 @@ export async function openChecklistCamera({mediaDevices, isCurrent, deviceId = '
   const unavailableIds = new Set();
   const request = async id => {
     if (!isCurrent()) return null;
-    const stream = await mediaDevices.getUserMedia({audio: false, video: {
+    const pending = Promise.resolve().then(() => mediaDevices.getUserMedia({audio: false, video: {
       ...(id ? {deviceId: {exact: id}} : {facingMode: {ideal: 'environment'}}),
       width: {ideal: 1920}, height: {ideal: 1080}, frameRate: {ideal: 30, max: 30}
-    }});
+    }}));
+    let timer;
+    let stream;
+    try {
+      stream = await Promise.race([pending, new Promise((_, reject) => {
+        timer = setTimeout(() => reject(Object.assign(new Error('A câmera não respondeu em 15 segundos.'), {name: 'TimeoutError'})), 15_000);
+      })]);
+    } catch (error) {
+      // getUserMedia cannot be cancelled. If a device responds after the timeout,
+      // release its stream as soon as it arrives instead of leaving the camera active.
+      if (error?.name === 'TimeoutError') void pending.then(stop, () => {});
+      throw error;
+    } finally { clearTimeout(timer); }
     if (!isCurrent()) { stop(stream); return null; }
     return stream;
   };
