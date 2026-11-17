@@ -6,13 +6,26 @@ import {COMMUNICATION_LIMITS} from '../src/communication-usage.js';
 import {createActivitySource} from './activity-source.js';
 import {createCommunicationHistoryDrive} from './history-drive.js';
 import {createCommunicationHistory} from './history-service.js';
+import {checklistConferenceWindow} from './checklist-conference-schedule.js';
 const ORIGIN='https://anestesiahmtforms.github.io';
 function limitedFetch(action){let calls=0;return (url,options)=>{
  const target=new URL(url),path=decodeURIComponent(target.pathname);
  if(target.hostname==='firestore.googleapis.com'){
   const ff=path.startsWith(`/v1/projects/${FF.projectId}/databases/${FF.databaseId}`);
   const fa=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-17a16\/databases\/\(default\)\/documents\/users\/[^/]+$/.test(path);
-  const fj=action==='SCHEDULE_RELEASE_NOTICE'&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-escala-fj\/databases\/\(default\)\/documents\/(?:scheduleDays\/[^/]+|runtimePolicy\/folders)$/.test(path);
+  const fjRead=['SCHEDULE_RELEASE_NOTICE','CHECKLIST_CONFERENCE_AUTO'].includes(action)&&(options?.method||'GET')==='GET'&&/^\/v1\/projects\/sahmt-escala-fj\/databases\/\(default\)\/documents\/(?:scheduleDays\/[^/]+|runtimePolicy\/folders)$/.test(path);
+  let fjChecklist=false;
+  if(action==='CHECKLIST_CONFERENCE_AUTO'&&path==='/v1/projects/sahmt-escala-fj/databases/(default)/documents:runQuery'&&(options?.method||'GET')==='POST'){
+   try{
+    const query=JSON.parse(options.body||'{}').structuredQuery,filters=query?.where?.compositeFilter?.filters||[];
+    const expected=new Set(['active:EQUAL','start:LESS_THAN_OR_EQUAL','end:GREATER_THAN_OR_EQUAL']);
+    fjChecklist=query?.from?.length===1&&query.from[0].collectionId==='vacations'&&query.limit===101&&filters.length===3&&filters.every(item=>{
+     const filter=item.fieldFilter;return filter&&expected.delete(`${filter.field?.fieldPath}:${filter.op}`)&&
+      (filter.field.fieldPath==='active'?filter.value?.booleanValue===true:typeof filter.value?.stringValue==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(filter.value.stringValue));
+    })&&expected.size===0;
+   }catch{}
+  }
+  const fj=fjRead||fjChecklist;
   if(!ff&&!fa&&!fj)throw fail('COMM_SOURCE_DENIED',403);
  }
  if(target.hostname==='identitytoolkit.googleapis.com'&&path.includes('/projects/')&&!path.startsWith(`/v1/projects/${FF.projectId}/`))throw fail('COMM_SOURCE_DENIED',403);
@@ -23,12 +36,12 @@ export function resolveScheduleSourceProject(env={}){
  if(project!=='FJ')throw fail('COMM_CONFIG_REQUIRED',503);
  return project;
 }
-async function runtime(env,fetchImpl,buildService,actor,headers){
+async function runtime(env,fetchImpl,buildService,actor,headers,{scheduled=false}={}){
  if(buildService)return buildService(env);
  const credentials=JSON.parse(env.FF_SERVICE_ACCOUNT_JSON||'null');
  const getToken=serviceToken(credentials,fetchImpl);
  await assertFreeProject(getToken,fetchImpl);
- const administrator=adminIdentity(actor)&&actor.email==='wx2064@gmail.com';
+ const administrator=scheduled||adminIdentity(actor)&&actor.email==='wx2064@gmail.com';
  const store=createStore({getToken,fetchImpl,administrator}),fa=createStore({getToken,fetchImpl,source:'FA'});
  const scheduleSource=createStore({getToken,fetchImpl,source:resolveScheduleSourceProject(env),administrator});
  const recipientEnabled=async device=>{
@@ -76,7 +89,8 @@ async function runtime(env,fetchImpl,buildService,actor,headers){
     }
     await history.recover();
    }
-  }
+  },
+  async sendChecklistConference(day){return service.sendChecklistConference(day);}
  };
 }
 export function createCommunicationWorker({verify=verifyCommunicationActor,buildService}={}){
@@ -106,10 +120,15 @@ export function createCommunicationWorker({verify=verifyCommunicationActor,build
     for(const message of batch.messages){try{await service.consumePush(message.body);message.ack();}catch{message.retry({delaySeconds:30});}}
    }catch{for(const message of batch.messages)message.retry({delaySeconds:30});}
   },
-  async scheduled(_event,env){
-   if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true'||!env.FF_HISTORY_SPREADSHEET_ID)return;
-   const service=await runtime(env,limitedFetch(),buildService);
-   await service.recoverHistory();
+  async scheduled(event,env){
+   if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true')return;
+   const timestamp=Number(event?.scheduledTime)||Date.now(),day=checklistConferenceWindow(timestamp);
+   const service=await runtime(env,limitedFetch(day?'CHECKLIST_CONFERENCE_AUTO':'SCHEDULE_RELEASE_NOTICE'),buildService,undefined,undefined,{scheduled:true});
+   const tasks=[];
+   if(env.FF_HISTORY_SPREADSHEET_ID)tasks.push(service.recoverHistory());
+   if(day)tasks.push(service.sendChecklistConference(day));
+   const results=await Promise.allSettled(tasks),failed=results.find(result=>result.status==='rejected');
+   if(failed)throw failed.reason;
   }
  };
 }

@@ -7,7 +7,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
  if(source&&!['FA','FJ'].includes(source))throw fail('COMM_CONFIG_REQUIRED',503);
  const project=source==='FA'?'sahmt-17a16':source==='FJ'?'sahmt-escala-fj':FF.projectId;
  const name=`projects/${project}/databases/${source?'(default)':FF.databaseId}/documents`,root='https://firestore.googleapis.com/v1/'+name;
- const checkCollection=c=>{id(c);if(source&&!(source==='FJ'?['scheduleDays']:['users','scheduleDays']).includes(c))throw fail('COMM_SOURCE_DENIED',403);};
+ const checkCollection=c=>{id(c);if(source&&!(source==='FJ'?['scheduleDays','vacations']:['users','scheduleDays']).includes(c))throw fail('COMM_SOURCE_DENIED',403);};
  async function assertAvailable(collection){
   if(administrator)return;
   if(source&&collection!=='scheduleDays')return;
@@ -28,6 +28,20 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
  }
  const path=(c,k)=>{checkCollection(c);id(k);return c+'/'+k;};
  async function get(c,k,transaction,fields){const q=new URLSearchParams();if(transaction)q.set('transaction',transaction);for(const field of fields||[])q.append('mask.fieldPaths',id(field));const d=await request('/'+path(c,k)+(q.size?'?'+q:''));return d?{...decodeFields(d.fields||{}),id:k}:null;}
+ async function checklistRotationInputs(day){
+  if(source!=='FJ'||!/^\d{4}-\d{2}-\d{2}$/.test(day||''))throw fail('COMM_SOURCE_DENIED',403);
+  const schedule=await get('scheduleDays',day),data=await request(':runQuery',{structuredQuery:{
+   from:[{collectionId:'vacations'}],limit:101,orderBy:[{field:{fieldPath:'start'},direction:'ASCENDING'}],
+   where:{compositeFilter:{op:'AND',filters:[
+    {fieldFilter:{field:{fieldPath:'active'},op:'EQUAL',value:{booleanValue:true}}},
+    {fieldFilter:{field:{fieldPath:'start'},op:'LESS_THAN_OR_EQUAL',value:{stringValue:day}}},
+    {fieldFilter:{field:{fieldPath:'end'},op:'GREATER_THAN_OR_EQUAL',value:{stringValue:day}}}
+   ]}}
+  }});
+  const rows=data.filter(row=>row.document),truncated=rows.length>100;
+  const vacations=rows.slice(0,100).map(({document})=>({...decodeFields(document.fields||{}),id:document.name.split('/').at(-1)}));
+  return {schedule,vacations,truncated};
+ }
  async function page(c,{cursor='',limit=20,filters=[],fields,publishedBefore}={}){
   if(source)throw fail('COMM_SOURCE_DENIED',403);
   checkCollection(c);if(!Number.isInteger(limit)||limit<1||limit>21)throw fail('COMM_INVALID_INPUT');
@@ -101,5 +115,5 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
   }});
   return data.filter(row=>row.document).map(({document})=>document.name.split('/').at(-1));
  }
- return {get,getMany,page,eligibleRecipients,historyDue,listUserAppInstallations,transaction,countPublished,assertAvailable};
+ return {get,getMany,page,eligibleRecipients,historyDue,listUserAppInstallations,transaction,countPublished,assertAvailable,checklistRotationInputs};
 }

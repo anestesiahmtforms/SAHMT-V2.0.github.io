@@ -1,4 +1,5 @@
 import {localDateKey} from '../src/schedule-date.js';
+import {resolveChecklistRotationCore} from '../src/checklist-rotation-core.js';
 import {createHash} from 'node:crypto';
 import {FF,adminIdentity,activeProfile,id,text,fail,validateMessage,isCurrentMessage,matches,PAGE_SIZE,BATCH_SIZE,CATEGORIES,safePreview,automaticNoticePreview,BUILTIN_GROUPS} from '../communication/domain.js';
 import {assignedInstitutionalGroup} from '../src/institutional-group.js';
@@ -180,6 +181,17 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   const result=await saveMessage({id:key,version:0,message:{...RELEASE_NOTICE,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a,{release:true});
   await remember();return {...result,pushEligible,pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true};
  }
+ async function sendChecklistConference(day){
+  if(typeof scheduleSource.checklistRotationInputs!=='function'||day!==localDateKey(new Date(now())))throw fail('COMM_NOT_CURRENT',409);
+  const idValue=`event-checklist-conference-${day}`;
+  const inputs=await scheduleSource.checklistRotationInputs(day),selection=resolveChecklistRotationCore({schedule:inputs.schedule,day,vacations:inputs.vacations,truncated:inputs.truncated});
+  if(!selection.complete||!selection.sigla)throw fail('COMM_CHECKLIST_ROTATION_UNAVAILABLE',503);
+  const people=await store.page('users',{limit:2,filters:[['sigla',selection.sigla],['active',true],['access',true]],fields:['uid','email','displayName','sigla','institutionalGroup','active','access']});
+  if(people.length!==1||people[0].uid!==people[0].id||!activeProfile(people[0])||people[0].sigla!==selection.sigla||isSystemOwnerEmail(people[0].email))throw fail('COMM_INVALID_AUDIENCE',409);
+  const actor={uid:'automatic-checklist-conference',sourceUid:'automatic-checklist-conference',email:'automacao-checklist@sahmt.app'};
+  const result=await createEvent({id:idValue,title:'Conferencia do Checklist',description:'Não se esqueça! Você é o escalado para a conferencia dos checklists de hoje. Obrigado',audience:'USER',recipient:people[0].uid},actor);
+  return {sent:!result.alreadySent,alreadySent:Boolean(result.alreadySent),id:idValue,recipient:selection.sigla};
+ }
  async function device(input,a,enable){
   if(typeof input.token!=='string'||input.token.length<50||input.token.length>4096||/\s/.test(input.token))throw fail('COMM_INVALID_TOKEN');
   const key=digest(input.token);
@@ -344,7 +356,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   }catch(error){await store.transaction(async tx=>{const receipt=await tx.get('communicationPushDeliveries',receiptId);if(receipt?.status==='processing')tx.set('communicationPushDeliveries',receiptId,{...receipt,status:'retry'});}).catch(()=>{});throw error;}
  }
  async function consumePush(input){if(input?.kind==='history'){if(!history)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);return history.consume(input);}if(typeof input?.dispatchId==='string'&&!input.dispatchId.startsWith('release-'))return {done:true};if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input);throw fail('COMM_INVALID_INPUT');}
- return {consumePush,async execute(action,input,a){
+ return {consumePush,sendChecklistConference,async execute(action,input,a){
   if(!input||Array.isArray(input)||typeof input!=='object')throw fail('COMM_INVALID_INPUT');
   const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGE_READ','PENDING_ACTIVITIES','VERIFY_ACTIVITY','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
   if(!regular.has(action))admin(a);

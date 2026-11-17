@@ -6,6 +6,7 @@ export function communicationSenderRole(email){
  const address=String(email||'').trim().toLowerCase();
  if(address==='wx2064@gmail.com')return 'Administrador';
  if(address==='marcio.henrique82@gmail.com')return 'Gestor operacional';
+ if(address==='automacao-checklist@sahmt.app')return 'Automação do Checklist';
  return '';
 }
 export const RELEASE_NOTICE=Object.freeze({title:'LIBERAÇÃO',message:'Você está Liberado! O SAHMT agradece por sua dedicação. BOM DESCANSO! 🤜🤛.'});
