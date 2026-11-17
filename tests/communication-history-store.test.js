@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import {cre
 test('history snapshot query is bounded to detect oversize audiences and selects only needed identity fields',async()=>{
  const requests=[];const store=createStore({getToken:async()=> 'synthetic',administrator:true,fetchImpl:async(url,options)=>{requests.push({url,body:JSON.parse(options.body)});return Response.json([]);}});
  assert.equal(typeof store.eligibleRecipients,'function');await store.eligibleRecipients();
- const query=requests[0].body.structuredQuery;assert.equal(query.limit,201);assert.deepEqual(query.select.fields.map(r=>r.fieldPath),['uid','email','displayName','institutionalGroup','memberCategories','role','active','access']);assert.ok(requests[0].url.includes('/sahmt-comunicacao-ff/'));
+ const query=requests[0].body.structuredQuery;assert.equal(query.limit,201);assert.deepEqual(query.select.fields.map(r=>r.fieldPath),['uid','email','displayName','sigla','institutionalGroup','memberCategories','role','active','access']);assert.ok(requests[0].url.includes('/sahmt-comunicacao-ff/'));
 });
 test('history cleanup emits a real FF-only transactional delete',async()=>{
  const bodies=[];const store=createStore({getToken:async()=> 'synthetic',administrator:true,fetchImpl:async(url,options)=>{const b=JSON.parse(options.body);bodies.push(b);return Response.json(url.endsWith(':beginTransaction')?{transaction:'test'}:{});}});
