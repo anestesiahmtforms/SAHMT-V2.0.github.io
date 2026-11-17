@@ -35,14 +35,15 @@ async function cameraDevices(mediaDevices, {setTimer, clearTimer}) {
 }
 
 /** Prefer an identifiable physical rear camera, while preserving permission and session lifecycle. */
-export async function openChecklistCamera({mediaDevices, isCurrent, deviceId = '', setTimer = setTimeout, clearTimer = clearTimeout}) {
+export async function openChecklistCamera({mediaDevices, isCurrent, deviceId = '', fastStart = false, setTimer = setTimeout, clearTimer = clearTimeout}) {
   const stop = stream => stream?.getTracks().forEach(track => track.stop());
   const unavailableIds = new Set();
   const request = async id => {
     if (!isCurrent()) return null;
     const pending = Promise.resolve().then(() => mediaDevices.getUserMedia({audio: false, video: {
       ...(id ? {deviceId: {exact: id}} : {facingMode: {ideal: 'environment'}}),
-      width: {ideal: 1920}, height: {ideal: 1080}, frameRate: {ideal: 30, max: 30}
+      width: {ideal: fastStart ? 1280 : 1920}, height: {ideal: fastStart ? 720 : 1080},
+      frameRate: fastStart ? {ideal: 24, max: 30} : {ideal: 30, max: 30}
     }}));
     let timer;
     let stream;
@@ -67,6 +68,19 @@ export async function openChecklistCamera({mediaDevices, isCurrent, deviceId = '
       return request('');
     }
   };
+  if (fastStart) {
+    // Start the rear camera before device enumeration. Some mobile browsers stall
+    // enumerateDevices until permission is granted or delay preview while switching lenses.
+    const stream = await requestWithFallback(deviceId);
+    if (!stream) return null;
+    if (!isCurrent()) { stop(stream); return null; }
+    const track = stream.getVideoTracks()[0];
+    let activeDeviceId = deviceId || '';
+    try { activeDeviceId = track?.getSettings?.().deviceId || activeDeviceId; } catch { /* Optional API. */ }
+    const camerasReady = cameraDevices(mediaDevices, {setTimer, clearTimer})
+      .then(devices => isCurrent() ? checklistRearCameras(devices) : []);
+    return {stream, cameras: [], deviceId: activeDeviceId, camerasReady};
+  }
   let devices = await cameraDevices(mediaDevices, {setTimer, clearTimer});
   if (!isCurrent()) return null;
   let selectedId = deviceId || preferredChecklistCamera(devices)?.deviceId || '';

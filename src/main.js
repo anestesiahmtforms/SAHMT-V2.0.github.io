@@ -1121,7 +1121,7 @@ function shellView() {
   const checklistReportLaunchers = route === 'checklist' ? `<div class="event-report-launchers checklist-report-launchers" aria-label="Relatórios do Checklist"><button type="button" data-checklist-report-launch="daily" disabled>RELATÓRIO DIÁRIO</button><button type="button" data-checklist-report-launch="monthly" disabled>RELATÓRIO MENSAL</button></div>` : '';
   const checklistReportDialog = route === 'checklist' ? `<dialog class="checklist-report-dialog" id="checklist-report-dialog" aria-label="Relatórios do Checklist"><header class="checklist-report-dialog__header"><h2 id="checklist-report-title" tabindex="-1" autofocus>RELATÓRIO DIÁRIO - CHECKLIST</h2></header><div class="checklist-report-periods"><section class="checklist-report-calendar" id="checklist-day-control" ${checklistReportMode !== 'daily' ? 'hidden' : ''}><input id="checklist-report-day" type="date" value="${todayInputValue()}" max="${todayInputValue()}" aria-label="Data do relatório"><nav class="schedule-day-nav" aria-label="Navegar pelos dias do relatório"><button class="secondary-button" id="checklist-report-previous" type="button">Anterior</button><button class="primary-button" id="checklist-report-today" type="button">Hoje</button><button class="secondary-button" id="checklist-report-next" type="button">Próximo</button></nav></section><section class="checklist-report-month" id="checklist-month-control" ${checklistReportMode !== 'monthly' ? 'hidden' : ''}><label>MÊS DE REFERÊNCIA<input id="checklist-month" type="month" value="${todayInputValue().slice(0, 7)}" max="${todayInputValue().slice(0, 7)}"></label></section><p class="checklist-report-sync" id="checklist-report-sync" role="status" aria-live="polite"><span aria-hidden="true"></span> Aguardando relatório</p></div><div id="module-content" class="module-content checklist-report-content" aria-live="polite"><p class="loading">Abra o relatório para carregar as estações…</p></div><footer class="checklist-report-footer"><form method="dialog"><button class="secondary-button" type="submit">Voltar</button></form></footer></dialog>` : '';
   const pendingLabelShare = typeof pendingLabelImageShare === 'undefined' ? null : pendingLabelImageShare;
-  const labelSharePanel = route === 'labels' && pendingLabelShare?.uid === session.user?.uid ? `<section class="label-share-ready" aria-label="Imagem do registro de Etiquetas salva"><p>${pendingLabelShare.file ? 'Registro confirmado. Imagem leve pronta para compartilhar.' : `Registro confirmado, mas a imagem não foi preparada. ${escapeHtml(pendingLabelShare.error || '')}`}</p><small>Toque para compartilhar a imagem, escolha WhatsApp e selecione o grupo Particular/Complementação/Plantão-SAHMT. O envio continua sob sua confirmação.</small><button class="primary-button" type="button" id="share-saved-label-image" ${pendingLabelShare.file ? '' : 'disabled'}>COMPARTILHAR IMAGEM NO WHATSAPP</button><button class="secondary-button" type="button" id="dismiss-saved-label-image">Dispensar</button>${pendingLabelShare.file ? '<a class="secondary-button label-share-group" href="https://chat.whatsapp.com/FWCMkpY6AvgIj41Nnchy87" target="_blank" rel="noopener noreferrer">ABRIR GRUPO PARTICULAR/COMPLEMENTAÇÃO/PLANTÃO-SAHMT</a>' : ''}<p class="label-share-status" id="label-share-status" role="status" aria-live="polite"></p></section>` : '';
+  const labelSharePanel = route === 'labels' && pendingLabelShare?.uid === session.user?.uid ? `<section class="label-share-ready" aria-label="Imagem do registro de Etiquetas salva"><p>${pendingLabelShare.file ? 'Registro confirmado. Imagem leve pronta para compartilhar.' : `Registro confirmado, mas a imagem não foi preparada. ${escapeHtml(pendingLabelShare.error || '')}`}</p><small>Ao continuar, a imagem seguirá anexada ao compartilhamento. No WhatsApp, escolha o grupo Particular/Complementação/Plantão-SAHMT e confirme o envio.</small><button class="primary-button" type="button" id="share-saved-label-image" ${pendingLabelShare.file ? '' : 'disabled'}>ENVIAR PARA O GRUPO</button><p class="label-share-status" id="label-share-status" role="status" aria-live="polite"></p></section>` : '';
   const labelReport = route === 'labels' && ['labelsRead','labelsWrite','labelsManage'].some(can) ? `<div class="event-report-launchers label-report-launchers" aria-label="Abrir relatórios de Etiquetas"><button type="button" data-label-report-launch="daily"><span class="label-action-icon" aria-hidden="true">📄</span><span>RELATÓRIO DIÁRIO</span></button><button type="button" data-label-report-launch="monthly"><span class="label-action-icon" aria-hidden="true">🗓️</span><span>RELATÓRIO MENSAL</span></button></div><dialog class="event-report event-report-dialog label-report label-report-dialog" id="label-report-dialog" aria-label="Relatórios de Etiquetas"><header class="event-report-dialog__header label-report-header"><img src="${import.meta.env.BASE_URL}assets/sahmt-logo.png" alt="SAHMT" width="48" height="48"><div class="label-report-heading"><h2 id="label-report-dialog-title">RELATÓRIO ${labelReportMode === 'daily' ? 'DIÁRIO - ETIQUETAS' : 'MENSAL - ETIQUETAS'}</h2><p>${escapeHtml(session.profile?.displayName || session.user?.displayName || 'Usuário')}</p><div id="label-report-sync" class="label-report-sync" role="status" aria-live="polite">Verificando sincronização</div></div></header><div id="label-day-control" class="report-period event-day-control label-day-control" ${!labelReportOpen || labelReportMode !== 'daily' ? 'hidden' : ''}><label>DATA DOS REGISTROS<input type="date" id="label-report-day" value="${todayInputValue()}"></label></div><div id="label-month-control" class="report-period event-month-control label-month-control" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><label>Mês<input type="month" id="label-report-month" value="${todayInputValue().slice(0, 7)}"></label></div><div id="label-report-results" class="module-content" aria-live="polite" ${labelReportOpen ? '' : 'hidden'}></div><footer class="monthly-report-footer label-report-footer" id="label-report-footer" ${!labelReportOpen || labelReportMode !== 'monthly' ? 'hidden' : ''}><button class="secondary-button" type="button" id="share-labels-pdf" disabled>PDF / WhatsApp</button></footer><footer class="report-close-footer"><form method="dialog"><button class="secondary-button" type="submit">Fechar</button></form></footer></dialog>` : '';
   const labelAccessPanel = route === 'labels' && !['labelsRead','labelsWrite','labelsManage'].some(can) ? `<section class="panel" role="status"><p>${!session.labelProfileLoaded ? 'Verificando seu acesso a Etiquetas…' : session.labelProfileError ? 'Não foi possível confirmar seu acesso a Etiquetas. Tente novamente.' : 'Seu acesso a Etiquetas precisa ser liberado pela administração de FH.'}</p>${session.labelProfileLoaded ? '<button type="button" class="secondary-button" data-retry-fh-label-access>Verificar acesso novamente</button>' : ''}</section>` : '';
   const view = ['home','schedule'].includes(route) ? `<section class="content-grid">
@@ -1816,10 +1816,6 @@ async function loadModule(route) {
       link.click();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
       if (status?.isConnected) status.textContent = 'Imagem JPG baixada. Abra o grupo no WhatsApp e escolha a imagem na galeria.';
-    });
-    document.querySelector('#dismiss-saved-label-image')?.addEventListener('click', () => {
-      if (pendingLabelImageShare?.uid === session.user?.uid) pendingLabelImageShare = null;
-      void render();
     });
     content?.remove();
     const reportDialog = document.querySelector('#label-report-dialog');
@@ -2907,7 +2903,7 @@ async function openChecklistQrScanner(stations, day, {deviceId = '', zoom = 2} =
   // Load the Safari decoder while the camera permission/stream is opening.
   const decoderReady = loadQrDecoder().then(() => null, (error) => error);
   try {
-    const camera = await openChecklistCamera({mediaDevices: navigator.mediaDevices, isCurrent: scannerCurrent, deviceId});
+    const camera = await openChecklistCamera({mediaDevices: navigator.mediaDevices, isCurrent: scannerCurrent, deviceId, fastStart: true});
     if (!camera) { cleanup(); return; }
     stream = camera.stream;
     if (!scannerCurrent()) { stream.getTracks().forEach((track) => track.stop()); stream = null; return; }
@@ -2919,13 +2915,23 @@ async function openChecklistQrScanner(stations, day, {deviceId = '', zoom = 2} =
     await video.play();
     if (!scannerCurrent()) { cleanup(); return; }
     zoomButtons.forEach(button => { button.disabled = false; });
+    let availableCameras = camera.cameras || [];
+    const updateCameraSwitch = cameras => {
+      availableCameras = Array.isArray(cameras) ? cameras : [];
+      if (cameraSwitch) {
+        cameraSwitch.hidden = availableCameras.length < 2;
+        cameraSwitch.disabled = availableCameras.length < 2;
+      }
+    };
+    updateCameraSwitch(availableCameras);
+    if (camera.camerasReady) void camera.camerasReady.then(cameras => {
+      if (scannerCurrent()) updateCameraSwitch(cameras);
+    }).catch(() => {});
     if (cameraSwitch) {
-      cameraSwitch.hidden = camera.cameras.length < 2;
-      cameraSwitch.disabled = camera.cameras.length < 2;
       cameraSwitch.onclick = () => {
         if (!scannerCurrent()) return;
-        const index = camera.cameras.findIndex(item => item.deviceId === camera.deviceId);
-        const next = camera.cameras[(index + 1) % camera.cameras.length];
+        const index = availableCameras.findIndex(item => item.deviceId === camera.deviceId);
+        const next = availableCameras[(index + 1) % availableCameras.length];
         if (next) void openChecklistQrScanner(stations, day, {deviceId: next.deviceId, zoom: zoomValue});
       };
     }
