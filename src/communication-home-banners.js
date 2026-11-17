@@ -28,7 +28,6 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   let pushedItems = [];
   let loading = false;
   let lastLoadAt = 0;
-  let loadError = '';
   const acknowledging = new Set();
   const acknowledgementErrors = new Map();
   const active = () => !disposed && root.isConnected && isCurrent();
@@ -47,7 +46,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
         ${item.linkUrl&&/^https:\/\//.test(item.linkUrl)?`<a class="comm-home-notice__destination" href="${escapeHtml(item.linkUrl)}"${item.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(item.linkLabel||'ABRIR DESTINO')}</a>`:''}
         ${checklistConference ? `<p class="comm-home-notice__ack-status" role="status">${escapeHtml(acknowledgementErrors.get(item.id) || '')}</p><button type="button" class="comm-home-notice__ack" data-ack-comm="${escapeHtml(item.id)}" ${acknowledging.has(item.id) ? 'disabled' : ''}>${acknowledging.has(item.id) ? 'REGISTRANDO…' : 'OK'}</button>` : `<a class="comm-home-notice__details" href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>`}
       </article>`;
-    }).join('') + (hasMore ? '<a class="comm-home-notice__more" href="#/communications">Ver mais mensagens recebidas</a>' : '') + (loadError ? `<article class="comm-home-notice" role="status"><p>${escapeHtml(loadError)} <a href="#/communications">ABRIR CENTRAL DE COMUNICAÇÃO</a></p></article>` : '');
+    }).join('') + (hasMore ? '<a class="comm-home-notice__more" href="#/communications">Ver mais mensagens recebidas</a>' : '');
   }
 
   async function appendPushedMessage(id) {
@@ -66,10 +65,10 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     if (loading || !active() || document.visibilityState === 'hidden') return;
     loading = true;
     lastLoadAt = Date.now();
-    loadError = '';
     let cursor = '';
     let pages = 0;
     let hasMore = false;
+    let loadFailed = false;
     const items = [];
     const seen = new Set();
     try {
@@ -87,12 +86,14 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
         hasMore = Boolean(cursor && pages >= MAX_INBOX_PAGES);
         render(items, hasMore);
       } while (cursor && pages < MAX_INBOX_PAGES);
-    } catch (error) {
-      loadError = ['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code) ? 'Conecte sua conta à Central para receber seus avisos.' : 'Não foi possível atualizar seus avisos. Abra a Central para conferir.';
+    } catch {
+      // Home refresh failures are silent: preserve already loaded notices without
+      // repeatedly presenting a connection warning every time the app resumes.
+      loadFailed = true;
     } finally {
       loading = false;
     }
-    if (active()) render(loadError && !items.length ? visibleItems : items, hasMore);
+    if (active()) render(loadFailed && !items.length ? visibleItems : items, hasMore);
   }
 
   const onClick = event => {

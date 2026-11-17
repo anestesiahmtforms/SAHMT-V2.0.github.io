@@ -35,13 +35,13 @@ test('a liberação aparece antes de terminar a leitura de páginas antigas',asy
  complete({items:[],cursor:null});await tick();assert.match(h.root.innerHTML,/LIBERAÇÃO/);h.cleanup();
 });
 
-test('voltar ao app atualiza avisos; erro de sessão fica visível sem apagar o aviso existente',async()=>{
+test('voltar ao app atualiza avisos; falhas ficam silenciosas sem apagar o aviso existente',async()=>{
  let calls=0;
  const h=homeHarness(async()=>{calls++;if(calls===1)throw Object.assign(Error(),{code:'COMM_SESSION_INVALID'});if(calls===2)return {items:[notice],cursor:null};throw Error('offline');});
- await tick();assert.match(h.root.innerHTML,/Conecte sua conta/);assert.match(h.root.innerHTML,/#\/communications/);
+ await tick();assert.equal(h.root.innerHTML,'');
  h.advance();h.document.visibilityState='hidden';h.documentEvents.get('visibilitychange')();await tick();assert.equal(calls,1);
  h.document.visibilityState='visible';h.documentEvents.get('visibilitychange')();h.windowEvents.get('focus')();await tick();assert.equal(calls,2);assert.match(h.root.innerHTML,/LIBERAÇÃO/);
- h.advance();h.windowEvents.get('focus')();await tick();assert.match(h.root.innerHTML,/LIBERAÇÃO/);assert.match(h.root.innerHTML,/Não foi possível atualizar/);
+ h.advance();h.windowEvents.get('focus')();await tick();assert.match(h.root.innerHTML,/LIBERAÇÃO/);assert.doesNotMatch(h.root.innerHTML,/Não foi possível atualizar|Conecte sua conta|ABRIR CENTRAL DE COMUNICAÇÃO/);
  h.cleanup();assert.equal(h.disposed,true);assert.equal(h.documentEvents.size,0);assert.equal(h.windowEvents.size,0);assert.equal(h.workerEvents.size,0);
 });
 
