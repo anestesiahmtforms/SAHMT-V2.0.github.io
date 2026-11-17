@@ -40,7 +40,6 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   let composeState;
   let activityState;
   let directory;
-  let checklistConferenceSending = false;
   const active = () => !disposed && isCurrent();
   const dialog = root.closest('.management-hub-dialog');
   const canCreateEvents = adminMode && adminIdentity(appSession?.user) && Boolean(communicationSenderRole(appSession.user.email));
@@ -111,7 +110,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     if (canCreateEvents) {
       if(!directory){const request=loadDirectory();directory=request;void request.catch(()=>{if(directory===request)directory=undefined;});}
       render('Central de Comunicação', '<div class="comm-menu"><button type="button" data-create-event>CRIAR E ENVIAR EVENTO</button>'+ 
-        (canManageCommunication?'<button type="button" data-checklist-conference '+(checklistConferenceSending?'disabled':'')+'>ENVIAR CONFERÊNCIA DO CHECKLIST DE HOJE</button><button type="button" data-create-activity>TREINAMENTOS E ENQUETES</button><button type="button" data-sent-messages>MENSAGENS ENVIADAS</button>':'')+'</div>', {menu: true});
+        (canManageCommunication?'<button type="button" data-create-activity>TREINAMENTOS E ENQUETES</button><button type="button" data-sent-messages>MENSAGENS ENVIADAS</button>':'')+'</div>', {menu: true});
       return;
     }
     void inbox();
@@ -129,70 +128,6 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
       if (!active() || cursors.has(cursor) || cursors.size >= 19) throw Error('Diretório incompleto');
       cursors.add(cursor);
     } while (cursor);
-  }
-
-  function todayInSaoPaulo() {
-    const parts = Object.fromEntries(new Intl.DateTimeFormat('en', {year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'America/Sao_Paulo'}).formatToParts(new Date()).map(part => [part.type, part.value]));
-    return `${parts.year}-${parts.month}-${parts.day}`;
-  }
-
-  async function confirmedChecklistRotation(day) {
-    const {watchChecklistRotation} = await import('./checklist-rotation-listener.js');
-    if (!active()) throw new Error('A Central foi fechada antes da consulta da escala.');
-    return new Promise((resolve, reject) => {
-      let stop = () => {};
-      let settled = false;
-      const finish = (error, rotation) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        stop();
-        error ? reject(error) : resolve(rotation);
-      };
-      const timer = setTimeout(() => finish(new Error('A escala do Checklist não confirmou o escalado de hoje. Tente novamente em instantes.')), 20000);
-      void watchChecklistRotation({uid: appSession?.user?.uid, day}, payload => {
-        if (!active()) return finish(new Error('A Central foi fechada antes da consulta da escala.'));
-        if (payload.current === true && payload.rotation?.sigla && payload.rotation?.name) return finish(null, payload.rotation);
-        if (payload.ready && (payload.error || payload.truncated)) return finish(new Error(payload.reason || 'Não foi possível confirmar o escalado de hoje.'));
-      }, error => finish(error || new Error('Não foi possível consultar a escala do Checklist.')))
-        .then(unsubscribe => { stop = unsubscribe || (() => {}); if (settled) stop(); })
-        .catch(error => finish(error));
-    });
-  }
-
-  async function sendChecklistConference() {
-    if (!canManageCommunication || checklistConferenceSending || !active()) return;
-    checklistConferenceSending = true;
-    const button = root.querySelector('[data-checklist-conference]');
-    if (button) { button.disabled = true; button.textContent = 'CONFIRMANDO ESCALA…'; }
-    status('Consultando o escalado de hoje no Checklist…');
-    try {
-      const day = todayInSaoPaulo();
-      const rotation = await confirmedChecklistRotation(day);
-      if (!active()) return;
-      status('Localizando o usuário vinculado à sigla ' + rotation.sigla + '…');
-      const users = await (directory ??= loadDirectory());
-      if (!active()) return;
-      const matches = users.filter(user => String(user.sigla || '').trim().toUpperCase() === rotation.sigla && user.active === true && user.access === true);
-      if (matches.length !== 1) throw new Error(matches.length ? 'Há mais de um usuário ativo vinculado à sigla ' + rotation.sigla + '. Nenhuma mensagem foi enviada.' : 'Não há um usuário ativo vinculado à sigla ' + rotation.sigla + '. Nenhuma mensagem foi enviada.');
-      const payload = {
-        id: 'event-checklist-conference-' + day,
-        title: 'Conferencia do Checklist',
-        description: 'Não se esqueça! Você é o escalado para a conferencia dos checklists de hoje. Obrigado',
-        audience: 'USER',
-        recipient: matches[0].uid,
-      };
-      const result = await client.request('CREATE_EVENT', payload);
-      if (!active()) return;
-      status((result.alreadySent ? 'A mensagem de hoje já estava enviada' : 'Mensagem enviada pelo app') + ' para ' + rotation.name + ' (' + rotation.sigla + '). Não foi enviado push.');
-    } catch (error) {
-      if (!active()) return;
-      if (needsGoogle(error)) { checklistConferenceSending = false; return recoverGoogle(); }
-      report(error, error?.message || 'Não foi possível enviar a mensagem de conferência do Checklist.');
-    } finally {
-      checklistConferenceSending = false;
-      if (active() && button?.isConnected) { button.disabled = false; button.textContent = 'ENVIAR CONFERÊNCIA DO CHECKLIST DE HOJE'; }
-    }
   }
 
   function setComposeControls(form, busy = Boolean(composeState.sending)) {
@@ -451,7 +386,6 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     if (button.hasAttribute('data-back')) return onBack();
     if (button.hasAttribute('data-home')) return canCreateEvents ? adminMenu() : void inbox();
     if (button.hasAttribute('data-sent-messages')) return void loadSentMessages();
-    if (button.hasAttribute('data-checklist-conference')) return void sendChecklistConference();
     if (button.hasAttribute('data-create-event')) return eventForm();
     if (button.hasAttribute('data-create-activity')) return activityForm();
   }
