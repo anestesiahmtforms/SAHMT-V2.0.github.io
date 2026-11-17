@@ -1803,7 +1803,10 @@ async function loadModule(route) {
         if (status?.isConnected) status.textContent = 'Imagem pronta. Escolha WhatsApp, abra o grupo Particular/Complementação/Plantão-SAHMT e toque em Enviar.';
         try {
           await navigator.share({files: [file], title: 'Relatório Diário - Etiquetas SAHMT', text: 'Relatório Diário - Etiquetas SAHMT · Particular/Complementação/Plantão-SAHMT'});
-          if (status?.isConnected) status.textContent = 'Compartilhamento encerrado. Confira o envio no WhatsApp; o app não recebe confirmação do envio ao grupo.';
+          if (pendingLabelImageShare === pending) {
+            pendingLabelImageShare = null;
+            void render();
+          }
         } catch (error) {
           if (status?.isConnected) status.textContent = error?.name === 'AbortError' ? 'Compartilhamento cancelado. O registro permanece salvo.' : `Não foi possível abrir o compartilhamento. ${error?.message || ''}`;
         }
