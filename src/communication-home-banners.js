@@ -1,8 +1,17 @@
 import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from './communication-notice-text.js';
-import {localDateKey} from './schedule-date.js';
 
 const MAX_INBOX_PAGES = 18;
 const MAX_DISMISSED_IDS = 500;
+function localDateKey(date = new Date(), timeZone = 'America/Sao_Paulo') {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({type, value}) => [type, value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
 const checklistNoticeId = () => `event-checklist-conference-${localDateKey()}`;
 const isChecklistConference = item => item?.id === checklistNoticeId();
 
