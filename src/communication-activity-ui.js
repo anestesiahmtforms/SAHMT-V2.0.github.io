@@ -1,8 +1,6 @@
 import {escapeNoticeHtml as esc} from './communication-notice-text.js';
-import {trainingActivityRoute} from './training-activity-route.js';
-import {deployment} from './deployment-context.js';
 import {communicationRecipientOptions} from './communication-recipient-directory.js';
-import {activitySelectionUrl, startActivitySelection, surveyActivityPanels} from './communication-activity-selection.js';
+import {activityBreadcrumb, activityDestination, activitySelectionUrl, startActivitySelection} from './communication-activity-selection.js';
 import {rememberModuleNavigation} from './module-navigation.js';
 
 const reasons = {FORBIDDEN:'Sem permissão para esta atividade',NOT_AUTHORIZED:'Sem permissão para esta atividade',REGISTRATION_FORBIDDEN:'Sem acesso ao Cadastro Profissional',REGISTRATION_FOLDER_DISABLED:'Cadastro Profissional inativo',INACTIVE:'Integrante inativo',ACTIVITY_UNAVAILABLE:'Atividade indisponível',ATTEMPTS_EXHAUSTED:'Tentativas esgotadas',SOURCE_UNAVAILABLE:'Não foi possível verificar a origem'};
@@ -19,17 +17,12 @@ const reviewBeforeSending=Object.freeze({
 });
 const activityKey=activity=>activity?`${activity.kind}:${activity.id}`:'';
 function activityAccessUrl(activity,messageId,origin){
-  if(!activity)return '';
-  const base=activity.kind==='TRAINING'
-    ? deployment.fbBase+trainingActivityRoute(activity.id)+'/'+encodeURIComponent(messageId)
-    : Object.hasOwn(surveyActivityPanels,activity.id)
-      ? deployment.faBase+'#/management-hub/'+surveyActivityPanels[activity.id]+'/required/'+encodeURIComponent(messageId)
-      : '';
-  return base?new URL(base,origin).href:'';
+  const destination=activityDestination(activity,messageId);
+  return destination?new URL(destination.base+destination.hash,origin).href:'';
 }
 function messageWithActivityLink(description,activity,messageId,origin){
   const link=activityAccessUrl(activity,messageId,origin);
-  return link?`${description.trim()}\n\nAcesse a atividade: ${link}`:description.trim();
+  return link?`Caminho no app: ${activityBreadcrumb(activity)}\n\nAcesse a atividade: ${link}`:description.trim();
 }
 export function activityDescription(activity) {
   if (!activity) return '';
@@ -94,7 +87,8 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
   function showPreview(){
     const p=state.preview;if(!p)return;
     form.dataset.confirmation='true';
-    const outgoingMessage=messageWithActivityLink(state.description,p.activity,state.id,root.ownerDocument.location.origin);
+    const activity={...p.activity,folderPath:selectedActivity()?.folderPath};
+    const outgoingMessage=messageWithActivityLink(state.description,activity,state.id,root.ownerDocument.location.origin);
     form.querySelector('[data-activity-preview]').innerHTML=`<p class="comm-activity-preview-title">${esc(activityDescription(p.activity))}</p><p class="comm-activity-outgoing-message">${esc(outgoingMessage)}</p>
       <p class="comm-activity-preview-count">${p.recipients.length} destinatário(s) receberão esta atividade${p.excluded.length?` · ${p.excluded.length} excluído(s)`:''}</p>
       <details class="comm-activity-recipient-details"><summary>Conferir destinatários e exclusões</summary><ul class="comm-recipient-preview">${p.recipients.map(person=>`<li>${esc(person.displayName||person.email||person.uid)} · ${esc(person.institutionalGroup)}</li>`).join('')}${p.excluded.map(person=>`<li>${esc(person.displayName||person.email||person.uid)} — ${esc(reasons[person.reason]||'Sem acesso ou já concluiu')}</li>`).join('')}</ul></details>
@@ -190,7 +184,8 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     if(button.hasAttribute('data-reload-activities')){remember();clearPreview();void load();void recipients();return;}
     if(button.hasAttribute('data-edit-activity')){clearPreview();return;}
     if(!button.hasAttribute('data-confirm-activity')||state.sending||state.sent||!state.preview?.recipients.length)return;
-    const description=messageWithActivityLink(state.description,state.preview.activity,state.id,root.ownerDocument.location.origin);
+    const activity={...state.preview.activity,folderPath:selectedActivity()?.folderPath};
+    const description=messageWithActivityLink(state.description,activity,state.id,root.ownerDocument.location.origin);
     if(description.length>4000){status('A orientação excede o limite após incluir o link. Reduza o texto e confira os destinatários novamente.',true);clearPreview();return;}
     state.pending??={id:state.id,previewId:state.preview.previewId,title:state.title,description,confirmed:true};
     state.sending=true;busy();status('Enviando convocação…');

@@ -1,4 +1,6 @@
 import {deployment} from './deployment-context.js';
+import {trainingActivityRoute} from './training-activity-route.js';
+import {validTrainingFolderPath} from './html-training-folders.js';
 
 const storageKey = 'sahmt-communication-activity-selection';
 const maxAge = 30 * 60 * 1000;
@@ -11,6 +13,25 @@ export const surveyActivityPanels = Object.freeze({
   stress: 'stressForm',
   epidemiological: 'epidemiological'
 });
+
+export function activityDestination(activity, messageId) {
+  if (!activity?.id || !messageId) return null;
+  const suffix = '/' + encodeURIComponent(messageId);
+  if (activity.kind === 'TRAINING') return {base: deployment.fbBase, hash: trainingActivityRoute(activity.id) + suffix};
+  if (activity.kind === 'SURVEY' && Object.hasOwn(surveyActivityPanels, activity.id)) {
+    return {base: deployment.faBase, hash: '#/management-hub/' + surveyActivityPanels[activity.id] + '/required' + suffix};
+  }
+  return null;
+}
+
+export function activityBreadcrumb(activity) {
+  if (!activity?.title) return '';
+  const folders = validTrainingFolderPath(activity.folderPath) ? activity.folderPath : [];
+  const section = activity.kind === 'TRAINING'
+    ? ['Grupos de Gestão', 'Gestão de Documentos', ...folders]
+    : ['Enquetes e Consultas', 'Acesso Restrito'];
+  return ['Home', 'Governança', ...section, activity.title].join(' › ');
+}
 
 export function activitySelectionUrl(kind) {
   if (kind === 'TRAINING') return deployment.fbBase + trainingHash;

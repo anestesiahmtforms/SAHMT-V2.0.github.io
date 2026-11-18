@@ -75,7 +75,7 @@ import {FIRST_LOGIN_COHORTS, PROTECTED_FIRST_LOGIN_COHORTS, firstLoginCohortAdmi
 
 import {deployment} from './deployment-context.js';
 const htmlTrainingConfigured = Boolean(import.meta.env.VITE_HTML_TRAINING_ENDPOINT);
-import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,rememberModuleNavigation} from './module-navigation.js';
+import {consumeModuleNavigation,consumeManagementReturn,hasManagementReturn,readManagementReturn,rememberManagementReturn,rememberModuleNavigation} from './module-navigation.js';
 import {repairAppFiles, staleModuleFailure} from './app-repair.js';
 import {installAppUpdatePrompt} from './app-updates.js';
 import './app-updates.css';
@@ -87,8 +87,7 @@ import './functional-ui.css';
 import {renderFiAdminDialog, mountFiAdminDialog} from './fi-admin-dialog.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {communicationFeatureEnabled,communicationAdminSession} from './communication-link.js';
-import {activitySelectionFor,surveyActivityPanels} from './communication-activity-selection.js';
-import {trainingActivityRoute} from './training-activity-route.js';
+import {activityDestination,activitySelectionFor,surveyActivityPanels} from './communication-activity-selection.js';
 import './communication.css';
 import {loadCommunicationModules,preloadCommunicationModules} from './communication-loader.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
@@ -5424,7 +5423,8 @@ function applyEventAmountAutofill(input, value, editing, automatic = false) {
 }
 
 function activeObligationId(){
-  const parts=location.hash.split('/');
+  const hash=location.hash==='#/offline'?readManagementReturn()||'':location.hash;
+  const parts=hash.split('/');
   const id=parts.at(-1);
   const training=parts.length===6&&parts[1]==='management'&&parts[2]==='area-gestao-de-documentos'&&parts[3]==='required';
   const survey=parts.length===5&&parts[1]==='management-hub'&&Object.values(surveyActivityPanels).includes(parts[2])&&parts[3]==='required';
@@ -5449,33 +5449,36 @@ function syncObligationBanner(){
     const client=communication.createCommunicationClient({isCurrent});
     const controller=banner.mountCommunicationObligationBanner({
       uid,client,isCurrent,
-      onOpenActivity(item){
-        const activity=item.activity;
-        const panel=Object.hasOwn(surveyActivityPanels,activity.id)?surveyActivityPanels[activity.id]:'';
-        const base=activity.kind==='TRAINING'?deployment.fbBase:deployment.faBase;
-        const route=activity.kind==='TRAINING'
-          ? trainingActivityRoute(activity.id)
-          : panel?'#/management-hub/'+panel+'/required':'';
-        if(!route)return;
-        const target=route+'/'+encodeURIComponent(item.id);
+      async onOpenActivity(item){
+        const destination=activityDestination(item.activity,item.id);
+        if(!destination)throw Error('COMM_ACTIVITY_UNAVAILABLE');
+        const {base,hash:target}=destination;
         if(location.pathname===base){
           if(location.hash===target){controller.setActivityActive(item.id);void render();}
           else location.hash=target;
-        }else location.assign(base+target);
-      },
-      onRecover(){
-        if(deployment.target==='FB'){location.assign(deployment.faBase+'#/offline');return;}
-        void connectionRecovery.recover('manual');
-        googleAccessPanel?.open();
-      },
-      onSignOut:signOutGlobal
+          return;
+        }
+        if(base===deployment.fbBase){
+          const source=location.href;
+          const current=()=>isCurrent()&&location.href===source;
+          const {ensureManagementSession}=await import('./management-entry-session.js');
+          if(!current())return;
+          const ready=await ensureManagementSession({isCurrent:current});
+          if(!current())return;
+          if(!ready){
+            if(!rememberManagementReturn(target))throw Error('COMM_SOURCE_SESSION_INVALID');
+            location.hash='#/offline';
+            controller.setActivityActive(item.id);
+            googleAccessPanel?.open();
+            return;
+          }
+        }
+        rememberModuleNavigation(base);
+        location.assign(base+target);
+      }
     });
     obligationBanner={...controller,cleanup(){controller.cleanup();client.dispose();}};
-    const sync=()=>controller.setActivityActive(activeObligationId());
-    sync();
-    window.addEventListener('html-training-score-updated',controller.refresh);
-    const cleanup=obligationBanner.cleanup;
-    obligationBanner.cleanup=()=>{window.removeEventListener('html-training-score-updated',controller.refresh);cleanup();};
+    controller.setActivityActive(activeObligationId());
   }).catch(()=>{if(isCurrent())obligationBannerUid='';});
 }
 

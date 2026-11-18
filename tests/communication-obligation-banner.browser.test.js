@@ -8,6 +8,21 @@ after(async()=>{await browser?.close();await server?.close();});
 async function pageFor(options={}){const page=await browser.newPage(options);page.setDefaultTimeout(10000);await page.goto(url,{timeout:30000});await page.locator('[data-obligation-banner]').waitFor();return page;}
 const panel=page=>page.locator('[data-obligation-banner]');
 
+test('banner compacto mostra o título da atividade, o caminho na Home e somente o botão de abrir',async()=>{
+ const page=await pageFor({viewport:{width:320,height:568}});try{
+  const banner=panel(page);
+  assert.deepEqual(await banner.getByLabel('Atividade pendente').locator('option').allTextContents(),['Treinamento seguro','Pesquisa de Clima Organizacional']);
+  assert.equal(await banner.locator('[data-path]').textContent(),'Home › Governança › Grupos de Gestão › Gestão de Documentos › Treinamento seguro');
+  assert.doesNotMatch(await banner.innerText(),/https:\/\/|link abaixo/);
+  assert.deepEqual(await banner.getByRole('button').allTextContents(),['Abrir atividade']);
+  const box=await banner.boundingBox();assert.ok(box.width<=240&&box.height<=255,JSON.stringify(box));
+  await banner.getByLabel('Atividade pendente').selectOption('new');
+  assert.equal(await banner.locator('[data-path]').textContent(),'Home › Governança › Enquetes e Consultas › Acesso Restrito › Pesquisa de Clima Organizacional');
+  await banner.getByRole('button',{name:'Abrir atividade',exact:true}).click();
+  assert.deepEqual(await page.evaluate(()=>fixture.opens),['new']);
+ }finally{await page.close();}
+});
+
 test('server-confirmed age, oldest priority and bounded request budget; no read or dismiss',async()=>{
  const page=await pageFor();try{
   assert.equal(await page.getByLabel('Atividade pendente').inputValue(),'old');
@@ -28,7 +43,7 @@ test('server-confirmed age, oldest priority and bounded request budget; no read 
 
 test('phone pointer/touch and keyboard movement stay bounded; routes and native modal preserve access',async()=>{
  const page=await pageFor({viewport:{width:320,height:568},hasTouch:true});try{
-  const handle=page.getByRole('button',{name:/Mover aviso/});await handle.focus();await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowUp');
+  const handle=page.getByLabel(/Mover aviso/);await handle.focus();await page.keyboard.press('ArrowLeft');await page.keyboard.press('ArrowUp');
   const before=await panel(page).boundingBox();await handle.press('Shift+ArrowDown');const after=await panel(page).boundingBox();assert.ok(after.y>before.y);
   const drag=await handle.boundingBox();await page.mouse.move(drag.x+20,drag.y+10);await page.mouse.down();await page.mouse.move(2000,2000);await page.mouse.up();
   const touch=await page.context().newCDPSession(page),touchHandle=await handle.boundingBox();
@@ -37,18 +52,18 @@ test('phone pointer/touch and keyboard movement stay bounded; routes and native 
   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await touch.detach();
   const bounds=await panel(page).boundingBox();assert.ok(bounds.x>=0&&bounds.y>=0&&bounds.x+bounds.width<=321&&bounds.y+bounds.height<=569,JSON.stringify(bounds));
   await page.evaluate(()=>{document.querySelector('#route').innerHTML='<button id="route-two">Outra rota</button>';document.querySelector('#native').showModal();});
-  await page.getByRole('button',{name:'Verificar conclusão',exact:true}).click();
+  await panel(page).locator('xpath=ancestor::dialog[@id="native"]').waitFor();
   assert.equal(await panel(page).evaluate(el=>el.closest('dialog')?.id),'native');
   await page.evaluate(()=>{const second=document.createElement('dialog');second.id='second';second.innerHTML='<button>Segundo modal</button>';document.body.append(second);second.showModal();});
-  await page.getByRole('button',{name:'Verificar conclusão',exact:true}).click();assert.equal(await panel(page).evaluate(el=>el.closest('dialog')?.id),'second');
+  await panel(page).locator('xpath=ancestor::dialog[@id="second"]').waitFor();
   await page.evaluate(()=>{const first=document.querySelector('#native');first.close();first.showModal();});
-  await page.getByRole('button',{name:'Verificar conclusão',exact:true}).click();assert.equal(await panel(page).evaluate(el=>el.closest('dialog')?.id),'native');
+  await panel(page).locator('xpath=ancestor::dialog[@id="native"]').waitFor();
   await page.getByLabel('Atividade pendente').focus();await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.textContent),'Abrir atividade');
   assert.equal(await page.evaluate(()=>document.body.style.overflow),'');
  }finally{await page.close();}
 });
 
-test('120h blocks general controls while activity, recovery and signout stay usable',async()=>{
+test('120h blocks general controls while the selected activity stays usable',async()=>{
  const page=await pageFor({viewport:{width:320,height:568}});try{
   await page.evaluate(()=>window.age(120));assert.equal(await panel(page).getAttribute('data-blocking'),'true');
   assert.equal(await page.locator('#route').evaluate(el=>el.inert),true);
@@ -57,19 +72,17 @@ test('120h blocks general controls while activity, recovery and signout stay usa
   assert.equal(await panel(page).getAttribute('data-blocking'),'false');
   await page.locator('#activity-control').click();assert.equal(await page.evaluate(()=>fixture.submitted),1);
   await page.evaluate(()=>{document.querySelector('#native').close();banner.setActivityActive(null);});
-  await page.evaluate(()=>fixture.recoverDialog=true);
-  await page.getByRole('button',{name:'Recuperar acesso',exact:true}).click();assert.equal(await page.evaluate(()=>fixture.recoveries),1);
-  await page.locator('#activity-control').click();assert.equal(await page.evaluate(()=>fixture.submitted),2);
   await page.waitForFunction(()=>document.querySelector('[data-obligation-banner]')?.dataset.blocking==='true');
-  await page.getByRole('button',{name:'Sair da conta',exact:true}).click();assert.equal(await panel(page).count(),0);assert.equal(await page.locator('#route').evaluate(el=>el.inert),false);
+  await page.evaluate(async()=>{fixture.completed=['old','new'];await banner.refresh();});
+  assert.equal(await panel(page).count(),0);assert.equal(await page.locator('#route').evaluate(el=>el.inert),false);
  }finally{await page.close();}
 });
 
 test('source failure preserves pending state and recovers; confirmed completion removes only its item',async()=>{
  const page=await pageFor();try{
   await page.evaluate(async()=>{fixture.fail=true;await banner.refresh();});await page.getByText(/Não foi possível verificar/).waitFor();assert.equal(await page.getByLabel('Atividade pendente').locator('option').count(),2);
-  await page.getByRole('button',{name:'Recuperar acesso',exact:true}).click();await page.getByText(/Não foi possível verificar/).waitFor({state:'hidden'});
-  await page.evaluate(async()=>{fixture.unavailable=true;await banner.refresh();});await page.getByText(/Atividade retirada/).waitFor();
+  await page.evaluate(()=>{fixture.fail=false;window.dispatchEvent(new Event('online'));});await page.getByText(/Não foi possível verificar/).waitFor({state:'hidden'});
+  await page.evaluate(async()=>{fixture.unavailable=true;await banner.refresh();});await page.getByText(/Atividade indisponível/).waitFor();
   await page.evaluate(async()=>{fixture.unavailable=false;fixture.completed.push('old');window.dispatchEvent(new Event('communication:activity-completed'));});
   await page.waitForFunction(()=>document.querySelector('[data-obligation-banner] select')?.value==='new');
   await page.evaluate(async()=>{fixture.completed.push('new');await banner.refresh();});assert.equal(await panel(page).count(),0);
