@@ -14,6 +14,12 @@ export function validateObligation(value){
  }else if(value.kind!=='SURVEY'||!Object.hasOwn(SURVEY_ACTIVITIES,value.id)||!/^20\d{2}$/.test(value.cycle))throw fail('COMM_INVALID_ACTIVITY');
  return Object.fromEntries(keys.map(k=>[k,value[k]]));
 }
+export function sameObligation(first,second){
+ try{
+  const left=validateObligation(first),right=validateObligation(second);
+  return Object.keys(left).every(key=>left[key]===right[key]);
+ }catch{return false;}
+}
 export function trainingCompletion(training,state,activity,subjectUid){
  const pending={completed:false};
  if(!subjectUid||activity?.kind!=='TRAINING'||training?.id!==activity.id||training.version!==activity.version||training.maxScore!==activity.maxScore||state?.uid!==subjectUid||state.trainingId!==activity.id||!Array.isArray(state.attempts))return pending;

@@ -1,7 +1,7 @@
 import {Buffer} from 'node:buffer';
 import {createHash} from 'node:crypto';
 import {BUILTIN_GROUPS,fail,id,text} from '../communication/domain.js';
-import {validateObligation} from '../communication/obligations.js';
+import {sameObligation,validateObligation} from '../communication/obligations.js';
 
 const PREVIEWS='communicationActivityPreviews',MESSAGES='communicationMessages',RECIPIENTS='communicationMessageRecipients',INDEX='communicationObligationIndex';
 const exact=(value,keys,optional=[])=>value&&typeof value==='object'&&!Array.isArray(value)&&keys.every(k=>Object.hasOwn(value,k))&&Object.keys(value).every(k=>keys.includes(k)||optional.includes(k));
@@ -109,12 +109,12 @@ export function createObligationService({store,source,history,saveActivity,resol
    if(preview.claim&&preview.claim.fingerprint!==hash)throw fail('COMM_IDEMPOTENCY_CONFLICT',409);
    const existing=await store.get(MESSAGES,messageId);
    if(existing){
-    if(!preview.claim||existing.createdBy?.sourceUid!==actor.sourceUid||existing.title!==title||existing.message!==description||!same(existing.activity,preview.activity)||existing.previewId!==previewId||existing.fingerprint!==hash)throw fail('COMM_IDEMPOTENCY_CONFLICT',409);
+    if(!preview.claim||existing.createdBy?.sourceUid!==actor.sourceUid||existing.title!==title||existing.message!==description||!sameObligation(existing.activity,preview.activity)||existing.previewId!==previewId||existing.fingerprint!==hash)throw fail('COMM_IDEMPOTENCY_CONFLICT',409);
     return {message:existing,alreadySent:true,pushQueued:false};
    }
    if(preview.expiresAt<=serverNow)throw fail('COMM_ACTIVITY_PREVIEW_EXPIRED',409);
    const activity=await authoritative(preview.activity);
-   if(!same(activity,preview.activity))throw fail('COMM_ACTIVITY_CHANGED',409);
+   if(!sameObligation(activity,preview.activity))throw fail('COMM_ACTIVITY_CHANGED',409);
    const selected=recipientsChecked(await resolveRecipients(preview.selection,actor));
    if(!same(orderedIds(selected),orderedIds(preview.selected))||selected.some(p=>preview.selected.find(old=>old.uid===p.uid)?.email!==p.email))throw fail('COMM_ACTIVITY_AUDIENCE_CHANGED',409);
    const fresh=await eligible(activity,selected);

@@ -15,7 +15,7 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{host.innerHT
  if(action==='DIRECTORY')return {items:[person],cursor:null};
  if(action==='ACTIVITY_CATALOG')return {items:input.kind==='TRAINING'?[training,secondTraining]:[survey]};
  if(action==='PREVIEW_ACTIVITY'){await new Promise(resolve=>setTimeout(resolve,30));return {previewId:'preview-'+(++previewCount),activity:input.activity,recipients:[person],excluded:[{uid:'excluded-person',reason:'FORBIDDEN'}]};}
- if(action==='CREATE_ACTIVITY'){creates++;if(params.has('lost')&&creates===1)throw Error('Resposta perdida');return {message:{...message,id:input.id},syncQueued:true};}
+ if(action==='CREATE_ACTIVITY'){creates++;if(params.has('lost')&&creates===1)throw Error('Resposta perdida');if(params.has('expired')&&creates===1)throw Object.assign(Error(),{code:'COMM_ACTIVITY_PREVIEW_EXPIRED'});return {message:{...message,id:input.id},syncQueued:true};}
  if(action==='SENT_MESSAGES')return {items:input.cursor?[{...message,id:'legacy-message',title:'Histórico legado',activity:null,historyRow:4}]:[{...message,historyRow:3}],cursor:input.cursor?null:'next'};
  if(action==='SENT_DETAIL')return {message:{...message,id:input.id,status:cancelled?'cancelled':'published',...(cancelled?{cancellationReason:'Atividade retirada'}:{})},recipients:input.id==='legacy-message'?[]:[{...person,status:cancelled?'CANCELLED':'COMPLETED',readAt:now+1000,completedAt:now+2000,sourceCompletedAt:null,score:null}],recipientsRecorded:input.id!=='legacy-message',syncPending:true,serverNow:now+3000};
  if(action==='CANCEL_ACTIVITY'){cancelled=true;return {cancelled:true};}

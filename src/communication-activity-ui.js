@@ -7,6 +7,16 @@ import {rememberModuleNavigation} from './module-navigation.js';
 
 const reasons = {FORBIDDEN:'Sem permissão para esta atividade',NOT_AUTHORIZED:'Sem permissão para esta atividade',REGISTRATION_FORBIDDEN:'Sem acesso ao Cadastro Profissional',REGISTRATION_FOLDER_DISABLED:'Cadastro Profissional inativo',INACTIVE:'Integrante inativo',ACTIVITY_UNAVAILABLE:'Atividade indisponível',ATTEMPTS_EXHAUSTED:'Tentativas esgotadas',SOURCE_UNAVAILABLE:'Não foi possível verificar a origem'};
 const needsGoogle=error=>['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH','COMM_SOURCE_SESSION_INVALID','COMM_SOURCE_IDENTITY_MISMATCH'].includes(error?.code);
+const refreshBeforeSending=Object.freeze({
+  COMM_ACTIVITY_CHANGED:'A atividade foi atualizada. Atualize a lista e confira os destinatários novamente.',
+  COMM_ACTIVITY_UNAVAILABLE:'A atividade deixou de estar disponível. Atualize a lista e confira se a pasta está ativa.',
+  COMM_INVALID_ACTIVITY:'Confira a atividade e a nota mínima. Atualize a lista se a atividade tiver mudado.'
+});
+const reviewBeforeSending=Object.freeze({
+  COMM_ACTIVITY_PREVIEW_EXPIRED:'A conferência expirou. Confira os destinatários novamente para enviar.',
+  COMM_ACTIVITY_AUDIENCE_CHANGED:'Os destinatários elegíveis mudaram. Confira a seleção novamente.',
+  COMM_NO_ELIGIBLE_RECIPIENTS:'Nenhum dos destinatários selecionados está elegível. Revise o público.'
+});
 const activityKey=activity=>activity?`${activity.kind}:${activity.id}`:'';
 function activityAccessUrl(activity,messageId,origin){
   if(!activity)return '';
@@ -92,6 +102,12 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
     f.preview.hidden=true;
     busy();
   }
+  function clearPreview(){
+    state.preview=null;
+    delete form.dataset.confirmation;
+    form.querySelector('[data-activity-preview]').replaceChildren();
+    f.preview.hidden=false;
+  }
   async function recipients(){
     const ticket=++recipientTicket;
     f.recipient.required=f.audience.value==='USER';form.querySelector('[data-recipient-label]').hidden=!f.recipient.required;
@@ -132,13 +148,13 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
   }
   form.addEventListener('change',event=>{
     if(state.pending||state.sent)return;
-    remember();state.preview=null;delete form.dataset.confirmation;form.querySelector('[data-activity-preview]').replaceChildren();f.preview.hidden=false;
+    remember();clearPreview();
     if(event.target===f.activity){const selected=catalog.find(item=>activityKey(item)===f.activity.value);state.activityId=selected?.id||'';state.kind=selected?.kind||'TRAINING';state.minimumScore='';f.minimumScore.value='';}
     if(event.target===f.audience)void recipients();
     metadata();busy();
   });
   // Input invalidates even an already displayed confirmation, before focus leaves the field.
-  form.addEventListener('input',()=>{if(!state.pending&&!state.sent){remember();state.preview=null;delete form.dataset.confirmation;form.querySelector('[data-activity-preview]').replaceChildren();f.preview.hidden=false;}});
+  form.addEventListener('input',()=>{if(!state.pending&&!state.sent){remember();clearPreview();}});
   form.addEventListener('submit',async event=>{
     event.preventDefault();if(state.previewing||state.pending||state.sent||state.loading)return;
     remember();const selected=catalog.find(item=>activityKey(item)===f.activity.value);if(!selected)return;
@@ -171,18 +187,26 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
       return;
     }
     if(button.hasAttribute('data-recover-activity')){remember();onRecover();return;}
-    if(button.hasAttribute('data-reload-activities')){remember();state.preview=null;form.querySelector('[data-activity-preview]').replaceChildren();void load();void recipients();return;}
-    if(button.hasAttribute('data-edit-activity')){state.preview=null;delete form.dataset.confirmation;form.querySelector('[data-activity-preview]').replaceChildren();f.preview.hidden=false;return;}
+    if(button.hasAttribute('data-reload-activities')){remember();clearPreview();void load();void recipients();return;}
+    if(button.hasAttribute('data-edit-activity')){clearPreview();return;}
     if(!button.hasAttribute('data-confirm-activity')||state.sending||state.sent||!state.preview?.recipients.length)return;
     const description=messageWithActivityLink(state.description,state.preview.activity,state.id,root.ownerDocument.location.origin);
-    if(description.length>4000){status('A orientação excede o limite após incluir o link. Reduza o texto e confira os destinatários novamente.',true);state.preview=null;form.querySelector('[data-activity-preview]').replaceChildren();return;}
+    if(description.length>4000){status('A orientação excede o limite após incluir o link. Reduza o texto e confira os destinatários novamente.',true);clearPreview();return;}
     state.pending??={id:state.id,previewId:state.preview.previewId,title:state.title,description,confirmed:true};
     state.sending=true;busy();status('Enviando convocação…');
-    try{const result=await client.request('CREATE_ACTIVITY',state.pending);if(!current())return;state.sent=true;state.pending=null;showPreview();status(result.syncQueued?'Convocação publicada. Arquivamento no histórico pendente de sincronização.':'Convocação publicada no app.');}
+    try{const result=await client.request('CREATE_ACTIVITY',state.pending,{activityKind:state.preview.activity.kind});if(!current())return;state.sent=true;state.pending=null;showPreview();status(result.syncQueued?'Convocação publicada. Arquivamento no histórico pendente de sincronização.':'Convocação publicada no app.');}
     catch(error){if(!current())return;
-      if(['COMM_ACTIVITY_PREVIEW_EXPIRED','COMM_ACTIVITY_CHANGED','COMM_ACTIVITY_AUDIENCE_CHANGED','COMM_NO_ELIGIBLE_RECIPIENTS'].includes(error.code)){state.pending=null;state.preview=null;form.querySelector('[data-activity-preview]').replaceChildren();}
-      if(['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code)){onRecover();return;}
-      if(state.preview)showPreview();report(error,state.pending?'Envio sem confirmação. Use CONFIRMAR MESMO ENVIO para consultar ou repetir a mesma convocação.':'A seleção mudou ou expirou. Recarregue a atividade e confira os destinatários novamente.');
+      const refresh=refreshBeforeSending[error.code],review=reviewBeforeSending[error.code];
+      if(refresh||review){
+        state.pending=null;
+        clearPreview();
+        if(refresh)form.querySelector('[data-reload-activities]').hidden=false;
+        status(refresh||review,true);
+        return;
+      }
+      if(needsGoogle(error)){onRecover();return;}
+      if(state.preview)showPreview();
+      report(error,'Envio sem confirmação. Use CONFIRMAR MESMO ENVIO para consultar ou repetir a mesma convocação.');
     }finally{state.sending=false;if(current())busy();}
   });
   metadata();void recipients();void load();if(state.preview)showPreview();

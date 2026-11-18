@@ -36,6 +36,17 @@ test('Central real components: catalog, preview, exact retry, history, receipts 
    const activity=await page.evaluate(()=>window.calls.filter(c=>c.action==='PREVIEW_ACTIVITY').at(-1).input.activity);
    assert.deepEqual(activity,{kind:'TRAINING',id:'training-other',title:'Cirurgia Segura',version:2,maxScore:10,minimumScore:7});
   });
+  await t.test('a conferência expirada reabre as escolhas e permite concluir o envio',async()=>{
+   await setup('?expired');
+   await open('CONFERIR DESTINATÁRIOS');await open('ENVIAR ATIVIDADE');
+   await page.getByText('A conferência expirou. Confira os destinatários novamente para enviar.').waitFor();
+   assert.equal(await page.getByLabel('Definir atividade').inputValue(),'TRAINING:training-synthetic');
+   assert.equal(await page.getByLabel('Nota mínima').inputValue(),'7');
+   await open('CONFERIR DESTINATÁRIOS');await open('ENVIAR ATIVIDADE');
+   await page.getByRole('button',{name:'ENVIADO',exact:true}).waitFor();
+   const sends=await page.evaluate(()=>window.calls.filter(call=>call.action==='CREATE_ACTIVITY'));
+   assert.deepEqual(sends.map(call=>call.input.previewId),['preview-1','preview-2']);
+  });
   await t.test('editing invalidates preview; surveys have cycle and no minimum; no late send',async()=>{
    await setup();await open('CONFERIR DESTINATÁRIOS');await page.getByRole('button',{name:'ENVIAR ATIVIDADE',exact:true}).waitFor();
    await open('REVISAR SELEÇÃO');await page.getByLabel('Definir atividade').selectOption('SURVEY:survey-synthetic');assert.equal(await page.getByLabel('Nota mínima').isVisible(),false);assert.equal(await page.locator('[data-confirm-activity]').count(),0);

@@ -74,7 +74,7 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
     error='';render();
     // Never verify a whole inbox on resume: one selected/opened obligation per refresh.
     const selected=items.find(item=>item.id===activeId)||current();
-    if(selected){const receipt=await client.request('VERIFY_ACTIVITY',{id:selected.id});if(!alive())return;confirmedClock(receipt.serverNow);
+    if(selected){const receipt=await client.request('VERIFY_ACTIVITY',{id:selected.id},{activityKind:selected.activity.kind});if(!alive())return;confirmedClock(receipt.serverNow);
      if(receipt.completed)items=items.filter(item=>item.id!==selected.id);
      else{selected.unavailable=Boolean(receipt.unavailable);selected.reason=receipt.reason||'';}
     }

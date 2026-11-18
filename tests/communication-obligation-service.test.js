@@ -54,6 +54,20 @@ test('lost publication response retries exactly once and cannot reuse preview wi
  await assert.rejects(h.execute('CREATE_ACTIVITY',{...input,id:'activity-two'}),{code:'COMM_IDEMPOTENCY_CONFLICT'});
  await assert.rejects(h.execute('CREATE_ACTIVITY',{...input,description:'Changed'}),{code:'COMM_IDEMPOTENCY_CONFLICT'});
 });
+test('reordered Firestore fields do not invalidate the preview or a retry',async()=>{
+ const h=fixture(),survey={kind:'SURVEY',id:'climate',title:'Climate',cycle:'2026'};
+ const p=await h.preview(survey);
+ const preview=h.store.data.get('communicationActivityPreviews/'+p.previewId);
+ preview.activity=Object.fromEntries(Object.entries(preview.activity).reverse());
+ const input={id:'activity-order',previewId:p.previewId,title:'Title',description:'Description',confirmed:true};
+ await h.execute('CREATE_ACTIVITY',input);
+ assert.equal(h.calls.published,1);
+ const pending=await h.execute('PENDING_ACTIVITIES',{},person);
+ assert.equal(pending.items[0].id,input.id);
+ assert.deepEqual(pending.items[0].activity,survey);
+ assert.equal((await h.execute('CREATE_ACTIVITY',input)).alreadySent,true);
+ assert.equal(h.calls.published,1);
+});
 test('concurrent identical creation is idempotent; index uses one document and ignores repeat reservation',async()=>{
  const h=fixture(),p=await h.preview(),input={id:'activity-one',previewId:p.previewId,title:'Title',description:'Description',confirmed:true};
  await Promise.all([h.execute('CREATE_ACTIVITY',input),h.execute('CREATE_ACTIVITY',input)]);assert.equal(h.calls.published,1);

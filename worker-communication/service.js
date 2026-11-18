@@ -7,7 +7,7 @@ import {communicationSenderRole,operationalNoticeIdentity,urgentNoticeInput,RELE
 import {COMMUNICATION_LIMITS,communicationUsagePeriod} from '../src/communication-usage.js';
 import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
 import {createObligationService} from './obligation-service.js';
-import {validateObligation} from '../communication/obligations.js';
+import {sameObligation,validateObligation} from '../communication/obligations.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
@@ -54,9 +54,13 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
  }
  const paged=rows=>({items:rows.slice(0,PAGE_SIZE),cursor:rows.length>PAGE_SIZE?rows[PAGE_SIZE-1].id:null});
  async function resolveRecipients({audience:selection,recipient}={}){
+  if(selection==='USER'){
+   const person=await store.get('users',recipient);
+   return person?.uid===recipient&&activeProfile(person)&&!isSystemOwnerEmail(person.email)?[person]:[];
+  }
   const rows=await store.eligibleRecipients();
   return rows.filter(p=>p.uid===p.id&&activeProfile(p)&&!isSystemOwnerEmail(p.email)&&
-   (selection==='ALL'||selection==='USER'&&p.uid===recipient||selection===`institutional-${p.institutionalGroup}`));
+   (selection==='ALL'||selection===`institutional-${p.institutionalGroup}`));
  }
  async function messageRecipients(m){
   if(['ALL','USER'].includes(m.audienceType)||m.audienceType==='GROUP'&&BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))return resolveRecipients({audience:m.audienceType==='GROUP'?m.audienceValue:m.audienceType,recipient:m.audienceValue});
@@ -93,7 +97,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    const old=await tx.get('communicationMessages',key),dispatch=await tx.get('communicationDispatches',key);
    if((event||release||activityInput)&&old){
     const sameNotice=old.status==='published'&&(release||old.createdBy?.sourceUid===a.sourceUid||event&&key.startsWith('event-checklist-conference-'))&&
-     ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field])&&(!activityInput||old.previewId===activityInput.previewId&&old.fingerprint===activityInput.fingerprint&&JSON.stringify(old.activity)===JSON.stringify(m.activity));
+     ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field])&&(!activityInput||old.previewId===activityInput.previewId&&old.fingerprint===activityInput.fingerprint&&sameObligation(old.activity,m.activity));
     if(!sameNotice)throw fail('COMM_CONFLICT',409);
     if(release)await rememberRelease(tx,m.audienceValue,key,releaseAt);
     const mayStart=release&&dispatch&&dispatch.status!=='completed'&&isCurrentMessage(old,now())&&

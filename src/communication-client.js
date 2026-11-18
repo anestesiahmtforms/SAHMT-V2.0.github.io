@@ -40,7 +40,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   if(!target||auth.currentUser!==source)throw fail('COMM_SESSION_INVALID');
   return {source,target,ff};
  }
- async function performRequest(action,input={}){
+ async function performRequest(action,input={}, {activityKind}={}){
   if(!/^https:\/\/[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev\/v1\/communication$/.test(endpoint))throw fail('COMM_CONFIG_REQUIRED');
   const {source,target,ff}=await sessions(),controller=new AbortController();controllers.add(controller);
   const timer=setTimeout(()=>controller.abort(),60000);
@@ -49,7 +49,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
    const headers={Authorization:'Bearer '+ffToken,'Content-Type':'application/json'};
    if(action==='SCHEDULE_RELEASE_NOTICE')headers['X-SAHMT-FA-Authorization']='Bearer '+await source.getIdToken();
    if(['ACTIVITY_CATALOG','PREVIEW_ACTIVITY','CREATE_ACTIVITY','VERIFY_ACTIVITY'].includes(action)){
-    const kind=input.kind||input.activity?.kind;
+    const kind=input.kind||input.activity?.kind||activityKind;
     const projects=kind==='TRAINING'?['FB']:kind==='SURVEY'?['FA']:['FA','FB'];
     for(const project of projects){
      const primary=onFb()?'FB':'FA';
@@ -73,8 +73,8 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
    if(!current()||auth.currentUser!==source||ff.currentUser!==target)throw fail('COMM_SESSION_INVALID');if(input.installation)presenceReported=true;return d;
   }finally{clearTimeout(timer);controllers.delete(controller);}
  }
- function request(action,input={}){
-  if(!readActions.has(action))return performRequest(action,input);
+ function request(action,input={},options){
+  if(!readActions.has(action))return performRequest(action,input,options);
   if(!current())return Promise.reject(fail('COMM_CONFIG_REQUIRED'));
   const key=JSON.stringify([action,input]),source=auth.currentUser,previous=reads.get(key);
   if(previous&&previous.source===source)return previous.promise;
