@@ -5,7 +5,6 @@ import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-
 import {communicationLimitMessage} from './communication-usage.js';
 import {openActivityComposer} from './communication-activity-ui.js';
 import {restoreActivitySelection} from './communication-activity-selection.js';
-import {activateCommunicationPush,pushActivationMessage} from './communication-push-activation.js';
 import {openCommunicationHistory, communicationDate} from './communication-history-ui.js';
 import {communicationRecipientOptions} from './communication-recipient-directory.js';
 import './communication.css';
@@ -309,11 +308,9 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   }
 
   function inbox() {
-    const pushControl = typeof client.enable === 'function'
-      ? '<button type="button" data-enable-push>ATIVAR NOTIFICAÇÕES NESTE APARELHO</button>'
-      : '';
-    render('MENSAGENS RECEBIDAS', pushControl + '<div data-received-list></div><p data-received-end role="status"></p>', {inbox: true});
+    render('MENSAGENS RECEBIDAS', '<button type="button" data-retry-received hidden>TENTAR NOVAMENTE</button><div data-received-list></div><p data-received-end role="status"></p>', {inbox: true});
     const ticket = generation;
+    const retry = root.querySelector('[data-retry-received]');
     const list = root.querySelector('[data-received-list]');
     const end = root.querySelector('[data-received-end]');
     const seen = new Set();
@@ -322,6 +319,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
       if (loading || cursor === null || !active() || generation !== ticket) return;
       loading = true;
       inboxObserver?.unobserve(end);
+      retry.hidden = true;
       end.textContent = 'Carregando mensagens…';
       try {
         const page = await client.request('INBOX', {recent: true, chronological: true, cursor});
@@ -339,7 +337,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
         if (!active() || generation !== ticket) return;
         if (needsGoogle(error)) return recoverGoogle();
         end.textContent = '';
-        report(error, 'Não foi possível carregar as mensagens. Reabra a caixa de entrada para tentar novamente.');
+        retry.hidden = false;
       } finally {
         loading = false;
       }
@@ -347,19 +345,8 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     inboxObserver = new IntersectionObserver(entries => {
       if (entries.some(entry => entry.isIntersecting)) void loadNext();
     }, {root: list.parentElement, rootMargin: '0px 0px 120px 0px'});
+    retry.addEventListener('click', loadNext);
     void loadNext();
-  }
-
-  async function enableDevicePush(button) {
-    button.disabled = true;
-    try {
-      await activateCommunicationPush(client, root.ownerDocument.defaultView);
-      status('Notificações ativadas neste aparelho.');
-    } catch (error) {
-      report(error, pushActivationMessage(error));
-    } finally {
-      button.disabled = false;
-    }
   }
 
   async function detail(key) {
@@ -402,7 +389,6 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   function click(event) {
     const button = event.target.closest('button');
     if (!button || button.disabled || button.type === 'submit') return;
-    if (button.hasAttribute('data-enable-push')) return void enableDevicePush(button);
     if (button.hasAttribute('data-back')) return onBack();
     if (button.hasAttribute('data-home')) return canCreateEvents ? adminMenu() : void inbox();
     if (button.hasAttribute('data-sent-messages')) return void loadSentMessages();

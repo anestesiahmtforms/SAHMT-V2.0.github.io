@@ -58,13 +58,11 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
     }
    }
    const includePresence=!presenceReported&&['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action);
-   const includeEnrollment=action==='INBOX'&&input.pushEnrollment===true;
-   if(includePresence||includeEnrollment){
+   if(includePresence){
     try{
      const {installationId,appDisplayMode,devicePlatform}=await import('./app-updates-targeted.js');
      const displayMode=appDisplayMode(),deviceId=installationId(localStorage,globalThis.crypto,displayMode);
-     if(includePresence)input={...input,installation:{deviceId,displayMode,platform:devicePlatform(),appVersion:APP_VERSION,loadedRelease:Number(import.meta.env.VITE_APP_RELEASE)||0}};
-     if(includeEnrollment)input={...input,pushEnrollmentDeviceId:deviceId};
+     input={...input,installation:{deviceId,displayMode,platform:devicePlatform(),appVersion:APP_VERSION,loadedRelease:Number(import.meta.env.VITE_APP_RELEASE)||0}};
     }catch{}
    }
    if(!current()||auth.currentUser!==source||ff.currentUser!==target)throw fail('COMM_SESSION_INVALID');

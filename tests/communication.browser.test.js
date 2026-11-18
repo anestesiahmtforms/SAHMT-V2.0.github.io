@@ -23,7 +23,7 @@ test('o formulário compacto agrupa destinatários e confirma um único envio',a
    const description='Veja #/home e https://example.test/watch?v=abc&list=xyz';
    await form.getByLabel('Descrição do aviso').fill(description);
    await form.getByLabel('Público').selectOption('USER');await recipient.selectOption('ff-resident');
-   assert.deepEqual(await recipient.locator('optgroup').evaluateAll(groups=>groups.map(group=>[group.label,group.textContent])),[['EQUIPE','Pessoa da Equipe'],['RESIDENTES','Pessoa Residente'],['SUBSTITUTOS','Pessoa Substituta']]);
+   assert.deepEqual(await recipient.locator('optgroup').evaluateAll(groups=>groups.map(group=>[group.label,group.textContent])),[['EQUIPE','Pessoa da Equipe'],['R1','Pessoa Residente'],['SUBSTITUTOS','Pessoa Substituta']]);
    await send.evaluate(button=>{button.click();button.click();button.closest('dialog').dispatchEvent(new Event('cancel',{cancelable:true}));});
    const sent=form.getByRole('button',{name:'ENVIADO',exact:true});await sent.waitFor();
    await page.getByText('Evento publicado no app.',{exact:true}).waitFor();
@@ -126,5 +126,21 @@ test('mensagens recebidas ficam compactas, expandem o texto e carregam mais na r
   await dialog.getByRole('heading',{name:'Segundo aviso'}).waitFor();
   assert.deepEqual(await dialog.locator('.comm-card h3').allTextContents(),['Primeiro aviso','Segundo aviso']);
   assert.deepEqual(await back.boundingBox(),before);
+ }finally{await browser.close();}
+});
+
+test('a caixa permite repetir uma leitura interrompida e a ativação fica na Home',async()=>{
+ const browser=await chromium.launch({headless:true,channel:'msedge'});
+ try{
+  const page=await browser.newPage({viewport:{width:390,height:640}});
+  await page.goto(url+'?common&received-unavailable');
+  const dialog=page.getByRole('dialog',{name:'Mensagens recebidas'});
+  await dialog.getByRole('button',{name:'TENTAR NOVAMENTE',exact:true}).waitFor();
+  assert.equal(await dialog.getByRole('button',{name:/ativar notificações/i}).count(),0);
+  assert.equal(await dialog.getByText(/Não foi possível carregar as mensagens/).count(),0);
+  await dialog.getByRole('button',{name:'TENTAR NOVAMENTE',exact:true}).click();
+  await dialog.getByText('Nenhuma mensagem recebida.',{exact:true}).waitFor();
+  assert.equal(await dialog.getByRole('button',{name:'TENTAR NOVAMENTE',exact:true}).isVisible(),false);
+  assert.equal(await page.evaluate(()=>window.calls.filter(call=>call.action==='INBOX').length),2);
  }finally{await browser.close();}
 });

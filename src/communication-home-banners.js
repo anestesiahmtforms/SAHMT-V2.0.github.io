@@ -1,5 +1,5 @@
 import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from './communication-notice-text.js';
-import {activateCommunicationPush,pushActivationMessage} from './communication-push-activation.js';
+import {activateCommunicationPush, isPushCampaignRecipient, pushActivationMessage} from './communication-push-activation.js';
 import {appDisplayMode} from './app-updates-targeted.js';
 
 const MAX_INBOX_PAGES = 18;
@@ -37,23 +37,41 @@ function saveDismissed(uid, dismissed) {
   } catch {}
 }
 
-export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = () => true} = {}) {
+export function mountCommunicationHomeBanners(root, {client, user, isCurrent = () => true} = {}) {
   let disposed = false;
   let visibleItems = [];
   let pushedItems = [];
   let loading = false;
   let lastLoadAt = 0;
-  const enrollmentKey = `sahmt-communication-push-request:${appDisplayMode()}:${encodeURIComponent(uid)}`;
-  let enrollmentRequested = false;
-  try { enrollmentRequested = localStorage.getItem(enrollmentKey) === 'pending'; } catch {}
-  let enrolled = false;
+  const enrollmentKey = `sahmt-communication-push-request-v2:${appDisplayMode()}:${encodeURIComponent(user.uid)}`;
+  let enrollmentState;
+  try { enrollmentState = localStorage.getItem(enrollmentKey); } catch {}
+  let checkedEnrollment = false;
   let enrolling = false;
   let enrollmentError = '';
   let renderedMarkup = '';
   const acknowledging = new Set();
   const acknowledgementErrors = new Map();
   const active = () => !disposed && root.isConnected && isCurrent();
-  const dismissed = readDismissed(uid);
+  const dismissed = readDismissed(user.uid);
+
+  function saveEnrollment(state) {
+    enrollmentState = state;
+    try { localStorage.setItem(enrollmentKey, state); } catch {}
+  }
+
+  async function checkEnrollment() {
+    if (enrollmentState || checkedEnrollment) return;
+    checkedEnrollment = true;
+    try {
+      if (await isPushCampaignRecipient(user) && active()) {
+        saveEnrollment('pending');
+        render(visibleItems);
+      }
+    } catch {
+      checkedEnrollment = false;
+    }
+  }
 
   function render(items) {
     if (!active()) return;
@@ -62,7 +80,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     const merged = new Map(items.filter(isChecklistConference).map(item => [item.id, item]));
     for (const item of pushedItems) if (!merged.has(item.id)) merged.set(item.id, item);
     visibleItems = [...merged.values()].filter(item => !dismissed.has(item.id)).sort((a, b) => Number(b.publishAt || 0) - Number(a.publishAt || 0));
-    const enrollment = enrollmentRequested && !enrolled
+    const enrollment = enrollmentState === 'pending'
       ? `<article class="comm-home-notice comm-home-notice--push-enrollment" aria-labelledby="push-enrollment-title"><h2 id="push-enrollment-title">Ative para receber mensagens do SAHMT</h2><button type="button" data-activate-team-push ${enrolling ? 'disabled' : ''}>${enrolling ? 'Ativando…' : 'Ativar notificações neste aparelho'}</button><p role="status">${escapeHtml(enrollmentError)}</p></article>`
       : '';
     const notices = visibleItems.map(item => {
@@ -107,12 +125,8 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     const todayStart = Date.parse(`${localDateKey()}T00:00:00-03:00`);
     try {
       do {
-        const result = await client.request('INBOX', cursor ? {recent: true, chronological: true, cursor} : {recent: true, chronological: true, pushEnrollment: true});
+        const result = await client.request('INBOX', {recent: true, chronological: true, cursor});
         if (!active()) return;
-        if (!cursor && result.pushEnrollment === true && !enrollmentRequested && !enrolled) {
-          enrollmentRequested = true;
-          try { localStorage.setItem(enrollmentKey, 'pending'); } catch {}
-        }
         for (const item of result.items || []) {
           if (typeof item?.id === 'string' && !seen.has(item.id)) {
             seen.add(item.id);
@@ -137,7 +151,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
 
   const onClick = event => {
     const activation = event.target.closest('[data-activate-team-push]');
-    if (activation && root.contains(activation) && !enrolling && !enrolled) {
+    if (activation && root.contains(activation) && !enrolling && enrollmentState === 'pending') {
       enrolling = true;
       enrollmentError = '';
       render(visibleItems);
@@ -145,8 +159,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
         try {
           const result = await activateCommunicationPush(client, window);
           if (result?.registered !== true) throw Error('COMM_PUSH_UNCONFIRMED');
-          enrolled = true;
-          try { localStorage.removeItem(enrollmentKey); } catch {}
+          saveEnrollment('confirmed');
         } catch (error) {
           enrollmentError = pushActivationMessage(error);
         } finally {
@@ -167,7 +180,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
         if (!active()) return;
         if (result.recorded !== true) throw new Error('O servidor ainda não confirmou o registro de leitura. Tente novamente.');
         dismissed.add(id);
-        saveDismissed(uid, dismissed);
+        saveDismissed(user.uid, dismissed);
         acknowledgementErrors.delete(id);
       }).catch(error => {
         if (active()) acknowledgementErrors.set(id, ['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code)
@@ -184,7 +197,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     const id = button.dataset.dismissComm;
     if (typeof id !== 'string') return;
     dismissed.add(id);
-    saveDismissed(uid, dismissed);
+    saveDismissed(user.uid, dismissed);
     render(visibleItems);
   };
 
@@ -195,6 +208,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
 
   const onResume = () => {
     if (document.visibilityState === 'hidden' || !active()) return;
+    void checkEnrollment();
     if (Date.now() - lastLoadAt > 2000) void load();
     void client.refreshPushRegistration?.().catch(() => {});
   };
@@ -203,7 +217,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage);
   document.addEventListener('visibilitychange', onResume);
   window.addEventListener('focus', onResume);
-  if (enrollmentRequested) render(visibleItems);
+  if (enrollmentState === 'pending') render(visibleItems);
   onResume();
   return () => {
     disposed = true;

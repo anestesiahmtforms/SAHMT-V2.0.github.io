@@ -7,7 +7,7 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=docu
  window.calls.push({action,input});
  if(action==='BOOTSTRAP'){if(!connected)throw Object.assign(Error('session'),{code:'COMM_SESSION_INVALID'});return {isAdmin:admin};}
  if(action==='DIRECTORY')return input.cursor ?
-   {items:[{uid:'ff-resident',displayName:'Pessoa Residente',institutionalGroup:'resident'},{uid:'ff-substitute',displayName:'Pessoa Substituta',institutionalGroup:'substitute'}],cursor:null} :
+   {items:[{uid:'ff-resident',displayName:'Pessoa Residente',institutionalGroup:'resident',memberCategories:['RESIDENTE_1']},{uid:'ff-substitute',displayName:'Pessoa Substituta',institutionalGroup:'substitute'}],cursor:null} :
    {items:[{uid:'ff-person',displayName:'Pessoa da Equipe',institutionalGroup:'team'}],cursor:'ff-person'};
  if(action==='SENT_MESSAGES')return input.cursor?{items:[{id:'two',title:'Aviso do administrador',message:'Comunicado geral',sender:'Administrador',publishAt:Date.now(),audienceType:'ALL'}],cursor:null}:{items:[{id:'one',title:'Aviso do gestor',message:'Texto do gestor '.repeat(150),sender:'Gestor operacional',publishAt:Date.now(),audienceType:'GROUP',audienceValue:'institutional-team'}],cursor:'next'};
  if(action==='INBOX'&&params.has('received-pages')){
@@ -16,7 +16,10 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=docu
    if(input.cursor==='second')return {items:[notice],cursor:'third'};
    return {items:[{...notice,id:'received-two',title:'Segundo aviso',category:'AVISO URGENTE',publishAt:notice.publishAt-60000,message:'Mensagem seguinte'}],cursor:null};
  }
- if(action==='INBOX')return {items:records,cursor:null};
+ if(action==='INBOX'){
+   if(params.has('received-unavailable')&&window.calls.filter(call=>call.action==='INBOX').length===1)throw Error('Consulta interrompida');
+   return {items:records,cursor:null};
+ }
  if(action==='CREATE_EVENT'){
    await new Promise(resolve=>setTimeout(resolve,80));
    if(params.has('lost-response')&&window.calls.filter(call=>call.action==='CREATE_EVENT').length===1)throw Error('Resposta perdida');

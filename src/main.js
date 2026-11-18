@@ -5712,7 +5712,7 @@ async function render() {
         try{
           const [{mountCommunicationHomeBanners},{createCommunicationClient}]=await Promise.all([import('./communication-home-banners.js'),import('./communication-client.js')]);
           if(!isCurrent())return;
-          globalThis.communicationHomeBannerCleanup=mountCommunicationHomeBanners(bannerRoot,{uid,isCurrent,client:createCommunicationClient({isCurrent})});
+          globalThis.communicationHomeBannerCleanup=mountCommunicationHomeBanners(bannerRoot,{user:session.user,isCurrent,client:createCommunicationClient({isCurrent})});
         }catch(error){if(isCurrent())console.warn('[SAHMT] Não foi possível carregar as mensagens da Home:',error?.code||error?.message);}
       }
     }else {

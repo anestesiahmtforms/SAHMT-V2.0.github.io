@@ -1,3 +1,22 @@
+import {adminIdentity} from '../communication/domain.js';
+import {operationalNoticeIdentity} from './communication-operational-notices.js';
+import {assignedInstitutionalGroup, institutionalAssignmentKey} from './institutional-group.js';
+import {isSystemOwnerEmail} from './system-account-exclusions.js';
+
+async function readOwnAssignment(key) {
+  const [{doc, getDoc}, {db}] = await Promise.all([import('firebase/firestore/lite'), import('./firebase-lite.js')]);
+  const snapshot = await getDoc(doc(db, 'userCategories', key));
+  return snapshot.exists() ? snapshot.data() : null;
+}
+
+export async function isPushCampaignRecipient(user, readAssignment = readOwnAssignment) {
+  if (!user?.uid || !user.email || user.emailVerified !== true) return false;
+  if (adminIdentity(user) && !operationalNoticeIdentity(user)) return true;
+  if (isSystemOwnerEmail(user.email)) return false;
+  const assignment = await readAssignment(await institutionalAssignmentKey(user.email));
+  return assignedInstitutionalGroup(assignment, user) === 'team';
+}
+
 export function activateCommunicationPush(client, browser) {
   const {Notification: systemNotifications, navigator} = browser || {};
   if (!systemNotifications || !navigator?.serviceWorker) {
