@@ -394,6 +394,51 @@
 /* Activity composer overrides the legacy scroll treatment above. */
 .management-hub-dialog[data-panel=communication]:has(.communication--activity) .management-hub-body{overflow:hidden}
 .communication--activity .comm-content{max-height:none;overflow:hidden}
-.comm-home-notice--push-enrollment{text-align:center}
-.comm-home-notice--push-enrollment button{display:block;min-width:120px;min-height:44px;margin:8px auto;border:1px solid #10334e;border-radius:10px;background:#143854;color:white;font-weight:850}
+.comm-home-notices:has(> .comm-home-notice--push-enrollment){
+  top:0;
+  bottom:0;
+  transform:translateX(-50%);
+  display:grid;
+  grid-template-rows:minmax(0,1fr) auto minmax(0,1fr);
+  gap:0;
+  max-height:none;
+  padding:max(8px,env(safe-area-inset-top),env(safe-area-inset-bottom)) 4px;
+  overflow:visible;
+}
+.comm-home-notice--push-enrollment{
+  grid-row:2;
+  justify-self:center;
+  box-sizing:border-box;
+  width:min(100%,440px);
+  max-height:calc(100dvh - 32px);
+  overflow:auto;
+  text-align:center;
+  animation:none;
+}
+.comm-home-notice--push-enrollment button{
+  display:block;
+  min-height:44px;
+  max-width:100%;
+  margin:12px auto 0;
+  padding:8px 16px;
+  border:1px solid #10334e;
+  border-radius:10px;
+  background:#143854;
+  color:#fff;
+  font-weight:850;
+}
 .comm-home-notice--push-enrollment p:empty{display:none}
+.comm-home-notice--push-enrollment p:not(:empty){margin:8px 0 0}
+.comm-home-notice-list{
+  grid-row:3;
+  align-self:start;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-height:0;
+  max-height:100%;
+  padding:10px 4px 4px;
+  box-sizing:border-box;
+  overflow:auto;
+  pointer-events:auto;
+}

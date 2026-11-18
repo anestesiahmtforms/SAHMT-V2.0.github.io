@@ -1,5 +1,6 @@
 import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from './communication-notice-text.js';
 import {activateCommunicationPush,pushActivationMessage} from './communication-push-activation.js';
+import {appDisplayMode} from './app-updates-targeted.js';
 
 const MAX_INBOX_PAGES = 18;
 const MAX_DISMISSED_IDS = 500;
@@ -42,10 +43,13 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   let pushedItems = [];
   let loading = false;
   let lastLoadAt = 0;
+  const enrollmentKey = `sahmt-communication-push-request:${appDisplayMode()}:${encodeURIComponent(uid)}`;
   let enrollmentRequested = false;
+  try { enrollmentRequested = localStorage.getItem(enrollmentKey) === 'pending'; } catch {}
   let enrolled = false;
   let enrolling = false;
   let enrollmentError = '';
+  let renderedMarkup = '';
   const acknowledging = new Set();
   const acknowledgementErrors = new Map();
   const active = () => !disposed && root.isConnected && isCurrent();
@@ -59,9 +63,9 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     for (const item of pushedItems) if (!merged.has(item.id)) merged.set(item.id, item);
     visibleItems = [...merged.values()].filter(item => !dismissed.has(item.id)).sort((a, b) => Number(b.publishAt || 0) - Number(a.publishAt || 0));
     const enrollment = enrollmentRequested && !enrolled
-      ? `<article class="comm-home-notice comm-home-notice--push-enrollment" aria-labelledby="push-enrollment-title"><h2 id="push-enrollment-title">Ative para receber mensagens do SAHMT</h2><button type="button" data-activate-team-push ${enrolling ? 'disabled' : ''}>${enrolling ? 'ATIVANDO…' : 'ATIVAR'}</button><p role="status">${escapeHtml(enrollmentError)}</p></article>`
+      ? `<article class="comm-home-notice comm-home-notice--push-enrollment" aria-labelledby="push-enrollment-title"><h2 id="push-enrollment-title">Ative para receber mensagens do SAHMT</h2><button type="button" data-activate-team-push ${enrolling ? 'disabled' : ''}>${enrolling ? 'Ativando…' : 'Ativar notificações neste aparelho'}</button><p role="status">${escapeHtml(enrollmentError)}</p></article>`
       : '';
-    root.innerHTML = enrollment + visibleItems.map(item => {
+    const notices = visibleItems.map(item => {
       const checklistConference = item.id.startsWith('event-checklist-conference-');
       return `<article class="comm-home-notice${item.priority === 'URGENT' ? ' comm-home-notice--urgent' : ''}${checklistConference ? ' comm-home-notice--checklist-conference' : ''}" role="status" aria-label="${checklistConference ? 'Conferência do Checklist' : 'Novo aviso institucional'}">
         <header><strong>${checklistConference ? '📋 CONFERÊNCIA DO CHECKLIST' : `🔔 NOVO AVISO · ${escapeHtml(item.category)}`}</strong>${checklistConference ? '' : `<button type="button" class="comm-home-notice__close" data-dismiss-comm="${escapeHtml(item.id)}" aria-label="Fechar aviso">×</button>`}</header>
@@ -70,6 +74,13 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
         ${checklistConference ? `<p class="comm-home-notice__ack-status" role="status">${escapeHtml(acknowledgementErrors.get(item.id) || '')}</p><button type="button" class="comm-home-notice__ack" data-ack-comm="${escapeHtml(item.id)}" ${acknowledging.has(item.id) ? 'disabled' : ''}>${acknowledging.has(item.id) ? 'REGISTRANDO…' : 'OK'}</button>` : `<a class="comm-home-notice__details" href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>`}
       </article>`;
     }).join('');
+    const markup = enrollment && notices
+      ? enrollment + `<div class="comm-home-notice-list">${notices}</div>`
+      : enrollment + notices;
+    if (markup !== renderedMarkup) {
+      root.innerHTML = markup;
+      renderedMarkup = markup;
+    }
   }
 
   async function appendPushedMessage(id) {
@@ -98,7 +109,10 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
       do {
         const result = await client.request('INBOX', cursor ? {recent: true, chronological: true, cursor} : {recent: true, chronological: true, pushEnrollment: true});
         if (!active()) return;
-        if (!cursor && typeof result.pushEnrollment === 'boolean') enrollmentRequested = result.pushEnrollment;
+        if (!cursor && result.pushEnrollment === true && !enrollmentRequested && !enrolled) {
+          enrollmentRequested = true;
+          try { localStorage.setItem(enrollmentKey, 'pending'); } catch {}
+        }
         for (const item of result.items || []) {
           if (typeof item?.id === 'string' && !seen.has(item.id)) {
             seen.add(item.id);
@@ -132,6 +146,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
           const result = await activateCommunicationPush(client, window);
           if (result?.registered !== true) throw Error('COMM_PUSH_UNCONFIRMED');
           enrolled = true;
+          try { localStorage.removeItem(enrollmentKey); } catch {}
         } catch (error) {
           enrollmentError = pushActivationMessage(error);
         } finally {
@@ -181,18 +196,14 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   const onResume = () => {
     if (document.visibilityState === 'hidden' || !active()) return;
     if (Date.now() - lastLoadAt > 2000) void load();
-    void client.refreshPushRegistration?.().then(result => {
-      if (result?.registered === true && active()) {
-        enrolled = true;
-        render(visibleItems);
-      }
-    }).catch(() => {});
+    void client.refreshPushRegistration?.().catch(() => {});
   };
 
   root.addEventListener('click', onClick);
   navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage);
   document.addEventListener('visibilitychange', onResume);
   window.addEventListener('focus', onResume);
+  if (enrollmentRequested) render(visibleItems);
   onResume();
   return () => {
     disposed = true;
