@@ -6,19 +6,34 @@ import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from '../src/communica
 import {localDateKey} from '../src/schedule-date.js';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
-function homeHarness(request){
+function homeHarness(request,{enable}={}){
  const rootEvents=new Map(),documentEvents=new Map(),windowEvents=new Map(),workerEvents=new Map();let clock=10000;
- const root={isConnected:true,innerHTML:'',addEventListener:(n,fn)=>rootEvents.set(n,fn),removeEventListener:n=>rootEvents.delete(n),replaceChildren(){this.innerHTML='';}};
+ const root={isConnected:true,innerHTML:'',contains:()=>true,addEventListener:(n,fn)=>rootEvents.set(n,fn),removeEventListener:n=>rootEvents.delete(n),replaceChildren(){this.innerHTML='';}};
  const document={visibilityState:'visible',addEventListener:(n,fn)=>documentEvents.set(n,fn),removeEventListener:n=>documentEvents.delete(n)};
  const window={addEventListener:(n,fn)=>windowEvents.set(n,fn),removeEventListener:n=>windowEvents.delete(n)};
  const serviceWorker={addEventListener:(n,fn)=>workerEvents.set(n,fn),removeEventListener:n=>workerEvents.delete(n)};
  let disposed=false;
- const source=readFileSync(new URL('../src/communication-home-banners.js',import.meta.url),'utf8').replace(/^import .*\r?\n/m,'').replace('export function mountCommunicationHomeBanners','function mountCommunicationHomeBanners');
- const mount=vm.runInNewContext(source+'\nmountCommunicationHomeBanners;',{document,window,navigator:{serviceWorker},localStorage:{getItem:()=>null},Date:class extends Date{static now(){return clock;}},escapeHtml,linkedNoticeText});
- const cleanup=mount(root,{uid:'fixture-rl',client:{request,dispose(){disposed=true;}}});
- return {root,document,documentEvents,windowEvents,workerEvents,cleanup,get disposed(){return disposed;},advance:()=>clock+=3000};
+ const source=readFileSync(new URL('../src/communication-home-banners.js',import.meta.url),'utf8').replace(/^import .*\r?\n/gm,'').replace('export function mountCommunicationHomeBanners','function mountCommunicationHomeBanners');
+ const mount=vm.runInNewContext(source+'\nmountCommunicationHomeBanners;',{document,window,navigator:{serviceWorker},localStorage:{getItem:()=>null},Date:class extends Date{static now(){return clock;}},escapeHtml,linkedNoticeText,activateCommunicationPush:client=>client.enable(),pushActivationMessage:()=> 'Permita as notificações nos ajustes.'});
+ const cleanup=mount(root,{uid:'fixture-rl',client:{request,enable,dispose(){disposed=true;}}});
+ return {root,rootEvents,document,documentEvents,windowEvents,workerEvents,cleanup,get disposed(){return disposed;},advance:()=>clock+=3000};
 }
 const notice={id:`event-checklist-conference-${localDateKey()}`,status:'published',title:'Conferência do Checklist',message:'Não se esqueça da conferência de hoje.',category:'EVENTO',publishAt:Date.now()};
+
+test('o pedido de Push permanece até o registro confirmado do aparelho',async()=>{
+ let attempts=0;
+ const h=homeHarness(async()=>({items:[],pushEnrollment:true}),{enable:async()=>{
+  if(++attempts===1)throw Error('permission denied');
+  return {registered:true};
+ }});
+ await tick();
+ assert.match(h.root.innerHTML,/Ative para receber mensagens do SAHMT/);
+ assert.doesNotMatch(h.root.innerHTML,/data-dismiss-comm/);
+ const activate=()=>h.rootEvents.get('click')({target:{closest:selector=>selector==='[data-activate-team-push]'?{}:null}});
+ activate();await tick();assert.match(h.root.innerHTML,/Permita as notificações/);
+ activate();await tick();assert.equal(h.root.innerHTML,'');
+ h.cleanup();
+});
 
 test('links colados na descrição chegam clicáveis na Home com parâmetros preservados',async()=>{
  const h=homeHarness(async()=>({items:[{...notice,message:'Veja #/home ou (https://example.test/watch?v=abc&list=xyz). <img src=x>'}],cursor:null}));

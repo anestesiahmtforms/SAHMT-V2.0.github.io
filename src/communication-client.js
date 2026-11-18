@@ -10,7 +10,7 @@ const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
 const pushRefreshPeriod=86400000;
 const pushRefreshKey=uid=>'sahmt-ff-push-refreshed:'+uid;
-const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','SENT_DETAIL','ACTIVITY_CATALOG','PENDING_ACTIVITIES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','USAGE']);
+const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','SENT_DETAIL','ACTIVITY_CATALOG','PENDING_ACTIVITIES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','PUSH_TEAM_STATUS','METRICS','SETTINGS','AREAS','AUDIT','USAGE']);
 const onFb=()=>typeof deployment!=='undefined'&&deployment.target==='FB';
 async function projectSession(target,source,current){
  if(onFb()){
@@ -57,8 +57,15 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
      if(sourceUser)headers['X-SAHMT-'+project+'-Authorization']='Bearer '+await sourceUser.getIdToken();
     }
    }
-   if(!presenceReported&&['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action)){
-    try{const {installationId,appDisplayMode,devicePlatform}=await import('./app-updates-targeted.js');const displayMode=appDisplayMode();input={...input,installation:{deviceId:installationId(localStorage,globalThis.crypto,displayMode),displayMode,platform:devicePlatform(),appVersion:APP_VERSION,loadedRelease:Number(import.meta.env.VITE_APP_RELEASE)||0}};}catch{}
+   const includePresence=!presenceReported&&['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action);
+   const includeEnrollment=action==='INBOX'&&input.pushEnrollment===true;
+   if(includePresence||includeEnrollment){
+    try{
+     const {installationId,appDisplayMode,devicePlatform}=await import('./app-updates-targeted.js');
+     const displayMode=appDisplayMode(),deviceId=installationId(localStorage,globalThis.crypto,displayMode);
+     if(includePresence)input={...input,installation:{deviceId,displayMode,platform:devicePlatform(),appVersion:APP_VERSION,loadedRelease:Number(import.meta.env.VITE_APP_RELEASE)||0}};
+     if(includeEnrollment)input={...input,pushEnrollmentDeviceId:deviceId};
+    }catch{}
    }
    if(!current()||auth.currentUser!==source||ff.currentUser!==target)throw fail('COMM_SESSION_INVALID');
    const r=await fetch(endpoint,{method:'POST',headers,body:JSON.stringify({action,input}),cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});
@@ -104,7 +111,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
    const refreshed=Number(localStorage.getItem(pushRefreshKey(uid)));
    if(refreshed>0&&Date.now()-refreshed<pushRefreshPeriod)return;
   }catch{}
-  await enable(Promise.resolve('granted'));
+  return enable(Promise.resolve('granted'));
  }
  async function disable(){
   const {ff}=await sessions(),{getMessaging,getToken,deleteToken}=await import('firebase/messaging');

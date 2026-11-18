@@ -5,6 +5,7 @@ import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-
 import {communicationLimitMessage} from './communication-usage.js';
 import {openActivityComposer} from './communication-activity-ui.js';
 import {restoreActivitySelection} from './communication-activity-selection.js';
+import {activateCommunicationPush,pushActivationMessage} from './communication-push-activation.js';
 import {openCommunicationHistory, communicationDate} from './communication-history-ui.js';
 import {communicationRecipientOptions} from './communication-recipient-directory.js';
 import './communication.css';
@@ -350,23 +351,12 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   }
 
   async function enableDevicePush(button) {
-    const originWindow = root.ownerDocument.defaultView;
-    if (!originWindow?.Notification || !originWindow.navigator.serviceWorker) {
-      status('No iPhone, abra o SAHMT pelo ícone da Tela de Início para ativar as notificações.', true);
-      return;
-    }
     button.disabled = true;
     try {
-      const permission = originWindow.Notification.permission;
-      await client.enable(permission === 'default' ? originWindow.Notification.requestPermission() : Promise.resolve(permission));
+      await activateCommunicationPush(client, root.ownerDocument.defaultView);
       status('Notificações ativadas neste aparelho.');
     } catch (error) {
-      const instructions = {
-        COMM_PUSH_PERMISSION: 'Permita as notificações do SAHMT nos ajustes do aparelho.',
-        COMM_PUSH_UNSUPPORTED: 'Abra o SAHMT pelo ícone da Tela de Início ou em um navegador compatível com notificações.',
-        COMM_DEVICE_LIMIT: 'O limite de aparelhos com notificações foi atingido.'
-      };
-      report(error, instructions[error.code] || 'Não foi possível registrar este aparelho. Tente novamente.');
+      report(error, pushActivationMessage(error));
     } finally {
       button.disabled = false;
     }

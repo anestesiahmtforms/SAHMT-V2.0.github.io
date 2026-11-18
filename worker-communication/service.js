@@ -19,7 +19,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   const p=rows[0];if(rows.length!==1||!activeProfile(p)||typeof p.uid!=='string'||p.uid!==p.id||p.email!==email||p.ffUid&&p.ffUid!==uid)throw fail('COMM_FORBIDDEN',403);
   return p;
  };
- const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','SENT_DETAIL','ACTIVITY_CATALOG','PENDING_ACTIVITIES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
+ const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','SENT_DETAIL','ACTIVITY_CATALOG','PENDING_ACTIVITIES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','PUSH_TEAM_STATUS','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
  const quota=(code,used,limit,resetsAt)=>Object.assign(fail(code,429),{used,limit,...(resetsAt?{resetsAt}:{})});
  async function admit(a,action){
   const {day,resetsAt}=communicationUsagePeriod(now()),minute=Math.floor(now()/60000),key=digest(a.uid);
@@ -256,6 +256,22 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   }
   return {items,cursor:rows.length>8?users.at(-1)?.id||null:null};
  }
+ const isEffective=profile=>activeProfile(profile)&&profile.institutionalGroup==='team'&&!isSystemOwnerEmail(profile.email);
+ async function hasActivePush(sourceUid,deviceId=''){
+  const devices=await store.page('communicationDevices',{limit:6,filters:[['sourceUid',sourceUid],['active',true]],fields:['deviceId','updatedAt']});
+  return devices.some(device=>(!deviceId||device.deviceId===deviceId)&&Number.isFinite(device.updatedAt)&&device.updatedAt>=now()-30*86400000);
+ }
+ async function pushTeamStatus(input){
+  if(Object.keys(input).length!==1||!Array.isArray(input.uids)||!input.uids.length||input.uids.length>8||
+     new Set(input.uids).size!==input.uids.length)throw fail('COMM_INVALID_INPUT');
+  const uids=input.uids.map(id);
+  const profiles=await store.getMany('users',uids);
+  const items=await Promise.all(profiles.map(async (profile,index)=>{
+   const uid=uids[index];
+   return {uid,active:profile?.uid===uid&&isEffective(profile)?await hasActivePush(uid):null};
+  }));
+  return {items};
+ }
  async function presence(value,a){
   if(!value||typeof value.deviceId!=='string'||!/^[-a-f0-9]{36}$/.test(value.deviceId))return;
   const key=digest(a.uid+':'+value.deviceId);
@@ -420,6 +436,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action))await presence(input.installation,a);
   if(action==='USAGE')return usage();
   if(action==='BOOTSTRAP')return {isAdmin:adminIdentity(a),projectId:FF.projectId,databaseId:FF.databaseId,batchSize:BATCH_SIZE};
+  if(action==='PUSH_TEAM_STATUS')return pushTeamStatus(input);
   if(action==='REGISTER_DEVICE'||action==='DISABLE_DEVICE')return device(input,a,action==='REGISTER_DEVICE');
   if(action==='INBOX'){
    const recent=input.recent===true;
@@ -427,7 +444,12 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    if(!input.cursor&&!(recent&&input.chronological===true)){const pointer=await store.get('communicationReleaseInboxes',a.sourceUid);if(pointer?.messageId){const release=await store.get('communicationMessages',id(pointer.messageId));if(release?.audienceType==='USER'&&release.audienceValue===a.sourceUid&&isCurrentMessage(release,now()))items.push(release);}}
    for(const m of rows)if(!items.some(item=>item.id===m.id)&&isCurrentMessage(m,now())&&await audience(m,ownProfile,a.sourceUid))items.push(m);
    const last=rows.at(-1);
-   return {items,cursor:rows.length===5?(recent?`${last.publishAt}|${last.id}`:last.id):null};
+   let pushEnrollment;
+   if(input.pushEnrollment===true&&!input.cursor){
+    const deviceId=typeof input.pushEnrollmentDeviceId==='string'&&/^[a-f0-9-]{36}$/.test(input.pushEnrollmentDeviceId)?input.pushEnrollmentDeviceId:'';
+    pushEnrollment=isEffective(ownProfile)&&!await hasActivePush(a.sourceUid,deviceId);
+   }
+   return {items,cursor:rows.length===5?(recent?`${last.publishAt}|${last.id}`:last.id):null,...(pushEnrollment===undefined?{}:{pushEnrollment})};
   }
   if(action==='SENT_MESSAGES'){
    if(historyDrive&&typeof input.cursor==='string'&&input.cursor.startsWith('archive:')){

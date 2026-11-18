@@ -1,4 +1,5 @@
 import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from './communication-notice-text.js';
+import {activateCommunicationPush,pushActivationMessage} from './communication-push-activation.js';
 
 const MAX_INBOX_PAGES = 18;
 const MAX_DISMISSED_IDS = 500;
@@ -41,6 +42,10 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   let pushedItems = [];
   let loading = false;
   let lastLoadAt = 0;
+  let enrollmentRequested = false;
+  let enrolled = false;
+  let enrolling = false;
+  let enrollmentError = '';
   const acknowledging = new Set();
   const acknowledgementErrors = new Map();
   const active = () => !disposed && root.isConnected && isCurrent();
@@ -53,7 +58,10 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     const merged = new Map(items.filter(isChecklistConference).map(item => [item.id, item]));
     for (const item of pushedItems) if (!merged.has(item.id)) merged.set(item.id, item);
     visibleItems = [...merged.values()].filter(item => !dismissed.has(item.id)).sort((a, b) => Number(b.publishAt || 0) - Number(a.publishAt || 0));
-    root.innerHTML = visibleItems.map(item => {
+    const enrollment = enrollmentRequested && !enrolled
+      ? `<article class="comm-home-notice comm-home-notice--push-enrollment" aria-labelledby="push-enrollment-title"><h2 id="push-enrollment-title">Ative para receber mensagens do SAHMT</h2><button type="button" data-activate-team-push ${enrolling ? 'disabled' : ''}>${enrolling ? 'ATIVANDO…' : 'ATIVAR'}</button><p role="status">${escapeHtml(enrollmentError)}</p></article>`
+      : '';
+    root.innerHTML = enrollment + visibleItems.map(item => {
       const checklistConference = item.id.startsWith('event-checklist-conference-');
       return `<article class="comm-home-notice${item.priority === 'URGENT' ? ' comm-home-notice--urgent' : ''}${checklistConference ? ' comm-home-notice--checklist-conference' : ''}" role="status" aria-label="${checklistConference ? 'Conferência do Checklist' : 'Novo aviso institucional'}">
         <header><strong>${checklistConference ? '📋 CONFERÊNCIA DO CHECKLIST' : `🔔 NOVO AVISO · ${escapeHtml(item.category)}`}</strong>${checklistConference ? '' : `<button type="button" class="comm-home-notice__close" data-dismiss-comm="${escapeHtml(item.id)}" aria-label="Fechar aviso">×</button>`}</header>
@@ -88,8 +96,9 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     const todayStart = Date.parse(`${localDateKey()}T00:00:00-03:00`);
     try {
       do {
-        const result = await client.request('INBOX', cursor ? {recent: true, chronological: true, cursor} : {recent: true, chronological: true});
+        const result = await client.request('INBOX', cursor ? {recent: true, chronological: true, cursor} : {recent: true, chronological: true, pushEnrollment: true});
         if (!active()) return;
+        if (!cursor && typeof result.pushEnrollment === 'boolean') enrollmentRequested = result.pushEnrollment;
         for (const item of result.items || []) {
           if (typeof item?.id === 'string' && !seen.has(item.id)) {
             seen.add(item.id);
@@ -113,6 +122,25 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   }
 
   const onClick = event => {
+    const activation = event.target.closest('[data-activate-team-push]');
+    if (activation && root.contains(activation) && !enrolling && !enrolled) {
+      enrolling = true;
+      enrollmentError = '';
+      render(visibleItems);
+      void (async () => {
+        try {
+          const result = await activateCommunicationPush(client, window);
+          if (result?.registered !== true) throw Error('COMM_PUSH_UNCONFIRMED');
+          enrolled = true;
+        } catch (error) {
+          enrollmentError = pushActivationMessage(error);
+        } finally {
+          enrolling = false;
+          render(visibleItems);
+        }
+      })();
+      return;
+    }
     const acknowledge = event.target.closest('[data-ack-comm]');
     if (acknowledge && root.contains(acknowledge)) {
       const id = acknowledge.dataset.ackComm;
@@ -153,7 +181,12 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   const onResume = () => {
     if (document.visibilityState === 'hidden' || !active()) return;
     if (Date.now() - lastLoadAt > 2000) void load();
-    void client.refreshPushRegistration?.().catch(() => {});
+    void client.refreshPushRegistration?.().then(result => {
+      if (result?.registered === true && active()) {
+        enrolled = true;
+        render(visibleItems);
+      }
+    }).catch(() => {});
   };
 
   root.addEventListener('click', onClick);

@@ -23,6 +23,20 @@ function lastAccess(device) {
 }
 const accessLabel = milliseconds => milliseconds ? accessDate.format(milliseconds) : 'Sem acesso registrado';
 
+async function readTeamPushStatuses(uids, {isCurrent, onItems}) {
+  const {createCommunicationClient} = await import('./communication-client.js');
+  if (!isCurrent()) return;
+  const client = createCommunicationClient({isCurrent});
+  try {
+    for (let offset = 0; offset < uids.length && isCurrent(); offset += 8) {
+      const result = await client.request('PUSH_TEAM_STATUS', {uids: uids.slice(offset, offset + 8)});
+      if (isCurrent()) onItems(result.items);
+    }
+  } finally {
+    client.dispose();
+  }
+}
+
 export async function latestAppRelease(target, {fetchImpl = fetch, origin = location.origin} = {}) {
   const response = await fetchImpl(origin + '/SAHMT-V2.0.github.io/tools/app-release.json?t=' + Date.now(), {cache: 'no-store', redirect: 'error'});
   if (!response.ok) throw Error('APP_UPDATE_VERSION_UNAVAILABLE');
@@ -116,7 +130,8 @@ export async function openAllAppUpdates({actorUid, target, isCurrent, root = doc
   return close;
 }
 
-export async function openAppUpdatePanel({actorUid, target, isCurrent, root = document, services, readRelease = latestAppRelease, onExit = () => {}}) {
+export async function openAppUpdatePanel({actorUid, target, isCurrent, root = document, services, readRelease = latestAppRelease,
+  readPushStatuses = services ? null : readTeamPushStatuses, onExit = () => {}}) {
   const data = services || await import('./fi-admin-data.js');
   if (!isCurrent()) return () => {};
   const dialog = root.createElement('dialog'); dialog.className = 'admin-app-updates app-updates-command fi-admin-dialog';
@@ -166,7 +181,10 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
       if (!members.length) return '';
       const cards = members.map(user => {
         const name = userName(user), info = [user.sigla, user.email].filter(Boolean).join(' · ');
-        return `<article class="app-update-user" data-update-user data-search="${escape(searchText([name, info].join(' ')))}"><strong>${escape(name || 'Nome não cadastrado')}</strong><small>${escape(info)}</small><div data-user-devices="${escape(user.uid)}">Aguardando consulta…</div><button type="button" class="secondary-button" data-panel-user="${escape(user.uid)}">ATUALIZAÇÃO INDIVIDUAL</button></article>`;
+        const push = id === 'EFETIVO' && target === 'FA' && readPushStatuses
+          ? `<p class="app-update-user__push" data-user-push="${escape(user.uid)}">Push: conferindo…</p>`
+          : '';
+        return `<article class="app-update-user" data-update-user data-search="${escape(searchText([name, info].join(' ')))}"><strong>${escape(name || 'Nome não cadastrado')}</strong><small>${escape(info)}</small>${push}<div data-user-devices="${escape(user.uid)}">Aguardando consulta…</div><button type="button" class="secondary-button" data-panel-user="${escape(user.uid)}">ATUALIZAÇÃO INDIVIDUAL</button></article>`;
       }).join('');
       return `<section data-update-group aria-labelledby="app-update-group-${id}"><h3 id="app-update-group-${id}">${title}</h3>${cards}</section>`;
     }).join('');
@@ -179,6 +197,23 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
       if (!current()) child();
     };});
     const hosts = new Map([...list.querySelectorAll('[data-user-devices]')].map(host => [host.dataset.userDevices, host]));
+    const pushHosts = new Map([...list.querySelectorAll('[data-user-push]')].map(host => [host.dataset.userPush, host]));
+    if (pushHosts.size) {
+      const pending = new Set(pushHosts.keys());
+      const live = () => current() && ticket === sequence;
+      const onItems = rows => {
+        if (!live()) return;
+        for (const {uid, active} of rows || []) {
+          if (!pending.delete(uid)) continue;
+          const host = pushHosts.get(uid);
+          host.textContent = active === true ? 'Push ativo' : active === false ? 'Push inativo' : 'Push não confirmado';
+          if (typeof active === 'boolean') host.dataset.pushActive = String(active);
+        }
+      };
+      void readPushStatuses([...pending], {isCurrent: live, onItems}).catch(() => {}).finally(() => {
+        if (live()) for (const uid of pending) pushHosts.get(uid).textContent = 'Push não confirmado';
+      });
+    }
     const publishedRelease = await readRelease(target).catch(() => null);
     const ordered = [...groups.values()].flat();
     for (let offset = 0; offset < ordered.length; offset += 4) {

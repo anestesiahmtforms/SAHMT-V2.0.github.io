@@ -15,7 +15,7 @@ function memory(){
  const countPublished=async(start,end)=>[...data].filter(([key,v])=>key.startsWith('communicationMessages/')&&v.firstPublishedAt>=start&&v.firstPublishedAt<end).length;
  const eligibleRecipients=async()=>[...data].filter(([key,v])=>key.startsWith('users/')&&v.active===true&&v.access===true).map(([key,v])=>({...structuredClone(v),id:key.slice('users/'.length)}));
  const transaction=work=>{const result=lock.then(async()=>{const writes=[];const value=await work({get,countPublished,set:(c,k,v)=>writes.push([c+'/'+k,v]),create:(c,k,v)=>{assert.equal(data.has(c+'/'+k),false);writes.push([c+'/'+k,v]);}});for(const [key,v]of writes)data.set(key,structuredClone(v));return value;});lock=result.catch(()=>{});return result;};
- return {data,get,page,eligibleRecipients,countPublished,transaction};
+ return {data,get,getMany:(c,keys)=>Promise.all(keys.map(key=>get(c,key))),page,eligibleRecipients,countPublished,transaction};
 }
 function fixture({scheduleSource}={}){
  const store=memory(),fa=memory(),queued=[],sent=[];let sequence=0;
@@ -191,6 +191,23 @@ test('renovar o token substitui a inscrição da mesma instalação',async()=>{
  const devices=await f.store.page('communicationDevices',{filters:[['uid',actor.uid],['active',true]]});
  assert.deepEqual(devices.map(device=>device.token),[newToken]);
  assert.equal((await f.store.get('communicationMetrics','total')).devices,1);
+});
+
+test('ativação é solicitada só aos efetivos e o controle administrativo retorna apenas o estado do Push',async()=>{
+ const f=fixture(),admin={...operator,email:ADMINS[0]},deviceId='12345678-1234-4321-1234-123456789abc';
+ Object.assign(f.store.data.get('users/'+operator.sourceUid),{email:admin.email});
+ f.store.data.get('users/'+person.sourceUid).institutionalGroup='team';
+ f.store.data.get('users/'+other.sourceUid).institutionalGroup='resident';
+ const request={pushEnrollment:true,pushEnrollmentDeviceId:deviceId};
+ assert.equal((await f.call('INBOX',request,person)).pushEnrollment,true);
+ assert.equal((await f.call('INBOX',request,other)).pushEnrollment,false);
+ const uids=[person.sourceUid,other.sourceUid];
+ assert.deepEqual((await f.call('PUSH_TEAM_STATUS',{uids},admin)).items,[{uid:person.sourceUid,active:false},{uid:other.sourceUid,active:null}]);
+ await assert.rejects(f.call('PUSH_TEAM_STATUS',{uids},person),{code:'COMM_FORBIDDEN'});
+ await f.call('REGISTER_DEVICE',{token:person.uid+'t'.repeat(70),deviceId},person);
+ assert.equal((await f.call('INBOX',request,person)).pushEnrollment,false);
+ assert.equal((await f.call('INBOX',{...request,pushEnrollmentDeviceId:'87654321-1234-4321-1234-123456789abc'},person)).pushEnrollment,true);
+ assert.deepEqual((await f.call('PUSH_TEAM_STATUS',{uids},admin)).items,[{uid:person.sourceUid,active:true},{uid:other.sourceUid,active:null}]);
 });
 
 test('entrega antecipada exige reserva válida do aparelho e do próprio aviso',async()=>{

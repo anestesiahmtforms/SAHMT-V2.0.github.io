@@ -394,3 +394,6 @@
 /* Activity composer overrides the legacy scroll treatment above. */
 .management-hub-dialog[data-panel=communication]:has(.communication--activity) .management-hub-body{overflow:hidden}
 .communication--activity .comm-content{max-height:none;overflow:hidden}
+.comm-home-notice--push-enrollment{text-align:center}
+.comm-home-notice--push-enrollment button{display:block;min-width:120px;min-height:44px;margin:8px auto;border:1px solid #10334e;border-radius:10px;background:#143854;color:white;font-weight:850}
+.comm-home-notice--push-enrollment p:empty{display:none}

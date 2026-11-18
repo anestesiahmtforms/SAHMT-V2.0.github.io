@@ -22,6 +22,24 @@ test('programmatic panel cleanup does not call onExit',async()=>{
   cleanup();assert.equal(exits,0);
 });
 
+test('the update cards request Push status only for effective members',async()=>{
+ const h=emptyPanel(),list=h.nodes.get('[data-panel-list]');
+ const active={dataset:{userPush:'active'}},inactive={dataset:{userPush:'inactive'}};
+ list.querySelectorAll=selector=>selector==='[data-user-push]'?[active,inactive]:[];
+ const users=[{uid:'active',memberCategories:['EFETIVO']},{uid:'inactive',memberCategories:['EFETIVO']},{uid:'resident',memberCategories:['RESIDENTE_1']}];
+ const cleanup=await openAppUpdatePanel({actorUid:'admin',target:'FA',root:h.root,isCurrent:()=>true,readRelease:async()=>200,
+  services:{listAppUpdateUsers:async()=>users,readUserAppUpdates:async()=>{throw Error('no installation fixture');}},
+  readPushStatuses:async(uids,{onItems})=>{
+   assert.deepEqual(uids,['active','inactive']);
+   onItems([{uid:'active',active:true},{uid:'inactive',active:false}]);
+  }
+ });
+ assert.equal(active.textContent,'Push ativo');
+ assert.equal(inactive.textContent,'Push inativo');
+ assert.doesNotMatch(list.innerHTML,/data-user-push="resident"/);
+ cleanup();
+});
+
 test('invalidating the panel during its initial reads closes the dialog and every opened subscription',async()=>{
   let current=true,activeSubscriptions=0,removed=false,releaseLastRead;
   const users=Array.from({length:5},(_,i)=>({uid:'user-'+i,displayName:'User '+i,email:'user-'+i+'@example.invalid'}));
