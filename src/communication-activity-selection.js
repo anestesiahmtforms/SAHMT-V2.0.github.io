@@ -6,6 +6,7 @@ const composerHash = '#/management-hub/communication';
 const trainingHash = '#/management/area-gestao-de-documentos';
 const surveysHash = '#/management-hub/surveys';
 export const surveyActivityPanels = Object.freeze({
+  professional: 'professional',
   climate: 'climateForm',
   stress: 'stressForm',
   epidemiological: 'epidemiological'

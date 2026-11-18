@@ -48,7 +48,7 @@ export function createObligationService({store,source,history,saveActivity,resol
   // The browser can select a registry entry and a minimum, never its maximum/title.
   const keys=requested?.kind==='TRAINING'?['kind','id','title','version','maxScore','minimumScore']:['kind','id','title','cycle'];
   if(!exact(requested,keys)||!['TRAINING','SURVEY'].includes(requested.kind))throw fail('COMM_INVALID_ACTIVITY');
-  const result=await source.catalog({kind:requested.kind});
+  const result=await source.catalog({kind:requested.kind,activityId:requested.id});
   if(!Array.isArray(result?.items))throw fail('COMM_SOURCE_UNAVAILABLE',503);
   const matches=result.items.filter(item=>item.kind===requested.kind&&item.id===requested.id);
   if(matches.length!==1)throw fail('COMM_ACTIVITY_UNAVAILABLE',409);

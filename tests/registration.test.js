@@ -6,6 +6,25 @@ import {aggregateEpidemiological} from '../src/epidemiological-aggregate.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';import {institutionalAssignmentKey} from '../src/institutional-group.js';
 export const identity={uid:'synthetic-registration',email:'synthetic@example.invalid',emailVerified:true,provider:'google.com'};
 export function professionalAnswers(){return {...Object.fromEntries(PROFESSIONAL_FIELDS.map(f=>[f.id,f.type==='checks'?f.options.slice(0,f.min||1).map(([v])=>v):f.options?f.options[0][0]:f.required?'Informação sintética':''])),fullName:'Pessoa Sintética',birthDate:'1990-01-01',cpf:'52998224725',crm:'12345',crmState:'MG',phone:'31999999999',lattes:'https://lattes.cnpq.br/1234567890123456'};}
+
+test('professional registration can be called by administrators and verifies only the saved status',async()=>{
+ const store=await fixture();
+ const admin={...identity,uid:'admin-catalog',email:'admin@example.invalid'};
+ store.seed('users',admin.uid,{uid:admin.uid,email:admin.email,role:'administrador_app',active:true,access:true});
+ const service=createProfessionalRegistrationService({store,now:()=>42});
+ const item={kind:'SURVEY',id:'professional',title:'Cadastro Profissional - SAHMT',cycle:'2026'};
+ const activity={survey:item.id,cycle:item.cycle};
+ const input={...activity,recipients:[{uid:'ff-member',email:identity.email},{uid:'ff-unknown',email:'unknown@example.invalid'}]};
+ assert.deepEqual(await service.execute('OBLIGATION_CATALOG',{},admin),{items:[item]});
+ await assert.rejects(service.execute('OBLIGATION_CATALOG',{},identity),{code:'REGISTRATION_FORBIDDEN'});
+ assert.deepEqual(await service.execute('OBLIGATION_ELIGIBILITY',input,admin),{eligibleUids:['ff-member'],excluded:[{uid:'ff-unknown',reason:'REGISTRATION_FORBIDDEN'}]});
+ assert.deepEqual(await service.execute('OBLIGATION_STATUS',activity,identity),{completed:false});
+ await service.execute('SAVE',{expectedVersion:0,truth:true,answers:professionalAnswers()},identity);
+ store.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:['consultas/cadastro-profissional']});
+ assert.deepEqual(await service.execute('OBLIGATION_CATALOG',{},admin),{items:[]});
+ assert.deepEqual(await service.execute('OBLIGATION_STATUS',activity,identity),{completed:true});
+ await assert.rejects(service.execute('OBLIGATION_STATUS',{...activity,uid:identity.uid},admin),{code:'REGISTRATION_INVALID_INPUT'});
+});
 export async function fixture(category='EFETIVO'){const store=vaccinationMemoryStore();store.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});store.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:[category]});return store;}
 const completeEpiAnswers=()=>Object.fromEntries(EPIDEMIOLOGICAL_FIELDS.map(f=>[f.id,f.type==='checks'?[f.options[0][0]]:f.options[0][0]]));
 const epi=(patch={})=>({survey_cycle:'2026',survey_version:'1.0',submission_id:'a'.repeat(32),consent:true,group:'team',answers:{sleep:'0'},...patch});

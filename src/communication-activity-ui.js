@@ -5,7 +5,7 @@ import {communicationRecipientOptions} from './communication-recipient-directory
 import {activitySelectionUrl, startActivitySelection, surveyActivityPanels} from './communication-activity-selection.js';
 import {rememberModuleNavigation} from './module-navigation.js';
 
-const reasons = {FORBIDDEN:'Sem permissão para esta atividade',NOT_AUTHORIZED:'Sem permissão para esta atividade',INACTIVE:'Integrante inativo',ACTIVITY_UNAVAILABLE:'Atividade indisponível',ATTEMPTS_EXHAUSTED:'Tentativas esgotadas',SOURCE_UNAVAILABLE:'Não foi possível verificar a origem'};
+const reasons = {FORBIDDEN:'Sem permissão para esta atividade',NOT_AUTHORIZED:'Sem permissão para esta atividade',REGISTRATION_FORBIDDEN:'Sem acesso ao Cadastro Profissional',REGISTRATION_FOLDER_DISABLED:'Cadastro Profissional inativo',INACTIVE:'Integrante inativo',ACTIVITY_UNAVAILABLE:'Atividade indisponível',ATTEMPTS_EXHAUSTED:'Tentativas esgotadas',SOURCE_UNAVAILABLE:'Não foi possível verificar a origem'};
 const needsGoogle=error=>['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH','COMM_SOURCE_SESSION_INVALID','COMM_SOURCE_IDENTITY_MISMATCH'].includes(error?.code);
 const activityKey=activity=>activity?`${activity.kind}:${activity.id}`:'';
 function activityAccessUrl(activity,messageId,origin){
@@ -23,7 +23,9 @@ function messageWithActivityLink(description,activity,messageId,origin){
 }
 export function activityDescription(activity) {
   if (!activity) return '';
-  return activity.kind === 'TRAINING' ? `${activity.title} · Versão ${activity.version} · Nota mínima ${activity.minimumScore} de ${activity.maxScore}` : `${activity.title} · Ciclo ${activity.cycle} · Conclusão pelo envio aceito das respostas`;
+  if(activity.kind==='TRAINING')return `${activity.title} · Versão ${activity.version} · Nota mínima ${activity.minimumScore} de ${activity.maxScore}`;
+  const completion=activity.id==='professional'?'Conclusão ao salvar o cadastro':'Conclusão pelo envio aceito das respostas';
+  return `${activity.title} · Ciclo ${activity.cycle} · ${completion}`;
 }
 
 /** Every send is preceded by a server-issued recipient preview; the browser never supplies a URL. */
@@ -112,13 +114,18 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
       if(linked&&!linkedAvailable)f.activity.add(new Option(linked.title,activityKey(linked)));
       f.activity.value=activityKey(catalog.find(item=>item.id===state.activityId&&item.kind===state.kind) || linked);metadata();
       const failures=results.filter(result=>result.status==='rejected'),empty=!catalog.length;
-      form.querySelector('[data-reload-activities]').hidden=!empty&&!failures.length&&(!linked||linkedAvailable);
+      const unavailableSources=results[1].value?.unavailableSources||[];
+      const partial=failures.length>0||unavailableSources.length>0;
+      const linkedSourceUnavailable=linked&&(results[linked.kind==='TRAINING'?0:1].status==='rejected'||
+        linked.kind==='SURVEY'&&unavailableSources.includes(linked.id==='professional'?'PROFESSIONAL':'SURVEY'));
+      form.querySelector('[data-reload-activities]').hidden=!empty&&!partial&&(!linked||linkedAvailable);
       form.querySelector('[data-recover-activity]').hidden=!failures.some(result=>needsGoogle(result.reason));
-      if(linked&&!linkedAvailable)status(results[linked.kind==='TRAINING'?0:1].status==='rejected'
+      if(linked&&!linkedAvailable)status(linkedSourceUnavailable
         ? 'Link incluído. Não foi possível confirmar a atividade na origem. Atualize a lista para continuar.'
         : 'Link incluído. Libere a atividade no módulo de origem e atualize a lista antes de enviar.',true);
-      else if(empty)status('Nenhuma atividade publicada. Ative ou publique no módulo correspondente e atualize a lista.');
-      else if(failures.length)status('Uma das origens está indisponível; as atividades carregadas continuam disponíveis.',true);
+      else if(empty&&partial)status('Não foi possível consultar todas as origens. Atualize a lista para tentar novamente.',true);
+      else if(empty)status('Nenhuma atividade liberada para convocação. Verifique se a pasta está ativa e atualize a lista.');
+      else if(partial)status('Uma das origens está indisponível. Você pode usar as atividades carregadas.',true);
       else status('');
     }catch(error){if(current()&&ticket===catalogTicket){catalog=[];f.activity.innerHTML='<option value="">Atividades indisponíveis</option>';form.querySelector('[data-reload-activities]').hidden=false;form.querySelector('[data-recover-activity]').hidden=!needsGoogle(error);report(error,'Não foi possível consultar as atividades. Confira os módulos de origem e atualize a lista.');}}
     finally{if(current()&&ticket===catalogTicket){state.loading=false;busy();}}

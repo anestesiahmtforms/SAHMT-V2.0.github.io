@@ -1,6 +1,6 @@
 import {fail} from './domain.js';
 export const OBLIGATION_DAY=86_400_000;
-export const SURVEY_ACTIVITIES=Object.freeze({epidemiological:'Cadastro Epidemiológico SAHMT',climate:'Pesquisa de Clima Organizacional',stress:'Avaliação de Estresse e Fadiga'});
+export const SURVEY_ACTIVITIES=Object.freeze({professional:'Cadastro Profissional - SAHMT',epidemiological:'Cadastro Epidemiológico SAHMT',climate:'Pesquisa de Clima Organizacional',stress:'Avaliação de Estresse e Fadiga'});
 const identifier=v=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,199}$/.test(v);
 export function obligationStage(publishedAt,serverNow){
  if(![publishedAt,serverNow].every(v=>Number.isSafeInteger(v)&&v>=0))throw fail('COMM_INVALID_ACTIVITY');

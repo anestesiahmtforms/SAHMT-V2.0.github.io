@@ -87,7 +87,7 @@ import './functional-ui.css';
 import {renderFiAdminDialog, mountFiAdminDialog} from './fi-admin-dialog.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {communicationFeatureEnabled,communicationAdminSession} from './communication-link.js';
-import {activitySelectionFor} from './communication-activity-selection.js';
+import {activitySelectionFor,surveyActivityPanels} from './communication-activity-selection.js';
 import {trainingActivityRoute} from './training-activity-route.js';
 import './communication.css';
 import {loadCommunicationModules,preloadCommunicationModules} from './communication-loader.js';
@@ -1572,6 +1572,7 @@ async function loadModule(route) {
       isEffectiveTeamMember(session.user).catch(()=>false)
     ]);
     if(!content.isConnected||!currentHub())return;
+    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,folderNotice:operationalFolderNotice,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       surveySelection:communicationAdminSession(session)?activitySelectionFor(session.user,'SURVEY'):null,
@@ -1604,12 +1605,14 @@ async function loadModule(route) {
       },
       performRegistration:async(kind,action,input,signal)=>{
         const {callRegistrationApi}=await import('./registration-client.js');
-        const result=await callRegistrationApi({uid,isCurrent:()=>currentHub()&&(kind==='epidemiological'?epidemiologicalAllowed:consultationsAllowed),kind,action,input,signal});
-        if(kind==='epidemiological'&&action==='SUBMIT'&&result?.accepted===true)window.dispatchEvent(new Event('communication:activity-completed'));
+        const result=await callRegistrationApi({uid,isCurrent:()=>currentHub()&&(kind==='epidemiological'?epidemiologicalAllowed:professionalAllowed),kind,action,input,signal});
+        const surveySubmitted=kind==='epidemiological'&&action==='SUBMIT'&&result?.accepted===true;
+        const registrationSaved=kind==='professional'&&action==='SAVE'&&result?.record;
+        if(surveySubmitted||registrationSaved)window.dispatchEvent(new Event('communication:activity-completed'));
         return result;
       },
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),inactiveFolderNavigation:canUseGovernanceHub(session),inactiveConsultations:canBrowseInactiveGovernanceFolder('consultas'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:canBrowseInactiveGovernanceFolder('gestao')||(can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures)),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:canBrowseInactiveGovernanceFolder('registros')||(can('admin')&&canUseManagementPilot(session)),results:canUseGovernanceHub(session),surveys:consultationsAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:canBrowseInactiveGovernanceFolder('registros/ocorrencias')||hasOccurrencePermission(),qmentum:canBrowseInactiveGovernanceFolder('registros/qmentum')||canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),inactiveFolderNavigation:canUseGovernanceHub(session),inactiveConsultations:canBrowseInactiveGovernanceFolder('consultas'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:canBrowseInactiveGovernanceFolder('gestao')||(can('admin')&&canOpenRestrictedModule('management')&&featureEnabledForRoute('management',appFeatures)),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:canBrowseInactiveGovernanceFolder('registros')||(can('admin')&&canUseManagementPilot(session)),results:canUseGovernanceHub(session),surveys:consultationsAllowed,professional:professionalAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),occurrences:canBrowseInactiveGovernanceFolder('registros/ocorrencias')||hasOccurrencePermission(),qmentum:canBrowseInactiveGovernanceFolder('registros/qmentum')||canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{
         if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}
         const prefix='#/management-hub'+(panel==='home'?'':'/'+panel);
@@ -5395,7 +5398,7 @@ function activeObligationId(){
   const parts=location.hash.split('/');
   const id=parts.at(-1);
   const training=parts.length===6&&parts[1]==='management'&&parts[2]==='area-gestao-de-documentos'&&parts[3]==='required';
-  const survey=parts.length===5&&parts[1]==='management-hub'&&['climateForm','stressForm','epidemiological'].includes(parts[2])&&parts[3]==='required';
+  const survey=parts.length===5&&parts[1]==='management-hub'&&Object.values(surveyActivityPanels).includes(parts[2])&&parts[3]==='required';
   return (training||survey)&&/^activity-[a-zA-Z0-9-]{1,100}$/.test(id)?id:null;
 }
 
@@ -5419,8 +5422,7 @@ function syncObligationBanner(){
       uid,client,isCurrent,
       onOpenActivity(item){
         const activity=item.activity;
-        const surveyPanels={climate:'climateForm',stress:'stressForm',epidemiological:'epidemiological'};
-        const panel=Object.hasOwn(surveyPanels,activity.id)?surveyPanels[activity.id]:'';
+        const panel=Object.hasOwn(surveyActivityPanels,activity.id)?surveyActivityPanels[activity.id]:'';
         const base=activity.kind==='TRAINING'?deployment.fbBase:deployment.faBase;
         const route=activity.kind==='TRAINING'
           ? trainingActivityRoute(activity.id)

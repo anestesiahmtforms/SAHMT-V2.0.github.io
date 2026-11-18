@@ -41,6 +41,24 @@ test('survey source uses FA token, filters answer payloads, and never accepts a 
  assert.match(h.calls.at(-1).url,/sahmt-fe-surveys\.anestesiahmtforms5/);
  await assert.rejects(h.source.catalog({kind:'https://evil.invalid'}),{code:'COMM_INVALID_ACTIVITY'});
 });
+test('professional activity uses its FA endpoint and is selectable when FE is unavailable',async()=>{
+ const calls=[];
+ const professional={kind:'SURVEY',id:'professional',title:'Cadastro Profissional - SAHMT',cycle:'2026'};
+ const source=createActivitySource({actor,headers:{'X-SAHMT-FA-Authorization':token('sahmt-17a16')},fetchImpl:async(url,options)=>{
+  calls.push(url);
+  if(url.includes('accounts:lookup'))return Response.json({users:[{localId:identity.uid,email:actor.email,emailVerified:true,providerUserInfo:[{providerId:'google.com',rawId:actor.googleUid}]}]});
+  if(url.includes('sahmt-fe-surveys'))return Response.json({}, {status:503});
+  assert.equal(url,'https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/professional-registration');
+  const {action,input}=JSON.parse(options.body);
+  if(action==='OBLIGATION_CATALOG')return Response.json({items:[professional]});
+  assert.deepEqual(input,{survey:'professional',cycle:'2026'});
+  return Response.json({completed:true});
+ }});
+ assert.deepEqual(await source.catalog({kind:'SURVEY'}),{items:[professional],unavailableSources:['SURVEY']});
+ assert.deepEqual(await source.catalog({kind:'SURVEY',activityId:'professional'}),{items:[professional]});
+ assert.deepEqual(await source.completion({activity:professional}),{completed:true});
+ assert.equal(calls.filter(url=>url.includes('accounts:lookup')).length,1);
+});
 test('training catalog forwards canonical folder metadata without adding arbitrary links',async()=>{
  const {minimumScore,...item}=activity;
  const h=remote({result:{items:[{...item,folderPath:['ROPs','Comunicação'],url:'https://example.invalid'}]}});

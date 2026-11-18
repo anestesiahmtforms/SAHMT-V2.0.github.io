@@ -42,7 +42,7 @@ const panels={
  institutional:{title:'Acesso Restrito',icon:'records',parent:'surveys',items:[
   {label:'PESQUISA DE CLIMA ORGANIZACIONAL',icon:'climate',panel:'climateForm',access:'teamSurveys'},
   {label:'AVALIAÇÃO DE ESTRESSE E FADIGA',icon:'wellbeing',panel:'stressForm',access:'teamSurveys'},
-  {label:'CADASTRO PROFISSIONAL - SAHMT',icon:'professional',panel:'professional',access:'surveys'},
+  {label:'CADASTRO PROFISSIONAL - SAHMT',icon:'professional',panel:'professional',access:'professional'},
   {label:'CADASTRO EPIDEMIOLÓGICO - SAHMT',icon:'epidemiological',panel:'epidemiological',access:'epidemiological'},
   {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'},
   {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'},
@@ -61,7 +61,7 @@ const panels={
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
 export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,surveySelection=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},openOccupationalHistory=null,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderNotice=()=>''}={}){
- access={...access,communication:communicationAllowed,teamSurveys:climateEnabled&&access.teamSurveys===true};
+ access={...access,professional:access.professional??access.surveys,communication:communicationAllowed,teamSurveys:climateEnabled&&access.teamSurveys===true};
  if(['biosafety','dosimetryHistory'].includes(initialPanel))initialPanel='institutional';
  if(initialPanel==='indicators')initialPanel='records';
  const institutionalAllowed=()=>access.institutionalSurveys===true;
@@ -79,7 +79,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const navigationOnly=['surveys','institutional','general','records','biosafety'];
  const panelAllowed=name=>profilePanelAllowed(name)||Boolean(surveyForPanel(name))||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(name)&&Object.hasOwn(panelFolders,name)&&!folderAllowed(panelFolders[name]));
  const itemNavigable=item=>itemAllowed(item)||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(item.panel||item.route)&&Object.hasOwn(panelFolders,item.panel||item.route)&&!panelFolderAllowed(item.panel||item.route));
- const profilePanelAllowed=name=>biosafetyPanels.includes(name)?access.biosafety===true:teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='professional'?access.surveys===true:name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
+ const profilePanelAllowed=name=>biosafetyPanels.includes(name)?access.biosafety===true:teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2><div data-hub-folder-notice></div></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');
@@ -191,11 +191,13 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
     });
    }).catch(()=>{if(current())host.textContent='Não foi possível preparar o cadastro. Volte e tente novamente.';});
   }
-  if(panel==='professional'&&profilePanelAllowed(panel)){
+  if(panel==='professional'&&surveyForPanel(panel)){
+   body.innerHTML='<p role="status">Toque em <strong>Usar nesta convocação</strong> para incluir o link do Cadastro Profissional.</p>';
+  }else if(panel==='professional'&&profilePanelAllowed(panel)){
    body.innerHTML='<p role="status">Preparando cadastro…</p>';const activePanel=panel;
    void import('./registration-ui.js').then(({mountInstitutionalRegistration})=>{if(disposed||ticket!==renderId||panel!==activePanel)return;cleanupRegistration=mountInstitutionalRegistration(body,{request:performRegistration,isCurrent:()=>!disposed&&ticket===renderId&&panel===activePanel&&isSurveySessionCurrent()});}).catch(()=>{if(!disposed&&ticket===renderId)body.innerHTML='<p role="alert">Não foi possível preparar o cadastro. Volte e tente novamente.</p>';});
   }
-  if(surveyForPanel(panel)&&!profilePanelAllowed(panel))body.replaceChildren();
+  if(panel!=='professional'&&surveyForPanel(panel)&&!profilePanelAllowed(panel))body.replaceChildren();
   back.textContent=surveySelection&&panel==='surveys'?'VOLTAR À CONVOCAÇÃO':spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
   dialog.querySelector('#management-hub-title').focus({preventScroll:true});
  };

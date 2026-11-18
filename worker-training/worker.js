@@ -1,6 +1,6 @@
 import {assertFolderReadable} from '../server/folder-read-policy.js';
 import {assertFeFolderReadable} from '../worker-fe-surveys/survey-policy.js';
-import {createProfessionalRegistrationService} from './professional-registration-service.js';
+import {createProfessionalRegistrationService,professionalObligationActions} from './professional-registration-service.js';
 import {createRegistrationDrive} from './registration-drive.js';
 import {createBiosafetyManualService} from './biosafety-manual-service.js';
 import {createDosimetryService} from './dosimetry-service.js';
@@ -70,7 +70,15 @@ function folderGuard(runtime,service,prefix,folder='consultas/cadastro-profissio
   return result;
  }};
 }
-function registrationRuntime(env){const runtime=sharedRuntime(env);return runtime.registration??=folderGuard(runtime,createProfessionalRegistrationService({store:runtime.store,drive:registrationDriveRuntime(env)}),'REGISTRATION');}
+function registrationRuntime(env){
+ const runtime=sharedRuntime(env);
+ if(!runtime.registration){
+  const registration=createProfessionalRegistrationService({store:runtime.store,drive:registrationDriveRuntime(env)});
+  const guarded=folderGuard(runtime,registration,'REGISTRATION');
+  runtime.registration={execute:(action,...args)=>(professionalObligationActions.has(action)?registration:guarded).execute(action,...args)};
+ }
+ return runtime.registration;
+}
 function surveyRuntime(env){
  const runtime=sharedRuntime(env);
  let config;try{config=JSON.parse(env.REGISTRATION_DRIVE_CLIENT_JSON||'null');}catch{}
