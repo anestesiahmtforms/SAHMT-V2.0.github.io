@@ -19,7 +19,7 @@ function fixture(){
  const history={async markCompletion({id},uid,evidence){calls.history++;return store.transaction(async tx=>{const snapshot=await tx.get('communicationMessageRecipients',id),item=snapshot.items.find(r=>r.uid===uid);if(item.status==='PENDING'){Object.assign(item,evidence,{status:'COMPLETED'});tx.set('communicationMessageRecipients',id,snapshot);}return {recipient:item};});},async cancel({id},by,reason){calls.cancel++;return store.transaction(async tx=>{const message=await tx.get('communicationMessages',id),snapshot=await tx.get('communicationMessageRecipients',id);message.status='cancelled';message.cancelReason=reason;for(const item of snapshot.items)if(item.status==='PENDING')item.status='CANCELLED';tx.set('communicationMessages',id,message);tx.set('communicationMessageRecipients',id,snapshot);return {message};});}};
  const saveActivity=async(input,by)=>{
   const result=await store.transaction(async tx=>{const old=await tx.get('communicationMessages',input.id);if(old)return {message:old,alreadySent:true};
-   const message={...input,message:input.description,publishAt:clock,status:'published',hasActivity:true,createdBy:{sourceUid:by.sourceUid}};delete message.recipients;
+   const message={...input,message:input.description,publishAt:clock,dueAt:clock+input.deadlineHours*3600000,status:'published',hasActivity:true,createdBy:{sourceUid:by.sourceUid}};delete message.recipients;
    await service.reserveIndex(tx,message,input.recipients);
    tx.create('communicationMessages',message.id,message);tx.create('communicationMessageRecipients',message.id,{messageId:message.id,items:input.recipients.map(r=>({...r,status:'PENDING',readAt:null,completedAt:null,score:null})),version:1});calls.published++;return {message};
   });if(lost){lost=false;throw Error('RESPONSE_LOST');}return result;
@@ -79,6 +79,14 @@ test('pending lists only fixed own pending snapshots and never asks source or ma
  const pending=await h.execute('PENDING_ACTIVITIES',{},person);assert.equal(pending.serverNow,NOW);assert.equal(pending.items[0].message,'Please complete');assert.equal(pending.items[0].status,'PENDING');assert.equal(JSON.stringify(pending).includes(actor.email),false);
  assert.deepEqual(h.calls,calls);assert.equal((await h.execute('PENDING_ACTIVITIES',{},actor)).items.length,0);
  assert.equal((await h.store.get('communicationMessageRecipients','activity-one')).items[0].readAt,null);
+});
+test('a publicação guarda o prazo confirmado e o entrega ao destinatário',async()=>{
+ const h=fixture(),hour=3600000;
+ const p=await h.execute('PREVIEW_ACTIVITY',{activity,audience:'ALL',deadlineHours:9});
+ assert.equal(p.deadlineHours,9);
+ await h.execute('CREATE_ACTIVITY',{id:'activity-new-deadline',previewId:p.previewId,title:'Title',description:'Description',confirmed:true});
+ assert.equal((await h.execute('PENDING_ACTIVITIES',{},person)).items[0].dueAt,NOW+9*hour);
+ await assert.rejects(h.execute('PREVIEW_ACTIVITY',{activity,audience:'ALL',deadlineHours:0}),{code:'COMM_INVALID_DEADLINE'});
 });
 test('verification ignores supplied scores, rejects foreign recipient and persists source evidence idempotently',async()=>{
  const h=fixture();await h.create();h.setCompletion({completed:true,completedAt:NOW-100000,score:4});

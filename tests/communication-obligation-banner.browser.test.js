@@ -15,11 +15,25 @@ test('banner compacto mostra o título da atividade, o caminho na Home e somente
   assert.equal(await banner.locator('[data-path]').textContent(),'Home › Governança › Grupos de Gestão › Gestão de Documentos › Treinamento seguro');
   assert.doesNotMatch(await banner.innerText(),/https:\/\/|link abaixo/);
   assert.deepEqual(await banner.getByRole('button').allTextContents(),['Abrir atividade']);
-  const box=await banner.boundingBox();assert.ok(box.width<=240&&box.height<=255,JSON.stringify(box));
+  const box=await banner.boundingBox();assert.ok(Math.abs(box.width-288)<=1&&box.height<=255,JSON.stringify(box));
   await banner.getByLabel('Atividade pendente').selectOption('new');
   assert.equal(await banner.locator('[data-path]').textContent(),'Home › Governança › Enquetes e Consultas › Acesso Restrito › Pesquisa de Clima Organizacional');
   await banner.getByRole('button',{name:'Abrir atividade',exact:true}).click();
   assert.deepEqual(await page.evaluate(()=>fixture.opens),['new']);
+ }finally{await page.close();}
+});
+test('usa 90% da largura até o prazo definido e volta ao tamanho normal após mudança de prazo',async()=>{
+ const page=await pageFor({viewport:{width:390,height:844}});try{
+  await page.evaluate(()=>{fixture.items=[{...fixture.items[0],dueAt:fixture.now+6*3600000}];});
+  await page.evaluate(()=>window.age(5));
+  assert.equal(await panel(page).getAttribute('data-blocking'),'false');
+  assert.ok(Math.abs((await panel(page).boundingBox()).width-351)<=1);
+  await page.evaluate(()=>window.age(6));
+  assert.equal(await panel(page).getAttribute('data-blocking'),'true');
+  const deadline=await panel(page).boundingBox();assert.equal(deadline.width,390);assert.equal(deadline.height,844);
+  await page.evaluate(async()=>{fixture.items[0].dueAt=fixture.now+72*3600000;await banner.refresh();});
+  assert.equal(await panel(page).getAttribute('data-blocking'),'false');
+  assert.ok(Math.abs((await panel(page).boundingBox()).width-351)<=1);
  }finally{await page.close();}
 });
 

@@ -60,7 +60,7 @@ const panels={
 };
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
-export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,surveySelection=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},openOccupationalHistory=null,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderNotice=()=>''}={}){
+export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,surveySelection=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},openOccupationalHistory=null,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderNotice=()=>'',activityAvailability=()=>null,setActivityAvailability=null}={}){
  access={...access,professional:access.professional??access.surveys,communication:communicationAllowed,teamSurveys:climateEnabled&&access.teamSurveys===true};
  if(['biosafety','dosimetryHistory'].includes(initialPanel))initialPanel='institutional';
  if(initialPanel==='indicators')initialPanel='records';
@@ -106,7 +106,37 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   }
   dialog.querySelector('[data-hub-user]').textContent=['climateForm','stressForm','epidemiological'].includes(panel)?'Participação por grupo':displayName;
   dialog.querySelector('#management-hub-title').textContent=spec.title;
-  dialog.querySelector('[data-hub-folder-notice]').innerHTML=folderNotice(panelFolders[panel]);
+  const folder=panelFolders[panel],folderStatus=dialog.querySelector('[data-hub-folder-notice]');
+  folderStatus.innerHTML=folderNotice(folder);
+  if(setActivityAvailability&&[...teamSurveyPanels,'professional','epidemiological'].includes(panel)){
+   let enabled=activityAvailability(folder);
+   if(typeof enabled==='boolean'){
+    const target=folderStatus.querySelector('.folder-inactive-notice')||folderStatus;
+    const toggle=root.ownerDocument.createElement('button'),message=root.ownerDocument.createElement('span');
+    toggle.type='button';
+    toggle.className='secondary-button';
+    toggle.textContent=enabled?'DESATIVAR ATIVIDADE':'ATIVAR ATIVIDADE';
+    message.setAttribute('role','status');
+    const current=()=>!disposed&&ticket===renderId&&isSurveySessionCurrent();
+    toggle.onclick=async()=>{
+     if(toggle.disabled||!current())return;
+     toggle.disabled=true;message.textContent=' Atualizando…';
+     try{
+      const next=!enabled,result=await setActivityAvailability(folder,next,current);
+      if(!current())return;
+      message.textContent=result.pending?' Confirmação pendente no Controle de Pastas.':' Alteração confirmada.';
+      if(!result.pending){
+       enabled=next;
+       toggle.textContent=enabled?'DESATIVAR ATIVIDADE':'ATIVAR ATIVIDADE';
+       toggle.disabled=false;
+      }
+     }catch{
+      if(current()){message.textContent=' Não foi possível alterar. Confira o Controle de Pastas e tente novamente.';toggle.disabled=false;}
+     }
+    };
+    target.append(toggle,message);
+   }
+  }
   dialog.querySelector('[data-hub-heading-icon]').innerHTML=panel==='home'?'<img class="management-hub-diamond" src="'+assetBase+'assets/selo-qga-accredited-qmentum-diamond.png" alt="Diamond Qmentum" width="88" height="88" decoding="async">':icon(spec.icon);
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
    if(item.access==='functional'&&access.functional!==true)return '';

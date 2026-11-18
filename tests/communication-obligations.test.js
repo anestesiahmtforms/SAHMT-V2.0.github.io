@@ -19,6 +19,13 @@ test('training completion requires authenticated subject, completed exact versio
  assert.equal(api.trainingCompletion(training,{...state,uid:'other'},activity,'person-1').completed,false);
  assert.equal(api.trainingCompletion({...training,version:4},state,activity,'person-1').completed,false);
 });
+test('a custom deadline controls the final stage and extending it releases an overdue screen',()=>{
+ const start=1_000_000,hour=3_600_000,end=start+10*hour;
+ assert.equal(api.obligationStage(start,start+8*hour,end),4);
+ assert.equal(api.obligationStage(start,end-1,end),4);
+ assert.equal(api.obligationStage(start,end,end),5);
+ assert.equal(api.obligationStage(start,end,end+10*hour),2);
+});
 test('prior valid completion counts and later insufficient attempts do not revoke it',()=>{
  assert.equal(typeof api.trainingCompletion,'function');
  const result=api.trainingCompletion(training,{uid:'person-1',trainingId:training.id,attempts:[attempt,{...attempt,score:6,completedAt:300}]},activity,'person-1');

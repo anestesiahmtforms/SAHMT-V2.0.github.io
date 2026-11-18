@@ -136,7 +136,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     if(mode==='catalog'){
       const titles={Protocolos:'PROTOCOLOS',Diretrizes:'DIRETRIZES',ROPs:'ROPs','Documentos administrativos':'Documentos Administrativos'};
       const title=folderPath.length>1?folderPath.at(-1):folderPath.length?(titles[folderPath[0]]||folderPath[0]):'GESTÃO DE DOCUMENTOS';
-      return `<header class="ht-head"><div><h2>${h(title)}</h2></div>${activitySelection&&!folderPath.length?button('cancel-activity','VOLTAR À CONVOCAÇÃO','class="ht-secondary"'):''}</header>`;
+      const activation=folderPath.length&&accessAdmin()?trainingFolderToggle(folderPath,true):'';
+      return `<header class="ht-head"><div><h2>${h(title)}</h2></div>${activation}${activitySelection&&!folderPath.length?button('cancel-activity','VOLTAR À CONVOCAÇÃO','class="ht-secondary"'):''}</header>`;
     }
     if(mode==='select-activity')return `<header class="ht-head"><div><h2>${h(active.title)}</h2></div>${button('back','VOLTAR','class="ht-secondary"')}</header>`;
     return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${h(active?.title || 'Treinamentos')}</h2><p>Leitura · Avaliação · Sugestão</p></div>${mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;
@@ -154,8 +155,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
       const inactiveDescription=accessAdmin()?'Inativa para os demais usuários':'Inativa. Navegação disponível; atividades bloqueadas.';
       const entry=folderButton(folder.path,`${book}<span class="ht-folder-copy"><strong>${h(folder.name)}</strong>${inactiveLabel}</span><span class="ht-folder-arrow" aria-hidden="true">›</span>`,`class="ht-folder ht-navigation-book${enabled?'':' ht-folder-inactive'}" aria-label="${h(folder.name)}" ${!enabled?`aria-description="${inactiveDescription}"`:''}`);
       if(!accessAdmin())return entry;
-       const folderActive=trainingPathAllowed(folderAccess,folder.path);
-       return `<div class="ht-navigation-card">${entry}${button('toggle-folder',folderActive?'Desativar':'Ativar',`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(folder.path))}" aria-label="${folderActive?'Desativar':'Ativar'} ${h(folder.name)}" ${folderActive&&!folderIndexReady?'disabled data-locked="true"':''}`)}</div>`;
+       return `<div class="ht-navigation-card">${entry}${trainingFolderToggle(folder.path)}</div>`;
     }).join('');
     const documents=visible.map(t=>contentAllowed(t)
       ?renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t),inactiveForOthers:inactiveForOthers(trainingAccessPath(t))})
@@ -166,6 +166,13 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
       ?'<p class="ht-notice">Prepare o controle de pastas para liberar a desativação.</p>'+button('build-folder-index','Preparar controle de pastas','class="ht-secondary"')
       :'';
     return preparation+(folderPath.length?`<div class="ht-folder-toolbar">${button('back','VOLTAR','class="ht-secondary"')}</div>`:'')+grid;
+  }
+  function trainingFolderToggle(path,activity=false){
+    const enabled=!trainingPathAllowed(folderAccess,path);
+    const inherited=!trainingPathAllowed(folderAccess,path.slice(0,-1));
+    const label=activity?(enabled?'ATIVAR ATIVIDADE':'DESATIVAR ATIVIDADE'):(enabled?'Ativar':'Desativar');
+    const aria=activity?label+' · pasta '+path.at(-1):label+' '+path.at(-1);
+    return button('toggle-folder',label,`class="ht-access-toggle ht-secondary" data-folder="${h(JSON.stringify(path))}" data-enabled="${enabled}" ${activity?'data-training-activity-toggle':''} aria-label="${h(aria)}" ${!folderIndexReady&&(!enabled||inherited)?'disabled data-locked="true"':''}`);
   }
   function summary(){const attempts=state?.attempts?.length || 0;return `<div class="ht-summary"><span><b>${attempts}/2</b> tentativas concluídas</span><span><b>${h(state?.bestScore ?? 0)}</b> maior nota</span><span><b>${h(state?.ackPoints ?? 0)}</b> ponto de ciência</span></div>`;}
   function manageBar(){return canManageTraining(active,user,profile)?`<aside class="ht-management">${button('edit','Editar treinamento',`data-id="${h(active.id)}" class="ht-secondary"`)}${active.hasAudit?`<div class="ht-audit-banner"><div><strong>Auditoria desta ROP</strong><p>Instrumento operacional vinculado ao tema. A conclusão não concede pontos.</p></div>${button('audit','Realizar auditoria')}</div>`:''}</aside>`:'';}
@@ -344,7 +351,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
       }
       if(action==='toggle-folder'){
         if(!accessAdmin())return;
-        const path=JSON.parse(b.dataset.folder),enabled=folderAccess.disabled.includes(JSON.stringify(path));
+        const path=JSON.parse(b.dataset.folder),enabled=b.dataset.enabled==='true';
         const result=await call('SET_FOLDER_ACCESS',{path,enabled,expectedVersion:folderAccess.version});
         if(!watchingPolicy){folderAccess=result.folderAccess;await loadCatalog();}
         return;

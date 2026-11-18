@@ -7,7 +7,7 @@ import {communicationSenderRole,operationalNoticeIdentity,urgentNoticeInput,RELE
 import {COMMUNICATION_LIMITS,communicationUsagePeriod} from '../src/communication-usage.js';
 import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
 import {createObligationService} from './obligation-service.js';
-import {sameObligation,validateObligation} from '../communication/obligations.js';
+import {OBLIGATION_HOUR,sameObligation,validObligationHours,validateObligation} from '../communication/obligations.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
@@ -86,7 +86,11 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
  }):null;
  async function saveMessage(input,a,{event=false,release=false,releaseAt=0,releaseDevices=null,activityInput=null}={}){
   const key=input.id?id(input.id):uuid(),m=validateMessage(input.message,now());
-  if(activityInput){m.activity=validateObligation(activityInput.activity);m.hasActivity=true;}
+  if(activityInput){
+   if(!validObligationHours(activityInput.deadlineHours,m.publishAt))throw fail('COMM_INVALID_DEADLINE');
+   m.activity=validateObligation(activityInput.activity);m.hasActivity=true;
+   m.dueAt=m.publishAt+activityInput.deadlineHours*OBLIGATION_HOUR;
+  }
   if((!event&&key.startsWith('event-'))||(!release&&key.startsWith('release-'))||(!activityInput&&key.startsWith('activity-')))throw fail('COMM_INVALID_ID');
   let individual;
   if(!event&&!activityInput&&m.audienceType==='USER'){individual=await store.get('users',m.audienceValue);if(!activeProfile(individual)||isSystemOwnerEmail(individual.email))throw fail('COMM_INVALID_AUDIENCE');}
@@ -410,7 +414,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(action==='SENT_MESSAGES'&&!communicationSenderRole(a.email))throw fail('COMM_FORBIDDEN',403);
   // Validate authorization before accessing directory, rate records or messages.
   const ownProfile=await profile(a.uid,a.email);a={...a,sourceUid:ownProfile.uid};await admit(a,action);
-  if(['ACTIVITY_CATALOG','PREVIEW_ACTIVITY','CREATE_ACTIVITY','CANCEL_ACTIVITY','PENDING_ACTIVITIES','VERIFY_ACTIVITY'].includes(action)){
+  if(['ACTIVITY_CATALOG','PREVIEW_ACTIVITY','CREATE_ACTIVITY','CANCEL_ACTIVITY','UPDATE_ACTIVITY_DEADLINE','PENDING_ACTIVITIES','VERIFY_ACTIVITY'].includes(action)){
    if(action==='PENDING_ACTIVITIES'&&!history&&Object.keys(input).length===0)return {items:[],serverNow:now()};
    if(!history||!activitySource)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);
    return obligations.execute(action,input,a);

@@ -1,10 +1,18 @@
 import {fail} from './domain.js';
-export const OBLIGATION_DAY=86_400_000;
+export const OBLIGATION_HOUR=3_600_000;
+export const OBLIGATION_DAY=24*OBLIGATION_HOUR;
+export const DEFAULT_OBLIGATION_DAYS=5;
 export const SURVEY_ACTIVITIES=Object.freeze({professional:'Cadastro Profissional - SAHMT',epidemiological:'Cadastro Epidemiológico SAHMT',climate:'Pesquisa de Clima Organizacional',stress:'Avaliação de Estresse e Fadiga'});
 const identifier=v=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,199}$/.test(v);
-export function obligationStage(publishedAt,serverNow){
+export function validObligationHours(hours,startsAt){
+ return Number.isSafeInteger(hours)&&hours>0&&Number.isFinite(new Date(startsAt+hours*OBLIGATION_HOUR).getTime());
+}
+export const obligationDueAt=({publishAt,dueAt})=>Number.isSafeInteger(dueAt)&&dueAt>publishAt&&Number.isFinite(new Date(dueAt).getTime())?dueAt:publishAt+DEFAULT_OBLIGATION_DAYS*OBLIGATION_DAY;
+export function obligationStage(publishedAt,serverNow,dueAt){
  if(![publishedAt,serverNow].every(v=>Number.isSafeInteger(v)&&v>=0))throw fail('COMM_INVALID_ACTIVITY');
- return Math.min(5,Math.max(0,Math.floor((serverNow-publishedAt)/OBLIGATION_DAY)));
+ const deadline=obligationDueAt({publishAt:publishedAt,dueAt});
+ if(serverNow>=deadline)return 5;
+ return Math.min(4,Math.max(0,Math.floor((serverNow-publishedAt)*5/(deadline-publishedAt))));
 }
 export function validateObligation(value){
  const keys=value?.kind==='TRAINING'?['kind','id','title','version','minimumScore','maxScore']:['kind','id','title','cycle'];

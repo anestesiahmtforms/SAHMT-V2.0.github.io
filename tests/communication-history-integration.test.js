@@ -29,7 +29,12 @@ test('activity preview, publication, own pending and confirmed completion use re
  const input={id:'activity-one',previewId:preview.previewId,title:'Pesquisa obrigatória',description:'Responda ao ciclo',confirmed:true};
  const published=await f.call('CREATE_ACTIVITY',input);assert.equal(published.message.hasActivity,true);
  assert.equal((await f.call('CREATE_ACTIVITY',input)).alreadySent,true);
- assert.equal((await f.call('PENDING_ACTIVITIES',{},person)).items.length,1);
+ const [pending]=(await f.call('PENDING_ACTIVITIES',{},person)).items;
+ const updated={id:pending.id,expectedDueAt:pending.dueAt,deadlineHours:6};
+ await assert.rejects(f.call('UPDATE_ACTIVITY_DEADLINE',updated,person),{code:'COMM_FORBIDDEN'});
+ const next=await f.call('UPDATE_ACTIVITY_DEADLINE',updated);
+ assert.equal(next.dueAt,time+6*3600000);
+ assert.equal((await f.call('PENDING_ACTIVITIES',{},person)).items[0].dueAt,next.dueAt);
  assert.equal((await f.call('VERIFY_ACTIVITY',{id:'activity-one'},person)).completed,true);
  assert.equal((await f.call('PENDING_ACTIVITIES',{},person)).items.length,0);
  const detail=await f.call('SENT_DETAIL',{id:'activity-one'});assert.equal(detail.recipients[0].sourceCompletedAt,null);assert.equal(detail.recipients[0].completedAt,time);

@@ -29,3 +29,19 @@ test('history completion updates only own selected recipient and records authori
  const detail=await h.detail({id:'event-1'});assert.equal(detail.recipients[0].completedAt,now-100);assert.equal(detail.recipients[1].completedAt,null);assert.equal(detail.recipients[1].score,null);
  assert.equal((await f.store.get('communicationHistoryPending','event-1')).events.filter(e=>e.type==='COMPLETED').length,1);
 });
+test('an administrator can shorten and extend an active deadline and Drive records both changes',async()=>{
+ const f=fixture(),h=f.create(),hour=3600000,actor={uid:'ff-admin',sourceUid:'admin',email:'admin@example.test'};
+ const original=now+120*hour,shortened=now+12*hour,extended=now+160*hour;
+ Object.assign(f.message,{hasActivity:true,dueAt:original});
+ await seed(f,h);
+ assert.equal((await h.updateDeadline('event-1',actor,original,shortened)).dueAt,shortened);
+ await assert.rejects(h.updateDeadline('event-1',actor,original,extended),{code:'COMM_ACTIVITY_DEADLINE_CHANGED'});
+ assert.equal((await h.updateDeadline('event-1',actor,shortened,extended)).dueAt,extended);
+ assert.equal((await h.detail({id:'event-1'})).recipients[0].status,'PENDING');
+ await h.consume({messageId:'event-1'});
+ const events=f.writes[0].filter(row=>row.values[0][3]==='DEADLINE_CHANGED').map(row=>JSON.parse(row.values[0][5]));
+ assert.deepEqual(events,[
+  {previousDueAt:original,dueAt:shortened,actorEmail:actor.email},
+  {previousDueAt:shortened,dueAt:extended,actorEmail:actor.email}
+ ]);
+});

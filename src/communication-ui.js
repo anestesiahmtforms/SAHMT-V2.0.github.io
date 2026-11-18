@@ -20,6 +20,7 @@ const errors = {
   COMM_HISTORY_CONFIG_REQUIRED: 'O catálogo não está disponível porque o histórico do FF ainda não está configurado. Confira a planilha e o identificador do histórico nas configurações do Worker.',
   COMM_ACTIVITY_UNAVAILABLE: 'A atividade não está disponível. Recarregue e escolha outra atividade publicada.',
   COMM_INVALID_ACTIVITY: 'Confira a atividade publicada e a nota mínima informada.',
+  COMM_INVALID_DEADLINE: 'Informe um prazo válido em dias ou horas.',
   COMM_HISTORY_UNAVAILABLE: 'O histórico está indisponível. Tente novamente.',
   COMM_HISTORY_FORBIDDEN: 'O serviço não conseguiu acessar o histórico. Solicite a revisão do acesso administrativo.',
 };
@@ -269,7 +270,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     composeState = undefined;
     activityState ??= {};
     openActivityComposer({root, client, render, status, report, isCurrent: active, audienceOptions,
-      loadDirectory, state: activityState, onRecover: recoverGoogle, user: appSession.user});
+      loadDirectory, state: activityState, onRecover: recoverGoogle});
   }
   function receivedCard(message, open = false) {
     const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?

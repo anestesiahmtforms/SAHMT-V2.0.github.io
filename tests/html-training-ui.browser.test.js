@@ -212,6 +212,12 @@ test('HTML training opens directly with compact personal folders on desktop/mobi
   assert.equal(await page.locator('.ht-head h2').textContent(),'GESTÃO DE DOCUMENTOS','admin control changes access without navigating');
   await adminFolder.click();
   assert.equal(await page.locator('.ht-head h2').textContent(),'PROTOCOLOS');
+  const activityToggle=page.locator('[data-training-activity-toggle]');
+  assert.equal(await activityToggle.innerText(),'ATIVAR ATIVIDADE');
+  await activityToggle.click();
+  await page.waitForFunction(()=>document.querySelector('[data-training-activity-toggle]')?.textContent==='DESATIVAR ATIVIDADE');
+  await activityToggle.click();
+  await page.waitForFunction(()=>document.querySelector('[data-training-activity-toggle]')?.textContent==='ATIVAR ATIVIDADE');
   assert.equal(await page.evaluate(()=>window.trainingBack()),true);
   await page.evaluate(()=>window.mount());
   await page.getByRole('button',{name:'Protocolos',exact:true}).waitFor();

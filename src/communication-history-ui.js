@@ -1,5 +1,6 @@
 import {escapeNoticeHtml as esc,linkedNoticeText} from './communication-notice-text.js';
-import {activityDescription} from './communication-activity-ui.js';
+import {activityDeadlineFields,activityDescription,deadlineHoursFromForm} from './communication-activity-ui.js';
+import {obligationDueAt,validObligationHours} from '../communication/obligations.js';
 
 export function communicationDate(value) {
   if (!value) return 'Não registrado';
@@ -42,7 +43,10 @@ export function openCommunicationHistory({root,client,render,status,report,isCur
     container.dataset.loading='true';container.textContent='Carregando destinatários e registros…';
     try{const result=await client.request('SENT_DETAIL',{id:item.id,...(item.historyRow?{historyRow:item.historyRow}:{})});if(!current()||!card.isConnected)return;
       const message=result.message;card.querySelector('.comm-message').innerHTML=linkedNoticeText(message.message||message.description||'');
+      const dueAt=message.activity?obligationDueAt(message):0;
+      const canChangeDeadline=dueAt>0&&message.status==='published'&&result.recipients.some(person=>person.status==='PENDING');
       container.innerHTML=`${message.activity?`<p>${esc(activityDescription(message.activity))}</p>`:''}
+        ${dueAt?`<p>Prazo atual: <strong>${esc(communicationDate(dueAt))}</strong></p>`:''}
         <p>${result.syncPending?'Arquivamento pendente de sincronização.':'Sem sincronização pendente informada.'}</p>
         ${message.cancellationReason?`<p>Cancelamento: ${esc(message.cancellationReason)}</p>`:''}
         <p class="comm-note">Push: ${esc(message.pushStatus||'situação não registrada neste histórico')}.</p>
@@ -50,6 +54,7 @@ export function openCommunicationHistory({root,client,render,status,report,isCur
         <label>Filtrar destinatário ou situação<input type="search" data-recipient-filter placeholder="Nome, e-mail, grupo ou situação"></label>
         <div class="comm-history-recipients">${result.recipients.map(person=>`<article class="comm-recipient-record"><h4>${esc(person.displayName||person.email||person.uid)}</h4><p>${esc(person.email)} · ${esc(person.institutionalGroup)} · ${esc(person.uid)}</p><p>${esc(recipientStatus(person,message.activity))}</p><p>Mensagem aberta: ${person.readAt?esc(communicationDate(person.readAt)):'não registrada'}</p>${message.activity?`<p>Conclusão confirmada: ${person.completedAt?esc(communicationDate(person.confirmedAt||person.completedAt)):'não registrada'}</p>${person.sourceCompletedAt?`<p>Conclusão na origem: ${esc(communicationDate(person.sourceCompletedAt))}</p>`:''}${person.score!=null?`<p>Nota confirmada: ${esc(person.score)}</p>`:''}`:''}</article>`).join('')}</div>`}
         ${result.syncPending?'<button type="button" data-history-retry>REPETIR SINCRONIZAÇÃO</button>':''}
+        ${canChangeDeadline?`<form data-update-activity-deadline data-due-at="${dueAt}">${activityDeadlineFields('Novo prazo a partir de agora')}<button type="submit">ALTERAR PRAZO</button></form>`:''}
         ${message.activity&&message.status!=='cancelled'?'<form data-cancel-activity><label>Justificativa do cancelamento<textarea name="reason" minlength="5" maxlength="1000" required></textarea></label><button type="submit">CANCELAR CONVOCAÇÃO</button><p class="comm-note">Encerra as pendências desta convocação para todos os destinatários. A justificativa fica registrada no histórico.</p></form>':''}`;
       container.dataset.loaded='true';
     }catch(error){if(!current()||!card.isConnected)return;if(recover(error))return;container.innerHTML='<p>Não foi possível consultar os registros.</p><button type="button" data-detail-retry>TENTAR NOVAMENTE</button>';report(error);}
@@ -73,6 +78,25 @@ export function openCommunicationHistory({root,client,render,status,report,isCur
     const reason=cancelForm.elements.reason.value.trim();if(reason.length<5)return status('Descreva a justificativa com ao menos cinco caracteres.',true);button.disabled=true;
     try{await client.request('CANCEL_ACTIVITY',{id:card.dataset.sentId,reason});if(current()&&card.isConnected){status('Convocação cancelada. Justificativa registrada.');await detail(card,true);}}
     catch(error){if(current())report(error,'Não foi possível confirmar o cancelamento. Tente novamente.');}finally{button.disabled=false;}
+  });
+  list.addEventListener('submit',async event=>{
+    const deadlineForm=event.target;if(!deadlineForm.matches('[data-update-activity-deadline]'))return;
+    event.preventDefault();
+    const button=deadlineForm.querySelector('button'),card=deadlineForm.closest('[data-sent-id]');
+    if(button.disabled||!current())return;
+    const deadlineHours=deadlineHoursFromForm(deadlineForm.elements);
+    if(!validObligationHours(deadlineHours,Date.now()))return status('Informe um prazo válido em dias ou horas.',true);
+    button.disabled=true;
+    try{
+      const result=await client.request('UPDATE_ACTIVITY_DEADLINE',{id:card.dataset.sentId,deadlineHours,expectedDueAt:Number(deadlineForm.dataset.dueAt)});
+      if(current()&&card.isConnected){status(`Prazo alterado para ${communicationDate(result.dueAt)}.`);await detail(card,true);}
+    }catch(error){
+      if(!current()||!card.isConnected||recover(error))return;
+      if(error.code==='COMM_ACTIVITY_DEADLINE_CHANGED'){
+        status('O prazo mudou. Confira o prazo atual antes de alterar novamente.',true);
+        await detail(card,true);
+      }else report(error,'Não foi possível confirmar a alteração do prazo.');
+    }finally{button.disabled=false;}
   });
   void load();
 }

@@ -1,7 +1,7 @@
 import {Buffer} from 'node:buffer';
 import {createHash} from 'node:crypto';
 import {BUILTIN_GROUPS,fail,id,text} from '../communication/domain.js';
-import {sameObligation,validateObligation} from '../communication/obligations.js';
+import {DEFAULT_OBLIGATION_DAYS,OBLIGATION_HOUR,obligationDueAt,sameObligation,validObligationHours,validateObligation} from '../communication/obligations.js';
 
 const PREVIEWS='communicationActivityPreviews',MESSAGES='communicationMessages',RECIPIENTS='communicationMessageRecipients',INDEX='communicationObligationIndex';
 const exact=(value,keys,optional=[])=>value&&typeof value==='object'&&!Array.isArray(value)&&keys.every(k=>Object.hasOwn(value,k))&&Object.keys(value).every(k=>keys.includes(k)||optional.includes(k));
@@ -94,11 +94,13 @@ export function createObligationService({store,source,history,saveActivity,resol
    return source.catalog({kind:input.kind});
   }
   if(action==='PREVIEW_ACTIVITY'){
-   if(!exact(input,['activity','audience'],['recipient']))throw fail('COMM_INVALID_INPUT');
+   if(!exact(input,['activity','audience'],['recipient','deadlineHours']))throw fail('COMM_INVALID_INPUT');
+   const deadlineHours=Object.hasOwn(input,'deadlineHours')?input.deadlineHours:DEFAULT_OBLIGATION_DAYS*24;
+   if(!validObligationHours(deadlineHours,serverNow))throw fail('COMM_INVALID_DEADLINE');
    const selection=audienceChecked(input),activity=await authoritative(input.activity);
    const selected=recipientsChecked(await resolveRecipients(selection,actor)),result=await eligible(activity,selected),previewId=id(uuid());
-   await store.transaction(async tx=>tx.create(PREVIEWS,previewId,{sourceUid:actor.sourceUid,selection,activity,selected,recipients:result.recipients,excluded:result.excluded,createdAt:serverNow,expiresAt:serverNow+600000}));
-   return {previewId,activity,...result};
+   await store.transaction(async tx=>tx.create(PREVIEWS,previewId,{sourceUid:actor.sourceUid,selection,activity,deadlineHours,selected,recipients:result.recipients,excluded:result.excluded,createdAt:serverNow,expiresAt:serverNow+600000}));
+   return {previewId,activity,deadlineHours,...result};
   }
   if(action==='CREATE_ACTIVITY'){
    if(!exact(input,['id','previewId','title','description','confirmed'])||input.confirmed!==true)throw fail('COMM_INVALID_INPUT');
@@ -127,7 +129,7 @@ export function createObligationService({store,source,history,saveActivity,resol
     if(!current.claim)tx.set(PREVIEWS,previewId,{...current,claim:{id:messageId,fingerprint:hash,at:serverNow}});
    });
    const audience=preview.selection.audience;
-   return saveActivity({id:messageId,previewId,fingerprint:hash,title,description,activity,recipients:fresh.recipients,audienceType:['ALL','USER'].includes(audience)?audience:'GROUP',audienceValue:audience==='ALL'?'':audience==='USER'?preview.selection.recipient:audience},actor);
+   return saveActivity({id:messageId,previewId,fingerprint:hash,title,description,activity,deadlineHours:preview.deadlineHours??DEFAULT_OBLIGATION_DAYS*24,recipients:fresh.recipients,audienceType:['ALL','USER'].includes(audience)?audience:'GROUP',audienceValue:audience==='ALL'?'':audience==='USER'?preview.selection.recipient:audience},actor);
   }
   if(action==='PENDING_ACTIVITIES'){
    if(!exact(input,[]))throw fail('COMM_INVALID_INPUT');
@@ -141,7 +143,7 @@ export function createObligationService({store,source,history,saveActivity,resol
     if(!message||message.id!==ids[n]||message.hasActivity!==true)throw unavailable();
     const row=ownRow(snapshots[n],ids[n],actor.sourceUid);
     if(row.status!=='PENDING'||message.status!=='published'||message.publishAt>serverNow)continue;
-    items.push({id:message.id,title:message.title,message:message.message,publishAt:message.publishAt,activity:validateObligation(message.activity),status:'PENDING'});
+    items.push({id:message.id,title:message.title,message:message.message,publishAt:message.publishAt,dueAt:obligationDueAt(message),activity:validateObligation(message.activity),status:'PENDING'});
    }
    items.sort((a,b)=>a.publishAt-b.publishAt||a.id.localeCompare(b.id));return {items,serverNow};
   }
@@ -164,6 +166,12 @@ export function createObligationService({store,source,history,saveActivity,resol
    if(saved.status!=='COMPLETED')return {id:messageId,completed:false,unavailable:true,reason:'ACTIVITY_CANCELLED',serverNow:clock()};
    await removeIndex(messageId,actor.sourceUid);
    return {id:messageId,...evidence(saved),serverNow:clock()};
+  }
+  if(action==='UPDATE_ACTIVITY_DEADLINE'){
+   if(!exact(input,['id','deadlineHours','expectedDueAt'])||!Number.isSafeInteger(input.expectedDueAt)||input.expectedDueAt<=0)throw fail('COMM_INVALID_INPUT');
+   if(!validObligationHours(input.deadlineHours,serverNow))throw fail('COMM_INVALID_DEADLINE');
+   const messageId=id(input.id);
+   return history.updateDeadline(messageId,actor,input.expectedDueAt,serverNow+input.deadlineHours*OBLIGATION_HOUR);
   }
   if(action==='CANCEL_ACTIVITY'){
    if(!exact(input,['id','reason']))throw fail('COMM_INVALID_INPUT');const messageId=id(input.id),reason=text(input.reason,2000);

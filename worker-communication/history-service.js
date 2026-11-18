@@ -1,5 +1,6 @@
 import {id,fail} from '../communication/domain.js';
 import {historyMessageRow,historyRecipientRow,historyEventRow} from '../communication/history.js';
+import {obligationDueAt} from '../communication/obligations.js';
 const exactId=input=>{if(!input||Object.keys(input).length!==1)throw fail('COMM_INVALID_INPUT');return id(input.id);};
 const pending=(messageId)=>({messageId,events:[],lease:null,done:false});
 export function createCommunicationHistory({store,drive,pushQueue,now=Date.now,year=2026,uuid=()=>crypto.randomUUID()}={}){
@@ -13,7 +14,7 @@ export function createCommunicationHistory({store,drive,pushQueue,now=Date.now,y
   const counter=await nextCounter(tx),binding={year,messageRow:counter.nextMessageRow++,recipientStart:counter.nextRecipientRow,recipientCount:recipients.length};counter.nextRecipientRow+=recipients.length;
   if(counter.nextMessageRow>200001||counter.nextRecipientRow>200001)throw fail('COMM_HISTORY_CAPACITY',409);
   const snapshot={messageId:message.id,binding,version:1,syncVersion:0,legacy,items:recipients.map(r=>({uid:id(r.uid),email:r.email||'',displayName:r.displayName||'',institutionalGroup:r.institutionalGroup||'',readAt:null,completedAt:null,sourceCompletedAt:null,score:null,status:'PENDING'}))};
-  const job={...pending(message.id),legacy,events:[event(counter,message.id,legacy?'LEGACY_IMPORTED':'PUBLISHED','',{audienceType:message.audienceType,audienceValue:message.audienceValue,recipientCount:legacy?null:recipients.length})]};
+  const job={...pending(message.id),legacy,events:[event(counter,message.id,legacy?'LEGACY_IMPORTED':'PUBLISHED','',{audienceType:message.audienceType,audienceValue:message.audienceValue,recipientCount:legacy?null:recipients.length,...(message.hasActivity?{dueAt:obligationDueAt(message)}:{})})]};
   writeCounter(tx,counter);tx.create('communicationMessageRecipients',message.id,snapshot);tx.create('communicationHistoryPending',message.id,job);return binding;
  }
  async function mark(input,uid,type,evidence){
@@ -133,5 +134,24 @@ export function createCommunicationHistory({store,drive,pushQueue,now=Date.now,y
    writeCounter(tx,counter);tx.set('communicationMessages',key,{...message,status:'cancelled',cancelledAt:now(),cancellationReason:reason.trim()});tx.set('communicationMessageRecipients',key,snapshot);tx.set('communicationHistoryPending',key,work);return {cancelled:true};
   });return {...result,syncQueued:await send(key)};
  }
- return {reserve,afterPublish:message=>send(message.id),markRead:(input,uid)=>mark(input,uid,'READ'),markCompletion:(input,uid,evidence)=>mark(input,uid,'COMPLETED',evidence),cancel,detail,consume,compact,recover};
+ async function updateDeadline(key,actor,expectedDueAt,dueAt){
+  const result=await store.transaction(async tx=>{
+   const [message,snapshot,job,counter]=await Promise.all([tx.get('communicationMessages',key),tx.get('communicationMessageRecipients',key),tx.get('communicationHistoryPending',key),nextCounter(tx)]);
+   if(!message?.hasActivity||!snapshot)throw fail('COMM_NOT_FOUND',404);
+   if(message.status!=='published'||!snapshot.items.some(person=>person.status==='PENDING'))throw fail('COMM_NOT_CURRENT',409);
+   const previousDueAt=obligationDueAt(message);
+   if(previousDueAt!==expectedDueAt)throw fail('COMM_ACTIVITY_DEADLINE_CHANGED',409);
+   const work=job?.done===true?pending(key):job||pending(key);
+   if(work.events.length>=500)throw fail('COMM_HISTORY_CAPACITY',409);
+   const change=event(counter,key,'DEADLINE_CHANGED',actor.sourceUid,{previousDueAt,dueAt,actorEmail:actor.email});
+   change.id+=':'+change.row;
+   work.events.push(change);
+   writeCounter(tx,counter);
+   tx.set('communicationMessages',key,{...message,dueAt,expiresAt:Math.max(message.expiresAt,dueAt),updatedAt:now(),updatedBy:{uid:actor.uid,sourceUid:actor.sourceUid,email:actor.email}});
+   tx.set('communicationHistoryPending',key,work);
+   return {dueAt};
+  });
+  return {...result,syncQueued:await send(key)};
+ }
+ return {reserve,afterPublish:message=>send(message.id),markRead:(input,uid)=>mark(input,uid,'READ'),markCompletion:(input,uid,evidence)=>mark(input,uid,'COMPLETED',evidence),cancel,updateDeadline,detail,consume,compact,recover};
 }

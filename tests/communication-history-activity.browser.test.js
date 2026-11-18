@@ -47,6 +47,52 @@ test('Central real components: catalog, preview, exact retry, history, receipts 
    const sends=await page.evaluate(()=>window.calls.filter(call=>call.action==='CREATE_ACTIVITY'));
    assert.deepEqual(sends.map(call=>call.input.previewId),['preview-1','preview-2']);
   });
+  await t.test('o prazo pode ser informado em horas e alterado em dias no histórico',async()=>{
+   await setup('?deadline');
+   assert.equal(await page.locator('[data-activity-source]').count(),0);
+   await page.getByLabel('Prazo para esta atividade').fill('6');
+   await page.getByLabel('Unidade').selectOption('hours');
+   await open('CONFERIR DESTINATÁRIOS');
+   await page.getByText('Prazo: 6 hora(s) a partir do envio.',{exact:true}).waitFor();
+   assert.equal(await page.evaluate(()=>window.calls.find(c=>c.action==='PREVIEW_ACTIVITY').input.deadlineHours),6);
+   await page.goto(url+'?deadline');await open('MENSAGENS ENVIADAS');
+   await page.locator('[data-sent-id] summary').first().click();
+   const editor=page.locator('[data-update-activity-deadline]');
+   await editor.getByLabel('Novo prazo a partir de agora').fill('2');
+   await editor.getByRole('button',{name:'ALTERAR PRAZO'}).click();
+   await page.getByText(/^Prazo alterado para/).waitFor();
+   assert.equal(await page.evaluate(()=>window.calls.find(c=>c.action==='UPDATE_ACTIVITY_DEADLINE').input.deadlineHours),48);
+   await editor.getByLabel('Novo prazo a partir de agora').fill('9');
+   await editor.getByLabel('Unidade').selectOption('hours');
+   await editor.getByRole('button',{name:'ALTERAR PRAZO'}).click();
+   await page.waitForFunction(()=>window.calls.filter(c=>c.action==='UPDATE_ACTIVITY_DEADLINE').length===2);
+   assert.deepEqual(await page.evaluate(()=>window.calls.filter(c=>c.action==='UPDATE_ACTIVITY_DEADLINE').map(c=>c.input.deadlineHours)),[48,9]);
+  });
+  await t.test('o modal de Atividade acompanha a altura dos campos e fica centralizado',async()=>{
+   await setup('?hub');
+   await page.getByLabel('Público').selectOption('USER');
+   await page.getByLabel('Destinatário').selectOption('synthetic-person');
+   const modal=page.locator('.management-hub-dialog');
+   const size=await modal.evaluate(dialog=>{
+    const r=dialog.getBoundingClientRect(),body=dialog.querySelector('.management-hub-body');
+    const form=dialog.querySelector('[data-activity-form]').getBoundingClientRect(),footer=dialog.querySelector('.comm-actions').getBoundingClientRect();
+    return {center:r.y+r.height/2,height:r.height,viewport:innerHeight,gap:footer.top-form.bottom,scroll:body.scrollHeight-body.clientHeight};
+   });
+   assert.ok(Math.abs(size.center-size.viewport/2)<=2,JSON.stringify(size));
+   assert.ok(size.height<size.viewport-36&&size.gap<=16&&size.scroll<=1,JSON.stringify(size));
+   await page.getByLabel('Público').selectOption('ALL');
+   assert.ok((await modal.boundingBox()).height<size.height-30);
+  });
+  await t.test('atividade na origem alterna o estado somente para administrador',async()=>{
+   await page.goto(url+'?survey-toggle');
+   await open('ATIVAR ATIVIDADE');await open('DESATIVAR ATIVIDADE');
+   await page.getByRole('button',{name:'ATIVAR ATIVIDADE',exact:true}).waitFor();
+   assert.deepEqual(await page.evaluate(()=>window.folderRequests),[
+    {folder:'consultas/cadastro-profissional',enabled:true},{folder:'consultas/cadastro-profissional',enabled:false}
+   ]);
+   await page.goto(url+'?survey-toggle&common');await page.getByRole('dialog').waitFor();
+   assert.equal(await page.getByRole('button',{name:/ativar atividade/i}).count(),0);
+  });
   await t.test('editing invalidates preview; surveys have cycle and no minimum; no late send',async()=>{
    await setup();await open('CONFERIR DESTINATÁRIOS');await page.getByRole('button',{name:'ENVIAR ATIVIDADE',exact:true}).waitFor();
    await open('REVISAR SELEÇÃO');await page.getByLabel('Definir atividade').selectOption('SURVEY:survey-synthetic');assert.equal(await page.getByLabel('Nota mínima').isVisible(),false);assert.equal(await page.locator('[data-confirm-activity]').count(),0);

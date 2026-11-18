@@ -1,4 +1,4 @@
-import {obligationStage,OBLIGATION_DAY} from '../communication/obligations.js';
+import {obligationDueAt,obligationStage} from '../communication/obligations.js';
 import {activityBreadcrumb} from './communication-activity-selection.js';
 import './communication-obligation-banner.css';
 
@@ -13,7 +13,7 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  const listen=(target,type,fn,options)=>{target.addEventListener(type,fn,options);listeners.push(()=>target.removeEventListener(type,fn,options));};
  const alive=()=>{if(disposed)return false;if(!uid||!isCurrent()){cleanup();return false;}return true;};
  const current=()=>items.find(item=>item.id===selectedId)||items[0];
- const stage=()=>items.length&&serverNow!==null?Math.max(...items.map(item=>obligationStage(item.publishAt,serverNow))):0;
+ const stage=()=>items.length&&serverNow!==null?Math.max(...items.map(item=>obligationStage(item.publishAt,serverNow,item.dueAt))):0;
  function restoreInert(){for(const [el,previous]of inertBefore)el.inert=previous;inertBefore.clear();}
  function applyBlocking(){
   restoreInert();if(!blocking||!node.isConnected)return;
@@ -54,12 +54,12 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   const savedPath=item.message?.match(/^Caminho no app: (Home › [^\r\n]+)$/m)?.[1];
   find('[data-path]').textContent=savedPath||activityBreadcrumb(activity);
   find('[data-criterion]').textContent=activity?.kind==='TRAINING'?`Nota mínima: ${activity.minimumScore} de ${activity.maxScore}.`:'';
-  const clock=new Date(item.publishAt+5*OBLIGATION_DAY).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
+  const clock=new Date(obligationDueAt(item)).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
   find('[data-deadline]').textContent=`Prazo: ${clock}.`;
   find('[data-status]').textContent=error||(item.unavailable?'Atividade indisponível. Procure o administrador.':'');
   find('[data-open]').disabled=!item||interacting>0;
-  const active=items.some(value=>value.id===activeId);
-  blocking=stage()===5&&!active&&!interacting;node.dataset.stage=String(stage());node.dataset.blocking=String(blocking);node.dataset.active=String(active||interacting>0);
+  const active=items.some(value=>value.id===activeId),currentStage=stage();
+  blocking=currentStage===5&&!active&&!interacting;node.dataset.stage=String(currentStage);node.dataset.blocking=String(blocking);node.dataset.active=String(active||interacting>0);
   if(blocking){node.style.left='0px';node.style.top='0px';}
   host();
  }

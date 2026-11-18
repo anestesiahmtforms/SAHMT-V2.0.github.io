@@ -1,6 +1,6 @@
 import {formatDisplayDate, formatDisplayDateTime} from './date-format.js';
 import {homeScheduleCache} from './home-entry-cache.js';
-import {operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalRouteActivityAllowed, operationalContentAllowed, watchOperationalFolderPolicy, setOperationalFolderSession, operationalFolderNotice} from './operational-folder-runtime.js';
+import {operationalFolderPolicy, operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalRouteActivityAllowed, operationalContentAllowed, watchOperationalFolderPolicy, setOperationalFolderSession, operationalFolderNotice} from './operational-folder-runtime.js';
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
 import {isChecklistScienceOpen} from './checklist-science-clock.js';
 import {createAccountMode} from './account-mode.js';
@@ -9,7 +9,7 @@ import {fbPerformanceEnabled,fbPerformanceReleaseEnabled} from './fb-performance
 import {mountVaccinationEntry} from './vaccination-entry.js';
 import {discardLegacyOfflineData} from './discard-legacy-offline-data.js';
 import './styles.css';
-import {operationalRouteFolder, operationalFolders} from './operational-folders.js';
+import {operationalFolderAllowed, operationalRouteFolder, operationalFolders} from './operational-folders.js';
 import {renderOperationalFolderDirectory} from './operational-folder-directory.js';
 import './home-layout.css';
 import './performance-ui.css';
@@ -1602,7 +1602,18 @@ async function loadModule(route) {
     if(!content.isConnected||!currentHub())return;
     const professionalAllowed=consultationsAllowed||epidemiologicalAllowed;
     const initialPanel=location.hash.split('/')[2]||'home';
+    const canManageActivity=()=>typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&deployment.target==='FA'&&!participantOnly&&can('admin')&&currentHub();
+    const activityAvailability=folder=>{
+      const policy=operationalFolderPolicy();
+      return canManageActivity()&&policy?.revision>0&&!policy.pending?operationalFolderAllowed(policy,folder):null;
+    };
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,folderNotice:operationalFolderNotice,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+      activityAvailability,
+      setActivityAvailability:async(folder,enabled,isCurrent)=>{
+        const {fiControlRequest}=await import('./fi-control-client.js');
+        if(!canManageActivity()||!isCurrent()||activityAvailability(folder)!==!enabled)throw Error('FOLDER_POLICY_CONFLICT');
+        return fiControlRequest('folders.publish',{id:folder,enabled,revision:operationalFolderPolicy().revision},uid);
+      },
       surveySelection:communicationAdminSession(session)?activitySelectionFor(session.user,'SURVEY'):null,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
