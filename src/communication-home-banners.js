@@ -1,7 +1,10 @@
 import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from './communication-notice-text.js';
+import {localDateKey} from './schedule-date.js';
 
 const MAX_INBOX_PAGES = 18;
 const MAX_DISMISSED_IDS = 500;
+const checklistNoticeId = () => `event-checklist-conference-${localDateKey()}`;
+const isChecklistConference = item => item?.id === checklistNoticeId();
 
 function dismissedStorageKey(uid) {
   return `sahmt-communication-dismissed-v1:${encodeURIComponent(uid)}`;
@@ -33,10 +36,12 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   const active = () => !disposed && root.isConnected && isCurrent();
   const dismissed = readDismissed(uid);
 
-  function render(items, hasMore = false) {
+  function render(items) {
     if (!active()) return;
-    const merged = new Map(items.map(item => [item.id, item]));
-    for (const item of pushedItems) if (!merged.has(item.id)) merged.set(item.id, item);
+    // General communications live in the inbox. Only the explicitly requested
+    // daily checklist assignment may appear automatically on the home screen.
+    const merged = new Map(items.filter(isChecklistConference).map(item => [item.id, item]));
+    for (const item of pushedItems) if (isChecklistConference(item) && !merged.has(item.id)) merged.set(item.id, item);
     visibleItems = [...merged.values()].filter(item => !dismissed.has(item.id)).sort((a, b) => Number(b.publishAt || 0) - Number(a.publishAt || 0));
     root.innerHTML = visibleItems.map(item => {
       const checklistConference = item.id.startsWith('event-checklist-conference-');
@@ -46,11 +51,11 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
         ${item.linkUrl&&/^https:\/\//.test(item.linkUrl)?`<a class="comm-home-notice__destination" href="${escapeHtml(item.linkUrl)}"${item.linkUrl.startsWith('https://anestesiahmtforms.github.io/')?'':' target="_blank" rel="noopener noreferrer"'}>${escapeHtml(item.linkLabel||'ABRIR DESTINO')}</a>`:''}
         ${checklistConference ? `<p class="comm-home-notice__ack-status" role="status">${escapeHtml(acknowledgementErrors.get(item.id) || '')}</p><button type="button" class="comm-home-notice__ack" data-ack-comm="${escapeHtml(item.id)}" ${acknowledging.has(item.id) ? 'disabled' : ''}>${acknowledging.has(item.id) ? 'REGISTRANDO…' : 'OK'}</button>` : `<a class="comm-home-notice__details" href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>`}
       </article>`;
-    }).join('') + (hasMore ? '<a class="comm-home-notice__more" href="#/communications">Ver mais mensagens recebidas</a>' : '');
+    }).join('');
   }
 
   async function appendPushedMessage(id) {
-    if (!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(id) || dismissed.has(id) || !active() || visibleItems.some(item => item.id === id)) return;
+    if (id !== checklistNoticeId() || dismissed.has(id) || !active() || visibleItems.some(item => item.id === id)) return;
     try {
       const result = await client.request('MESSAGE', {id});
       if (!active() || !result.message || result.message.status !== 'published') return;
@@ -67,13 +72,13 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     lastLoadAt = Date.now();
     let cursor = '';
     let pages = 0;
-    let hasMore = false;
     let loadFailed = false;
     const items = [];
     const seen = new Set();
+    const todayStart = Date.parse(`${localDateKey()}T00:00:00-03:00`);
     try {
       do {
-        const result = await client.request('INBOX', cursor ? {recent: true, cursor} : {recent: true});
+        const result = await client.request('INBOX', cursor ? {recent: true, chronological: true, cursor} : {recent: true, chronological: true});
         if (!active()) return;
         for (const item of result.items || []) {
           if (typeof item?.id === 'string' && !seen.has(item.id)) {
@@ -83,8 +88,9 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
         }
         cursor = typeof result.cursor === 'string' ? result.cursor : '';
         pages++;
-        hasMore = Boolean(cursor && pages >= MAX_INBOX_PAGES);
-        render(items, hasMore);
+        const crossedDayBoundary = (result.items || []).some(item => Number(item.publishAt) < todayStart);
+        render(items);
+        if (crossedDayBoundary) cursor = '';
       } while (cursor && pages < MAX_INBOX_PAGES);
     } catch {
       // Home refresh failures are silent: preserve already loaded notices without
@@ -93,7 +99,7 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
     } finally {
       loading = false;
     }
-    if (active()) render(loadFailed && !items.length ? visibleItems : items, hasMore);
+    if (active()) render(loadFailed && !items.length ? visibleItems : items);
   }
 
   const onClick = event => {
