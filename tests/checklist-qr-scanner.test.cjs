@@ -137,6 +137,39 @@ test('fechar durante getUserMedia descarta a câmera recebida tarde', async () =
   assert.equal(stream.track.stopped, true); assert.equal(h.video.srcObject, null); assert.equal(h.frames.size, 0);
 });
 
+test('o botão abre o modal no primeiro toque mesmo com o catálogo e a câmera pendentes', async () => {
+  const h = harness(), camera = deferred(), button = new Element();
+  h.nodes['#checklist-scan-qr'] = button;
+  h.context.checklistModuleStations = [];
+  h.mediaQueue.push(camera.promise);
+  vm.runInContext(extract('function bindChecklistQrLauncher(', 'async function openChecklistQrScanner('), h.context);
+  h.context.bindChecklistQrLauncher();
+  button.onclick();
+  assert.equal(h.dialog.open, true);
+  assert.match(h.status.textContent, /Solicitando acesso à câmera/);
+  h.stop();
+  camera.resolve(h.createStream());
+  await drain();
+  assert.equal(h.video.srcObject, null);
+});
+
+test('prévia da câmera que não responde libera a captura e informa como repetir', async () => {
+  const h = harness(), playback = deferred();
+  h.playQueue.push(playback.promise);
+  const opening = h.open();
+  await drain();
+  const stream = h.video.srcObject;
+  assert.ok(stream);
+  h.fireTimer(8000);
+  await opening;
+  assert.equal(stream.track.stopped, true);
+  assert.equal(h.video.srcObject, null);
+  assert.equal(h.dialog.open, true);
+  assert.match(h.status.textContent, /tente novamente/);
+  playback.resolve();
+  h.stop();
+});
+
 test('erro tardio de play da sessão A não apaga vídeo, status ou cleanup da sessão B', async () => {
   const h = harness(), gate = deferred(); h.playQueue.push(gate.promise);
   const firstOpening = h.open(); await drain();
