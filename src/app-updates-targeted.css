@@ -49,6 +49,14 @@
 .app-updates-command .app-update-user { margin: 8px 0 14px; }
 .app-updates-command .app-update-user[hidden] { display: none; }
 .app-updates-command .app-update-user p { margin: 4px 0; }
+.app-updates-command .app-update-user__push[data-push-active="true"] {
+  color: #17623e;
+  font-weight: 750;
+}
+.app-updates-command .app-update-user__push[data-push-active="false"] {
+  color: #ab2626;
+  font-weight: 750;
+}
 
 @media (max-height: 480px) {
   .fi-admin-dialog.app-updates-command[open] > header,
