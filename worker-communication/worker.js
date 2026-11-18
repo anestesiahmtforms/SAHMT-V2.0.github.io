@@ -55,6 +55,12 @@ async function runtime(env,fetchImpl,buildService,actor,headers,{scheduled=false
  const send=async(token,data)=>{
   await store.assertAvailable();
   const r=await fetchImpl(`https://fcm.googleapis.com/v1/projects/${FF.projectId}/messages:send`,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(10000),headers:{Authorization:'Bearer '+await getToken(),'Content-Type':'application/json'},body:JSON.stringify({message:{token,data:{...data,source:'SAHMT_FF'},webpush:{headers:{TTL:'3600',Urgency:'high'}}}})});
+  if(r.status===429||r.status>=500){
+   const retryAfter=r.headers.get('Retry-After')||'';
+   const seconds=/^\d+$/.test(retryAfter)?Number(retryAfter):Math.ceil((Date.parse(retryAfter)-Date.now())/1000);
+   await r.body?.cancel().catch(()=>{});
+   return {status:'failed',reason:r.status===429?'PROVIDER_QUOTA':'PROVIDER_UNAVAILABLE',retryDelaySeconds:Math.min(3600,Math.max(r.status===429?60:30,Number.isFinite(seconds)?seconds:0))};
+  }
   const d=await boundedJson(r,16384),code=d.error?.details?.find(x=>x['@type']==='type.googleapis.com/google.firebase.fcm.v1.FcmError')?.errorCode;
   if(r.ok&&typeof d.name==='string')return {status:'accepted',providerId:d.name};
   if(code==='UNREGISTERED')return {status:'failed',disable:true,reason:'UNREGISTERED'};
@@ -117,7 +123,8 @@ export function createCommunicationWorker({verify=verifyCommunicationActor,build
    if(env.COMMUNICATION_ENABLED!=='true'||env.WORKERS_FREE_CONFIRMED!=='true'){for(const message of batch.messages)message.retry({delaySeconds:30});return;}
    try{
     const service=await runtime(env,limitedFetch(),buildService);
-    for(const message of batch.messages){try{await service.consumePush(message.body);message.ack();}catch{message.retry({delaySeconds:30});}}
+    for(const message of batch.messages){try{await service.consumePush(message.body,{lastAttempt:message.attempts>=6});message.ack();}
+     catch(error){message.retry({delaySeconds:error.retryDelaySeconds||30});}}
    }catch{for(const message of batch.messages)message.retry({delaySeconds:30});}
   },
   async scheduled(event,env){

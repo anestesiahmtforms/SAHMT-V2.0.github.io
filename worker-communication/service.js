@@ -66,6 +66,10 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   const members=group?.active===true?group.memberUids:area?.active===true?[...(area.memberUids||[]),...(area.managerUids||[])]:[];
   return rows.filter(person=>person.id===person.uid&&matches(m,person.uid,person,members));
  }
+ async function rememberRelease(tx,uid,messageId,releaseAt){
+  const prior=await tx.get('communicationReleaseInboxes',uid);
+  if(!prior||Number(prior.releaseAt)<releaseAt)tx.set('communicationReleaseInboxes',uid,{messageId,releaseAt});
+ }
  const obligations=history&&activitySource?createObligationService({
   store,source:activitySource,history,resolveRecipients,now,uuid,
   saveActivity:(input,a)=>saveMessage({
@@ -76,25 +80,28 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    }
   },a,{activityInput:input})
  }):null;
- async function saveMessage(input,a,{event=false,release=false,activityInput=null}={}){
+ async function saveMessage(input,a,{event=false,release=false,releaseAt=0,releaseDevices=null,activityInput=null}={}){
   const key=input.id?id(input.id):uuid(),m=validateMessage(input.message,now());
   if(activityInput){m.activity=validateObligation(activityInput.activity);m.hasActivity=true;}
   if((!event&&key.startsWith('event-'))||(!release&&key.startsWith('release-'))||(!activityInput&&key.startsWith('activity-')))throw fail('COMM_INVALID_ID');
-  if(!event&&!activityInput&&m.audienceType==='USER'){const p=await store.get('users',m.audienceValue);if(!activeProfile(p)||isSystemOwnerEmail(p.email))throw fail('COMM_INVALID_AUDIENCE');}
+  let individual;
+  if(!event&&!activityInput&&m.audienceType==='USER'){individual=await store.get('users',m.audienceValue);if(!activeProfile(individual)||isSystemOwnerEmail(individual.email))throw fail('COMM_INVALID_AUDIENCE');}
   if((m.audienceType==='GROUP'&&!BUILTIN_GROUPS.some(g=>g.id===m.audienceValue))||m.audienceType==='AREA'){const g=await store.get(m.audienceType==='GROUP'?'communicationGroups':'managementAreas',m.audienceValue);if(g?.active!==true)throw fail('COMM_INVALID_AUDIENCE');}
   if(input.source)throw fail('COMM_SOURCE_UNSUPPORTED');const source=null;
-  const recipients=history&&m.status==='published'?(activityInput?.recipients||await messageRecipients(m)):null;
+  const recipients=history&&m.status==='published'?(activityInput?.recipients||(release?[individual]:await messageRecipients(m))):null;
   const saved=await store.transaction(async tx=>{
    const old=await tx.get('communicationMessages',key),dispatch=await tx.get('communicationDispatches',key);
    if((event||release||activityInput)&&old){
     const sameNotice=old.status==='published'&&(release||old.createdBy?.sourceUid===a.sourceUid||event&&key.startsWith('event-checklist-conference-'))&&
      ['title','message','audienceType','audienceValue'].every(field=>old[field]===m[field])&&(!activityInput||old.previewId===activityInput.previewId&&old.fingerprint===activityInput.fingerprint&&JSON.stringify(old.activity)===JSON.stringify(m.activity));
     if(!sameNotice)throw fail('COMM_CONFLICT',409);
-    const mayStart=release&&dispatch?.status==='queueing'&&isCurrentMessage(old,now())&&
+    if(release)await rememberRelease(tx,m.audienceValue,key,releaseAt);
+    const mayStart=release&&dispatch&&dispatch.status!=='completed'&&isCurrentMessage(old,now())&&
      (dispatch.enqueueStatus==='retry'||dispatch.enqueueStatus==='starting'&&dispatch.enqueueStartedAt<=now()-60000);
     const nextDispatch=mayStart?{...dispatch,enqueueStatus:'starting',enqueueStartedAt:now()}:dispatch;
     if(mayStart)tx.set('communicationDispatches',key,nextDispatch);
-    return {message:old,dispatch:nextDispatch,alreadySent:true,startPush:mayStart};
+    const settings=release?await tx.get('communicationSettings','main'):null;
+    return {message:old,dispatch:nextDispatch,alreadySent:true,startPush:mayStart,...(release?{pushEnabled:settings?.pushEnabled===true}:{})};
    }
    if(dispatch)throw fail('COMM_MESSAGE_LOCKED',409);
    if(old?.history)throw fail('COMM_MESSAGE_LOCKED',409);
@@ -117,29 +124,36 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
     if(!activityInput)record.historyArchiveAfter=record.expiresAt;
    }
    if(firstPublish&&activityInput)await obligations.reserveIndex(tx,record,recipients);
+   if(release)await rememberRelease(tx,m.audienceValue,key,releaseAt);
    tx.set('communicationMessages',key,record);
    const settings=release?await tx.get('communicationSettings','main'):null;
-   const automaticDispatch=release&&m.status==='published'&&settings?.pushEnabled===true?{id:key,messageId:key,title:m.title,category:m.category,audienceType:m.audienceType,audienceValue:m.audienceValue,author:actorData(a),createdAt:now(),status:'queueing',cursor:'',version:record.version,processed:0,accepted:0,failed:0,skipped:0,unknown:0,batches:0,pendingCount:1,automatic:true,enqueueStatus:'starting',enqueueStartedAt:now()}:null;
+   const automaticDispatch=release&&m.status==='published'&&settings?.pushEnabled===true?{id:key,messageId:key,title:m.title,category:m.category,audienceType:m.audienceType,audienceValue:m.audienceValue,author:actorData(a),createdAt:now(),status:releaseDevices?'processing':'queueing',cursor:'',version:record.version,processed:0,accepted:0,failed:0,skipped:0,unknown:0,batches:0,pendingCount:releaseDevices?.length??1,automatic:true,enqueueStatus:'starting',enqueueStartedAt:now(),...(releaseDevices?{directDeviceIds:releaseDevices}:{})}:null;
    if(automaticDispatch)tx.create('communicationDispatches',key,automaticDispatch);
    if(firstPublish)for(const [k,v]of [['total',total],[month,monthly]]){v.published++;v.categories[m.category]=(v.categories[m.category]||0)+1;tx.set('communicationMetrics',k,v);}
    if(firstPublish)tx.set('communicationPublicationBudgets',period.day,{published:published+1,at:now()});
-   audit(tx,a,old?'MESSAGE_EDITED':'MESSAGE_CREATED',key,{version:record.version,status:m.status,...(history?{history:record.history||null}:{record}),automaticPush:Boolean(automaticDispatch)});return {message:record,dispatch:automaticDispatch,...(firstPublish?{publicationUsage:{used:published+1,limit:COMMUNICATION_LIMITS.dailyPublications,resetsAt:period.resetsAt}}:{})};
+   audit(tx,a,old?'MESSAGE_EDITED':'MESSAGE_CREATED',key,{version:record.version,status:m.status,...(history?{history:record.history||null}:{record}),automaticPush:Boolean(automaticDispatch)});return {message:record,dispatch:automaticDispatch,...(release?{pushEnabled:settings?.pushEnabled===true}:{}),...(firstPublish?{publicationUsage:{used:published+1,limit:COMMUNICATION_LIMITS.dailyPublications,resetsAt:period.resetsAt}}:{})};
   });
-  if(history&&saved.message.history)saved.syncQueued=await history.afterPublish(saved.message);
   if(release&&saved.dispatch){
    if(saved.alreadySent&&!saved.startPush){
-    const pushPending=saved.dispatch.status==='queueing'&&saved.dispatch.enqueueStatus==='starting'&&isCurrentMessage(saved.message,now());
-    const pushQueued=(!saved.dispatch.enqueueStatus||saved.dispatch.enqueueStatus==='queued')||saved.dispatch.status!=='queueing';
+    const pushPending=saved.dispatch.enqueueStatus==='starting'&&saved.dispatch.status!=='completed'&&isCurrentMessage(saved.message,now());
+    const pushQueued=(!saved.dispatch.enqueueStatus||saved.dispatch.enqueueStatus==='queued')||saved.dispatch.status==='completed';
     return {...saved,pushPending,pushQueued};
    }
    let pushQueued=false;
-   try{await pushQueue.send({kind:'fanout',dispatchId:key,cursor:''});pushQueued=true;}catch{}
+   try{
+    const devices=saved.dispatch.directDeviceIds;
+    if(devices)await pushQueue.sendBatch(devices.map(deviceId=>({body:{kind:'device',dispatchId:key,deviceId}})));
+    else await pushQueue.send({kind:'fanout',dispatchId:key,cursor:''});
+    pushQueued=true;
+   }catch{}
+   if(history&&saved.message.history)saved.syncQueued=await history.afterPublish(saved.message);
    await store.transaction(async tx=>{
     const dispatch=await tx.get('communicationDispatches',key);
     if(dispatch?.enqueueStatus==='starting'&&dispatch.enqueueStartedAt===saved.dispatch.enqueueStartedAt)tx.set('communicationDispatches',key,{...dispatch,enqueueStatus:pushQueued?'queued':'retry'});
    }).catch(()=>{});
    return {...saved,pushQueued,pushPending:!pushQueued};
   }
+  if(history&&saved.message.history)saved.syncQueued=await history.afterPublish(saved.message);
   return {...saved,pushQueued:false};
  }
  function createEvent(input,a){
@@ -175,11 +189,12 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(!schedule||!Array.isArray(schedule.highlights?.siglas)||!schedule.highlights.siglas.includes(sigla)||!Number.isSafeInteger(releaseAt)||releaseAt<=0||releaseAt>now()+60000)throw fail('COMM_NOT_CURRENT',409);
   const people=await store.page('users',{limit:2,filters:[['sigla',sigla],['active',true],['access',true]],fields:['uid','email','displayName','sigla','active','access']});
   if(people.length!==1||typeof people[0].uid!=='string'||isSystemOwnerEmail(people[0].email))throw fail('COMM_INVALID_AUDIENCE',409);
-  const pushEligible=(await store.page('communicationDevices',{limit:1,filters:[['sourceUid',people[0].uid],['active',true]]})).length>0;
+  const devices=await store.page('communicationDevices',{limit:6,filters:[['sourceUid',people[0].uid],['active',true]],fields:['updatedAt']});
+  const pushEligible=devices.length>0;
+  const releaseDevices=pushEligible&&devices.length<=5?devices.map(device=>device.id):null;
   const key=`release-${day}-${sigla}-${releaseAt}`;
-  const remember=()=>store.transaction(async tx=>{const prior=await tx.get('communicationReleaseInboxes',people[0].uid);if(!prior||Number(prior.releaseAt)<releaseAt)tx.set('communicationReleaseInboxes',people[0].uid,{messageId:key,releaseAt});});
-  const result=await saveMessage({id:key,version:0,message:{...RELEASE_NOTICE,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a,{release:true});
-  await remember();return {...result,pushEligible,pushEnabled:(await store.get('communicationSettings','main'))?.pushEnabled===true};
+  const result=await saveMessage({id:key,version:0,message:{...RELEASE_NOTICE,category:'INFORMAÇÃO INSTITUCIONAL',priority:'HIGH',audienceType:'USER',audienceValue:people[0].uid,route:'home',publishAt:now(),expiresAt:now()+7*86400000,status:'published'}},a,{release:true,releaseAt,releaseDevices});
+  return {...result,pushEligible};
  }
  async function sendChecklistConference(day){
   if(typeof scheduleSource.checklistRotationInputs!=='function'||day!==localDateKey(new Date(now())))throw fail('COMM_NOT_CURRENT',409);
@@ -195,22 +210,32 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
  async function device(input,a,enable){
   if(typeof input.token!=='string'||input.token.length<50||input.token.length>4096||/\s/.test(input.token))throw fail('COMM_INVALID_TOKEN');
   const key=digest(input.token);
-  if(enable){const own=await store.page('communicationDevices',{limit:6,filters:[['uid',a.uid],['active',true]]});if(own.length>=5&&!own.some(d=>d.id===key))throw fail('COMM_DEVICE_LIMIT',409);}
+  const incomingId=typeof input.deviceId==='string'&&/^[a-f0-9-]{36}$/.test(input.deviceId)?input.deviceId:'';
+  const own=enable?await store.page('communicationDevices',{limit:6,filters:[['uid',a.uid],['active',true]]}):[];
+  const sameInstallation=d=>incomingId&&d.deviceId===incomingId&&d.sourceUid===a.sourceUid&&d.googleUid===a.googleUid;
+  if(enable&&own.filter(d=>d.id!==key&&!sameInstallation(d)).length>=5)throw fail('COMM_DEVICE_LIMIT',409);
   return store.transaction(async tx=>{
    const old=await tx.get('communicationDevices',key),metrics=await tx.get('communicationMetrics','total')||counters(),recipient=await tx.get('communicationRecipients',a.uid);
-   const deviceIds=[];
-   for(const previousId of (recipient?.deviceIds||[]).filter(k=>k!==key)){
+   const deviceIds=[],superseded=[];
+   const known=new Set([...(recipient?.deviceIds||[]),...own.map(d=>d.id)]);
+   known.delete(key);
+   for(const previousId of known){
     const previous=await tx.get('communicationDevices',previousId);
-    if(previous?.active===true&&previous.uid===a.uid)deviceIds.push(previousId);
+    if(previous?.active===true&&previous.uid===a.uid){
+     if(enable&&sameInstallation(previous))superseded.push(previous);
+     else deviceIds.push(previousId);
+    }
    }
    if(enable&&deviceIds.length>=5)throw fail('COMM_DEVICE_LIMIT',409);
    if(old&&old.uid!==a.uid)throw fail('COMM_DEVICE_OWNER',403);
    if(!enable&&!old)return {registered:false};
    const wasActive=old?.active===true;
-   const deviceId=typeof input.deviceId==='string'&&/^[a-f0-9-]{36}$/.test(input.deviceId)?input.deviceId:old?.deviceId||'';
+   const deviceId=incomingId||old?.deviceId||'';
    const displayMode=['browser','standalone'].includes(input.displayMode)?input.displayMode:old?.displayMode||'';
    tx.set('communicationDevices',key,{id:key,uid:a.uid,sourceUid:a.sourceUid,email:a.email,googleUid:a.googleUid,token:input.token,active:enable,platform:String(input.platform||old?.platform||'').slice(0,60),deviceId,displayMode,updatedAt:now()});
-   if(wasActive!==enable){metrics.devices=Math.max(0,metrics.devices+(enable?1:-1));tx.set('communicationMetrics','total',metrics);}
+   for(const previous of superseded)tx.set('communicationDevices',previous.id,{...previous,active:false,updatedAt:now()});
+   const deviceDelta=Number(enable)-Number(wasActive)-superseded.length;
+   if(deviceDelta){metrics.devices=Math.max(0,metrics.devices+deviceDelta);tx.set('communicationMetrics','total',metrics);}
    tx.set('communicationRecipients',a.uid,{...actorData(a),googleUid:a.googleUid,verifiedAt:now(),deviceIds:enable?[...deviceIds,key]:deviceIds});
    audit(tx,a,enable?'DEVICE_REGISTERED':'DEVICE_DISABLED',key);return {registered:enable};
   });
@@ -327,11 +352,11 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return {done:!reservation.hasMore};
   }catch(error){await store.transaction(async tx=>{const receipt=await tx.get('communicationPushFanoutPages',pageKey);if(receipt?.status==='processing')tx.set('communicationPushFanoutPages',pageKey,{...receipt,status:'retry'});}).catch(()=>{});throw error;}
  }
- async function queueDevice(input){
+ async function queueDevice(input,{lastAttempt=false}={}){
   const dispatchId=id(input.dispatchId),deviceId=id(input.deviceId),dispatch=await store.get('communicationDispatches',dispatchId),receiptId=`${dispatchId}:${deviceId}`;
   if(!dispatch||dispatch.automatic!==true||dispatch.status==='completed')return {done:true};
   if(input.fanoutPageId){const page=await store.get('communicationPushFanoutPages',id(input.fanoutPageId));if(page?.reserved!==true||page.dispatchId!==dispatchId||!page.deviceIds?.includes(deviceId))throw fail('COMM_QUEUE_RETRY',503);}
-  else if(dispatch.status==='queueing')throw fail('COMM_QUEUE_RETRY',503);
+  else if(dispatch.status==='queueing'||dispatch.directDeviceIds&&!dispatch.directDeviceIds.includes(deviceId))throw fail('COMM_QUEUE_RETRY',503);
   if(!await claimQueueWork('communicationPushDeliveries',receiptId))return {done:true};
   try{
    const message=await store.get('communicationMessages',dispatchId),device=await store.get('communicationDevices',deviceId),settings=await store.get('communicationSettings','main');
@@ -343,19 +368,20 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
      else outcome=await send(device.token,{communicationId:dispatchId,route:'home',...automaticNoticePreview(message)});
     }
    }
+   if(outcome.retryDelaySeconds&&!lastAttempt)throw Object.assign(fail('COMM_PUSH_RETRY',503),{retryDelaySeconds:outcome.retryDelaySeconds});
    await store.transaction(async tx=>{
     const live=await tx.get('communicationDispatches',dispatchId),receipt=await tx.get('communicationPushDeliveries',receiptId);if(!live||receipt?.status==='done')return;
     const status=['accepted','failed','skipped','unknown'].includes(outcome.status)?outcome.status:'unknown',pendingCount=Math.max(0,live.pendingCount-1),total=await tx.get('communicationMetrics','total')||counters(),month=new Date(now()).toISOString().slice(0,7),monthly=await tx.get('communicationMetrics',month)||counters();
     tx.set('communicationPushDeliveries',receiptId,{...receipt,status:'done',result:status,reason:outcome.reason||'',dispatchCreatedAt:live.createdAt??null,at:now()});
     tx.set('communicationDispatches',dispatchId,{...live,status:live.status==='queueing'?live.status:pendingCount?'processing':'completed',processed:live.processed+1,pendingCount,[status]:live[status]+1,updatedAt:now()});
     total[status]=(total[status]||0)+1;monthly[status]=(monthly[status]||0)+1;
-    if(outcome.disable){const current=await tx.get('communicationDevices',deviceId);if(current?.active===true){tx.set('communicationDevices',deviceId,{...current,active:false,updatedAt:now()});total.devices=Math.max(0,total.devices-1);}}
+    if(outcome.disable){const current=await tx.get('communicationDevices',deviceId);if(current?.active===true&&current.updatedAt===device.updatedAt){tx.set('communicationDevices',deviceId,{...current,active:false,updatedAt:now()});total.devices=Math.max(0,total.devices-1);}}
     tx.set('communicationMetrics','total',total);tx.set('communicationMetrics',month,monthly);
    });
    return {done:true,status:outcome.status};
   }catch(error){await store.transaction(async tx=>{const receipt=await tx.get('communicationPushDeliveries',receiptId);if(receipt?.status==='processing')tx.set('communicationPushDeliveries',receiptId,{...receipt,status:'retry'});}).catch(()=>{});throw error;}
  }
- async function consumePush(input){if(input?.kind==='history'){if(!history)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);return history.consume(input);}if(typeof input?.dispatchId==='string'&&!input.dispatchId.startsWith('release-'))return {done:true};if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input);throw fail('COMM_INVALID_INPUT');}
+ async function consumePush(input,options){if(input?.kind==='history'){if(!history)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);return history.consume(input);}if(typeof input?.dispatchId==='string'&&!input.dispatchId.startsWith('release-'))return {done:true};if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input,options);throw fail('COMM_INVALID_INPUT');}
  return {consumePush,sendChecklistConference,async execute(action,input,a){
   if(!input||Array.isArray(input)||typeof input!=='object')throw fail('COMM_INVALID_INPUT');
   const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGE_READ','PENDING_ACTIVITIES','VERIFY_ACTIVITY','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);

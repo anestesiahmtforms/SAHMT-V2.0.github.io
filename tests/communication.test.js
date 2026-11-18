@@ -165,4 +165,9 @@ test('service worker shows the requested preview and opens only allowlisted same
  vm.runInNewContext(readFileSync(new URL('../public/service-worker.js',import.meta.url),'utf8'),{self,URL});let pending;
  events.push({data:{json:()=>({data:{source:'SAHMT_FF',communicationId:'one',title:'Private author title',body:'private',route:'https://evil.invalid'}})},waitUntil:p=>pending=p});await pending;assert.equal(shown.length,1);assert.equal(shown[0][0],'Private author title');assert.equal(shown[0][1].body,'private');
  events.notificationclick({notification:{data:shown[0][1].data,close(){}},waitUntil:p=>pending=p});await pending;assert.equal(opened[0],'https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/communications/message/one');
+ events.push({data:{json:()=>({data:{source:'SAHMT_FF',communicationId:'release-test',title:'LIBERAÇÃO',route:'home'}})},waitUntil:p=>pending=p});
+ await pending;
+ assert.equal(shown[1][1].requireInteraction,true);assert.equal(shown[1][1].silent,false);
+ events.notificationclick({notification:{data:shown[1][1].data,close(){}},waitUntil:p=>pending=p});await pending;
+ assert.equal(opened[1],'https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/#/communications/message/release-test');
 });

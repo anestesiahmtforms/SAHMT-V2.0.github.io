@@ -308,7 +308,10 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   }
 
   function inbox() {
-    render('MENSAGENS RECEBIDAS', '<div data-received-list></div><p data-received-end role="status"></p>', {inbox: true});
+    const pushControl = typeof client.enable === 'function'
+      ? '<button type="button" data-enable-push>ATIVAR NOTIFICAÇÕES NESTE APARELHO</button>'
+      : '';
+    render('MENSAGENS RECEBIDAS', pushControl + '<div data-received-list></div><p data-received-end role="status"></p>', {inbox: true});
     const ticket = generation;
     const list = root.querySelector('[data-received-list]');
     const end = root.querySelector('[data-received-end]');
@@ -344,6 +347,29 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
       if (entries.some(entry => entry.isIntersecting)) void loadNext();
     }, {root: list.parentElement, rootMargin: '0px 0px 120px 0px'});
     void loadNext();
+  }
+
+  async function enableDevicePush(button) {
+    const originWindow = root.ownerDocument.defaultView;
+    if (!originWindow?.Notification || !originWindow.navigator.serviceWorker) {
+      status('No iPhone, abra o SAHMT pelo ícone da Tela de Início para ativar as notificações.', true);
+      return;
+    }
+    button.disabled = true;
+    try {
+      const permission = originWindow.Notification.permission;
+      await client.enable(permission === 'default' ? originWindow.Notification.requestPermission() : Promise.resolve(permission));
+      status('Notificações ativadas neste aparelho.');
+    } catch (error) {
+      const instructions = {
+        COMM_PUSH_PERMISSION: 'Permita as notificações do SAHMT nos ajustes do aparelho.',
+        COMM_PUSH_UNSUPPORTED: 'Abra o SAHMT pelo ícone da Tela de Início ou em um navegador compatível com notificações.',
+        COMM_DEVICE_LIMIT: 'O limite de aparelhos com notificações foi atingido.'
+      };
+      report(error, instructions[error.code] || 'Não foi possível registrar este aparelho. Tente novamente.');
+    } finally {
+      button.disabled = false;
+    }
   }
 
   async function detail(key) {
@@ -386,6 +412,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   function click(event) {
     const button = event.target.closest('button');
     if (!button || button.disabled || button.type === 'submit') return;
+    if (button.hasAttribute('data-enable-push')) return void enableDevicePush(button);
     if (button.hasAttribute('data-back')) return onBack();
     if (button.hasAttribute('data-home')) return canCreateEvents ? adminMenu() : void inbox();
     if (button.hasAttribute('data-sent-messages')) return void loadSentMessages();

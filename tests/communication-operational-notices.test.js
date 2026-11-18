@@ -120,6 +120,7 @@ test('liberação do Márcio mantém mensagem individual, texto exato, banner e 
  const result=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'});
  assert.equal(result.message.title,'LIBERAÇÃO');assert.equal(result.message.message,'Você está Liberado! O SAHMT agradece por sua dedicação. BOM DESCANSO! 🤜🤛.');assert.equal(result.message.title,RELEASE_NOTICE.title);
  assert.equal(result.message.audienceType,'USER');assert.equal(result.message.audienceValue,person.sourceUid);assert.equal(result.message.route,'home');assert.equal(result.pushQueued,true);
+ assert.deepEqual(f.queued.map(job=>job.kind),['device'],'liberação individual entrega diretamente à fila do aparelho');
  assert.equal((await f.call('INBOX',{},person)).items[0].id,result.message.id);
  assert.equal((await f.call('INBOX',{},other)).items.length,0);
  await assert.rejects(f.call('MESSAGE',{id:result.message.id},other),{code:'COMM_FORBIDDEN'});
@@ -151,7 +152,7 @@ test('consumidores podem terminar antes da resposta do produtor sem perder o sal
 });
 
 test('falha de enfileiramento preserva a reserva e resposta perdida não duplica os Push',async()=>{
- for(const count of [1,7])for(const acceptedBeforeFailure of [false,true]){
+ for(const count of [7])for(const acceptedBeforeFailure of [false,true]){
   const f=fixture();
   for(let i=0;i<count;i++)f.store.data.set('communicationDevices/device-'+i,{id:'device-'+i,uid:person.uid,sourceUid:person.sourceUid,email:person.email,active:true,updatedAt:NOW,token:'synthetic-'+i});
   const saved=await f.call('SCHEDULE_RELEASE_NOTICE',{day:'2026-11-04',sigla:'AB'}),first=f.queued.shift(),enqueue=f.queue.sendBatch;
@@ -165,6 +166,31 @@ test('falha de enfileiramento preserva a reserva e resposta perdida não duplica
   assert.equal(dispatch.status,'completed');assert.equal(dispatch.pendingCount,0);assert.equal(dispatch.processed,count);assert.equal(dispatch.accepted,count);
   assert.equal(f.sent.length,count);assert.equal(new Set(f.sent.map(item=>item.token)).size,count);
  }
+});
+
+test('uma fila indisponível pode recuperar a entrega direta sem duplicar a liberação',async()=>{
+ const f=fixture(),token=person.uid+'t'.repeat(70);
+ await f.call('REGISTER_DEVICE',{token},person);
+ const enqueue=f.queue.sendBatch;
+ f.queue.sendBatch=async batch=>{await enqueue(batch);throw Error('resposta da fila perdida');};
+ const input={day:'2026-11-04',sigla:'AB'};
+ assert.equal((await f.call('SCHEDULE_RELEASE_NOTICE',input)).pushPending,true);
+ f.queue.sendBatch=enqueue;
+ assert.equal((await f.call('SCHEDULE_RELEASE_NOTICE',input)).pushQueued,true);
+ assert.deepEqual(f.queued.map(job=>job.kind),['device','device']);
+ await f.deliver();
+ assert.deepEqual(f.sent.map(item=>item.token),[token]);
+});
+
+test('renovar o token substitui a inscrição da mesma instalação',async()=>{
+ const f=fixture(),actor={...person,googleUid:'same-google-account'};
+ const deviceId='12345678-1234-4321-1234-123456789abc';
+ const oldToken='old'.repeat(24),newToken='new'.repeat(24);
+ await f.call('REGISTER_DEVICE',{token:oldToken,deviceId},actor);
+ await f.call('REGISTER_DEVICE',{token:newToken,deviceId},actor);
+ const devices=await f.store.page('communicationDevices',{filters:[['uid',actor.uid],['active',true]]});
+ assert.deepEqual(devices.map(device=>device.token),[newToken]);
+ assert.equal((await f.store.get('communicationMetrics','total')).devices,1);
 });
 
 test('entrega antecipada exige reserva válida do aparelho e do próprio aviso',async()=>{

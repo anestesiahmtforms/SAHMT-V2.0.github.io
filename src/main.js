@@ -1457,15 +1457,50 @@ function showScheduleContacts(contacts, context = {}) {
   if (!dialog || !content) return;
   const siglaLabel = context.sigla || '';
   const releaseToday = context.date === localDateKey();
+  const releaseAlerts = typeof communicationFeatureEnabled !== 'undefined' && communicationFeatureEnabled && releaseToday && context.canRelease;
+  const requestReleaseNotice = async (sigla, actorUid) => {
+    const isCurrent = () => session.user?.uid === actorUid && scheduleReleaseIdentity(session.profile, session.user);
+    let client;
+    try {
+      const {createCommunicationClient} = await import('./communication-client.js');
+      if (!isCurrent()) return '';
+      client = createCommunicationClient({isCurrent});
+      const input = {day: context.date, sigla};
+      let result = await client.request('SCHEDULE_RELEASE_NOTICE', input);
+      if (result.pushPending && !result.pushQueued && isCurrent()) result = await client.request('SCHEDULE_RELEASE_NOTICE', input);
+      return releaseNoticeFeedback(result, sigla);
+    } catch (error) {
+      return releaseNoticeError(error);
+    } finally {
+      client?.dispose();
+    }
+  };
+  if (releaseAlerts) {
+    const uid = session.user?.uid;
+    void import('./communication-client.js').then(({prepareCommunicationSession}) =>
+      prepareCommunicationSession({isCurrent: () => content.isConnected && session.user?.uid === uid})).catch(() => {});
+  }
   const records = contacts.filter((contact, index, all) => all.findIndex((item) => item.sigla === contact.sigla) === index);
   const cards = records.map((contact) => {
     const links = contactActionLinks(contact);
     const actions = `${links.whatsApp ? `<a class="contact-action" href="${escapeHtml(links.whatsApp)}" target="_blank" rel="noopener noreferrer">WhatsApp</a>` : ''}${links.phone ? `<a class="contact-action" href="tel:${links.phone}">Ligar</a>` : ''}${links.email ? `<a class="contact-action" href="mailto:${encodeURIComponent(links.email)}">Enviar e-mail</a>` : ''}`;
     const released = (context.highlightedSiglas || []).includes(String(contact.sigla || '').toUpperCase());
     const release = context.canRelease ? `<button class="contact-action schedule-release${released ? ' is-released' : ''}" type="button" data-release-sigla="${escapeHtml(contact.sigla)}"${releaseToday ? '' : ' disabled title="Disponível apenas na escala de hoje"'} aria-pressed="${released}" aria-label="${released ? 'Cancelar liberação de' : 'Liberar'} ${escapeHtml(contact.name)}">${released ? 'CANCELAR LIBERAÇÃO' : 'LIBERAR'}</button>` : '';
-    return `<article class="schedule-contact-record">${records.length > 1 ? `<h4>${escapeHtml(contact.name)}</h4>` : ''}<div class="contact-detail-actions">${actions}${release}</div></article>`;
+    const check = releaseAlerts ? `<button class="contact-action" type="button" data-release-notice-sigla="${escapeHtml(contact.sigla)}"${released ? '' : ' hidden'}>Conferir aviso de liberação</button>` : '';
+    return `<article class="schedule-contact-record">${records.length > 1 ? `<h4>${escapeHtml(contact.name)}</h4>` : ''}<div class="contact-detail-actions">${actions}${release}${check}</div></article>`;
   }).join('');
   content.innerHTML = `<h3 id="schedule-contact-heading">${records.length > 1 ? 'Contatos vinculados' : escapeHtml(records[0]?.name || 'Contato')}</h3><p class="schedule-release-status" data-release-status role="status" aria-live="polite"></p>${cards || '<p class="empty-state">Nenhum contato encontrado para esta sigla.</p>'}`;
+  content.querySelectorAll('[data-release-notice-sigla]').forEach(button => button.addEventListener('click', async () => {
+    const status = content.querySelector('[data-release-status]');
+    if (!scheduleReleaseIdentity(session.profile, session.user) || context.date !== localDateKey()) return;
+    const uid = session.user.uid;
+    button.disabled = true;
+    if (status) status.textContent = 'Conferindo aviso de liberação…';
+    try {
+      const result = await requestReleaseNotice(button.dataset.releaseNoticeSigla, uid);
+      if (status?.isConnected && session.user?.uid === uid) status.textContent = result;
+    } finally {button.disabled = false;}
+  }));
   content.querySelectorAll('[data-release-sigla]').forEach((button) => button.addEventListener('click', async () => {
     const status = content.querySelector('[data-release-status]');
     if (!scheduleReleaseIdentity(session.profile, session.user)) return;
@@ -1490,17 +1525,9 @@ function showScheduleContacts(contacts, context = {}) {
       if (session.user?.uid !== actorUid) return;
       context.highlightedSiglas = updated.highlights?.siglas || [];
       let releaseNoticeStatus = 'Liberação salva. A Central de Comunicação está desativada.';
-      if (marked && !updated.pendingFirestore && communicationFeatureEnabled) {
-        const {createCommunicationClient} = await import('./communication-client.js');
-        const commClient = createCommunicationClient({isCurrent: () => session.user?.uid === actorUid && scheduleReleaseIdentity(session.profile, session.user)});
-        try {
-          const result = await commClient.request('SCHEDULE_RELEASE_NOTICE', {day: context.date, sigla: button.dataset.releaseSigla});
-          releaseNoticeStatus = releaseNoticeFeedback(result, button.dataset.releaseSigla);
-        } catch (error) {
-          releaseNoticeStatus = releaseNoticeError(error);
-        } finally {
-          commClient.dispose();
-        }
+      if (marked && !updated.pendingFirestore && releaseAlerts) {
+        if (status) status.textContent = 'Liberação registrada. Encaminhando o aviso…';
+        releaseNoticeStatus = await requestReleaseNotice(button.dataset.releaseSigla, actorUid);
       }
       if (session.user?.uid !== actorUid || !content.isConnected) return;
       content.querySelectorAll('[data-release-sigla]').forEach((item) => {
@@ -1510,6 +1537,9 @@ function showScheduleContacts(contacts, context = {}) {
         item.setAttribute('aria-label', (itemMarked ? 'Cancelar liberação da sigla ' : 'Liberar sigla ') + item.dataset.releaseSigla);
         item.classList.toggle('is-released', itemMarked);
         item.disabled = false;
+      });
+      content.querySelectorAll('[data-release-notice-sigla]').forEach(item => {
+        item.hidden = !context.highlightedSiglas.includes(String(item.dataset.releaseNoticeSigla || '').toUpperCase());
       });
       if (status) status.textContent = updated.pendingFirestore
         ? 'Liberação salva neste aparelho; aguardando confirmação do Firestore.'

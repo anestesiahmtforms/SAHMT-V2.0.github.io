@@ -19,15 +19,15 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
    for(const folder of source?['operacao/escala','operacao/eventos','operacao/escala/ferias']:[])assertFolderReadable(policy,folder);
   }catch(error){if(error.code==='COMM_OPERATION_WORK_LIMIT')throw error;throw fail(error.code==='FOLDER_DISABLED'?'COMM_FOLDER_DISABLED':'COMM_FOLDER_POLICY_UNAVAILABLE',error.code==='FOLDER_DISABLED'?403:503);}
  }
- async function request(path,body){
-  if(!source&&(!body||[':runQuery',':batchGet',':runAggregationQuery'].includes(path)))await assertAvailable();
+ async function request(path,body,checkedInTransaction=false){
+  if(!source&&!checkedInTransaction&&(!body||[':runQuery',':batchGet',':runAggregationQuery'].includes(path)))await assertAvailable();
   else if(path.includes('/scheduleDays/'))await assertAvailable('scheduleDays');
   const r=await fetchImpl(root+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+await getToken(),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),redirect:'manual',signal:AbortSignal.timeout(15000)});
   if(r.status===404&&!body){await r.body?.cancel();return null;}
   const d=await boundedJson(r);if(!r.ok)throw fail(r.status===429?'COMM_PROVIDER_QUOTA_EXHAUSTED':r.status===409||d.error?.status==='ABORTED'?'COMM_CONFLICT':'COMM_STORE_UNAVAILABLE',r.status===429?429:r.status===409||d.error?.status==='ABORTED'?409:503);return d;
  }
  const path=(c,k)=>{checkCollection(c);id(k);return c+'/'+k;};
- async function get(c,k,transaction,fields){const q=new URLSearchParams();if(transaction)q.set('transaction',transaction);for(const field of fields||[])q.append('mask.fieldPaths',id(field));const d=await request('/'+path(c,k)+(q.size?'?'+q:''));return d?{...decodeFields(d.fields||{}),id:k}:null;}
+ async function get(c,k,transaction,fields){const q=new URLSearchParams();if(transaction)q.set('transaction',transaction);for(const field of fields||[])q.append('mask.fieldPaths',id(field));const d=await request('/'+path(c,k)+(q.size?'?'+q:''),undefined,Boolean(transaction));return d?{...decodeFields(d.fields||{}),id:k}:null;}
  async function checklistRotationInputs(day){
   if(source!=='FJ'||!/^\d{4}-\d{2}-\d{2}$/.test(day||''))throw fail('COMM_SOURCE_DENIED',403);
   const schedule=await get('scheduleDays',day),data=await request(':runQuery',{structuredQuery:{
@@ -74,6 +74,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
  }
  async function transaction(work){
   if(source)throw fail('COMM_SOURCE_READ_ONLY',403);
+  // Check the policy once for this transaction, before any of its document reads.
   await assertAvailable();
   const {transaction:t}=await request(':beginTransaction',{options:{readWrite:{}}}),writes=[];if(!t)throw fail('COMM_STORE_UNAVAILABLE',503);
   const tx={get:(c,k)=>get(c,k,t),countPublished:(start,end)=>countPublished(start,end,t),set:(c,k,v)=>writes.push({update:{name:name+'/'+path(c,k),fields:encodeFields(v)}}),create:(c,k,v)=>writes.push({update:{name:name+'/'+path(c,k),fields:encodeFields(v)},currentDocument:{exists:false}}),delete:(c,k)=>writes.push({delete:name+'/'+path(c,k)})};
@@ -84,7 +85,7 @@ export function createStore({getToken,fetchImpl=fetch,source=null,administrator=
   if(source)throw fail('COMM_SOURCE_READ_ONLY',403);
   if(!Number.isSafeInteger(start)||!Number.isSafeInteger(end)||end<=start)throw fail('COMM_INVALID_INPUT');
   const filters=[['GREATER_THAN_OR_EQUAL',start],['LESS_THAN',end]].map(([op,value])=>({fieldFilter:{field:{fieldPath:'firstPublishedAt'},op,value:encodeFields({v:value}).v}}));
-  const result=await request(':runAggregationQuery',{structuredAggregationQuery:{structuredQuery:{from:[{collectionId:'communicationMessages'}],where:{compositeFilter:{op:'AND',filters}}},aggregations:[{alias:'published',count:{}}]},...(transaction?{transaction}:{})});
+  const result=await request(':runAggregationQuery',{structuredAggregationQuery:{structuredQuery:{from:[{collectionId:'communicationMessages'}],where:{compositeFilter:{op:'AND',filters}}},aggregations:[{alias:'published',count:{}}]},...(transaction?{transaction}:{})},Boolean(transaction));
   const rows=Array.isArray(result)?result:[result],value=rows.find(row=>row.result?.aggregateFields?.published)?.result.aggregateFields.published;
   const count=Number(value?.integerValue);if(!Number.isSafeInteger(count)||count<0)throw fail('COMM_STORE_UNAVAILABLE',503);return count;
  }

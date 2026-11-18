@@ -2,12 +2,14 @@ import {operationalContentAllowed} from './operational-folder-runtime.js';
 import {auth} from './firebase-auth.js';
 import {getGoogleProjectAuth,waitForGoogleProjectSession} from './google-project-auth-runtime.js';
 import {FF,fail} from '../communication/domain.js';
-import {rememberCommunicationDevicePushActive} from './communication-link.js';
+import {communicationDevicePushActive,rememberCommunicationDevicePushActive} from './communication-link.js';
 import {APP_VERSION} from './app-version.js';
 import {deployment} from './deployment-context.js';
 export const communicationEnabled=import.meta.env.VITE_COMMUNICATION_FF_ENABLED==='true';
 const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
+const pushRefreshPeriod=86400000;
+const pushRefreshKey=uid=>'sahmt-ff-push-refreshed:'+uid;
 const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','SENT_DETAIL','ACTIVITY_CATALOG','PENDING_ACTIVITIES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','METRICS','SETTINGS','AREAS','AUDIT','USAGE']);
 const onFb=()=>typeof deployment!=='undefined'&&deployment.target==='FB';
 async function projectSession(target,source,current){
@@ -24,7 +26,7 @@ export async function prepareCommunicationSession({isCurrent=()=>true}={}){
  return current()&&Boolean(await projectSession('FF',auth.currentUser,current))&&current();
 }
 export function createCommunicationClient({isCurrent=()=>true}={}){
- let disposed=false,presenceReported=false;const controllers=new Set(),widgets=new Set(),reads=new Map();
+ let disposed=false,presenceReported=false,enrollment;const controllers=new Set(),widgets=new Set(),reads=new Map();
  const current=()=>!disposed&&isCurrent()&&document.visibilityState!=='hidden'&&operationalContentAllowed('comunicacao');
  const suspend=()=>{if(document.visibilityState==='hidden')for(const c of controllers)c.abort();};
  document.addEventListener('visibilitychange',suspend);
@@ -74,10 +76,10 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   void entry.promise.finally(()=>{if(reads.get(key)===entry)reads.delete(key);}).catch(()=>{});
   return entry.promise;
  }
- async function enable(permissionPromise){
+ async function registerPush(permissionPromise){
   if(!('serviceWorker'in navigator)||!('Notification'in window)||!vapidKey)throw fail('COMM_PUSH_UNSUPPORTED');
   if(await permissionPromise!=='granted')throw fail('COMM_PUSH_PERMISSION');
-  const {ff}=await sessions();
+  const {ff,source}=await sessions();
   const {getMessaging,getToken,isSupported}=await import('firebase/messaging');
   if(!await isSupported())throw fail('COMM_PUSH_UNSUPPORTED');
   const registration=await navigator.serviceWorker.ready;
@@ -85,9 +87,24 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   const token=await getToken(getMessaging(ff.app),{vapidKey,serviceWorkerRegistration:registration});
   const {installationId,appDisplayMode,devicePlatform}=await import('./app-updates-targeted.js');
   const displayMode=appDisplayMode(),deviceId=installationId(localStorage,globalThis.crypto,displayMode);
+  if(!current()||auth.currentUser!==source)throw fail('COMM_SESSION_INVALID');
   const result=await request('REGISTER_DEVICE',{token,deviceId,displayMode,platform:devicePlatform()});
   rememberCommunicationDevicePushActive(true);
+  try{localStorage.setItem(pushRefreshKey(source.uid),String(Date.now()));}catch{}
   return result;
+ }
+ function enable(permissionPromise){
+  if(!enrollment)enrollment=registerPush(permissionPromise).finally(()=>{enrollment=undefined;});
+  return enrollment;
+ }
+ async function refreshPushRegistration(){
+  const uid=auth.currentUser?.uid;
+  if(!uid||!current()||!vapidKey||!communicationDevicePushActive())return;
+  try{
+   const refreshed=Number(localStorage.getItem(pushRefreshKey(uid)));
+   if(refreshed>0&&Date.now()-refreshed<pushRefreshPeriod)return;
+  }catch{}
+  await enable(Promise.resolve('granted'));
  }
  async function disable(){
   const {ff}=await sessions(),{getMessaging,getToken,deleteToken}=await import('firebase/messaging');
@@ -109,5 +126,5 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
   host.replaceChildren(link);
   return cleanup;
  }
- return {request,enable,disable,connectGoogle,dispose(){disposed=true;reads.clear();for(const c of controllers)c.abort();for(const w of widgets)w.dispose();widgets.clear();document.removeEventListener('visibilitychange',suspend);}};
+ return {request,enable,disable,refreshPushRegistration,connectGoogle,dispose(){disposed=true;reads.clear();for(const c of controllers)c.abort();for(const w of widgets)w.dispose();widgets.clear();document.removeEventListener('visibilitychange',suspend);}};
 }

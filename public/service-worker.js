@@ -138,14 +138,14 @@ self.addEventListener('push', event => {
   let data;try{data=event.data?.json()?.data;}catch{return;}
   if(data?.source!=='SAHMT_FF'||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(data.communicationId||''))return;
   const routes=['communications','home','management-hub','management','training','events','labels','checklist','occurrences','qmentum'];
-  const route=routes.includes(data.route)?data.route:'communications';
+  const route=data.communicationId.startsWith('release-')?'communications':routes.includes(data.route)?data.route:'communications';
   event.waitUntil((async()=>{
     const title=typeof data.title==='string'&&data.title.trim()?data.title.slice(0,120):'🔔 SAHMT · NOVO AVISO';
     const body=typeof data.body==='string'&&data.body.trim()?data.body.slice(0,220):'Há uma nova comunicação institucional. Abra o SAHMT para consultar.';
     const notification=Promise.resolve().then(()=>self.registration.showNotification(title,{
       body,
       icon:BASE+'assets/icon-192.png',badge:BASE+'assets/icon-192.png',
-      tag:'sahmt-ff-'+data.communicationId,renotify:false,requireInteraction:true,
+      tag:'sahmt-ff-'+data.communicationId,renotify:false,requireInteraction:true,silent:false,
       data:{source:'SAHMT_FF',route,communicationId:data.communicationId}
     }));
     const banner=(async()=>{const windows=await self.clients.matchAll({type:'window',includeUncontrolled:true});

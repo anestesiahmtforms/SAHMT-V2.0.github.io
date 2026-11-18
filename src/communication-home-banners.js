@@ -14,6 +14,7 @@ function localDateKey(date = new Date(), timeZone = 'America/Sao_Paulo') {
 }
 const checklistNoticeId = () => `event-checklist-conference-${localDateKey()}`;
 const isChecklistConference = item => item?.id === checklistNoticeId();
+const isReleasePush = id => /^release-\d{4}-\d{2}-\d{2}-(?:[A-Z]{2}|L2)-\d+$/.test(id);
 
 function dismissedStorageKey(uid) {
   return `sahmt-communication-dismissed-v1:${encodeURIComponent(uid)}`;
@@ -47,10 +48,10 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
 
   function render(items) {
     if (!active()) return;
-    // General communications live in the inbox. Only the explicitly requested
-    // daily checklist assignment may appear automatically on the home screen.
+    // Only the daily checklist is restored at startup. A release appears here
+    // only when its push arrives while Home is open.
     const merged = new Map(items.filter(isChecklistConference).map(item => [item.id, item]));
-    for (const item of pushedItems) if (isChecklistConference(item) && !merged.has(item.id)) merged.set(item.id, item);
+    for (const item of pushedItems) if (!merged.has(item.id)) merged.set(item.id, item);
     visibleItems = [...merged.values()].filter(item => !dismissed.has(item.id)).sort((a, b) => Number(b.publishAt || 0) - Number(a.publishAt || 0));
     root.innerHTML = visibleItems.map(item => {
       const checklistConference = item.id.startsWith('event-checklist-conference-');
@@ -64,11 +65,11 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   }
 
   async function appendPushedMessage(id) {
-    if (id !== checklistNoticeId() || dismissed.has(id) || !active() || visibleItems.some(item => item.id === id)) return;
+    if ((id !== checklistNoticeId() && !isReleasePush(id)) || dismissed.has(id) || !active() || visibleItems.some(item => item.id === id)) return;
     try {
       const result = await client.request('MESSAGE', {id});
-      if (!active() || !result.message || result.message.status !== 'published') return;
-      pushedItems = [result.message, ...pushedItems.filter(item => item.id !== id)];
+      if (!active() || result.message?.id !== id || result.message.status !== 'published') return;
+      pushedItems = [result.message, ...pushedItems.filter(item => item.id !== id)].slice(0, 5);
       render(visibleItems);
     } catch {
       // The server also returns the eligible message on the next Home visit.
@@ -150,14 +151,16 @@ export function mountCommunicationHomeBanners(root, {client, uid, isCurrent = ()
   };
 
   const onResume = () => {
-    if (document.visibilityState !== 'hidden' && Date.now() - lastLoadAt > 2000) void load();
+    if (document.visibilityState === 'hidden' || !active()) return;
+    if (Date.now() - lastLoadAt > 2000) void load();
+    void client.refreshPushRegistration?.().catch(() => {});
   };
 
   root.addEventListener('click', onClick);
   navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage);
   document.addEventListener('visibilitychange', onResume);
   window.addEventListener('focus', onResume);
-  void load();
+  onResume();
   return () => {
     disposed = true;
     root.removeEventListener('click', onClick);
