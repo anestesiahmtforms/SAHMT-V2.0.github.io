@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
+import {mountGoogleProjectAuthPanel} from '../src/google-project-auth-ui.js';
 
 const auth=readFileSync(new URL('../src/auth.js',import.meta.url),'utf8');
 const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
@@ -29,10 +30,28 @@ test('missing FB session uses explicit Synchronization recovery and retains its 
  const f=fixture({target:'FB'});await f.run();assert.deepEqual(f.calls,['remember-route','/FA/#/offline']);
 });
 
-test('conexão secundária fica atrás da confirmação explícita do painel',()=>{
-  assert.match(main,/createGoogleButton/);
-  assert.match(main,/runtime\.confirmGoogleProjectAccess\(credential\)/);
-  assert.match(main,/autoOpen:deployment.target==='FA'/);
-  assert.match(main,/isVisible:\(\)=>\['home','offline','management-hub'\]/);
-  assert.match(main,/if \(googleProjectAuthEnabled\)/);
+test('sessão FK pendente na Home só mostra a confirmação quando o painel é aberto',async()=>{
+ const element=()=>({dataset:{},setAttribute(){},append(){},replaceChildren(){},addEventListener(){}});
+ const document={createElement:element,body:{append(){}},addEventListener(){}};
+ const user={uid:'fixture'},state={uid:user.uid,complete:false,busy:false,targets:{FA:{status:'ready'},FK:{status:'pending',code:'AUTH_RESTORE_TIMEOUT'}}};
+ const controller={snapshot:()=>state,subscribe:fn=>{fn(state);return()=>{};}};
+ let panelNode,renders=0;
+ const ui={mountGoogleProjectAuthPanel:options=>mountGoogleProjectAuthPanel({...options,document:{
+  ...document,body:{append(node){panelNode=node;}}
+ },now:()=>Date.parse('2026-11-18T12:00:00Z')})};
+ const modules={
+  './google-project-auth-runtime.js':{googleProjectAuth:controller},
+  './google-project-auth-ui.js':ui,
+  './google-project-auth-google-button.js':{createGoogleProjectAuthGoogleButton:()=>({render:async()=>{renders++;}})}
+ };
+ const ctx=vm.createContext({googleProjectAuthEnabled:true,deployment:{target:'FA'},session:{status:'signed-in',user},currentRoute:()=> 'home',
+  load:async(specifier)=>modules[specifier]});
+ const start=main.indexOf('let googleAccessPanel;'),end=main.indexOf('const deniedOperationalModules',start);
+ vm.runInContext(main.slice(start,end).replaceAll('import(','load('),ctx);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(panelNode.hidden,true);
+ assert.equal(renders,0);
+ vm.runInContext('googleAccessPanel.open()',ctx);
+ assert.equal(panelNode.hidden,false);
+ assert.equal(renders,1);
 });

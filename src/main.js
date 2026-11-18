@@ -202,7 +202,6 @@ if (googleProjectAuthEnabled) {
       if(result.targets?.FB?.status==='ready'){const destination=consumeManagementReturn();if(destination){rememberModuleNavigation(deployment.fbBase);location.assign(deployment.fbBase+destination);}}
       return result;
     },getUser:()=>session.user,
-      autoOpen:deployment.target==='FA',
       isVisible:()=>['home','offline','management-hub'].includes(currentRoute())&&session.status==='signed-in',
       createGoogleButton:callbacks=>google.createGoogleProjectAuthGoogleButton({...callbacks,clientId:runtime.googleProjectClientId,getExpectedIdentity:runtime.currentGoogleProjectIdentity})});
     if(currentRoute()==='offline'&&hasManagementReturn())googleAccessPanel.open();
