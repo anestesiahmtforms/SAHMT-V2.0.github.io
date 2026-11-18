@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from '../src/communication-notice-text.js';
+import {localDateKey} from '../src/schedule-date.js';
 
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 function homeHarness(request){
@@ -17,7 +18,7 @@ function homeHarness(request){
  const cleanup=mount(root,{uid:'fixture-rl',client:{request,dispose(){disposed=true;}}});
  return {root,document,documentEvents,windowEvents,workerEvents,cleanup,get disposed(){return disposed;},advance:()=>clock+=3000};
 }
-const notice={id:'release-2026-11-04-RL-1',status:'published',title:'LIBERAÇÃO',message:'Você está Liberado!',category:'INFORMAÇÃO INSTITUCIONAL',publishAt:1};
+const notice={id:`event-checklist-conference-${localDateKey()}`,status:'published',title:'Conferência do Checklist',message:'Não se esqueça da conferência de hoje.',category:'EVENTO',publishAt:1};
 
 test('links colados na descrição chegam clicáveis na Home com parâmetros preservados',async()=>{
  const h=homeHarness(async()=>({items:[{...notice,message:'Veja #/home ou (https://example.test/watch?v=abc&list=xyz). <img src=x>'}],cursor:null}));
@@ -28,11 +29,11 @@ test('links colados na descrição chegam clicáveis na Home com parâmetros pre
  h.cleanup();
 });
 
-test('a liberação aparece antes de terminar a leitura de páginas antigas',async()=>{
+test('o alerta de checklist aparece antes de terminar a leitura de páginas antigas',async()=>{
  let complete;let calls=0;
  const h=homeHarness(async()=>++calls===1?{items:[notice],cursor:'older'}:new Promise(resolve=>complete=resolve));
- await tick();assert.match(h.root.innerHTML,/LIBERAÇÃO/);assert.equal(calls,2);
- complete({items:[],cursor:null});await tick();assert.match(h.root.innerHTML,/LIBERAÇÃO/);h.cleanup();
+ await tick();assert.match(h.root.innerHTML,/Conferência do Checklist/);assert.equal(calls,2);
+ complete({items:[],cursor:null});await tick();assert.match(h.root.innerHTML,/Conferência do Checklist/);h.cleanup();
 });
 
 test('voltar ao app atualiza avisos; falhas ficam silenciosas sem apagar o aviso existente',async()=>{
@@ -40,14 +41,14 @@ test('voltar ao app atualiza avisos; falhas ficam silenciosas sem apagar o aviso
  const h=homeHarness(async()=>{calls++;if(calls===1)throw Object.assign(Error(),{code:'COMM_SESSION_INVALID'});if(calls===2)return {items:[notice],cursor:null};throw Error('offline');});
  await tick();assert.equal(h.root.innerHTML,'');
  h.advance();h.document.visibilityState='hidden';h.documentEvents.get('visibilitychange')();await tick();assert.equal(calls,1);
- h.document.visibilityState='visible';h.documentEvents.get('visibilitychange')();h.windowEvents.get('focus')();await tick();assert.equal(calls,2);assert.match(h.root.innerHTML,/LIBERAÇÃO/);
- h.advance();h.windowEvents.get('focus')();await tick();assert.match(h.root.innerHTML,/LIBERAÇÃO/);assert.doesNotMatch(h.root.innerHTML,/Não foi possível atualizar|Conecte sua conta|ABRIR CENTRAL DE COMUNICAÇÃO/);
+ h.document.visibilityState='visible';h.documentEvents.get('visibilitychange')();h.windowEvents.get('focus')();await tick();assert.equal(calls,2);assert.match(h.root.innerHTML,/Conferência do Checklist/);
+ h.advance();h.windowEvents.get('focus')();await tick();assert.match(h.root.innerHTML,/Conferência do Checklist/);assert.doesNotMatch(h.root.innerHTML,/Não foi possível atualizar|Conecte sua conta|ABRIR CENTRAL DE COMUNICAÇÃO/);
  h.cleanup();assert.equal(h.disposed,true);assert.equal(h.documentEvents.size,0);assert.equal(h.windowEvents.size,0);assert.equal(h.workerEvents.size,0);
 });
 
-test('uma atualização concluída sem avisos limpa um banner que deixou de ser elegível',async()=>{
+test('uma atualização concluída sem alerta limpa o banner de checklist encerrado',async()=>{
  let calls=0;const h=homeHarness(async()=>({items:++calls===1?[notice]:[],cursor:null}));
- await tick();assert.match(h.root.innerHTML,/LIBERAÇÃO/);h.advance();h.windowEvents.get('focus')();await tick();assert.equal(h.root.innerHTML,'');h.cleanup();
+ await tick();assert.match(h.root.innerHTML,/Conferência do Checklist/);h.advance();h.windowEvents.get('focus')();await tick();assert.equal(h.root.innerHTML,'');h.cleanup();
 });
 
 test('falha ou bloqueio da notificação do sistema não impede o aviso para a Home aberta',async()=>{
