@@ -23,8 +23,10 @@ test('Central real components: catalog, preview, exact retry, history, receipts 
   });
   await t.test('grouped module catalog exposes a direct activity link and uses published training only',async()=>{
    await setup();
-   await page.getByRole('group',{name:'Gestão de Documentos'}).getByRole('option',{name:'Treinamento publicado'}).waitFor();
-   await page.getByRole('group',{name:'Enquetes e Consultas'}).getByRole('option',{name:'Enquete publicada'}).waitFor();
+   const trainingOption=page.locator('optgroup[label="Gestão de Documentos"] option[value="TRAINING:training-synthetic"]');
+   const surveyOption=page.locator('optgroup[label="Enquetes e Consultas"] option[value="SURVEY:survey-synthetic"]');
+   assert.equal(await trainingOption.textContent(),'Treinamento publicado');
+   assert.equal(await surveyOption.textContent(),'Enquete publicada');
    await page.getByLabel('Definir atividade').selectOption('TRAINING:training-other');
    await page.getByLabel('Nota mínima').fill('7');
    const route='#/management/area-gestao-de-documentos/required/training-other';
