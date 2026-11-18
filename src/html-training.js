@@ -56,7 +56,7 @@ export async function createHtmlTrainingClient(user) {
 }
 
 /** Mount returns cleanup immediately, including while startup/auth is pending. */
-export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscribeFolderAccess:providedSubscription,initialTrainingId='',onActivityExit=()=>{}} = {}) {
+export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscribeFolderAccess:providedSubscription,initialTrainingId='',onActivityExit=()=>{},activitySelection=null} = {}) {
   const dialog=root.closest?.('dialog.management-area-dialog');
   const banner=dialog?root.ownerDocument.createElement('section'):null;
   if(banner){
@@ -78,6 +78,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   const pathAllowed=path=>accessAdmin()||!areaInactive&&trainingPathAllowed(folderAccess,path);
   const contentAllowed=training=>pathAllowed(trainingAccessPath(training));
   const inactiveForOthers=path=>accessAdmin()&&!trainingPathAllowed(folderAccess,path);
+  const canSelectActivity=training=>Boolean(activitySelection&&training?.status==='PUBLISHED'&&contentAllowed(training)&&trainingPathAllowed(folderAccess,trainingAccessPath(training)));
   const navigationAllowed=path=>path[0]!=='Documentos administrativos'||path[1]!=='Acesso restrito'||accessAdmin()||restrictedNavigationAllowed;
   const folderLevel=()=>{
     const level=trainingFolderLevel([...catalog.filter(contentAllowed),...inactiveTrainings],folderPath,accessAdmin()?folderPaths:[]);
@@ -124,8 +125,10 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     // Leaving a pending read invalidates its response without trapping the modal.
     if(busy){revision++;operationId++;busy=false;if(mode==='opening'||mode==='participant'){mode='catalog';active=null;state=null;content=null;}render();if(mode==='catalog')refreshVisibleActivities();return true;}
     if(mode==='editor'){mode=editorParent;editor=null;error='';render();if(mode==='catalog')refreshVisibleActivities();return true;}
+    if(mode==='select-activity'){active=null;mode='catalog';render();refreshVisibleActivities();return true;}
     if(mode!=='catalog'&&mode!=='denied'){onActivityExit();void perform(loadCatalog);return true;}
     if(mode==='catalog'&&folderPath.length){folderPath=folderPath.slice(0,-1);render();refreshVisibleActivities();return true;}
+    if(activitySelection){activitySelection.cancel();return true;}
     return false;
   }
   function renderBusy(){root.setAttribute('aria-busy',String(busy));root.querySelectorAll('button[data-ht]').forEach(b=>{if(!b.dataset.locked)b.disabled=busy&&b.dataset.ht!=='back';});}
@@ -133,8 +136,9 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     if(mode==='catalog'){
       const titles={Protocolos:'PROTOCOLOS',Diretrizes:'DIRETRIZES',ROPs:'ROPs','Documentos administrativos':'Documentos Administrativos'};
       const title=folderPath.length>1?folderPath.at(-1):folderPath.length?(titles[folderPath[0]]||folderPath[0]):'GESTÃO DE DOCUMENTOS';
-      return `<header class="ht-head"><div><h2>${h(title)}</h2></div></header>`;
+      return `<header class="ht-head"><div><h2>${h(title)}</h2></div>${activitySelection&&!folderPath.length?button('cancel-activity','VOLTAR À CONVOCAÇÃO','class="ht-secondary"'):''}</header>`;
     }
+    if(mode==='select-activity')return `<header class="ht-head"><div><h2>${h(active.title)}</h2></div>${button('back','VOLTAR','class="ht-secondary"')}</header>`;
     return `<header class="ht-head"><div><p class="ht-eyebrow">ACERVO INSTITUCIONAL · FB</p><h2>${h(active?.title || 'Treinamentos')}</h2><p>Leitura · Avaliação · Sugestão</p></div>${mode!=='denied'?button('back','VOLTAR','class="ht-secondary"'):''}</header>`;
   }
   function catalogue(){
@@ -215,7 +219,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     root.classList.toggle('ht-catalog-view',mode==='catalog');
     root.classList.toggle('ht-navigation-view',mode==='catalog'&&(folderPath.length<=1||folderLevel().folders.length>0));
     if(mode==='participant'&&active&&state)activityStates.set(active.id,{version:active.version,state});
-    root.innerHTML=top()+(active&&inactiveForOthers(trainingAccessPath(active))?'<p class="ht-notice">Pasta inativa para os demais usuários.</p>':'')+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='participant'?participation():mode==='editor'&&editor?editorView():mode==='opening'?'<p class="ht-notice" role="status">Abrindo o texto do documento…</p>':'');
+    const selectionAction=canSelectActivity(active)?button('select-activity','USAR NESTA CONVOCAÇÃO'):'<p class="ht-notice">Ative a pasta do treinamento para usá-lo na convocação.</p>';
+    root.innerHTML=top()+(active&&inactiveForOthers(trainingAccessPath(active))?'<p class="ht-notice">Pasta inativa para os demais usuários.</p>':'')+(error?`<p class="ht-error" role="alert">${h(error)}</p>`:'')+(notice?`<p class="ht-notice" role="status">${h(notice)}</p>`:'')+(mode==='catalog'?catalogue():mode==='select-activity'?selectionAction:mode==='participant'?participation():mode==='editor'&&editor?editorView():mode==='opening'?'<p class="ht-notice" role="status">Abrindo o texto do documento…</p>':'');
     if(mode==='participant'&&content?.sections?.length){
       const frame=root.querySelector('.ht-content-frame');
       if(frame){frame.addEventListener('load',()=>{
@@ -329,6 +334,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
     const action=b.dataset.ht;
     if(action==='back'){goBack();return;}
     if(busy)return;
+    if(action==='cancel-activity'&&activitySelection){activitySelection.cancel();return;}
     if(action==='format'){event.preventDefault();const frame=root.querySelector(`[data-section="${b.dataset.index}"]`);frame?.contentWindow?.focus();frame?.contentDocument?.execCommand(b.dataset.command,false,b.dataset.command==='formatBlock'?'h2':null);return;}
     perform(async()=>{
       if(action==='catalog'){onActivityExit();return loadCatalog();}
@@ -345,7 +351,18 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
       }
 
       if(action==='folder'){const path=JSON.parse(b.dataset.folder);if(!Array.isArray(path)||(path.length&&!validTrainingFolderPath(path))||!navigationAllowed(path))return;folderPath=path;render();refreshVisibleActivities();return;}
-      if(action==='open')return open(b.dataset.id);
+      if(action==='select-activity'&&mode==='select-activity'&&canSelectActivity(active)){
+        activitySelection.select(active.id,active.title);return;
+      }
+      if(action==='open'){
+        if(!activitySelection)return open(b.dataset.id);
+        const training=catalog.find(item=>item.id===b.dataset.id);
+        if(training?.status==='PUBLISHED'&&contentAllowed(training)){
+          active=training;mode='select-activity';render();
+          root.querySelector('[data-ht="select-activity"]')?.focus();
+        }
+        return;
+      }
       if(action==='edit'){
         const training=catalog.find(t=>t.id===b.dataset.id)||((active?.id===b.dataset.id)?active:null);
         if(!training||!contentAllowed(training)||!canManageTraining(training,user,profile))return;

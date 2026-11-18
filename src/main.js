@@ -87,6 +87,7 @@ import './functional-ui.css';
 import {renderFiAdminDialog, mountFiAdminDialog} from './fi-admin-dialog.js';
 import {createConnectionLifecycle} from './connection-lifecycle.js';
 import {communicationFeatureEnabled,communicationAdminSession} from './communication-link.js';
+import {activitySelectionFor} from './communication-activity-selection.js';
 import {trainingActivityRoute} from './training-activity-route.js';
 import './communication.css';
 import {loadCommunicationModules,preloadCommunicationModules} from './communication-loader.js';
@@ -1570,6 +1571,7 @@ async function loadModule(route) {
     if(!content.isConnected||!currentHub())return;
     const initialPanel=location.hash.split('/')[2]||'home';
     cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,folderNotice:operationalFolderNotice,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+      surveySelection:communicationAdminSession(session)?activitySelectionFor(session.user,'SURVEY'):null,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent:()=>currentHub()&&isCurrent(),participantOnly});},
@@ -3623,6 +3625,7 @@ async function loadManagementAreaActivities(area) {
       const [,,,required,trainingId]=(globalThis.location?.hash||'').split('/');
       cleanupDocumentTraining = mountHtmlTrainings(detail, {
         user:session.user,profile:session.profile,
+        activitySelection:session.user.emailVerified===true&&session.accountMode!=='team'&&can('admin')?activitySelectionFor(session.user,'TRAINING'):null,
         initialTrainingId:required==='required'&&trainingId?decodeURIComponent(trainingId):'',
         onActivityExit:()=>{if(typeof obligationBanner!=='undefined')obligationBanner?.setActivityActive(null);}
       });

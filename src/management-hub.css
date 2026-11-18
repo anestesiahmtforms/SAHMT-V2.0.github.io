@@ -126,6 +126,10 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .management-hub-dialog[data-panel="institutional"] .management-hub-header [data-hub-heading-icon],.management-hub-dialog[data-panel="institutional"] .management-hub-user-row{display:none}
 
 @media(max-width:520px){.management-hub-dialog[data-panel="institutional"] .management-hub-arrow{display:none}}
+
+.management-hub-dialog[data-survey-selection] .management-hub-content-panel{grid-template-rows:minmax(0,1fr) auto}
+.management-hub-dialog[data-survey-selection] .management-hub-footer{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:8px}
+.management-hub-footer [data-hub-select-survey]:not([hidden]){color:#fff;background:#184c6b;letter-spacing:normal}
 .management-hub-button--inactive{opacity:.68;filter:saturate(.62);border-style:dashed!important;cursor:pointer}
 .management-hub-button--inactive:focus-visible{opacity:1;filter:none}
 .management-hub-button--inactive .management-survey-subtitle{color:#f5dfaa}

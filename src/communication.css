@@ -61,7 +61,7 @@
 .communication--activity form[data-activity-form]>label{min-width:0;margin:0;font-size:.8rem;line-height:1.2}
 .communication--activity form[data-activity-form] input:not([type=checkbox]),.communication--activity form[data-activity-form] select{min-height:38px;margin-top:2px;padding:5px 8px;font-size:16px}
 .communication--activity .comm-activity-source-links{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:.72rem;line-height:1.2}
-.communication--activity .comm-activity-source-links a{color:#174967;font-weight:750;text-decoration:underline}
+.communication--activity .comm-activity-source-links button[data-activity-source]{flex:1 1 0}
 .communication--activity .comm-activity-source-links button{min-height:34px;padding:4px 8px;font-size:.7rem}
 .communication--activity .comm-activity-link-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:6px;margin:0;color:#456173;font-size:.72rem;line-height:1.2}
 .communication--activity .comm-activity-link-row a{min-width:0;overflow:hidden;color:#15476a;font-weight:750;text-overflow:ellipsis;white-space:nowrap}

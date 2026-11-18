@@ -4,6 +4,7 @@ import {communicationSenderRole, operationalNoticeIdentity} from './communicatio
 import {escapeNoticeHtml as esc, linkedNoticeText} from './communication-notice-text.js';
 import {communicationLimitMessage} from './communication-usage.js';
 import {openActivityComposer} from './communication-activity-ui.js';
+import {restoreActivitySelection} from './communication-activity-selection.js';
 import {openCommunicationHistory, communicationDate} from './communication-history-ui.js';
 import {communicationRecipientOptions} from './communication-recipient-directory.js';
 import './communication.css';
@@ -45,6 +46,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
   const dialog = root.closest('.management-hub-dialog');
   const canCreateEvents = adminMode && adminIdentity(appSession?.user) && Boolean(communicationSenderRole(appSession.user.email));
   const canManageCommunication = canCreateEvents && !operationalNoticeIdentity(appSession.user);
+  if (canManageCommunication) activityState = restoreActivitySelection(appSession.user);
 
   async function pendingEventKey(payload) {
     const uid = appSession?.user?.uid;
@@ -267,7 +269,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     composeState = undefined;
     activityState ??= {};
     openActivityComposer({root, client, render, status, report, isCurrent: active, audienceOptions,
-      loadDirectory, state: activityState, onRecover: recoverGoogle});
+      loadDirectory, state: activityState, onRecover: recoverGoogle, user: appSession.user});
   }
   function receivedCard(message, open = false) {
     const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
