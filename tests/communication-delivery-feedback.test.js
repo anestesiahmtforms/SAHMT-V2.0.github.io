@@ -18,7 +18,7 @@ function homeHarness(request){
  const cleanup=mount(root,{uid:'fixture-rl',client:{request,dispose(){disposed=true;}}});
  return {root,document,documentEvents,windowEvents,workerEvents,cleanup,get disposed(){return disposed;},advance:()=>clock+=3000};
 }
-const notice={id:`event-checklist-conference-${localDateKey()}`,status:'published',title:'Conferência do Checklist',message:'Não se esqueça da conferência de hoje.',category:'EVENTO',publishAt:1};
+const notice={id:`event-checklist-conference-${localDateKey()}`,status:'published',title:'Conferência do Checklist',message:'Não se esqueça da conferência de hoje.',category:'EVENTO',publishAt:Date.now()};
 
 test('links colados na descrição chegam clicáveis na Home com parâmetros preservados',async()=>{
  const h=homeHarness(async()=>({items:[{...notice,message:'Veja #/home ou (https://example.test/watch?v=abc&list=xyz). <img src=x>'}],cursor:null}));
