@@ -44,6 +44,45 @@
 @media(max-height:660px){.management-hub-dialog[data-panel=communication]:has(.communication--push-devices){gap:8px}.management-hub-dialog:has(.communication--push-devices) .management-hub-header{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:0;min-height:0;padding:6px 8px}.management-hub-dialog:has(.communication--push-devices) .management-hub-header>[data-hub-heading-icon],.management-hub-dialog:has(.communication--push-devices) .management-hub-user-row{display:none}}
 @media(max-height:420px){.communication--push-devices .comm-note{display:none}.communication--push-devices>.comm-heading{margin-bottom:4px}.comm-push-summary{margin-bottom:4px}}
 
+
+/* Activity invitations use a fixed, compact dialog with no outer scrolling. */
+.management-hub-dialog[data-panel=communication]:has(.communication--activity){width:min(92vw,560px);height:min(720px,calc(100dvh - var(--hub-edge) - var(--hub-edge)));max-height:calc(100dvh - var(--hub-edge) - var(--hub-edge));overflow:hidden}
+.management-hub-dialog:has(.communication--activity) .management-hub-header{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;gap:0;min-height:0;padding:7px 10px}
+.management-hub-dialog:has(.communication--activity) .management-hub-header h2{min-height:30px;font-size:clamp(.95rem,3.8vw,1.2rem);letter-spacing:.06em}
+.management-hub-dialog:has(.communication--activity) :is([data-hub-heading-icon],.management-hub-user-row){display:none}
+.management-hub-dialog:has(.communication--activity) .management-hub-body{display:flex;min-height:0;overflow:hidden;padding:8px 12px}
+.management-hub-dialog:has(.communication--activity) .management-hub-content-panel{display:flex;height:100%;min-height:0;overflow:hidden}
+.management-hub-dialog:has(.communication--activity) .management-hub-footer{display:none}
+.communication--activity{display:flex;height:100%;min-height:0;flex-direction:column;padding:0}
+.communication--activity>.comm-heading{flex:0 0 auto;margin:0 0 6px}
+.communication--activity>.comm-heading h2{font-size:clamp(1rem,4vw,1.25rem);letter-spacing:.04em}
+.communication--activity>.comm-content{flex:1 1 auto;min-height:0;overflow:hidden}
+.communication--activity form[data-activity-form]{display:grid;align-content:start;gap:clamp(4px,.8dvh,8px);min-width:0}
+.communication--activity form[data-activity-form]>label{min-width:0;margin:0;font-size:.8rem;line-height:1.2}
+.communication--activity form[data-activity-form] input:not([type=checkbox]),.communication--activity form[data-activity-form] select{min-height:38px;margin-top:2px;padding:5px 8px;font-size:16px}
+.communication--activity .comm-activity-source-links{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:.72rem;line-height:1.2}
+.communication--activity .comm-activity-source-links a{color:#174967;font-weight:750;text-decoration:underline}
+.communication--activity .comm-activity-source-links button{min-height:34px;padding:4px 8px;font-size:.7rem}
+.communication--activity .comm-activity-link-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:6px;margin:0;color:#456173;font-size:.72rem;line-height:1.2}
+.communication--activity .comm-activity-link-row a{min-width:0;overflow:hidden;color:#15476a;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
+.communication--activity .comm-note{margin:0;font-size:.72rem;line-height:1.2}
+.communication--activity form[data-activity-form]>button[type=submit]{min-height:42px;padding:6px 10px;font-size:.82rem}
+.communication--activity .comm-status:not(:empty){margin:2px 0 0;padding:6px 8px;font-size:.72rem;line-height:1.2}
+.communication--activity>footer.comm-actions{flex:0 0 auto;margin:6px 0 0}
+.communication--activity>footer.comm-actions button{width:100%;min-height:40px;padding:6px;font-size:.8rem}
+.communication--activity [data-activity-preview]:not(:empty){display:grid;gap:5px;min-width:0;margin:0;padding:7px;border:1px solid #b99b5e;border-radius:8px;background:#fff9e8}
+.communication--activity [data-activity-preview] p{margin:0;font-size:.76rem;line-height:1.25}
+.communication--activity .comm-activity-preview-title{font-weight:800}
+.communication--activity .comm-activity-outgoing-message{max-height:7dvh;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere;padding:5px;border-left:2px solid #b99b5e;background:#fff}
+.communication--activity .comm-activity-preview-count{font-weight:750}
+.communication--activity .comm-activity-recipient-details{font-size:.72rem}
+.communication--activity .comm-activity-recipient-details summary{cursor:pointer;font-weight:750}
+.communication--activity .comm-recipient-preview{max-height:12dvh;overflow:auto;margin:4px 0 0;padding-inline-start:20px;font-size:.72rem}
+.communication--activity [data-confirm-activity]{min-height:40px;margin:0;background:#a92928;color:#fff}
+.communication--activity [data-edit-activity]{min-height:34px;padding:4px;font-size:.72rem}
+.communication--activity form[data-confirmation=true]>:not([data-activity-preview]){display:none!important}
+@media(max-height:620px){.management-hub-dialog:has(.communication--activity) .management-hub-body{padding:5px 8px}.communication--activity form[data-activity-form]{gap:4px}.communication--activity>.comm-heading{margin-bottom:3px}.communication--activity .comm-activity-source-links{font-size:.65rem}.communication--activity form[data-activity-form]>label{font-size:.74rem}.communication--activity form[data-activity-form] select,.communication--activity form[data-activity-form] input:not([type=checkbox]){min-height:34px}.communication--activity>footer.comm-actions button{min-height:36px}}
+
 .management-hub-dialog[data-panel=communication]:has(.communication--compose) {
   width: min(92vw, 560px);
   gap: 8px;
@@ -351,3 +390,7 @@
 @media(max-width:380px) { .comm-history-filters { grid-template-columns:minmax(0,1fr); } }
 .communication [hidden]{display:none!important}
 .comm-home-notice--checklist-conference{border-color:#177c61;background:linear-gradient(115deg,#f2fff8,#d6f5e7);box-shadow:0 0 0 3px #ffffffb0,0 8px 26px #102d4a55}.comm-home-notice--checklist-conference header{color:#12654f}.comm-home-notice--checklist-conference .comm-home-notice__ack-status:empty{display:none}.comm-home-notice--checklist-conference .comm-home-notice__ack-status:not(:empty){margin:8px 0;padding:8px;border-radius:8px;background:#fff0e7;color:#7d320f;font-size:.82rem}.comm-home-notice--checklist-conference .comm-home-notice__ack{display:block;width:min(100%,180px);min-height:44px;margin:12px auto 0;background:#17654f;color:#fff;border-color:#10513e;font-weight:900;letter-spacing:.08em}.comm-home-notice--checklist-conference .comm-home-notice__ack:disabled{opacity:.65}
+
+/* Activity composer overrides the legacy scroll treatment above. */
+.management-hub-dialog[data-panel=communication]:has(.communication--activity) .management-hub-body{overflow:hidden}
+.communication--activity .comm-content{max-height:none;overflow:hidden}
