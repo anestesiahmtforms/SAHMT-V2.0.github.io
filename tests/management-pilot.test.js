@@ -37,8 +37,8 @@ test('inactive folders stay visible while profile gates hide restricted content'
  assert.match(view.body.innerHTML,/Pasta inativa/);
  assert.doesNotMatch(view.body.innerHTML,/data-fe-performance|iframe/);
  const effective=hub({...publicAccess,teamSurveys:true},'institutional',null,true,folderAllowed);
- assert.match(effective.body.innerHTML,/data-hub-item="0"/);
- assert.doesNotMatch(effective.body.innerHTML,/data-hub-item="0" disabled/);
+ assert.match(effective.body.innerHTML,/data-hub-item="1"/);
+ assert.doesNotMatch(effective.body.innerHTML,/data-hub-item="1" disabled/);
  assert.match(effective.body.innerHTML,/PESQUISA DE CLIMA ORGANIZACIONAL/);
  assert.match(effective.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
  const direct=hub({...publicAccess,teamSurveys:true},'climateForm',null,true,folderAllowed);
@@ -56,12 +56,12 @@ test('restricted FE opens vaccination directly, excludes dosimetry and respects 
  assert.equal(hub({institutionalSurveys:true},'dosimetryHistory').dialog.dataset.panel,'home');
  const oldLink=hub(access,'biosafety');assert.equal(oldLink.dialog.dataset.panel,'institutional');
  const paused=hub(access,'institutional',null,true,id=>!id.startsWith('consultas'));
- assert.match(paused.body.innerHTML,/data-hub-item="6"[^]*MEU HISTÓRICO VACINAL/);
- assert.doesNotMatch(paused.body.innerHTML,/data-hub-item="6" disabled/);
- paused.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?{dataset:{hubItem:'6'}}:null}});
+ assert.match(paused.body.innerHTML,/data-hub-item="0"[^]*MEU HISTÓRICO VACINAL/);
+ assert.doesNotMatch(paused.body.innerHTML,/data-hub-item="0" disabled/);
+ paused.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?{dataset:{hubItem:'0'}}:null}});
  assert.equal(paused.dialog.dataset.panel,'vaccinationHistory');
  assert.match(paused.body.innerHTML,/Pasta inativa/);
- allowed.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?{dataset:{hubItem:'6'}}:null}});
+ allowed.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?{dataset:{hubItem:'0'}}:null}});
  assert.equal(allowed.dialog.dataset.panel,'vaccinationHistory');
  allowed.handlers['back-click']();assert.equal(allowed.dialog.dataset.panel,'institutional');
 });
