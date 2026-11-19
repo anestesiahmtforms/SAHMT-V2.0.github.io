@@ -5,7 +5,7 @@ import {createSurveyService} from '../worker-training/survey-service.js';
 import {aggregateEpidemiological} from '../src/epidemiological-aggregate.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';import {institutionalAssignmentKey} from '../src/institutional-group.js';
 export const identity={uid:'synthetic-registration',email:'synthetic@example.invalid',emailVerified:true,provider:'google.com'};
-export function professionalAnswers(){return {...Object.fromEntries(PROFESSIONAL_FIELDS.map(f=>[f.id,f.type==='checks'?f.options.slice(0,f.min||1).map(([v])=>v):f.options?f.options[0][0]:f.required?'Informação sintética':''])),fullName:'Pessoa Sintética',birthDate:'1990-01-01',cpf:'52998224725',crm:'12345',crmState:'MG',phone:'31999999999',lattes:'https://lattes.cnpq.br/1234567890123456'};}
+export function professionalAnswers(){return {...Object.fromEntries(PROFESSIONAL_FIELDS.map(f=>[f.id,['checks','multi-select'].includes(f.type)?f.options.slice(0,f.min||1).map(([v])=>v):f.options?f.options[0][0]:f.required?'Informação sintética':''])),fullName:'Pessoa Sintética',birthDate:'1990-01-01',cpf:'52998224725',crm:'12345',workDays:['0:WEEKLY'],phone:'31999999999',lattes:'https://lattes.cnpq.br/1234567890123456'};}
 
 test('professional registration can be called by administrators and verifies only the saved status',async()=>{
  const store=await fixture();
@@ -26,6 +26,25 @@ test('professional registration can be called by administrators and verifies onl
  await assert.rejects(service.execute('OBLIGATION_STATUS',{...activity,uid:identity.uid},admin),{code:'REGISTRATION_INVALID_INPUT'});
 });
 export async function fixture(category='EFETIVO'){const store=vaccinationMemoryStore();store.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});store.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:[category]});return store;}
+test('the professional form accepts a weekly grid and several surgical areas without retired fields',()=>{
+ const answers=professionalAnswers();
+ answers.workDays=['0:WEEKLY','0:MORNING','6:ON_CALL'];
+ answers.surgicalAreas=['CARDIOVASCULAR','UROLOGY'];
+ assert.deepEqual(validateProfessionalAnswers(answers).workDays,answers.workDays);
+ assert.deepEqual(validateProfessionalAnswers(answers).surgicalAreas,answers.surgicalAreas);
+ for(const workDays of [['7:WEEKLY'],['0:INVALID'],['0:WEEKLY','0:WEEKLY']])assert.throws(()=>validateProfessionalAnswers({...answers,workDays}));
+ assert.throws(()=>validateProfessionalAnswers({...answers,surgicalAreas:['NONE','UROLOGY']}));
+});
+test('a saved registration retains its original answers when updated to the new form',async()=>{
+ const store=await fixture(),service=createProfessionalRegistrationService({store});
+ const legacy={workDays:['0','7'],surgicalAreas:'Urologia',crmState:'MG',shifts:'Plantão',surgicalDetails:'',complementarySkills:'Nenhuma'};
+ const old=await service.execute('SAVE',{answers:{...professionalAnswers(),...legacy},expectedVersion:0,truth:true},identity);
+ assert.equal(old.record.schemaVersion,1);
+ const result=await service.execute('SAVE',{answers:professionalAnswers(),expectedVersion:1,truth:true},identity);
+ assert.equal(result.record.schemaVersion,2);
+ assert.deepEqual(result.record.legacyAnswers,legacy);
+ await assert.rejects(service.execute('SAVE',{answers:{...professionalAnswers(),...legacy},expectedVersion:2,truth:true},identity),{code:'REGISTRATION_SCHEMA_CHANGED'});
+});
 const completeEpiAnswers=()=>Object.fromEntries(EPIDEMIOLOGICAL_FIELDS.map(f=>[f.id,f.type==='checks'?[f.options[0][0]]:f.options[0][0]]));
 const epi=(patch={})=>({survey_cycle:'2026',survey_version:'1.0',submission_id:'a'.repeat(32),consent:true,group:'team',answers:{sleep:'0'},...patch});
 test('professional schema validates CPF/date/phone and rejects injected routing or identity',()=>{const v=validateProfessionalAnswers(professionalAnswers());assert.equal(v.cpf,'52998224725');for(const patch of [{uid:'other'},{folderId:'injection'},{cpf:'11111111111'},{birthDate:'2026-02-30'},{phone:'..........'},{lattes:'https://evil.invalid'},{managementAreas:[]}])assert.throws(()=>validateProfessionalAnswers({...professionalAnswers(),...patch}));});

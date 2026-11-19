@@ -71,7 +71,7 @@ async function runtime(env,fetchImpl,buildService,actor,headers,{scheduled=false
   getToken:serviceToken(credentials,fetchImpl,{history:true}),fetchImpl,spreadsheetId:env.FF_HISTORY_SPREADSHEET_ID
  }):null;
  const history=historyDrive?createCommunicationHistory({store,drive:historyDrive,pushQueue}):null;
- const activitySource=history&&actor?createActivitySource({fetchImpl,headers,actor}):null;
+ const activitySource=history&&actor?createActivitySource({fetchImpl,headers,actor,professionalInFc:env.FC_PROFESSIONAL_REGISTRATION_ENABLED==='true'}):null;
  const service=createCommunicationService({store,fa,scheduleSource,send,recipientEnabled,pushQueue,history,historyDrive,activitySource});
  return {
   async execute(...args){await store.assertAvailable();const result=await service.execute(...args);await store.assertAvailable();return result;},
@@ -105,7 +105,7 @@ export function createCommunicationWorker({verify=verifyCommunicationActor,build
    const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Vary':'Origin'};
    const json=(body,status=200)=>Response.json(body,{status,headers});
    if(request.headers.get('Origin')!==ORIGIN)return json({code:'COMM_ORIGIN_DENIED'},403);
-   Object.assign(headers,{'Access-Control-Allow-Origin':ORIGIN,'Access-Control-Allow-Headers':'Authorization, Content-Type, X-SAHMT-FA-Authorization, X-SAHMT-FB-Authorization','Access-Control-Allow-Methods':'POST, OPTIONS'});
+   Object.assign(headers,{'Access-Control-Allow-Origin':ORIGIN,'Access-Control-Allow-Headers':'Authorization, Content-Type, X-SAHMT-FA-Authorization, X-SAHMT-FB-Authorization, X-SAHMT-FC-Authorization','Access-Control-Allow-Methods':'POST, OPTIONS'});
    if(new URL(request.url).pathname!=='/v1/communication')return json({code:'COMM_NOT_FOUND'},404);
    if(request.method==='OPTIONS')return new Response(null,{status:204,headers});
    if(request.method!=='POST')return json({code:'COMM_METHOD_DENIED'},405);

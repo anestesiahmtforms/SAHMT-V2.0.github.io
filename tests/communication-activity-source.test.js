@@ -59,6 +59,21 @@ test('professional activity uses its FA endpoint and is selectable when FE is un
  assert.deepEqual(await source.completion({activity:professional}),{completed:true});
  assert.equal(calls.filter(url=>url.includes('accounts:lookup')).length,1);
 });
+test('the FC cutover verifies and forwards a native FC token for professional completion',async()=>{
+ const calls=[];
+ const professional={kind:'SURVEY',id:'professional',title:'Cadastro Profissional - SAHMT',cycle:'2026'};
+ const authorization=token('indicadores---sahmt');
+ const source=createActivitySource({actor,professionalInFc:true,headers:{'X-SAHMT-FC-Authorization':authorization},
+  fetchImpl:async (url,options)=>{
+   calls.push({url,options});
+   if(url.includes('accounts:lookup'))return Response.json({users:[{localId:identity.uid,email:actor.email,emailVerified:true,
+    providerUserInfo:[{providerId:'google.com',rawId:actor.googleUid}]}]});
+   return Response.json({completed:true});
+  }});
+ assert.deepEqual(await source.completion({activity:professional}),{completed:true});
+ assert.equal(calls.at(-1).url,'https://sahmt-fc-integration.anestesiahmtforms3.workers.dev/v1/professional-registration');
+ assert.equal(calls.at(-1).options.headers.Authorization,authorization);
+});
 test('training catalog forwards canonical folder metadata without adding arbitrary links',async()=>{
  const {minimumScore,...item}=activity;
  const h=remote({result:{items:[{...item,folderPath:['ROPs','Comunicação'],url:'https://example.invalid'}]}});

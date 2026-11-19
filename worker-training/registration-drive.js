@@ -9,28 +9,60 @@ const FOLDER='application/vnd.google-apps.folder',SCOPE='openid email https://ww
 const id=v=>typeof v==='string'&&/^[-A-Za-z0-9_]{10,200}$/.test(v),hash=v=>createHash('sha256').update(v).digest('hex');
 const fail=(code,status=503)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
-export function createRegistrationDrive({store,clientConfig,encryptionKey,fetchImpl=fetch,now=Date.now}={}){
- const configured=clientConfig?.ownerEmail===OWNER&&clientConfig.origin===ORIGIN&&/^[0-9]+-[-A-Za-z0-9_]+\.apps\.googleusercontent\.com$/.test(clientConfig.clientId||'')&&typeof clientConfig.clientSecret==='string'&&clientConfig.clientSecret.length>10&&['rootFolderId','teamParentId','substituteParentId'].every(k=>id(clientConfig[k]))&&typeof encryptionKey==='string'&&Buffer.from(encryptionKey,'base64').length===32;
+const privateFolder=(f,folderId)=>f?.id===folderId&&f.mimeType===FOLDER&&f.trashed===false&&f.shared===false&&
+ f.owners?.length===1&&f.owners[0].emailAddress?.toLowerCase()===OWNER;
+export function createRegistrationDrive({store,clientConfig,encryptionKey,refreshToken,interactive=true,checkAccess,fetchImpl=fetch,now=Date.now}={}){
+ const credentialsReady=interactive
+  ? typeof encryptionKey==='string'&&Buffer.from(encryptionKey,'base64').length===32
+  : typeof refreshToken==='string'&&refreshToken.trim().length>20;
+ const configured=clientConfig?.ownerEmail===OWNER&&clientConfig.origin===ORIGIN&&/^[0-9]+-[-A-Za-z0-9_]+\.apps\.googleusercontent\.com$/.test(clientConfig.clientId||'')&&typeof clientConfig.clientSecret==='string'&&clientConfig.clientSecret.length>10&&['rootFolderId','teamParentId','substituteParentId'].every(k=>id(clientConfig[k]))&&credentialsReady;
  let cached=null,refreshing;
  async function request(url,options={},missing=false){let r;try{r=await fetchImpl(url,{...options,redirect:'error',cache:'no-store',signal:AbortSignal.timeout(30000)});}catch{fail('REGDRIVE_UNAVAILABLE');}if(missing&&r.status===404){await r.body?.cancel();return null;}if(!r.ok){await r.body?.cancel();fail(r.status===409?'REGDRIVE_CONFLICT':r.status===401||r.status===403?'REGDRIVE_AUTH_REQUIRED':'REGDRIVE_UNAVAILABLE',r.status===409?409:503);}try{return await r.json();}catch{fail('REGDRIVE_UNAVAILABLE');}}
  async function crypt(mode,value){const key=await crypto.subtle.importKey('raw',Buffer.from(encryptionKey,'base64'),'AES-GCM',false,[mode]);if(mode==='encrypt'){const iv=crypto.getRandomValues(new Uint8Array(12));const bytes=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode('SAHMT_REGISTRATION_DRIVE_V1')},key,new TextEncoder().encode(value));return {iv:Buffer.from(iv).toString('base64'),ciphertext:Buffer.from(bytes).toString('base64')};}if(typeof value?.iv!=='string'||typeof value.ciphertext!=='string'||value.ciphertext.length>20000)fail('REGDRIVE_AUTH_REQUIRED');try{return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:Buffer.from(value.iv,'base64'),additionalData:new TextEncoder().encode('SAHMT_REGISTRATION_DRIVE_V1')},key,Buffer.from(value.ciphertext,'base64')));}catch{fail('REGDRIVE_AUTH_REQUIRED');}}
  async function ownerToken(access){const u=await request('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+access}});if(u.email_verified!==true||u.email?.toLowerCase()!==OWNER)fail('REGDRIVE_WRONG_OWNER',403);}
- async function token(){if(!configured)fail('REGDRIVE_NOT_CONFIGURED');if(cached?.expiresAt>now()+60000)return cached.token;if(!refreshing)refreshing=(async()=>{const saved=await store.get('integrationCredentials','registrationDrive');if(!saved||saved.clientId!==clientConfig.clientId||saved.rootFolderId!==clientConfig.rootFolderId||saved.ownerEmail!==OWNER)fail('REGDRIVE_AUTH_REQUIRED');const refresh=await crypt('decrypt',saved);const data=await request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:clientConfig.clientId,client_secret:clientConfig.clientSecret,refresh_token:refresh})});if(typeof data.access_token!=='string'||!Number.isFinite(data.expires_in)||data.expires_in<=60||data.expires_in>3600)fail('REGDRIVE_AUTH_REQUIRED');await ownerToken(data.access_token);cached={token:data.access_token,expiresAt:now()+data.expires_in*1000};return cached.token;})().finally(()=>{refreshing=null;});return refreshing;}
+ async function ownerRefreshToken(){
+  if(!interactive)return refreshToken.trim();
+  const saved=await store.get('integrationCredentials','registrationDrive');
+  if(!saved||saved.clientId!==clientConfig.clientId||saved.rootFolderId!==clientConfig.rootFolderId||saved.ownerEmail!==OWNER)fail('REGDRIVE_AUTH_REQUIRED');
+  return crypt('decrypt',saved);
+ }
+ async function token(){if(!configured)fail('REGDRIVE_NOT_CONFIGURED');if(cached?.expiresAt>now()+60000)return cached.token;if(!refreshing)refreshing=(async()=>{const data=await request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:clientConfig.clientId,client_secret:clientConfig.clientSecret,refresh_token:await ownerRefreshToken()})});if(typeof data.access_token!=='string'||!Number.isFinite(data.expires_in)||data.expires_in<=60||data.expires_in>3600)fail('REGDRIVE_AUTH_REQUIRED');await ownerToken(data.access_token);cached={token:data.access_token,expiresAt:now()+data.expires_in*1000};return cached.token;})().finally(()=>{refreshing=null;});return refreshing;}
  async function drive(path,body,method=body?'POST':'GET',missing=false,access){return request(API+path,{method,headers:{Authorization:'Bearer '+(access||await token()),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})},missing);}
- async function info(folderId,access){const f=await drive('/'+encodeURIComponent(folderId)+'?fields=id,mimeType,parents,trashed,shared,owners(emailAddress),appProperties',undefined,'GET',true,access);if(!f||f.id!==folderId||f.mimeType!==FOLDER||f.trashed!==false||f.shared!==false||f.owners?.length!==1||f.owners[0].emailAddress?.toLowerCase()!==OWNER)fail('REGDRIVE_DESTINATION_INVALID',403);return f;}
- async function roots(access){const root=await info(clientConfig.rootFolderId,access);const parents=await Promise.all([clientConfig.teamParentId,clientConfig.substituteParentId].map(p=>info(p,access)));if(parents.some(p=>!p.parents?.includes(root.id)))fail('REGDRIVE_DESTINATION_INVALID',403);}
+ async function info(folderId,access){const f=await drive('/'+encodeURIComponent(folderId)+'?fields=id,mimeType,parents,trashed,shared,owners(emailAddress),appProperties',undefined,'GET',true,access);if(!privateFolder(f,folderId))fail('REGDRIVE_DESTINATION_INVALID',403);return f;}
+ async function roots(access,selectedParent){
+  const root=await info(clientConfig.rootFolderId,access);
+  const parents=selectedParent?[selectedParent]:[clientConfig.teamParentId,clientConfig.substituteParentId];
+  const checked=await Promise.all(parents.map(parent=>info(parent,access)));
+  if(checked.some(parent=>!parent.parents?.includes(root.id)))fail('REGDRIVE_DESTINATION_INVALID',403);
+ }
  async function allocate(){const data=await drive('/generateIds?count=1&space=drive&type=files');if(data.ids?.length!==1||!id(data.ids[0]))fail('REGDRIVE_UNAVAILABLE');return data.ids[0];}
  async function folder(parentId,uid,kind,name){
-  const key=hash(JSON.stringify([parentId,uid,kind])),existing=await store.get('registrationDriveFolders',key);let candidate=existing?.folderId;
-  if(!candidate){candidate=await allocate();const reserved=await store.transaction(async tx=>{const old=await tx.get('registrationDriveFolders',key);if(old)return old;const data={uid,parentId,kind,folderId:candidate};tx.create('registrationDriveFolders',key,data);return data;});candidate=reserved.folderId;}
-  const binding=await store.get('registrationDriveFolders',key);if(binding?.uid!==uid||binding.parentId!==parentId||binding.kind!==kind||binding.folderId!==candidate||!id(candidate))fail('REGDRIVE_DESTINATION_INVALID',403);const metadata=await drive('/'+candidate+'?fields=id,mimeType,parents,trashed,shared,owners(emailAddress),appProperties',undefined,'GET',true);
-  if(!metadata){try{await drive('?fields=id',{id:candidate,name,mimeType:FOLDER,parents:[parentId],appProperties:{sahmtRegistrationKey:key}});}catch(e){if(e.code!=='REGDRIVE_CONFLICT')throw e;}}
-  const f=await info(candidate);if(!f.parents?.includes(parentId)||f.appProperties?.sahmtRegistrationKey!==key)fail('REGDRIVE_DESTINATION_INVALID',403);return candidate;
+  const key=hash(JSON.stringify([parentId,uid,kind]));
+  let binding=await store.get('registrationDriveFolders',key);
+  if(!binding){
+   const folderId=await allocate();
+   binding=await store.transaction(async tx=>{
+    const old=await tx.get('registrationDriveFolders',key);if(old)return old;
+    const data={uid,parentId,kind,folderId};tx.create('registrationDriveFolders',key,data);return data;
+   });
+  }
+  const candidate=binding?.folderId;
+  if(binding?.uid!==uid||binding.parentId!==parentId||binding.kind!==kind||!id(candidate))fail('REGDRIVE_DESTINATION_INVALID',403);
+  let folder=await drive('/'+candidate+'?fields=id,mimeType,parents,trashed,shared,owners(emailAddress),appProperties',undefined,'GET',true);
+  if(!folder){
+   try{await drive('?fields=id',{id:candidate,name,mimeType:FOLDER,parents:[parentId],appProperties:{sahmtRegistrationKey:key}});}
+   catch(e){if(e.code!=='REGDRIVE_CONFLICT')throw e;}
+   folder=await info(candidate);
+  }
+  if(!privateFolder(folder,candidate)||!folder.parents?.includes(parentId)||folder.appProperties?.sahmtRegistrationKey!==key)fail('REGDRIVE_DESTINATION_INVALID',403);
+  return candidate;
  }
  const publicFile=r=>({id:r.requestId,subject:r.subject,name:r.name,mimeType:r.mimeType,size:r.size,status:r.status,uploadedAt:r.uploadedAt||null});
  async function status(identity){const p=await registrationActor(store,identity,{team:true});let connected=false;if(configured)try{await token();connected=true;}catch{}return {connected,canConnect:configured&&registrationAdmin(p),...(configured&&registrationAdmin(p)?{clientId:clientConfig.clientId,ownerEmail:OWNER}:{})};}
  return {status,async execute(action,input,identity){
+  if(!interactive&&!['LIST_OWN','UPLOAD'].includes(action))fail('REGDRIVE_INVALID_INPUT',400);
   const actor=await registrationActor(store,identity,{team:true});
+  await checkAccess?.(actor);
   if(action==='BEGIN_CONNECT'){
    if(!exact(input,[])||!registrationAdmin(actor))fail('REGDRIVE_FORBIDDEN',403);if(!configured)fail('REGDRIVE_NOT_CONFIGURED');const nonce=randomBytes(16).toString('hex');await store.transaction(tx=>{tx.create('integrationOAuthStates',nonce,{uid:identity.uid,email:identity.email.toLowerCase(),expiresAt:now()+600000,used:false});});return {nonce,clientId:clientConfig.clientId,scope:SCOPE,ownerEmail:OWNER};
   }
@@ -42,17 +74,20 @@ export function createRegistrationDrive({store,clientConfig,encryptionKey,fetchI
    await store.transaction(async tx=>{await registrationActor(tx,identity,{admin:true});tx.set('integrationCredentials','registrationDrive',{schemaVersion:1,clientId:clientConfig.clientId,rootFolderId:clientConfig.rootFolderId,ownerEmail:OWNER,...encrypted,connectedAt:now()});});cached={token:data.access_token,expiresAt:now()+Math.min(data.expires_in,3600)*1000};return {connected:true};
   }
   if(action==='LIST_OWN'){
-   if(!exact(input,[]))fail('REGDRIVE_INVALID_INPUT',400);const rows=await store.list('professionalRegistrationFiles',[{field:'uid',op:'EQUAL',value:identity.uid}],1000);await registrationActor(store,identity,{team:true});return {files:rows.filter(r=>r.status==='STORED').map(publicFile),...(await status(identity))};
+   if(!exact(input,[]))fail('REGDRIVE_INVALID_INPUT',400);const rows=await store.list('professionalRegistrationFiles',[{field:'uid',op:'EQUAL',value:identity.uid}],1000);await registrationActor(store,identity,{team:true});return {files:rows.filter(r=>r.uid===identity.uid&&r.status==='STORED').map(publicFile),...(interactive?await status(identity):{})};
   }
   if(action!=='UPLOAD'||!exact(input,['requestId','subject','mimeType','dataBase64'])||!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(input.requestId)||!Object.hasOwn(ATTACHMENT_SUBJECTS,input.subject))fail('REGDRIVE_INVALID_INPUT',400);
-  const bytes=validateDocumentBytes(input.mimeType,input.dataBase64);await roots();const assignment=await store.get('userCategories',await institutionalAssignmentKey(identity.email));const affiliation=assignedInstitutionalGroup(assignment,identity);if(!affiliation||/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(identity.email))fail('REGDRIVE_FORBIDDEN',403);
-  const parentId=affiliation==='substitute'?clientConfig.substituteParentId:clientConfig.teamParentId,professionalId=await folder(parentId,identity.uid,'PROFESSIONAL',identity.email.toLowerCase()),destination=await folder(professionalId,identity.uid,input.subject,ATTACHMENT_SUBJECTS[input.subject]);
+  const bytes=validateDocumentBytes(input.mimeType,input.dataBase64);if(!configured)fail('REGDRIVE_NOT_CONFIGURED');
+  const assignment=await store.get('userCategories',await institutionalAssignmentKey(identity.email));const affiliation=assignedInstitutionalGroup(assignment,identity);if(!affiliation||/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(identity.email))fail('REGDRIVE_FORBIDDEN',403);
+  const parentId=affiliation==='substitute'?clientConfig.substituteParentId:clientConfig.teamParentId;
+  await roots(undefined,parentId);
+  const professionalId=await folder(parentId,identity.uid,'PROFESSIONAL',identity.email.toLowerCase()),destination=await folder(professionalId,identity.uid,input.subject,ATTACHMENT_SUBJECTS[input.subject]);
   const digest=hash(Buffer.concat([Buffer.from(JSON.stringify([identity.uid,input.subject,input.mimeType])),bytes])),key=identity.uid+'_'+input.requestId,previous=await store.get('professionalRegistrationFiles',key),candidate=previous?.fileId||await allocate();
   const journal=await store.transaction(async tx=>{await registrationActor(tx,identity,{team:true});const old=await tx.get('professionalRegistrationFiles',key);if(old){if(old.digest!==digest||old.uid!==identity.uid||old.folderId!==destination)fail('REGDRIVE_UPLOAD_CONFLICT',409);return old;}const day=new Date(now()).toISOString().slice(0,10),limitId=identity.uid+'_'+day,limit=await tx.get('professionalRegistrationUploadLimits',limitId);if((limit?.count||0)>=30)fail('REGDRIVE_UPLOAD_LIMIT',429);const row={uid:identity.uid,email:identity.email.toLowerCase(),subject:input.subject,requestId:input.requestId,fileId:candidate,folderId:destination,professionalId,parentId,digest,mimeType:input.mimeType,size:bytes.length,name:input.subject+'_'+input.requestId+(input.mimeType==='application/pdf'?'.pdf':'.jpg'),status:'PENDING',createdAt:now()};tx.create('professionalRegistrationFiles',key,row);tx.set('professionalRegistrationUploadLimits',limitId,{uid:identity.uid,count:(limit?.count||0)+1});return row;});
   if(journal.status==='STORED')return {file:publicFile(journal)};
   await registrationActor(store,identity,{team:true});await info(destination);const path='/'+journal.fileId+'?fields=id,parents,appProperties,mimeType,size,shared';let file=await drive(path,undefined,'GET',true);
   if(!file){const boundary='sahmt_'+randomBytes(16).toString('hex'),metadata={id:journal.fileId,name:journal.name,parents:[destination],appProperties:{sahmtDigest:digest}};const body=Buffer.concat([Buffer.from('--'+boundary+'\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n'+JSON.stringify(metadata)+'\r\n--'+boundary+'\r\nContent-Type: '+input.mimeType+'\r\n\r\n'),bytes,Buffer.from('\r\n--'+boundary+'--\r\n')]);try{file=await request('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,parents,appProperties,mimeType,size,shared',{method:'POST',headers:{Authorization:'Bearer '+await token(),'Content-Type':'multipart/related; boundary='+boundary},body});}catch(e){file=await drive(path,undefined,'GET',true);if(!file)throw e;}}
   if(file.id!==journal.fileId||file.shared!==false||!file.parents?.includes(destination)||file.appProperties?.sahmtDigest!==digest||file.mimeType!==input.mimeType||Number(file.size)!==bytes.length)fail('REGDRIVE_UPLOAD_UNCONFIRMED');
-  await roots();const finalProfessional=await info(professionalId),finalDestination=await info(destination);if(!finalProfessional.parents?.includes(parentId)||!finalDestination.parents?.includes(professionalId))fail('REGDRIVE_DESTINATION_INVALID',403);const finalAssignment=await store.get('userCategories',await institutionalAssignmentKey(identity.email));if(assignedInstitutionalGroup(finalAssignment,identity)!==affiliation)fail('REGDRIVE_FORBIDDEN',403);return store.transaction(async tx=>{await registrationActor(tx,identity,{team:true});const current=await tx.get('professionalRegistrationFiles',key);if(current?.digest!==digest||current.fileId!==journal.fileId)fail('REGDRIVE_UPLOAD_CONFLICT',409);const saved={...current,status:'STORED',uploadedAt:now()};tx.set('professionalRegistrationFiles',key,saved);return {file:publicFile(saved)};});
+  await roots(undefined,parentId);const finalProfessional=await info(professionalId),finalDestination=await info(destination);if(!finalProfessional.parents?.includes(parentId)||!finalDestination.parents?.includes(professionalId))fail('REGDRIVE_DESTINATION_INVALID',403);const finalAssignment=await store.get('userCategories',await institutionalAssignmentKey(identity.email));if(assignedInstitutionalGroup(finalAssignment,identity)!==affiliation)fail('REGDRIVE_FORBIDDEN',403);return store.transaction(async tx=>{await registrationActor(tx,identity,{team:true});const current=await tx.get('professionalRegistrationFiles',key);if(current?.digest!==digest||current.fileId!==journal.fileId)fail('REGDRIVE_UPLOAD_CONFLICT',409);const saved={...current,status:'STORED',uploadedAt:now()};tx.set('professionalRegistrationFiles',key,saved);return {file:publicFile(saved)};});
  }};
 }

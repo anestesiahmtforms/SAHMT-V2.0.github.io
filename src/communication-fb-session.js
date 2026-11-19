@@ -6,7 +6,7 @@ import {googleIdentity} from './google-project-auth-core.js';
 // FB restores only the existing sessions needed by communication. Account
 // linking remains in the main app, using the normal Google sign-in flow.
 export async function restoreCommunicationFbSession(target,source,isCurrent){
- if(!['FA','FF'].includes(target)||!isCurrent())return null;
+ if(!['FA','FC','FF'].includes(target)||!isCurrent())return null;
  const {appName,config}=GOOGLE_PROJECT_CONFIG[target];
  const app=getApps().find(existing=>existing.name===appName)||initializeApp(config,appName);
  if(app.options.projectId!==config.projectId||app.options.appId!==config.appId)return null;

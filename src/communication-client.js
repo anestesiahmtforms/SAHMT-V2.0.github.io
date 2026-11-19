@@ -5,6 +5,7 @@ import {FF,fail} from '../communication/domain.js';
 import {communicationDevicePushActive,rememberCommunicationDevicePushActive} from './communication-link.js';
 import {APP_VERSION} from './app-version.js';
 import {deployment} from './deployment-context.js';
+import {fcProfessionalRegistrationEnabled} from './fc-integration-config.js';
 export const communicationEnabled=import.meta.env.VITE_COMMUNICATION_FF_ENABLED==='true';
 const endpoint=import.meta.env.VITE_COMMUNICATION_FF_ENDPOINT||'';
 const vapidKey=import.meta.env.VITE_COMMUNICATION_FF_VAPID_KEY||'';
@@ -51,6 +52,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
    if(['ACTIVITY_CATALOG','PREVIEW_ACTIVITY','CREATE_ACTIVITY','VERIFY_ACTIVITY'].includes(action)){
     const kind=input.kind||input.activity?.kind||activityKind;
     const projects=kind==='TRAINING'?['FB']:kind==='SURVEY'?['FA']:['FA','FB'];
+    if(kind!=='TRAINING'&&fcProfessionalRegistrationEnabled)projects.push('FC');
     for(const project of projects){
      const primary=onFb()?'FB':'FA';
      const sourceUser=project===primary?source:(await projectSession(project,source,current))?.currentUser;

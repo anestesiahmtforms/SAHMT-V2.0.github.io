@@ -2,6 +2,7 @@ import {requestFunctionalDosimetry} from './functional-client.js';
 import {dosimetryMonths} from './dosimetry-domain.js';
 import {callInstitutionalSurvey} from './institutional-survey-client.js';
 import {callRegistrationApi} from './registration-client.js';
+import {fcProfessionalRegistrationEnabled} from './fc-integration-config.js';
 import {createFunctionalOccupationalReader} from './vaccination-client.js';
 import {DOSIMETRY_YEARS} from './dosimetry-domain.js';
 import {VACCINES,VACCINATION_STATUSES,VACCINATION_YEARS} from './vaccination-domain.js';
@@ -23,7 +24,8 @@ export async function loadFunctionalResult({key,year,uid,subjectUid,faAuth,isCur
   if(subjectUid!==uid)return {ownOnly:true};
   if(key==='professionalRegistration'){
     const {record}=await callRegistrationApi({uid,isCurrent,kind:'professional',action:'BOOTSTRAP'});
-    if(record?.uid!==uid)return {record:null};
+    const email=faAuth.currentUser?.email?.trim().toLowerCase();
+    if(!record||(fcProfessionalRegistrationEnabled ? !email||record.email!==email : record.uid!==uid))return {record:null};
     const {crm,crmState,rqe,formation}=record.answers||{};
     return {record:{cycle:record.cycle,crm,crmState,rqe,formation}};
   }

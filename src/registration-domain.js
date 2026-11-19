@@ -1,31 +1,53 @@
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 export const REGISTRATION_CYCLE='2026';
+export const WORK_DAYS=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'].map((label,day)=>[String(day),label]);
+export const WORK_OPTIONS=[['WEEKLY','Semanal'],['FORTNIGHTLY','Quinzenal'],['FULL','Integral'],['MORNING','Manhã'],['AFTERNOON','Tarde'],['ON_CALL','Plantão']];
+export const SURGICAL_AREAS=[
+ ['ANGIOLOGY','Angiologia (varizes e outros)'],['OUTPATIENT','Bloco Ambulatorial'],['CARDIOVASCULAR','Cardiovascular'],['CDI','CDI'],
+ ['SPINE','Cirurgia de Coluna'],['GENERAL','Cirurgia Geral'],['ENDOSCOPY','Endoscopia e ou Colonoscopia'],['GYNECOLOGY','Ginecologia/Mastologia'],
+ ['HEMODYNAMICS','Hemodinâmica'],['NEUROSURGERY','Neurocirurgia'],['ORTHOPEDICS','Ortopedia'],['ENT','Otorrinolaringologia'],
+ ['PLASTIC','Plástica'],['PROCTOLOGY','Proctologia'],['ROBOTIC_GENERAL','Robótica Geral-Urológica-Torácica'],
+ ['ROBOTIC_ORTHOPEDICS','Robótica ortopédica'],['ENDOSONOGRAPHY','Sonoendoscopia'],['THORACIC','Torácica'],['UROLOGY','Urologia'],['NONE','Nenhuma'],
+];
+const retiredProfessionalFields=[
+ {id:'crmState',type:'select',required:true,options:['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(value=>[value,value])},
+ {id:'shifts',type:'textarea',required:true,max:1200},
+ {id:'surgicalDetails',type:'textarea',max:1500},
+ {id:'complementarySkills',type:'textarea',required:true,max:3000},
+];
 export const PROFESSIONAL_FIELDS=[
  {id:'fullName',label:'Nome completo',type:'text',required:true,max:180,section:'Identificação'},
  {id:'filiation',label:'Filiação',type:'text',max:240},
  {id:'birthDate',label:'Data de nascimento',type:'date',required:true},
  {id:'cpf',label:'CPF',type:'text',required:true,max:14,inputmode:'numeric'},
  {id:'crm',label:'Número do CRM',type:'text',required:true,max:12,inputmode:'numeric'},
- {id:'crmState',label:'UF do CRM',type:'select',required:true,options:['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'].map(x=>[x,x])},
  {id:'rqe',label:'RQE, quando houver',type:'text',max:100},
  {id:'phone',label:'Telefone com DDD',type:'tel',required:true,max:40,section:'Contato e atuação'},
  {id:'address',label:'Endereço completo',type:'textarea',required:true,max:600},
- {id:'workDays',label:'Dias habituais de trabalho',type:'checks',required:true,options:['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo','Escala variável'].map((x,i)=>[String(i),x])},
- {id:'shifts',label:'Horários, jornadas e plantões',type:'textarea',required:true,max:1200},
+ {id:'workDays',label:'Dias habituais de trabalho',type:'work-grid',required:true,options:WORK_DAYS,columns:WORK_OPTIONS},
  {id:'managementAreas',label:'Áreas de gestão em que gostaria de participar (mínimo de duas)',type:'checks',required:true,min:2,options:MANAGEMENT_AREA_SEED.map(a=>[a.id,a.name]),section:'Áreas de interesse'},
- {id:'surgicalAreas',label:'Áreas da clínica cirúrgica em que tem maior entrosamento e gosta de atuar',type:'textarea',required:true,max:2000},
- {id:'surgicalDetails',label:'Áreas específicas ou subespecialidades de interesse',type:'textarea',max:1500},
+ {id:'surgicalAreas',label:'Área(s) cirúrgica(s) com maior entrosamento e preferência',type:'multi-select',required:true,options:SURGICAL_AREAS,none:'NONE'},
  {id:'formation',label:'Formação, títulos e qualificações',type:'textarea',required:true,max:4000,section:'Formação e competências',help:'Descreva suas qualificações ou informe Nenhum.'},
  {id:'technicalSkills',label:'Competências técnicas',type:'textarea',required:true,max:4000,help:'Descreva ou informe Nenhum.'},
  {id:'leadership',label:'Gestão, liderança e governança',type:'textarea',required:true,max:3000,help:'Descreva experiências ou informe Nenhum.'},
  {id:'teachingResearch',label:'Ensino, pesquisa e inovação',type:'textarea',required:true,max:3000,help:'Descreva experiências ou informe Nenhum.'},
- {id:'complementarySkills',label:'Competências complementares',type:'textarea',required:true,max:3000,help:'Descreva ou informe Nenhum.'},
  {id:'institutionalParticipation',label:'Participação institucional',type:'textarea',required:true,max:3000,help:'Descreva comissões, projetos ou atividades, ou informe Nenhum.'},
  {id:'lattes',label:'Link do Currículo Lattes',type:'url',max:300},
  {id:'outsideWork',label:'Exerce atividades profissionais fora do SAHMT?',type:'select',required:true,options:[['NO','Não'],['YES','Sim']],section:'Informações adicionais'},
  {id:'outsideWorkDetails',label:'Se desejar, descreva suas atividades externas',type:'textarea',max:1500,when:['outsideWork','YES']},
  {id:'additionalInfo',label:'Outras experiências ou informações relevantes para o desenvolvimento da equipe',type:'textarea',max:3000}
 ];
+const legacyProfessionalFields=PROFESSIONAL_FIELDS.map(field=>{
+ if(field.id==='workDays')return {...field,type:'checks',options:[...WORK_DAYS,['7','Escala variável']]};
+ if(field.id==='surgicalAreas')return {id:field.id,type:'textarea',required:true,max:2000};
+ return field;
+}).concat(retiredProfessionalFields);
+
+export function legacyProfessionalAnswers(answers){
+ if(typeof answers?.surgicalAreas!=='string')return {};
+ const ids=['workDays','surgicalAreas',...retiredProfessionalFields.map(field=>field.id)];
+ return Object.fromEntries(ids.filter(id=>Object.hasOwn(answers,id)).map(id=>[id,answers[id]]));
+}
 const choices=values=>values.map((label,i)=>[String(i),label]);
 const frequency=[['NEVER','Nunca'],['RARELY','Raramente'],['SOMETIMES','Às vezes'],['OFTEN','Quase sempre'],['ALWAYS','Sempre']];
 export const EPIDEMIOLOGICAL_FIELDS=[
@@ -53,8 +75,27 @@ export const ATTACHMENT_SUBJECTS=Object.freeze({CV:'Currículo Lattes',PROFESSIO
 const error=code=>{throw Object.assign(Error(code),{code,status:400});};
 export function validCpf(value){const v=String(value).replace(/\D/g,'');if(!/^\d{11}$/.test(v)||/^(\d)\1{10}$/.test(v))return false;return [9,10].every(n=>{const sum=[...v.slice(0,n)].reduce((s,d,i)=>s+Number(d)*(n+1-i),0);return (sum*10%11)%10===Number(v[n]);});}
 export function validateProfessionalAnswers(input){
- if(!input||typeof input!=='object'||Array.isArray(input)||Object.keys(input).some(k=>!PROFESSIONAL_FIELDS.some(f=>f.id===k)))error('REGISTRATION_INVALID_INPUT');const out={};
- for(const f of PROFESSIONAL_FIELDS){const v=input[f.id];if(f.type==='checks'){const list=v??[];if(!Array.isArray(list)||list.some(x=>!f.options.some(([id])=>id===x))||new Set(list).size!==list.length||f.required&&list.length<(f.min||1))error('REGISTRATION_INVALID_'+f.id.toUpperCase());out[f.id]=[...list].sort();continue;}if(v!==undefined&&typeof v!=='string')error('REGISTRATION_INVALID_'+f.id.toUpperCase());const text=(v||'').trim();if(f.required&&!text||text.length>(f.max||200)||f.options&&text&&!f.options.some(([id])=>id===text))error('REGISTRATION_INVALID_'+f.id.toUpperCase());out[f.id]=text;}
+ if(!input||typeof input!=='object'||Array.isArray(input))error('REGISTRATION_INVALID_INPUT');
+ const fields=typeof input.surgicalAreas==='string'?legacyProfessionalFields:PROFESSIONAL_FIELDS;
+ if(Object.keys(input).some(key=>!fields.some(field=>field.id===key)))error('REGISTRATION_INVALID_INPUT');
+ const out={};
+ for(const field of fields){
+  const value=input[field.id],code='REGISTRATION_INVALID_'+field.id.toUpperCase();
+  if(['checks','work-grid','multi-select'].includes(field.type)){
+   const list=value??[];
+   const allowed=field.type==='work-grid'
+    ? field.options.flatMap(([day])=>field.columns.map(([option])=>day+':'+option))
+    : field.options.map(([option])=>option);
+   if(!Array.isArray(list)||list.length>allowed.length||list.some(option=>!allowed.includes(option))||new Set(list).size!==list.length||
+      field.required&&list.length<(field.min||1)||field.none&&list.includes(field.none)&&list.length>1)error(code);
+   out[field.id]=field.type==='checks'?[...list].sort():allowed.filter(option=>list.includes(option));
+   continue;
+  }
+  if(value!==undefined&&typeof value!=='string')error(code);
+  const text=(value||'').trim();
+  if(field.required&&!text||text.length>(field.max||200)||field.options&&text&&!field.options.some(([id])=>id===text))error(code);
+  out[field.id]=text;
+ }
  if(!validCpf(out.cpf))error('REGISTRATION_INVALID_CPF');out.cpf=out.cpf.replace(/\D/g,'');if(out.fullName.split(/\s+/).length<2||!/^\d{1,12}$/.test(out.crm)||(!/^\+?[\d() .-]{10,40}$/.test(out.phone)||!/^\d{10,15}$/.test(out.phone.replace(/\D/g,'')))||!/^\d{4}-\d{2}-\d{2}$/.test(out.birthDate)||!Number.isFinite(Date.parse(out.birthDate+'T00:00:00Z'))||new Date(out.birthDate+'T00:00:00Z').toISOString().slice(0,10)!==out.birthDate||out.birthDate<'1900-01-01'||out.birthDate>new Date().toISOString().slice(0,10))error('REGISTRATION_INVALID_INPUT');
  if(out.lattes){let url;try{url=new URL(out.lattes);}catch{error('REGISTRATION_INVALID_LATTES');}if(!['https:','http:'].includes(url.protocol)||url.hostname!=='lattes.cnpq.br'||url.username||url.password)error('REGISTRATION_INVALID_LATTES');}if(out.outsideWork!=='YES')out.outsideWorkDetails='';return out;
 }

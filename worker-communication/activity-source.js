@@ -8,6 +8,7 @@ const sources=Object.freeze({
  SURVEY:{project:'FA',header:'X-SAHMT-FA-Authorization',url:'https://sahmt-fe-surveys.anestesiahmtforms5.workers.dev/v1/institutional-surveys'},
  PROFESSIONAL:{project:'FA',header:'X-SAHMT-FA-Authorization',url:'https://sahmt-html-training.anestesiahmtforms.workers.dev/v1/professional-registration'}
 });
+const fcProfessional=Object.freeze({project:'FC',header:'X-SAHMT-FC-Authorization',url:'https://sahmt-fc-integration.anestesiahmtforms3.workers.dev/v1/professional-registration'});
 const sourceFor=activity=>activity.kind==='SURVEY'&&activity.id==='professional'?'PROFESSIONAL':activity.kind;
 const failure=(code,status=503)=>Object.assign(Error(code),{code,status});
 const invalid=()=>failure('COMM_INVALID_ACTIVITY',400);
@@ -22,7 +23,7 @@ async function boundedJson(response){
 }
 
 /** Request-local adapter. Only source user tokens are forwarded, never an FF service credential. */
-export function createActivitySource({fetchImpl=fetch,headers={},actor}={}){
+export function createActivitySource({fetchImpl=fetch,headers={},actor,professionalInFc=false}={}){
  const authenticated=new Map();
  async function authenticate(source){
   const denied=()=>failure('COMM_SOURCE_IDENTITY_MISMATCH',401);
@@ -40,7 +41,7 @@ export function createActivitySource({fetchImpl=fetch,headers={},actor}={}){
  }
  async function call(sourceKey,action,input){
   if(!Object.hasOwn(sources,sourceKey))throw invalid();
-  const source=sources[sourceKey];
+  const source=sourceKey==='PROFESSIONAL'&&professionalInFc?fcProfessional:sources[sourceKey];
   if(!authenticated.has(source.project))authenticated.set(source.project,authenticate(source));
   const authorization=await authenticated.get(source.project);
   let response,data;

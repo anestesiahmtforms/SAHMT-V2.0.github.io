@@ -2,6 +2,7 @@ import {relayQmentumWrite} from '../worker-management-auth/qmentum-write-relay.j
 import {relayQmentumPrints} from '../worker-management-auth/qmentum-print-relay.js';
 import {relayOccurrenceScore} from '../worker-management-auth/occurrence-score-relay.js';
 import {createManagementAuthWorkerRuntime, ManagementBrokerAdmissionState} from '../worker-management-auth/admission-state.js';
+import {createFcRegistrationHandler,isFcRegistrationPath} from './registration.js';
 
 export {ManagementBrokerAdmissionState as FcIntegrationAdmissionState};
 const routes = new Map([
@@ -17,9 +18,10 @@ const fail = (code, status, request) => Response.json({code}, {status, headers:{
 }});
 
 /** Reuses the existing FC proof, authorization, HMAC, replay and idempotency contracts. */
-export function createFcIntegrationWorker({fetchImpl = globalThis.fetch} = {}) {
+export function createFcIntegrationWorker({fetchImpl = globalThis.fetch, registration = createFcRegistrationHandler({fetchImpl})} = {}) {
   return Object.freeze({async fetch(request, env = {}) {
     const url = new URL(request.url), relay = routes.get(url.pathname);
+    if (!url.search && isFcRegistrationPath(url.pathname)) return registration(request,env,url.pathname);
     if (!relay || url.search) return fail('FC_INTEGRATION_ROUTE_NOT_FOUND', 404, request);
     if (request.method === 'OPTIONS') return relay(request, env, {fetchImpl});
     if (env.FC_INTEGRATION_ENABLED !== 'true') return fail('FC_INTEGRATION_DISABLED', 503, request);

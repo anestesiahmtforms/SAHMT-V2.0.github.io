@@ -1,36 +1,213 @@
 import './registration-ui.css';
-import {registrationField as field} from './registration-fields.js';
-import {PROFESSIONAL_FIELDS,ATTACHMENT_SUBJECTS,validateProfessionalAnswers} from './registration-domain.js';
-import {prepareDocumentFile,documentBase64,documentSizeLabel} from './document-image.js';
-const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const message=error=>{const code=error.code||error.message;if(code?.startsWith('REGISTRATION_INVALID_')){const key=code.slice(21).toLowerCase(),f=PROFESSIONAL_FIELDS.find(f=>f.id.toLowerCase()===key);return f?'Confira o campo '+f.label+'.':'Confira os campos obrigatórios do cadastro.';}return ({REGISTRATION_INVALID_INPUT:'Confira os dados preenchidos, o CPF, o CRM, o telefone e a data de nascimento.',REGISTRATION_VERSION_CONFLICT:'Seu cadastro mudou em outra sessão. Volte e reabra para conferir a versão atual.',REGISTRATION_GROUP_UNAVAILABLE:'Seu vínculo institucional precisa ser conferido pelo administrador.',REGISTRATION_FORBIDDEN:'Seu acesso não está liberado.',SURVEY_CYCLE_CLOSED:'Esta coleta ainda não está aberta ou já foi encerrada.',SURVEY_GROUP_UNAVAILABLE:'Seu grupo precisa ser conferido no cadastro institucional.',EPIDEMIOLOGICAL_EMPTY:'Responda ao menos uma pergunta antes de enviar.',EPIDEMIOLOGICAL_INVALID_INPUT:'Confira suas respostas e a ciência sobre a participação.',REGDRIVE_AUTH_REQUIRED:'O Drive institucional precisa ser conectado ou reautorizado pelo administrador.',REGDRIVE_WRONG_OWNER:'Selecione a conta institucional indicada para conectar o Drive.',REGDRIVE_OFFLINE_REQUIRED:'O Google não forneceu a autorização permanente. Autorize novamente a conexão.',REGDRIVE_STATE_INVALID:'A conexão expirou. Reabra o cadastro e tente conectar novamente.',REGDRIVE_UPLOAD_LIMIT:'O limite diário de comprovantes foi atingido.',REGDRIVE_UPLOAD_CONFLICT:'Esta tentativa corresponde a outro arquivo. Selecione o comprovante novamente.',DOCUMENT_FILE_TOO_LARGE:'O arquivo ultrapassa o limite permitido.',SURVEY_FORBIDDEN:'Seu acesso a estes indicadores não está liberado.'})[code]||([401,403].includes(error.status)?'Sua sessão mudou ou o acesso não está liberado. Reabra o cadastro.':error.name==='AbortError'?'A operação não foi confirmada. Confira sua conexão.':code?.includes('INVALID')?'Confira os dados e tente novamente.':'Não foi possível confirmar a operação. Tente novamente.');};
+import {registrationField, isRegistrationList, selectionLabel} from './registration-fields.js';
+import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers} from './registration-domain.js';
+import {prepareDocumentFile, documentBase64} from './document-image.js';
 
-let gisPromise;
-function loadGis(){if(globalThis.google?.accounts?.oauth2)return Promise.resolve();if(!gisPromise)gisPromise=new Promise((resolve,reject)=>{const old=document.querySelector('script[src="https://accounts.google.com/gsi/client"]');const script=old||document.createElement('script');const timer=setTimeout(()=>reject(Error('GOOGLE_UNAVAILABLE')),20000);const check=()=>{if(globalThis.google?.accounts?.oauth2){clearTimeout(timer);resolve();}else reject(Error('GOOGLE_UNAVAILABLE'));};script.addEventListener('load',check,{once:true});script.addEventListener('error',()=>{clearTimeout(timer);reject(Error('GOOGLE_UNAVAILABLE'));},{once:true});if(!old){script.src='https://accounts.google.com/gsi/client';script.async=true;document.head.append(script);}else{const interval=setInterval(()=>{if(globalThis.google?.accounts?.oauth2){clearInterval(interval);check();}},200);setTimeout(()=>clearInterval(interval),20000);}}).catch(e=>{gisPromise=null;throw e;});return gisPromise;}
-export function mountInstitutionalRegistration(root,{request,isCurrent=()=>true}={}){
- const fields=PROFESSIONAL_FIELDS;let disposed=false,state=null,busy=false,preparedFile=null,previewUrl=null,requestId=null,oauthClient=null;
- const pending=new Set();root.classList.add('registration-app');
- const live=()=>!disposed&&root.isConnected&&isCurrent();
- async function call(target,action,input={}){if(!live())throw Error('SESSION_CHANGED');const controller=new AbortController();pending.add(controller);try{const data=await request(target,action,input,controller.signal);if(!live())throw Error('SESSION_CHANGED');return data;}finally{pending.delete(controller);}}
- function notice(text,alert=false){const node=root.querySelector('[data-reg-notice]');if(node){node.textContent=text;node.setAttribute('role',alert?'alert':'status');}}
- function buttonsBusy(value){busy=value;root.querySelectorAll('[data-reg-save],[data-reg-upload]').forEach(b=>b.disabled=value||b.hasAttribute('data-needs-connection'));}
- function formValues(){const d=new FormData(root.querySelector('form'));return Object.fromEntries(fields.map(f=>[f.id,f.type==='checks'?d.getAll(f.id):String(d.get(f.id)||'')]));}
- function conditionals(){root.querySelectorAll('[data-conditional]').forEach(node=>{const [field,value]=node.dataset.conditional.split(':');node.hidden=root.querySelector('[name="'+field+'"]').value!==value;});}
- function render(){
-  if(!live())return;
-  const record=state.record,profile=state.profile||{},values=record?.answers||{};
-  root.innerHTML=`<div class="reg-notice" data-reg-notice role="status" aria-live="polite"></div><form class="reg-form"><div class="reg-grid">${fields.map(f=>field(f,values[f.id]||(f.id==='fullName'?profile.displayName:''))).join('')}</div><label class="reg-confirm"><input type="checkbox" name="truth" required>Confirmo que as informações declaradas são verdadeiras e se destinam ao cadastro institucional.</label><button class="primary-button" type="submit" data-reg-save>SALVAR MEU CADASTRO</button></form><section class="reg-attachments"><h3>Comprovantes</h3><p>Arquivamento na Ficha Funcional dos Membros da Equipe, na pasta vinculada à sua conta e ao assunto.</p><p data-drive-status>${state.drive?.connected?'Drive institucional conectado.':'O envio será liberado após a conexão do Drive institucional pelo administrador.'}</p>${state.drive?.canConnect&&!state.drive?.connected?'<button class="secondary-button" type="button" data-drive-connect disabled>PREPARANDO CONEXÃO GOOGLE…</button><p class="reg-help">Selecione a conta institucional indicada na autorização do Google.</p>':''}<label class="reg-field">Assunto<select data-reg-subject>${Object.entries(ATTACHMENT_SUBJECTS).map(([id,label])=>`<option value="${id}">${h(label)}</option>`).join('')}</select></label><div class="reg-file-inputs"><label>Selecionar PDF ou imagem<input type="file" accept="application/pdf,image/*" data-reg-file></label><label>Fotografar documento<input type="file" accept="image/*" capture="environment" data-reg-camera></label></div><p class="reg-help">PDF até 5 MB; fotos são preparadas em JPEG, com até 1600 pixels.</p><div data-reg-preview></div><button class="primary-button" type="button" data-reg-upload ${state.drive?.connected?'':'disabled data-needs-connection'}>ENVIAR COMPROVANTE</button><div data-reg-files></div></section>`;
-  conditionals();void listFiles();if(state.drive?.canConnect&&!state.drive.connected)void prepareConnection();
+const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fileInputs = '[data-reg-file],[data-reg-camera]';
+
+function message(error) {
+ const code = error.code || error.message;
+ if (code?.startsWith('REGISTRATION_INVALID_') && code !== 'REGISTRATION_INVALID_INPUT') {
+  const field = PROFESSIONAL_FIELDS.find(field => field.id.toUpperCase() === code.slice('REGISTRATION_INVALID_'.length));
+  if (field) return 'Confira o campo ' + field.label + '.';
  }
- async function listFiles(){try{const result=await call('drive','LIST_OWN');const host=root.querySelector('[data-reg-files]');if(host)host.innerHTML=result.files.length?'<ul>'+result.files.map(f=>'<li>'+h(ATTACHMENT_SUBJECTS[f.subject]||f.subject)+' · '+h(f.name)+' · enviado</li>').join('')+'</ul>':'<p>Nenhum comprovante enviado por este cadastro.</p>';}catch{const host=root.querySelector('[data-reg-files]');if(host)host.textContent='A consulta dos comprovantes está temporariamente indisponível.';}}
- async function prepareConnection(){try{const [config]=await Promise.all([call('drive','BEGIN_CONNECT'),loadGis()]);if(!live())return;oauthClient=google.accounts.oauth2.initCodeClient({client_id:config.clientId,scope:config.scope,ux_mode:'popup',select_account:true,callback:async result=>{if(!live())return;if(!result.code){notice('A autorização Google não foi concluída.',true);return;}try{notice('Conectando o Drive institucional…');await call('drive','CONNECT',{nonce:config.nonce,code:result.code});state.drive.connected=true;render();notice('Drive institucional conectado. O envio de comprovantes está disponível.');}catch(error){notice(message(error),true);void prepareConnection();}},error_callback:()=>{if(live())notice('A conexão Google foi cancelada ou não abriu. Tente novamente.',true);}});const button=root.querySelector('[data-drive-connect]');if(button){button.disabled=false;button.textContent='CONECTAR DRIVE INSTITUCIONAL';}}catch(e){const button=root.querySelector('[data-drive-connect]');if(button){button.textContent='CONEXÃO GOOGLE INDISPONÍVEL';button.disabled=true;}notice(message(e),true);}}
- async function submit(event){event.preventDefault();if(busy||!live())return;try{const input={expectedVersion:state.record?.version||0,answers:validateProfessionalAnswers(formValues()),truth:new FormData(event.target).get('truth')==='on'};buttonsBusy(true);notice('Confirmando envio…');const result=await call('professional','SAVE',input);state.record=result.record;notice('Cadastro salvo com sucesso.');}catch(e){if(live())notice(message(e),true);}finally{if(live())buttonsBusy(false);}}
- async function prepareFile(event){const file=event.target.files?.[0];if(!file)return;preparedFile=null;requestId=crypto.randomUUID();if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=null;try{const result=await prepareDocumentFile(file);if(!live())return;preparedFile=result;if(result.image)previewUrl=URL.createObjectURL(result.blob);const host=root.querySelector('[data-reg-preview]');host.innerHTML=(previewUrl?'<img alt="Prévia do comprovante" src="'+previewUrl+'">':'')+'<p>'+h(documentSizeLabel(result.blob.size))+(result.image?' · '+result.width+' × '+result.height:' · PDF')+'</p>';}catch(e){notice(e.message,true);}}
- async function upload(){if(busy||!live())return;if(!preparedFile){notice('Selecione um comprovante antes de enviar.',true);return;}buttonsBusy(true);notice('Enviando comprovante ao Drive…');try{await call('drive','UPLOAD',{requestId,subject:root.querySelector('[data-reg-subject]').value,mimeType:preparedFile.mimeType,dataBase64:await documentBase64(preparedFile.blob)});if(!live())return;preparedFile=null;root.querySelectorAll('[data-reg-file],[data-reg-camera]').forEach(input=>input.value='');root.querySelector('[data-reg-preview]').replaceChildren();if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=null;notice('Comprovante arquivado no Drive na pasta correspondente.');await listFiles();}catch(e){if(live())notice(message(e),true);}finally{if(live())buttonsBusy(false);}}
+ return ({
+  REGISTRATION_INVALID_INPUT:'Confira os dados preenchidos, o CPF, o CRM, o telefone e a data de nascimento.',
+  REGISTRATION_VERSION_CONFLICT:'Seu cadastro mudou em outra sessão. Volte e reabra para conferir a versão atual.',
+  REGISTRATION_SCHEMA_CHANGED:'Reabra o cadastro para preencher a versão atual do formulário.',
+  REGISTRATION_GROUP_UNAVAILABLE:'Seu vínculo institucional precisa ser conferido pelo administrador.',
+  REGISTRATION_FORBIDDEN:'Seu acesso não está liberado.',
+  REGDRIVE_AUTH_REQUIRED:'O armazenamento no Drive está indisponível. Solicite a verificação à administração.',
+  REGDRIVE_NOT_CONFIGURED:'O armazenamento no Drive está indisponível. Solicite a verificação à administração.',
+  REGDRIVE_UPLOAD_LIMIT:'O limite diário de comprovantes foi atingido.',
+  REGDRIVE_UPLOAD_CONFLICT:'Esta tentativa corresponde a outro arquivo. Selecione o comprovante novamente.',
+  DOCUMENT_FILE_TOO_LARGE:'O arquivo ultrapassa o limite permitido.'
+ })[code] || ([401,403].includes(error.status)
+  ? 'Sua sessão mudou ou o acesso não está liberado. Reabra o cadastro.'
+  : 'Não foi possível confirmar a operação. Tente novamente.');
+}
 
- const change=event=>{conditionals();const f=fields.find(f=>f.id===event.target.name);if(f?.type==='checks'){const list=[...root.querySelectorAll('[name="'+f.id+'"]')];if(event.target.checked&&[f.none,'UNKNOWN'].filter(Boolean).includes(event.target.value))list.forEach(c=>{if(c!==event.target)c.checked=false;});else if(event.target.checked)list.filter(c=>[f.none,'UNKNOWN'].filter(Boolean).includes(c.value)).forEach(c=>c.checked=false);}if(event.target.matches('[data-reg-file],[data-reg-camera]'))void prepareFile(event);};
- const click=event=>{if(event.target.closest('[data-drive-connect]')&&oauthClient)oauthClient.requestCode();if(event.target.closest('[data-reg-upload]'))void upload();};
- root.addEventListener('submit',submit);root.addEventListener('change',change);root.addEventListener('click',click);root.innerHTML='<p role="status">Preparando cadastro…</p>';requestId=crypto.randomUUID().replaceAll('-','');
- void call('professional','BOOTSTRAP').then(data=>{if(!live())return;state=data;render();}).catch(e=>{if(live())root.innerHTML='<p role="alert">'+h(message(e))+'</p>';});
- return()=>{disposed=true;for(const controller of pending)controller.abort();pending.clear();if(previewUrl)URL.revokeObjectURL(previewUrl);preparedFile=null;state=null;root.removeEventListener('submit',submit);root.removeEventListener('change',change);root.removeEventListener('click',click);root.replaceChildren();root.classList.remove('registration-app');};
+export function mountInstitutionalRegistration(root, {request, isCurrent = () => true} = {}) {
+ const pending = new Set();
+ let disposed = false, state, saving = false, uploading = false, attachment = null;
+ const query = selector => root.querySelector(selector);
+ const live = () => !disposed && root.isConnected && isCurrent();
+ root.classList.add('registration-app');
+
+ async function call(target, action, input = {}) {
+  if (!live()) throw Error('SESSION_CHANGED');
+  const controller = new AbortController();
+  pending.add(controller);
+  try {
+   const data = await request(target, action, input, controller.signal);
+   if (!live()) throw Error('SESSION_CHANGED');
+   return data;
+  } finally {
+   pending.delete(controller);
+  }
+ }
+
+ function notice(selector, text, alert = false) {
+  const node = query(selector);
+  node.textContent = text;
+  node.setAttribute('role', alert ? 'alert' : 'status');
+ }
+
+ function updateAttachmentControls() {
+  const subject = query('[data-reg-subject]');
+  subject.disabled = uploading;
+  root.querySelectorAll(fileInputs).forEach(input => input.disabled = uploading || !subject.value);
+  query('[data-reg-retry]').hidden = uploading || !attachment;
+ }
+
+ function conditionals() {
+  root.querySelectorAll('[data-conditional]').forEach(node => {
+   const [field, value] = node.dataset.conditional.split(':');
+   node.hidden = query('[name="' + field + '"]').value !== value;
+  });
+ }
+
+ function render() {
+  const values = state.record?.answers || {};
+  root.innerHTML = `<div class="reg-notice" data-reg-notice role="status" aria-live="polite"></div>
+   <form class="reg-form"><div class="reg-grid">${PROFESSIONAL_FIELDS.map(field => registrationField(field,
+    values[field.id] ?? (field.id === 'fullName' ? state.profile?.displayName : ''))).join('')}</div>
+   <label class="reg-confirm"><input type="checkbox" name="truth" required>Confirmo que as informações declaradas são verdadeiras e se destinam ao cadastro institucional.</label>
+   <button class="primary-button" type="submit" data-reg-save>SALVAR MEU CADASTRO</button></form>
+   <section class="reg-attachments"><h3>Comprovantes</h3>
+   <p>Escolha o assunto e selecione um arquivo para salvar na sua pasta da Ficha Funcional.</p>
+   <label class="reg-field">Assunto<select data-reg-subject><option value="">Selecione o assunto</option>
+   ${Object.entries(ATTACHMENT_SUBJECTS).map(([id,label]) => `<option value="${id}">${escape(label)}</option>`).join('')}</select></label>
+   <div class="reg-file-inputs"><label>Escolher arquivo<input type="file" accept="application/pdf,image/*" data-reg-file disabled></label>
+   <label>Fotografar documento<input type="file" accept="image/*" capture="environment" data-reg-camera disabled></label></div>
+   <p class="reg-help">PDF até 5 MB. As fotos são convertidas para JPEG, com até 1.600 pixels.</p>
+   <div class="reg-notice" data-reg-file-status role="status" aria-live="polite"></div>
+   <button class="secondary-button" type="button" data-reg-retry hidden>TENTAR NOVAMENTE</button>
+   <div data-reg-files></div></section>`;
+  conditionals();
+  void listFiles();
+ }
+
+ let fileListRevision = 0;
+ async function listFiles() {
+  const revision = ++fileListRevision;
+  try {
+   const {files} = await call('drive', 'LIST_OWN');
+   if (revision !== fileListRevision) return;
+   query('[data-reg-files]').innerHTML = files.length
+    ? '<ul>' + files.map(file => '<li>' + escape(ATTACHMENT_SUBJECTS[file.subject]) + ' · ' + escape(file.name) + ' · enviado</li>').join('') + '</ul>'
+    : '<p>Nenhum comprovante enviado por este cadastro.</p>';
+  } catch {
+   if (live() && revision === fileListRevision) query('[data-reg-files]').textContent = 'A consulta dos comprovantes está temporariamente indisponível.';
+  }
+ }
+
+ async function submit(event) {
+  event.preventDefault();
+  if (saving || !live()) return;
+  const form = new FormData(event.target);
+  saving = true;
+  query('[data-reg-save]').disabled = true;
+  try {
+   const answers = Object.fromEntries(PROFESSIONAL_FIELDS.map(field => [field.id,
+    isRegistrationList(field) ? form.getAll(field.id) : String(form.get(field.id) || '')]));
+   const input = {
+    expectedVersion:state.record?.version || 0,
+    answers:validateProfessionalAnswers(answers),
+    truth:form.get('truth') === 'on'
+   };
+   notice('[data-reg-notice]', 'Confirmando envio…');
+   const result = await call('professional', 'SAVE', input);
+   state.record = result.record;
+   notice('[data-reg-notice]', 'Cadastro salvo com sucesso.');
+  } catch (error) {
+   if (live()) {
+    notice('[data-reg-notice]', message(error), true);
+    const field = PROFESSIONAL_FIELDS.find(field => error.code === 'REGISTRATION_INVALID_' + field.id.toUpperCase());
+    if (field) {
+     const group = query('[data-field="' + field.id + '"]');
+     const details = group?.querySelector('details');
+     if (details) details.open = true;
+     group?.querySelector('input,select,textarea')?.focus();
+    }
+   }
+  } finally {
+   saving = false;
+   if (live()) query('[data-reg-save]').disabled = false;
+  }
+ }
+
+ async function upload() {
+  if (uploading || !attachment || !live()) return;
+  uploading = true;
+  updateAttachmentControls();
+  notice('[data-reg-file-status]', 'Enviando comprovante ao Drive…');
+  try {
+   const attempt = attachment;
+   const {file, subject, requestId} = attempt;
+   if (!attempt.payload) {
+    const {blob, mimeType} = await prepareDocumentFile(file);
+    attempt.payload = {requestId, subject, mimeType, dataBase64:await documentBase64(blob)};
+   }
+   const result = await call('drive', 'UPLOAD', attempt.payload);
+   if (result.file?.status !== 'STORED') throw Error('REGDRIVE_UNCONFIRMED');
+   attachment = null;
+   notice('[data-reg-file-status]', 'Comprovante arquivado no Drive na pasta correspondente.');
+   void listFiles();
+  } catch (error) {
+   if (live()) notice('[data-reg-file-status]', message(error), true);
+  } finally {
+   uploading = false;
+   if (live()) updateAttachmentControls();
+  }
+ }
+
+ function change(event) {
+  const target = event.target;
+  conditionals();
+  const field = PROFESSIONAL_FIELDS.find(field => field.id === target.name);
+  if (field?.type === 'multi-select') {
+   const options = [...root.querySelectorAll('[name="' + field.id + '"]')];
+   if (target.checked) for (const option of options) {
+    if (option !== target && (target.value === field.none || option.value === field.none)) option.checked = false;
+   }
+   query('[data-reg-selection]').textContent = selectionLabel(options.filter(option => option.checked).length);
+  }
+  if (target.matches('[data-reg-subject]')) {
+   attachment = null;
+   notice('[data-reg-file-status]', '');
+   updateAttachmentControls();
+  }
+  if (target.matches(fileInputs) && target.files?.length && !uploading && query('[data-reg-subject]').value) {
+   attachment = {file:target.files[0], subject:query('[data-reg-subject]').value, requestId:crypto.randomUUID()};
+   target.value = '';
+   void upload();
+  }
+ }
+
+ const click = event => { if (event.target.closest('[data-reg-retry]')) void upload(); };
+ root.addEventListener('submit', submit);
+ root.addEventListener('change', change);
+ root.addEventListener('click', click);
+ root.innerHTML = '<p role="status">Preparando cadastro…</p>';
+ void call('professional', 'BOOTSTRAP').then(data => {
+  state = data;
+  if (live()) render();
+ }).catch(error => {
+  if (live()) root.innerHTML = '<p role="alert">' + escape(message(error)) + '</p>';
+ });
+
+ return () => {
+  disposed = true;
+  for (const controller of pending) controller.abort();
+  pending.clear();
+  attachment = null;
+  state = null;
+  root.removeEventListener('submit', submit);
+  root.removeEventListener('change', change);
+  root.removeEventListener('click', click);
+  root.replaceChildren();
+  root.classList.remove('registration-app');
+ };
 }

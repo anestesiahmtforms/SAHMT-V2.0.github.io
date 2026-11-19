@@ -1,4 +1,4 @@
-import {validateProfessionalAnswers,REGISTRATION_CYCLE} from '../src/registration-domain.js';
+import {validateProfessionalAnswers,legacyProfessionalAnswers,REGISTRATION_CYCLE} from '../src/registration-domain.js';
 import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} from '../src/institutional-group.js';
 import {assertFolderReadable} from '../server/folder-read-policy.js';
 import {SURVEY_ACTIVITIES} from '../communication/obligations.js';
@@ -86,7 +86,13 @@ export function createProfessionalRegistrationService({store,drive,now=Date.now}
    if(action==='BOOTSTRAP')return {record,isAdmin:registrationAdmin(current),profile:{email:identity.email.toLowerCase(),displayName:current.displayName||current.name||'',group}};
    if(!group||institutionalMailbox(identity.email))fail('REGISTRATION_GROUP_UNAVAILABLE',422);
    if((record?.version||0)!==input.expectedVersion)fail('REGISTRATION_VERSION_CONFLICT',409);
-   const saved={schemaVersion:1,cycle:REGISTRATION_CYCLE,uid:identity.uid,email:identity.email.toLowerCase(),group,answers,truth:true,version:input.expectedVersion+1,createdAt:record?.createdAt||now(),updatedAt:now()};if(record)tx.set('professionalRegistrations',ownId,saved);else tx.create('professionalRegistrations',ownId,saved);return {record:saved};
+   const schemaVersion=Array.isArray(answers.surgicalAreas)?2:1;
+   if(record?.schemaVersion===2&&schemaVersion===1)fail('REGISTRATION_SCHEMA_CHANGED',409);
+   const legacyAnswers=record?.legacyAnswers||legacyProfessionalAnswers(record?.answers);
+   const saved={schemaVersion,cycle:REGISTRATION_CYCLE,uid:identity.uid,email:identity.email.toLowerCase(),group,answers,
+    ...(schemaVersion===2&&Object.keys(legacyAnswers).length?{legacyAnswers}:{}),
+    truth:true,version:input.expectedVersion+1,createdAt:record?.createdAt||now(),updatedAt:now()};
+   if(record)tx.set('professionalRegistrations',ownId,saved);else tx.create('professionalRegistrations',ownId,saved);return {record:saved};
   });
   if(action==='BOOTSTRAP')result.drive=await drive?.status(identity)||{connected:false,canConnect:registrationAdmin(profile)};
   return result;
