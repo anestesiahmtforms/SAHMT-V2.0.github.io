@@ -58,4 +58,29 @@ test('professional form saves the grid and uploads immediately after file select
  await page.evaluate(()=>window.invalidate());
  assert.equal(await page.locator('form').count(),0);
 }));
+test('closing an attachment picker keeps the professional form and its draft open',()=>run(async browser=>{
+ const page=await browser.newPage({viewport:{width:390,height:740}});
+ await page.goto(url);
+ await open(page,'ACESSO RESTRITO');
+ await open(page,'CADASTRO PROFISSIONAL - SAHMT');
+ const dialog=page.getByRole('dialog');
+ const name=page.getByRole('textbox',{name:'Nome completo'});
+ await name.fill('Rascunho de teste');
+ await page.selectOption('[data-reg-subject]','CV');
+ for(const input of ['[data-reg-file]','[data-reg-camera]']){
+  await page.locator(input).dispatchEvent('cancel',{bubbles:true,cancelable:false});
+  assert.equal(await dialog.getAttribute('data-panel'),'professional');
+  assert.equal(await name.inputValue(),'Rascunho de teste');
+ }
+ assert.equal(await page.evaluate(()=>window.calls.some(call=>call.action==='UPLOAD')),false);
+ const photo=await page.evaluate(()=>document.createElement('canvas').toDataURL('image/jpeg').split(',')[1]);
+ await page.locator('[data-reg-camera]').setInputFiles({
+  name:'foto.jpg',mimeType:'image/jpeg',buffer:Buffer.from(photo,'base64')
+ });
+ await page.getByText('Comprovante arquivado no Drive na pasta correspondente.',{exact:true}).waitFor();
+ assert.equal(await dialog.getAttribute('data-panel'),'professional');
+ assert.equal(await name.inputValue(),'Rascunho de teste');
+ await dialog.dispatchEvent('cancel',{bubbles:false,cancelable:true});
+ assert.equal(await dialog.getAttribute('data-panel'),'institutional');
+}));
 test('duplicate participant cannot submit again and a late bootstrap cannot restore a closed banner',()=>run(async browser=>{const page=await browser.newPage();await page.goto(url+'?done');await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO EPIDEMIOLÓGICO - SAHMT');await page.getByText('Você já participou desta pesquisa neste ciclo. Não é possível enviar outra resposta.',{exact:true}).waitFor();assert.equal(await page.locator('form').isVisible(),false);await page.goto(url+'?late');await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO PROFISSIONAL - SAHMT');await page.waitForFunction(()=>!!window.releaseLate);await open(page,'VOLTAR');await page.evaluate(()=>window.releaseLate());await page.waitForTimeout(50);assert.equal(await page.locator('form').count(),0);assert.equal(await page.locator('[data-hub-item]').count(),4);}));

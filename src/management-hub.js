@@ -248,7 +248,12 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   if(item.panel){panel=item.panel;render();}else if(item.route)onNavigate(item.route);
  };
  const backClick=()=>{if(!cleanupRegistration.goBack?.())goBack();};
- const cancel=event=>{event.preventDefault();backClick();};
+ const cancel=event=>{
+  // File and camera inputs also emit a bubbling cancel event.
+  if(event.target!==dialog)return;
+  event.preventDefault();
+  backClick();
+ };
  const close=()=>{if(!disposed)onExit();};
  body.addEventListener('click',click);back.addEventListener('click',backClick);dialog.addEventListener('cancel',cancel);dialog.addEventListener('close',close);
  render();if(typeof dialog.showModal==='function')dialog.showModal();else dialog.setAttribute('open','');
