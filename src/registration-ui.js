@@ -2,9 +2,23 @@ import './registration-ui.css';
 import {registrationField, isRegistrationList} from './registration-fields.js';
 import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers} from './registration-domain.js';
 import {prepareDocumentFile, documentBase64} from './document-image.js';
+import {isValidDateKey, localDateKey} from './schedule-date.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fileInput = '[data-reg-file]';
+
+function formatBirthDateAge(birthDate, today) {
+ if (birthDate < '1900-01-01' || birthDate > today || !isValidDateKey(birthDate)) return '';
+ const [birthYear,birthMonth,birthDay] = birthDate.split('-').map(Number);
+ const [year,month,day] = today.split('-').map(Number);
+ // In a shorter month the anniversary falls on its last day.
+ const anniversaryDay = month => Math.min(birthDay,new Date(Date.UTC(year,month,0)).getUTCDate());
+ const anchorMonth = anniversaryDay(month) <= day ? month : month - 1;
+ const elapsedMonths = (year - birthYear) * 12 + anchorMonth - birthMonth;
+ const elapsedDays = (Date.UTC(year,month-1,day) - Date.UTC(year,anchorMonth-1,anniversaryDay(anchorMonth))) / 86_400_000;
+ const years = Math.floor(elapsedMonths / 12), months = elapsedMonths % 12;
+ return `${years} ${years === 1 ? 'ano' : 'anos'}, ${months} ${months === 1 ? 'mês' : 'meses'} e ${elapsedDays} ${elapsedDays === 1 ? 'dia' : 'dias'}`;
+}
 
 function message(error) {
  const code = error.code || error.message;
@@ -76,6 +90,14 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   });
  }
 
+ function updateAge(event) {
+  if (event && event.target.name !== 'birthDate') return;
+  const age = formatBirthDateAge(query('[name="birthDate"]').value,localDateKey());
+  query('[data-reg-age]').hidden = !age;
+  const output = query('[data-reg-age-value]');
+  if (output.textContent !== age) output.textContent = age;
+ }
+
  function render() {
   const values = state.record?.answers || {};
   root.innerHTML = `<div class="reg-notice" data-reg-notice role="status" aria-live="polite"></div>
@@ -93,6 +115,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    <button class="secondary-button" type="button" data-reg-retry hidden>TENTAR NOVAMENTE</button>
    <div data-reg-files></div></section>`;
   conditionals();
+  updateAge();
   void listFiles();
  }
 
@@ -186,6 +209,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
 
  function change(event) {
   const target = event.target;
+  updateAge(event);
   conditionals();
   const field = PROFESSIONAL_FIELDS.find(field => field.id === target.name);
   if (field?.none && target.checked) {
@@ -209,6 +233,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   if (event.target.closest('[data-reg-retry]')) void upload();
  };
  root.addEventListener('submit', submit);
+ root.addEventListener('input', updateAge);
  root.addEventListener('change', change);
  root.addEventListener('click', click);
  root.innerHTML = '<p role="status">Preparando cadastro…</p>';
@@ -226,6 +251,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   attachment = null;
   state = null;
   root.removeEventListener('submit', submit);
+  root.removeEventListener('input', updateAge);
   root.removeEventListener('change', change);
   root.removeEventListener('click', click);
   root.replaceChildren();

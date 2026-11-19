@@ -2,6 +2,24 @@
 .management-hub-dialog[data-panel="professional"] .reg-field :is(input,select,textarea){
  font-size:max(16px,1rem);
 }
+.reg-birth-date-row{display:flex;align-items:stretch;gap:8px;min-width:0}
+.reg-birth-date-row input{flex:1 1 0;padding-inline:6px}
+.reg-age{
+ display:grid;
+ flex:1 1 0;
+ align-content:center;
+ gap:2px;
+ min-width:0;
+ padding:4px 6px;
+ border:1px solid #b8ccd5;
+ border-radius:10px;
+ background:#edf4f6;
+ color:#173f57;
+ text-align:center;
+}
+.reg-age[hidden]{display:none}
+.reg-age strong{font-size:.68rem;letter-spacing:.035em}
+.reg-age output{font-size:.78rem;line-height:1.25}
 .reg-attachments h3{margin:0 0 12px;text-align:center}
 .reg-attachments .reg-field{text-align:center}
 .reg-attachments select{padding-inline:24px;text-align:center;text-align-last:center}

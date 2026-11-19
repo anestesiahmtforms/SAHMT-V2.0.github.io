@@ -1,6 +1,19 @@
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const isRegistrationList = field => ['checks','work-grid','multi-select'].includes(field.type);
 
+function birthDateField(field, value) {
+ return `<div class="reg-field" data-field="birthDate">
+  <label for="reg-birth-date">${h(field.label)}${field.required ? ' *' : ''}</label>
+  <div class="reg-birth-date-row">
+   <input id="reg-birth-date" name="birthDate" type="date" value="${h(value)}"${field.required ? ' required' : ''}>
+   <div class="reg-age" data-reg-age hidden>
+    <strong id="reg-age-title">IDADE ATUAL</strong>
+    <output for="reg-birth-date" aria-labelledby="reg-age-title" data-reg-age-value></output>
+   </div>
+  </div>
+ </div>`;
+}
+
 function workGrid(field, value) {
  const selected = Array.isArray(value) ? value : [];
  const previousDays = field.options.filter(([day]) => selected.includes(day)).map(([,label]) => label);
@@ -29,6 +42,7 @@ function multiSelect(field, value) {
 export function registrationField(f,value){const help=f.help?`<small>${h(f.help)}</small>`:'';const required=f.required?' required':'';let control;if(f.type==='checks'){const list=Array.isArray(value)?value:[];return `${f.section?'<h3 class="reg-section">'+h(f.section)+'</h3>':''}<fieldset class="reg-checks" data-field="${f.id}"><legend>${h(f.label)}${f.required?' *':''}</legend>${f.options.map(([id,label])=>`<label><input type="checkbox" name="${f.id}" value="${id}" ${list.includes(id)?'checked':''}>${h(label)}</label>`).join('')}${help}</fieldset>`;}
  if(f.type==='work-grid')return workGrid(f,value);
  if(f.type==='multi-select')return multiSelect(f,value);
+ if(f.id==='birthDate')return birthDateField(f,value);
  if(f.type==='textarea')control=`<textarea name="${f.id}" rows="3" maxlength="${f.max||3000}"${required}>${h(value||'')}</textarea>`;else if(f.options)control=`<select name="${f.id}"${required}><option value="">${f.required?'Selecione':'Selecione, se desejar informar'}</option>${f.options.map(([id,label])=>`<option value="${id}"${value===id?' selected':''}>${h(label)}</option>`).join('')}</select>`;else control=`<input name="${f.id}" type="${f.type}" value="${h(value||'')}" maxlength="${f.max||200}"${f.inputmode?' inputmode="'+f.inputmode+'"':''}${required}>`;
  return `${f.section?'<h3 class="reg-section">'+h(f.section)+'</h3>':''}<label class="reg-field" data-field="${f.id}"${f.when?' data-conditional="'+f.when.join(':')+'"':''}>${h(f.label)}${f.required?' *':''}${control}${help}</label>`;
 }

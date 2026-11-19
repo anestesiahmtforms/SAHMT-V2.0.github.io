@@ -29,6 +29,38 @@ test('professional modal keeps a compact header and a fixed footer while the for
  }
 }));
 
+test('professional birth date shows calendar age alongside it using the Sao Paulo date',()=>run(async browser=>{
+ const page=await browser.newPage({viewport:{width:320,height:700},isMobile:true,hasTouch:true});
+ await page.clock.setFixedTime(new Date('2025-03-10T02:00:00Z'));
+ await page.goto(url);
+ await open(page,'ACESSO RESTRITO');
+ await open(page,'CADASTRO PROFISSIONAL - SAHMT');
+ const birth=page.getByLabel('Data de nascimento', {exact:false});
+ await birth.waitFor();
+ const age=page.locator('output[data-reg-age-value]');
+ assert.equal(await age.count(),1);
+ assert.equal(await age.isVisible(),false);
+ for(const [date,expected] of [
+  ['2000-03-09','25 anos, 0 meses e 0 dias'],
+  ['2000-02-29','25 anos, 0 meses e 9 dias'],
+  ['2000-01-31','25 anos, 1 mês e 9 dias'],
+  ['2025-03-08','0 anos, 0 meses e 1 dia']
+ ]){
+  await birth.fill(date);
+  assert.equal(await age.textContent(),expected);
+ }
+ assert.equal(await page.getByText('IDADE ATUAL',{exact:true}).isVisible(),true);
+ const birthBox=await birth.boundingBox(),ageBox=await age.boundingBox();
+ assert.ok(ageBox.x>=birthBox.x+birthBox.width&&ageBox.x+ageBox.width<=320);
+ for(const date of ['2025-03-10','']){
+  await birth.fill(date);
+  assert.equal(await age.isVisible(),false);
+ }
+ await page.clock.setFixedTime(new Date('2024-02-29T15:00:00Z'));
+ await birth.fill('2000-02-29');
+ assert.equal(await age.textContent(),'24 anos, 0 meses e 0 dias');
+}));
+
 test('professional form saves the grid and uploads immediately after file selection',()=>run(async browser=>{
  const page=await browser.newPage({viewport:{width:320,height:700}});
  await page.goto(url+'?retry');
@@ -103,6 +135,7 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
  await page.locator('[name=cpf]').waitFor();
  assert.equal(await page.locator('[name=cpf]').inputValue(),'52998224725');
+ assert.match(await page.locator('[data-reg-age-value]').textContent(),/\d+ anos, \d+ (?:mês|meses) e \d+ (?:dia|dias)/);
  for(const field of ['surgicalAreas','formation','institutionalParticipation']){
   const selected=await page.locator(`input[name="${field}"]:checked`).evaluateAll(inputs=>inputs.map(input=>input.value));
   assert.deepEqual(selected,answers[field]);
