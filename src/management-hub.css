@@ -70,12 +70,54 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .management-hub-dialog[data-panel="institutional"] .management-hub-body{overflow:auto}
 .management-survey-frame{display:block;flex:1 1 auto;min-height:180px;width:100%;height:100%;border:0;border-radius:12px;background:#f1f6f6}.management-hub-dialog[data-panel="climateForm"] .management-hub-body,.management-hub-dialog[data-panel="stressForm"] .management-hub-body{padding:0;overflow:hidden}
 
-.management-hub-dialog[data-panel="professional"] .management-hub-body,.management-hub-dialog[data-panel="epidemiological"] .management-hub-body{overflow:auto}
+.management-hub-dialog[data-panel="epidemiological"] .management-hub-body{overflow:auto}
 
 .management-hub-button--festive:not(:disabled){border-color:#f3d690;background:linear-gradient(155deg,#bc4750,#8d2634 55%,#681e2c);color:#fff4d2;box-shadow:0 6px 0 #501825,0 7px 0 1px #b99c64,0 13px 20px #4b102c30,inset 0 2px 0 #fff5d54d}
 .management-hub-button--festive .management-hub-medallion{background:linear-gradient(145deg,#fff3ba,#d7aa53);color:#8b2631}.management-hub-button--festive .management-hub-arrow{background:#6c1d2a;color:#ffe9ae}
 
-.management-hub-dialog[data-panel="professional"] .management-hub-body{display:block;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+.app-shell .management-hub-dialog[data-panel="professional"]{overflow:hidden!important}
+.management-hub-dialog[data-panel="professional"][open]{gap:12px}
+.management-hub-dialog[data-panel="professional"] .management-hub-header{
+ grid-template-columns:22px minmax(0,1fr);
+ gap:4px 8px;
+ min-height:72px;
+ padding:5px 10px;
+}
+.management-hub-dialog[data-panel="professional"] .management-hub-header .management-hub-icon{
+ width:18px;
+ height:18px;
+}
+.management-hub-dialog[data-panel="professional"] .management-hub-user-row{min-height:0}
+.management-hub-dialog[data-panel="professional"] .management-hub-header h2{
+ box-sizing:border-box;
+ min-height:32px;
+ padding:3px 6px;
+ font-size:clamp(.82rem,3.8vw,1.32rem);
+ letter-spacing:.045em;
+}
+.management-hub-dialog[data-panel="professional"] .management-hub-body{
+ display:block;
+ overflow-x:hidden;
+ overflow-y:auto;
+ scrollbar-gutter:stable;
+ scrollbar-width:thin;
+ scrollbar-color:#7894a4 #e6edf0;
+}
+@media(max-height:580px){
+ .management-hub-dialog[data-panel="professional"] .management-hub-header{
+  min-height:61px;
+  padding:3px 8px;
+  row-gap:3px;
+ }
+ .management-hub-dialog[data-panel="professional"] .management-hub-header .management-hub-icon{width:16px;height:16px}
+ .management-hub-dialog[data-panel="professional"] .management-hub-header h2{min-height:30px}
+}
+@media(max-width:360px){
+ .management-hub-dialog[data-panel="professional"] .management-hub-header h2{
+  font-size:clamp(.72rem,3.75vw,.82rem);
+  letter-spacing:.022em;
+ }
+}
 .management-hub-dialog[data-panel="fePerformance"] .management-hub-body{display:block;overflow:auto}
 .management-hub-dialog:is([data-panel="vaccinationHistory"],[data-panel="dosimetryHistory"]) .management-hub-body{display:block;overflow:auto}
 

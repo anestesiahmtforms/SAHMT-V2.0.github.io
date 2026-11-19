@@ -4,7 +4,7 @@ import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers} f
 import {prepareDocumentFile, documentBase64} from './document-image.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const fileInputs = '[data-reg-file],[data-reg-camera]';
+const fileInput = '[data-reg-file]';
 
 function message(error) {
  const code = error.code || error.message;
@@ -63,7 +63,9 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
  function updateAttachmentControls() {
   const subject = query('[data-reg-subject]');
   subject.disabled = uploading;
-  root.querySelectorAll(fileInputs).forEach(input => input.disabled = uploading || !subject.value);
+  const pickerDisabled = uploading || !subject.value;
+  query('[data-reg-choose]').disabled = pickerDisabled;
+  query(fileInput).disabled = pickerDisabled;
   query('[data-reg-retry]').hidden = uploading || !attachment;
  }
 
@@ -82,11 +84,10 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    <label class="reg-confirm"><input type="checkbox" name="truth" required>Confirmo que as informações declaradas são verdadeiras e se destinam ao cadastro institucional.</label>
    <button class="primary-button" type="submit" data-reg-save>SALVAR MEU CADASTRO</button></form>
    <section class="reg-attachments"><h3>Comprovantes</h3>
-   <p>Escolha o assunto e selecione um arquivo para salvar na sua pasta da Ficha Funcional.</p>
-   <label class="reg-field">Assunto<select data-reg-subject><option value="">Selecione o assunto</option>
+   <label class="reg-field"><span>Assunto</span><select data-reg-subject><option value="">Selecione o assunto</option>
    ${Object.entries(ATTACHMENT_SUBJECTS).map(([id,label]) => `<option value="${id}">${escape(label)}</option>`).join('')}</select></label>
-   <div class="reg-file-inputs"><label>Escolher arquivo<input type="file" accept="application/pdf,image/*" data-reg-file disabled></label>
-   <label>Fotografar documento<input type="file" accept="image/*" capture="environment" data-reg-camera disabled></label></div>
+   <button class="secondary-button reg-file-picker" type="button" data-reg-choose disabled>Escolher documento/Fotografar documento</button>
+   <input type="file" accept="application/pdf,image/*" data-reg-file hidden disabled>
    <p class="reg-help">PDF até 5 MB. As fotos são convertidas para JPEG, com até 1.600 pixels.</p>
    <div class="reg-notice" data-reg-file-status role="status" aria-live="polite"></div>
    <button class="secondary-button" type="button" data-reg-retry hidden>TENTAR NOVAMENTE</button>
@@ -177,7 +178,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   } finally {
    uploading = false;
    if (live()) {
-    root.querySelectorAll(fileInputs).forEach(input => input.value = '');
+    query(fileInput).value = '';
     updateAttachmentControls();
    }
   }
@@ -200,13 +201,16 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    notice('[data-reg-file-status]', '');
    updateAttachmentControls();
   }
-  if (target.matches(fileInputs) && target.files?.length && !uploading && query('[data-reg-subject]').value) {
+  if (target.matches(fileInput) && target.files?.length && !uploading && query('[data-reg-subject]').value) {
    attachment = {file:target.files[0], subject:query('[data-reg-subject]').value, requestId:crypto.randomUUID()};
    void upload();
   }
  }
 
- const click = event => { if (event.target.closest('[data-reg-retry]')) void upload(); };
+ const click = event => {
+  if (event.target.closest('[data-reg-choose]')) query(fileInput).click();
+  if (event.target.closest('[data-reg-retry]')) void upload();
+ };
  root.addEventListener('submit', submit);
  root.addEventListener('change', change);
  root.addEventListener('click', click);
