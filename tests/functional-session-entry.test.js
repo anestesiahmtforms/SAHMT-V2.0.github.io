@@ -9,7 +9,7 @@ const person={uid:'same-uid',providerData:[{providerId:'google.com',uid:'same-go
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 const turn=()=>new Promise(resolve=>setImmediate(resolve));
 
-test('the Functional professional entry loads all saved answers and files only for the signed-in owner',async()=>{
+test('the Functional professional entry loads complete records for the owner or an authorized admin with a selected member',async()=>{
  const person={uid:'member',email:'member@example.invalid'},calls=[];
  const record={uid:person.uid,email:person.email,answers:{fullName:'Pessoa Sintética',formation:['TEA'],motherName:'Mãe Sintética'}};
  const files=[{name:'cv.pdf',subject:'CV',status:'STORED'}];
@@ -17,12 +17,12 @@ test('the Functional professional entry loads all saved answers and files only f
  const source=readFileSync(new URL('../src/functional-results.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'');
  const context=vm.createContext({fcProfessionalRegistrationEnabled:true,
   callRegistrationApi:async options=>{calls.push(options);
-   if(options.action==='BOOTSTRAP')return {record:selectedRecord};
+   if(['BOOTSTRAP','DETAIL'].includes(options.action))return {record:selectedRecord};
    if(driveError)throw Error('NOT_AVAILABLE');
    return {files};
   }});
  vm.runInContext(source,context);
- const load=subjectUid=>context.loadFunctionalResult({key:'professionalRegistration',uid:person.uid,subjectUid,
+ const load=(subjectUid,administrator=false)=>context.loadFunctionalResult({key:'professionalRegistration',uid:person.uid,subjectUid,administrator,
   faAuth:{currentUser:person},isCurrent:()=>true});
  const other=await load('other');
  assert.equal(other.ownOnly,true);
@@ -39,6 +39,15 @@ test('the Functional professional entry loads all saved answers and files only f
  const partial=await load(person.uid);
  assert.equal(partial.record,record);
  assert.equal(partial.files,null);
+ driveError=false;
+ calls.length=0;
+ selectedRecord={...record,uid:'other',email:'other@example.invalid'};
+ const selected=await load('other',true);
+ assert.equal(selected.record,selectedRecord);
+ assert.equal(selected.files,files);
+ assert.deepEqual(calls.map(({kind,action,input})=>[kind,action,input.uid]),[
+  ['professional','DETAIL','other'],['drive','LIST_SUBJECT','other']
+ ]);
 });
 
 test('FK connects from the FA credential while an unrelated restoration is stalled',async()=>{
@@ -174,14 +183,14 @@ test('administrator selection clears the previous profile and ignores responses 
   assert.equal(f.sources.innerHTML,'');
   assert.equal(f.recognition.hidden,true);
   await f.choose('bia');assert.deepEqual(calls,['ana','bia']);
-  assert.equal(f.owner.textContent,'Bia');assert.equal(f.recognition.textContent,'Mensagem da Bia');assert.match(f.sources.innerHTML,/Vacinação/);
+  assert.equal(f.owner.textContent,'Bia');assert.equal(f.recognition.textContent,'Mensagem da Bia');assert.match(f.sources.innerHTML,/Histórico Vacinal/);
   ana.resolve({snapshot:{uid:'ana',sources:{dosimetry:{state:'READY'}}},recognition:'Mensagem da Ana'});
   own.resolve();await first;await turn();
   f.openSource('performance');
   assert.equal(f.detail.open,true);
   assert.equal(f.detailTitle.textContent,'Desempenho');
   assert.match(f.detailBody.innerHTML,/PONTOS TOTAIS ADQUIRIDOS[\s\S]*12,5[\s\S]*data-tone="high">81%[\s\S]*Margens de avaliação/);
-  assert.match(f.sources.innerHTML,/Vacinação/);
+  assert.match(f.sources.innerHTML,/Histórico Vacinal/);
   assert.equal(f.recognition.textContent,'Mensagem da Bia');
   f.detail.close();
   assert.equal(f.detailBody.innerHTML,'');

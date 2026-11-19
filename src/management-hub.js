@@ -40,13 +40,13 @@ const panels={
   {label:'ACESSO GERAL',icon:'climate',panel:'general',access:'institutionalSurveys'}
  ]},
  institutional:{title:'Acesso Restrito',icon:'records',parent:'surveys',items:[
+  {label:'MEU HISTÓRICO VACINAL',icon:'professional',panel:'vaccinationHistory',access:'biosafety'},
   {label:'PESQUISA DE CLIMA ORGANIZACIONAL',icon:'climate',panel:'climateForm',access:'teamSurveys'},
   {label:'AVALIAÇÃO DE ESTRESSE E FADIGA',icon:'wellbeing',panel:'stressForm',access:'teamSurveys'},
   {label:'CADASTRO PROFISSIONAL - SAHMT',icon:'professional',panel:'professional',access:'professional'},
   {label:'CADASTRO EPIDEMIOLÓGICO - SAHMT',icon:'epidemiological',panel:'epidemiological',access:'epidemiological'},
   {label:'ESCALA FINAL DE ANO',icon:'festive',panel:'yearEnd',access:'yearEndSchedule',className:'management-hub-button--festive'},
-  {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'},
-  {label:'MEU HISTÓRICO VACINAL',icon:'professional',panel:'vaccinationHistory',access:'biosafety'}
+  {label:'ESCALA DE FÉRIAS 2027',icon:'calendar',panel:'vacations2027',access:'vacations2027'}
  ]},
  vaccinationHistory:{title:'Meu histórico vacinal',icon:'professional',parent:'institutional'},
  yearEnd:{title:'Escala Final de Ano',icon:'festive',parent:'institutional'},

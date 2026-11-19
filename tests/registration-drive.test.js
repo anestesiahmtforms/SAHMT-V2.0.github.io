@@ -53,6 +53,21 @@ test('FC uploads use the configured owner credential without prompting the app a
  assert.equal(f.requests.find(r=>r.url.endsWith('/token')).options.body.get('refresh_token'),refreshToken);
  assert.equal(await f.store.get('integrationCredentials','registrationDrive'),null);
 });
+test('FC confirms only the selected member’s stored receipts to an active administrator',async()=>{
+ const f=await setup(),received={uid:'selected',email:'selected@example.invalid',active:true,access:true};
+ f.store.seed('users',received.uid,received);
+ for(const [key,patch] of [['stored',{}],['pending',{status:'PENDING'}],['old',{email:'old@example.invalid'}],['other',{uid:'another'}]]){
+  f.store.seed('professionalRegistrationFiles',key,{uid:received.uid,email:received.email,requestId:key,subject:'CV',name:key+'.pdf',status:'STORED',fileId:'private-id',...patch});
+ }
+ const drive=createRegistrationDrive({store:f.store,interactive:false});
+ const input={uid:received.uid};
+ assert.deepEqual((await drive.execute('LIST_SUBJECT',input,identity)).files.map(file=>file.name),['stored.pdf']);
+ assert.doesNotMatch(JSON.stringify(await drive.execute('LIST_SUBJECT',input,identity)),/private-id|email/);
+ await assert.rejects(drive.execute('LIST_SUBJECT',{uid:'..'},identity),{code:'REGDRIVE_INVALID_INPUT'});
+ f.store.seed('users',identity.uid,{...identity,active:true,access:true});
+ await assert.rejects(drive.execute('LIST_SUBJECT',input,identity),{code:'REGISTRATION_FORBIDDEN'});
+ assert.equal(f.requests.length,0);
+});
 test('OAuth code requires single-use actor-bound nonce and exact institutional Drive owner; refresh token encrypted',async()=>{const f=await setup(),{nonce}=await f.service.execute('BEGIN_CONNECT',{},identity);await f.service.execute('CONNECT',{nonce,code:'synthetic-code'},identity);await assert.rejects(f.service.execute('CONNECT',{nonce,code:'synthetic-code'},identity),e=>e.code==='REGDRIVE_STATE_INVALID');const saved=await f.store.get('integrationCredentials','registrationDrive');assert.ok(saved.iv&&saved.ciphertext);assert.doesNotMatch(JSON.stringify(saved),/synthetic-refresh-PRIVATE|synthetic-access|synthetic-secret-only/);const cold=createRegistrationDrive({store:f.store,clientConfig:config,encryptionKey:f.key,fetchImpl:f.fetchImpl});assert.equal((await cold.status(identity)).connected,true);const wrong=await setup();wrong.setWrongOwner();await assert.rejects(wrong.connect(),e=>e.code==='REGDRIVE_WRONG_OWNER');assert.equal(await wrong.store.get('integrationCredentials','registrationDrive'),null);});
 test('nonce expires and nonadmin cannot authorize Drive',async()=>{const f=await setup(),{nonce}=await f.service.execute('BEGIN_CONNECT',{},identity),state=await f.store.get('integrationOAuthStates',nonce);f.store.seed('integrationOAuthStates',nonce,{...state,expiresAt:0});await assert.rejects(f.service.execute('CONNECT',{nonce,code:'synthetic-code'},identity),e=>e.code==='REGDRIVE_STATE_INVALID');f.store.seed('users',identity.uid,{...identity,active:true,access:true});await assert.rejects(f.service.execute('BEGIN_CONNECT',{},identity));});
 test('uploads are idempotent, routed by internal affiliation and subject, receipts omit Drive IDs',async()=>{const f=await setup();await f.connect();await Promise.all([f.service.execute('UPLOAD',upload,identity),f.service.execute('UPLOAD',upload,identity)]);const journals=await f.store.list('professionalRegistrationFiles');assert.equal(journals.length,1);assert.equal(journals[0].parentId,config.substituteParentId);assert.equal(journals[0].status,'STORED');assert.equal([...f.files.values()].filter(x=>x.mimeType==='application/pdf').length,1);assert.equal((await f.store.list('registrationDriveFolders')).length,2);const receipt=await f.service.execute('LIST_OWN',{},identity);assert.equal(receipt.files.length,1);assert.doesNotMatch(JSON.stringify(receipt.files),/synthetic-id-|folderId|email|uid|dataBase64/);await assert.rejects(f.service.execute('UPLOAD',{...upload,dataBase64:Buffer.from('%PDF-1.7\nchanged\n%%EOF').toString('base64')},identity),e=>e.code==='REGDRIVE_UPLOAD_CONFLICT');});

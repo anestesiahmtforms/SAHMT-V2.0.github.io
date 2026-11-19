@@ -60,6 +60,7 @@ test('the FE workerd route keeps records private, protects reports and lists FE 
   const {privateKey}=generateKeyPairSync('rsa',{modulusLength:2048}),credentials={project_id:project,client_email:`fe-survey-worker@${project}.iam.gserviceaccount.com`,private_key:privateKey.export({type:'pkcs8',format:'pem'})};
   for(const uid of ['one','two','admin'])data.set('userCategories/'+createHash('sha256').update(JSON.stringify(`${uid}@example.invalid`)).digest('hex'),{schemaVersion:1,identityStatus:'LINKED',uid,email:`${uid}@example.invalid`,memberCategories:['EFETIVO']});
   for(const uid of ['one','two','admin'])data.set(`users/${uid}`,{uid,email:`${uid}@example.invalid`,displayName:`Synthetic ${uid}`,active:true,access:true,role:uid==='admin'?'administrador_app':'colaborador'});
+  let revokeAdminOnDetailRead=false;
   const token=uid=>{const now=Math.floor(Date.now()/1000);return Buffer.from('{}').toString('base64url')+'.'+Buffer.from(JSON.stringify({aud:issuer,iss:`https://securetoken.google.com/${issuer}`,sub:uid,email:`${uid}@example.invalid`,email_verified:true,iat:now,auth_time:now,exp:now+3600,firebase:{sign_in_provider:'google.com'}})).toString('base64url')+'.'+Buffer.alloc(256).toString('base64url');};
   const bundle=await build({entryPoints:['worker-fe-surveys/worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['node:*']});
   const mf=new Miniflare(convertV4MiniflareOptions({name:'vaccination',modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-13',compatibilityFlags:['nodejs_compat'],bindings:{FA_WEB_API_KEY:'synthetic-key',FE_SERVICE_ACCOUNT_JSON:JSON.stringify(credentials)},outboundService:async request=>{
@@ -71,7 +72,9 @@ test('the FE workerd route keeps records private, protects reports and lists FE 
     if(url.pathname.endsWith(':rollback'))return Response.json({});
     if(url.pathname.endsWith(':commit')){const payload=await request.json();for(const write of payload.writes)data.set(write.update.name.slice(root.length+1),decodeFields(write.update.fields));return Response.json({commitTime:'now'});}
     if(url.pathname.endsWith(':runQuery')){const {structuredQuery:q}=await request.json(),collection=q.from[0].collectionId,clauses=q.where?.compositeFilter?.filters||(q.where?[q.where]:[]);return Response.json([...data].filter(([key,value])=>key.startsWith(collection+'/')&&clauses.every(({fieldFilter:f})=>value[f.field.fieldPath]===decodeFields({v:f.value}).v)).map(([key,value])=>({document:{name:`${root}/${key}`,fields:encodeFields(value)}})));}
-    const key=decodeURIComponent(url.pathname.split('/documents/')[1]||'');return data.has(key)?Response.json({name:`${root}/${key}`,fields:encodeFields(data.get(key))}):Response.json({error:{status:'NOT_FOUND'}},{status:404});
+    const key=decodeURIComponent(url.pathname.split('/documents/')[1]||'');
+    if(revokeAdminOnDetailRead&&key==='occupationalVaccinations/one_2026')data.set('users/admin',{...data.get('users/admin'),role:'colaborador'});
+    return data.has(key)?Response.json({name:`${root}/${key}`,fields:encodeFields(data.get(key))}):Response.json({error:{status:'NOT_FOUND'}},{status:404});
   }}));
   const call=async(kind,action,payload,uid='one')=>{const response=await mf.dispatchFetch('https://worker.test/v1/biosafety',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json',Authorization:'Bearer '+token(uid)},body:body(action,{kind,payload})});return{status:response.status,result:await response.json()};};
   try{
@@ -80,6 +83,19 @@ test('the FE workerd route keeps records private, protects reports and lists FE 
     assert.equal((await call('vaccination','BOOTSTRAP',{year:2026},'two')).result.record,null);
     assert.equal((await call('vaccination','REPORT',{year:2026})).status,403);
     const report=await call('vaccination','REPORT',{year:2026},'admin');assert.equal(report.status,200);assert.equal(report.result.records.length,1);
+    const selection={year:2026,uid:'one'};
+    calls.length=0;
+    assert.deepEqual(await call('vaccination','DETAIL',selection,'two'),{status:403,result:{code:'VAC_FORBIDDEN'}});
+    assert.equal(calls.some(path=>path.includes('/occupationalVaccinations/')),false);
+    calls.length=0;
+    assert.deepEqual(await call('vaccination','DETAIL',selection,'admin'),{status:200,result:{record:saved.result.record}});
+    assert.equal(calls.filter(path=>path.endsWith('/occupationalVaccinations/one_2026')).length,1);
+    assert.equal(calls.some(path=>path.endsWith(':runQuery')),false);
+    const admin=data.get('users/admin');
+    revokeAdminOnDetailRead=true;
+    assert.deepEqual(await call('vaccination','DETAIL',selection,'admin'),{status:403,result:{code:'VAC_FORBIDDEN'}});
+    revokeAdminOnDetailRead=false;
+    data.set('users/admin',admin);
     const docs=await call('documents','LIST_OWN',{context:'VACCINATION',year:2026});assert.equal(docs.status,200,JSON.stringify(docs.result));assert.equal(docs.result.uploadsEnabled,true);assert.deepEqual(docs.result.documents,[]);
     assert.equal((await call('documents','LIST_ADMIN',{context:'VACCINATION',year:2026})).status,403);
     data.set('runtimePolicy/folders',{schemaVersion:1,revision:1,disabled:['consultas/biosseguranca/vacinacao']});

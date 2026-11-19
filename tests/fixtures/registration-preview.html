@@ -19,5 +19,5 @@ const request=async(kind,action,input,signal)=>{
  }
  throw Error('UNKNOWN');
 };
-window.dispose=mountManagementHub(document.querySelector('#app'),{access:{surveys:true,professional:true,epidemiological:true,institutionalSurveys:true,yearEndSchedule:true,vacations2027:true},initialPanel:'surveys',displayName:'Pessoa Sintética',climateEnabled:true,performRegistration:request,isSurveySessionCurrent:()=>valid,onExit(){window.dispose();}});window.invalidate=()=>{valid=false;window.dispose();};
+window.dispose=mountManagementHub(document.querySelector('#app'),{access:{surveys:true,professional:true,epidemiological:true,biosafety:true,institutionalSurveys:true,yearEndSchedule:true,vacations2027:true},initialPanel:'surveys',displayName:'Pessoa Sintética',climateEnabled:true,performRegistration:request,isSurveySessionCurrent:()=>valid,onExit(){window.dispose();}});window.invalidate=()=>{valid=false;window.dispose();};
 </script></html>

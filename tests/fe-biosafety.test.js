@@ -65,6 +65,50 @@ test('FE proves membership before reading histories, executing writes or serving
  assert.equal((await store.list('feVaccinationPerformanceAwards')).length,0);
 });
 
+test('FE vaccination detail returns the selected team member’s record for one year to an admin',async()=>{
+ const {request,store}=await fixture();
+ const {record}=await request('vaccination','SAVE',input);
+ await request('vaccination','SAVE',{...input,year:2027,notes:'Another year'});
+ store.list=async()=>assert.fail('Vaccination detail must use point reads');
+ assert.deepEqual(await request('vaccination','DETAIL',{year:2026,uid:'team'},'admin'),{record});
+ assert.deepEqual(await request('vaccination','DETAIL',{year:2028,uid:'team'},'admin'),{record:null});
+ assert.deepEqual(await request('vaccination','DETAIL',{year:2026,uid:'admin'},'admin'),{record:null});
+ for(const value of [{year:2026},{year:'2026',uid:'team'},{year:2030,uid:'team'},{year:2026,uid:'../team'},{year:2026,uid:'team',email:record.email}]){
+  await assert.rejects(request('vaccination','DETAIL',value,'admin'),{code:'VAC_INVALID_INPUT'});
+ }
+});
+
+test('FE vaccination detail denies callers without fresh admin access and targets outside the linked team',async()=>{
+ const {request,store}=await fixture(),selection={year:2026,uid:'team'};
+ for(const uid of ['team','resident','substitute']){
+  await assert.rejects(request('vaccination','DETAIL',selection,uid),{code:'VAC_FORBIDDEN'});
+ }
+ for(const uid of ['resident','substitute','missing']){
+  await assert.rejects(request('vaccination','DETAIL',{...selection,uid},'admin'),{code:'VAC_FORBIDDEN'});
+ }
+ const target=await store.get('users','team');
+ for(const patch of [{active:false},{access:false},{uid:'resident'},{email:'other@example.invalid'}]){
+  store.seed('users','team',{...target,...patch});
+  await assert.rejects(request('vaccination','DETAIL',selection,'admin'),{code:'VAC_FORBIDDEN'});
+ }
+ store.seed('users','team',target);
+ const assignmentKey=await institutionalAssignmentKey(target.email);
+ store.seed('userCategories',assignmentKey,{...await store.get('userCategories',assignmentKey),identityStatus:'PENDING_ACCOUNT'});
+ await assert.rejects(request('vaccination','DETAIL',selection,'admin'),{code:'VAC_FORBIDDEN'});
+});
+
+test('FE vaccination detail binds saved identity to the team profile and supports records without an email',async()=>{
+ const {request,store}=await fixture(),selection={year:2026,uid:'team'};
+ const {record}=await request('vaccination','SAVE',input);
+ for(const patch of [{uid:'admin'},{year:2027},{email:'other@example.invalid'},{version:0}]){
+  store.seed('occupationalVaccinations','team_2026',{...record,...patch});
+  await assert.rejects(request('vaccination','DETAIL',selection,'admin'),{code:'VAC_RECORD_INVALID'});
+ }
+ const {email,...recordWithoutEmail}=record;
+ store.seed('occupationalVaccinations','team_2026',recordWithoutEmail);
+ assert.deepEqual(await request('vaccination','DETAIL',selection,'admin'),{record:recordWithoutEmail});
+});
+
 test('legacy health actions are retired before authorization while the manual stays separate',async()=>{
  const headers={Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'};
  for(const path of ['vaccination','dosimetry','professional-documents']){

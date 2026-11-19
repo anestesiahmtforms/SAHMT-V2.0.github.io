@@ -100,6 +100,15 @@ test('Funcional renders the full registration with translated choices, older ans
  const partial=renderFunctionalResult('professionalRegistration',{record,files:null});
  assert.ok(partial.includes('Pessoa Mãe')&&partial.includes('Não foi possível consultar os comprovantes'));
 });
+test('Funcional vaccination shows the identified record and only confirmed receipt metadata',()=>{
+ const record={displayName:'Pessoa Sintética',email:identity.email,year:2026,category:'Equipe',truth:true,awareness:true,
+  states:{hepatitisB:'UPDATED',tetanus:'PENDING'},declaration:'WILL_UPDATE',notes:'<img src=invalid>',updatedAt:'2026-11-19T16:00:00Z'};
+ const files=[{subject:'hepatitisB',name:'registro.pdf',uploadedAt:'2026-11-19T16:00:00Z'}];
+ const result=renderFunctionalResult('vaccination',{record,files});
+ for(const label of ['Pessoa Sintética',identity.email,'Equipe','Hepatite B','Atualizada','Pendente','Pretendo atualizar minha vacinação',
+  'Declaração de veracidade','Ciência das orientações','19/11/2026','registro.pdf','&lt;img src=invalid&gt;'])assert.ok(result.includes(label),label);
+ assert.doesNotMatch(result,/<img/);
+});
 const completeEpiAnswers=()=>Object.fromEntries(EPIDEMIOLOGICAL_FIELDS.map(f=>[f.id,f.type==='checks'?[f.options[0][0]]:f.options[0][0]]));
 const epi=(patch={})=>({survey_cycle:'2026',survey_version:'1.0',submission_id:'a'.repeat(32),consent:true,group:'team',answers:{sleep:'0'},...patch});
 test('professional schema validates CPF/date/phone and rejects injected routing or identity',()=>{const v=validateProfessionalAnswers(professionalAnswers());assert.equal(v.cpf,'52998224725');for(const patch of [{uid:'other'},{folderId:'injection'},{cpf:'11111111111'},{birthDate:'2026-02-30'},{phone:'..........'},{lattes:'https://evil.invalid'},{managementAreas:[]}])assert.throws(()=>validateProfessionalAnswers({...professionalAnswers(),...patch}));});

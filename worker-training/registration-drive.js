@@ -75,7 +75,7 @@ export function createRegistrationDrive({store,clientConfig,encryptionKey,refres
  const publicFile=r=>({id:r.requestId,subject:r.subject,name:r.name,mimeType:r.mimeType,size:r.size,status:r.status,uploadedAt:r.uploadedAt||null});
  async function status(identity){const p=await registrationActor(store,identity,{team:true});let connected=false;if(configured)try{await token();connected=true;}catch{}return {connected,canConnect:configured&&registrationAdmin(p),...(configured&&registrationAdmin(p)?{clientId:clientConfig.clientId,ownerEmail:OWNER}:{})};}
  return {status,async execute(action,input,identity){
-  if(!interactive&&!['LIST_OWN','UPLOAD'].includes(action))fail('REGDRIVE_INVALID_INPUT',400);
+  if(!interactive&&!['LIST_OWN','LIST_SUBJECT','UPLOAD'].includes(action))fail('REGDRIVE_INVALID_INPUT',400);
   const actor=await registrationActor(store,identity,{team:true});
   await checkAccess?.(actor);
   if(action==='BEGIN_CONNECT'){
@@ -87,6 +87,17 @@ export function createRegistrationDrive({store,clientConfig,encryptionKey,refres
    const data=await request('https://oauth2.googleapis.com/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code:input.code,client_id:clientConfig.clientId,client_secret:clientConfig.clientSecret,redirect_uri:ORIGIN})});
    if(typeof data.access_token!=='string'||typeof data.refresh_token!=='string'||!data.refresh_token||!Number.isFinite(data.expires_in)||data.expires_in<=60||!String(data.scope||'').split(' ').includes('https://www.googleapis.com/auth/drive'))fail('REGDRIVE_OFFLINE_REQUIRED');await ownerToken(data.access_token);await roots(data.access_token);const encrypted=await crypt('encrypt',data.refresh_token);
    await store.transaction(async tx=>{await registrationActor(tx,identity,{admin:true});tx.set('integrationCredentials','registrationDrive',{schemaVersion:1,clientId:clientConfig.clientId,rootFolderId:clientConfig.rootFolderId,ownerEmail:OWNER,...encrypted,connectedAt:now()});});cached={token:data.access_token,expiresAt:now()+Math.min(data.expires_in,3600)*1000};return {connected:true};
+  }
+  if(action==='LIST_SUBJECT'){
+   if(!exact(input,['uid'])||typeof input.uid!=='string'||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(input.uid)||['.','..'].includes(input.uid))fail('REGDRIVE_INVALID_INPUT',400);
+   return store.transaction(async tx=>{
+    await registrationActor(tx,identity,{admin:true});
+    const target=await tx.get('users',input.uid);
+    const email=typeof target?.email==='string'?target.email.trim().toLowerCase():'';
+    if(target?.uid!==input.uid||target.active!==true||target.access!==true||!email)fail('REGDRIVE_FORBIDDEN',403);
+    const rows=await tx.list('professionalRegistrationFiles',[{field:'uid',op:'EQUAL',value:input.uid}],1000);
+    return {files:rows.filter(r=>r.uid===input.uid&&r.email===email&&r.status==='STORED').map(publicFile)};
+   });
   }
   if(action==='LIST_OWN'){
    if(!exact(input,[]))fail('REGDRIVE_INVALID_INPUT',400);const rows=await store.list('professionalRegistrationFiles',[{field:'uid',op:'EQUAL',value:identity.uid}],1000);await registrationActor(store,identity,{team:true});return {files:rows.filter(r=>r.uid===identity.uid&&r.status==='STORED').map(publicFile),...(interactive?await status(identity):{})};

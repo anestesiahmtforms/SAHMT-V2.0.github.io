@@ -4,16 +4,18 @@ import {assignedInstitutionalGroup,institutionalAssignmentKey,INSTITUTIONAL_GROU
 const COLLECTION = 'occupationalVaccinations';
 const fail = (code, status = 400) => { throw Object.assign(new Error(code), { code, status }); };
 const email = value => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const validEmail = value => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(value)) && value.length <= 254;
 const validUid = value => typeof value === 'string' && /^[A-Za-z0-9_.@+:%-]{1,128}$/.test(value) && !['.', '..'].includes(value);
 const checkedIdentity = identity => {
-  if (!identity || identity.emailVerified !== true || identity.provider !== 'google.com' || !validUid(identity.uid) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email(identity.email)) || identity.email.length > 254) fail('VAC_UNAUTHENTICATED', 401);
+  if (!identity || identity.emailVerified !== true || identity.provider !== 'google.com' || !validUid(identity.uid) || !validEmail(identity.email)) fail('VAC_UNAUTHENTICATED', 401);
   return { uid: identity.uid, email: email(identity.email), emailVerified:true, provider:'google.com' };
 };
 const recordFields = ['uid', 'email', 'displayName', 'year', 'category', 'awareness', 'truth', 'states', 'declaration', 'notes', 'version', 'createdAt', 'updatedAt'];
 const publicRecord = record => record ? Object.fromEntries(recordFields.filter(key => record[key] !== undefined).map(key => [key, structuredClone(record[key])])) : null;
 const displayName = (profile, identity) => String(profile.displayName || profile.name || identity.email).slice(0, 200);
-const checkedRecord = (record, uid, year) => {
-  if (record && (record.uid !== uid || record.year !== year || !Number.isSafeInteger(record.version) || record.version < 1)) fail('VAC_RECORD_INVALID', 503);
+const checkedRecord = (record, uid, year, expectedEmail) => {
+  if (record && (record.uid !== uid || record.year !== year || !Number.isSafeInteger(record.version) || record.version < 1 ||
+      (expectedEmail && Object.hasOwn(record, 'email') && email(record.email) !== expectedEmail))) fail('VAC_RECORD_INVALID', 503);
   return publicRecord(record);
 };
 
@@ -27,11 +29,31 @@ export function createVaccinationService({ store, now = Date.now, adminDriveFold
   }
   async function execute(action, input, principal) {
     const identity = checkedIdentity(principal);
-    if (!['BOOTSTRAP', 'SAVE', 'REPORT'].includes(action) || !input || typeof input !== 'object' || Array.isArray(input)) fail('VAC_INVALID_INPUT');
+    if (!['BOOTSTRAP', 'SAVE', 'REPORT', 'DETAIL'].includes(action) || !input || typeof input !== 'object' || Array.isArray(input)) fail('VAC_INVALID_INPUT');
     let validated;
     if (action === 'SAVE') validated = validateVaccinationInput(input);
-    else if (Object.keys(input).length !== 1 || !Object.prototype.hasOwnProperty.call(input, 'year') || !VACCINATION_YEARS.includes(input.year)) fail('VAC_INVALID_INPUT');
+    else {
+      const fields = action === 'DETAIL' ? ['year', 'uid'] : ['year'];
+      if (Object.keys(input).length !== fields.length || !fields.every(field => Object.hasOwn(input, field)) ||
+          !VACCINATION_YEARS.includes(input.year) || (action === 'DETAIL' && !validUid(input.uid))) fail('VAC_INVALID_INPUT');
+    }
     const year = input.year, key = `${identity.uid}_${year}`;
+    if (action === 'DETAIL') {
+      const uid = input.uid;
+      const record = await store.transaction(async tx => {
+        const adminProfile = await authorize(tx, identity, true);
+        const profile = uid === identity.uid ? adminProfile : await tx.get('users', uid);
+        if (profile?.uid !== uid || profile.active !== true || profile.access !== true || !validEmail(profile.email)) fail('VAC_FORBIDDEN', 403);
+        const targetEmail = email(profile.email);
+        const assignment = await tx.get('userCategories', await institutionalAssignmentKey(targetEmail));
+        if (!assignedInstitutionalGroup(assignment, { uid, email: targetEmail }) ||
+            !eligibleParticipant({ ...profile, memberCategories: assignment.memberCategories })) fail('VAC_FORBIDDEN', 403);
+        return checkedRecord(await tx.get(COLLECTION, `${uid}_${year}`), uid, year, targetEmail);
+      });
+      // A role revoked during the record read must prevent data release.
+      await store.transaction(tx => authorize(tx, identity, true));
+      return { record };
+    }
     if (action === 'REPORT') {
       await store.transaction(tx => authorize(tx, identity, true));
       const [profiles, allRecords, assignments] = await Promise.all([

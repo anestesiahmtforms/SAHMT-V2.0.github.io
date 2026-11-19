@@ -43,13 +43,21 @@ test('one account gets one response per survey/cycle; participation data contain
 test('incomplete or blank required answers consume neither participation nor performance points',async()=>{
  const {service,responses}=await fixture();
  const missingClimate=input('climate');delete missingClimate.response.answers.T01;
- const blankComment=input('climate');blankComment.response.comments.O05='  ';
+ const blankClimate=input('climate');blankClimate.response.answers.T01='  ';
  const missingStress=input('stress');delete missingStress.response.stress_rating;
- for(const payload of [missingClimate,blankComment,missingStress]){
+ for(const payload of [missingClimate,blankClimate,missingStress]){
   await assert.rejects(service.execute('SUBMIT',payload,identity),{code:'SURVEY_INVALID_INPUT'});
  }
  assert.equal((await responses.list('surveyParticipation')).length,0);
  assert.equal((await responses.list('fePerformanceAwards')).length,0);
+});
+test('optional blank comments allow participation without storing an empty comment document',async()=>{
+ const {service,responses}=await fixture();
+ const payload=input('climate');payload.response.comments={O05:'  '};
+ assert.deepEqual(await service.execute('SUBMIT',payload,identity),{accepted:true,alreadyResponded:false});
+ assert.equal((await responses.list('surveyParticipation')).length,1);
+ assert.equal((await responses.list('fePerformanceAwards')).length,1);
+ assert.equal((await responses.list('climateComments')).length,0);
 });
 test('concurrent submissions with distinct random IDs commit a single ledger and a single answer',async()=>{
  const {service,responses}=await fixture();const results=await Promise.all(Array.from({length:20},(_,i)=>service.execute('SUBMIT',input('stress',(i+1).toString(16).padStart(32,'0')),identity)));

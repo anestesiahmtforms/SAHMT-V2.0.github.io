@@ -25,7 +25,7 @@ const sourceLabels = Object.freeze({
   performance: 'Desempenho',
   professionalRegistration: 'Cadastro Profissional',
   dosimetry: 'Dosimetria',
-  vaccination: 'Vacinação',
+  vaccination: 'Histórico Vacinal',
   climate: 'Pesquisa de Clima Organizacional',
   stress: 'Avaliação de Estresse e Fadiga',
   epidemiological: 'Cadastro Epidemiológico',
@@ -246,14 +246,14 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   }
 
   async function fetchResult(year) {
-    const key=openSource, ticket=++resultRequest;
-    const current=()=>ownSession()&&operationalContentAllowed(sourceFolders[key])&&detailDialog.open&&openSource===key&&resultRequest===ticket;
+    const key=openSource, ticket=++resultRequest,subjectUid=selection||uid;
+    const current=()=>ownSession()&&operationalContentAllowed(sourceFolders[key])&&detailDialog.open&&openSource===key&&resultRequest===ticket&&(selection||uid)===subjectUid;
     const body=detailDialog.querySelector('[data-fk-detail-body]');
     const output=body.querySelector('[data-fk-result]');
     if(!output)return;
     output.textContent='Consultando…';
     try{
-      const result=await loadFunctionalResult({key,year,uid,subjectUid:selection||uid,faAuth,isCurrent:current});
+      const result=await loadFunctionalResult({key,year,uid,subjectUid,administrator,faAuth,isCurrent:current});
       if(current())output.innerHTML=renderFunctionalResult(key,result);
     }catch(error){
       if(current())output.textContent=error?.code?.endsWith('_FOLDER_DISABLED')

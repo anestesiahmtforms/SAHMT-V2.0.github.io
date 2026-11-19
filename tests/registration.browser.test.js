@@ -12,6 +12,7 @@ test('epidemiological modal highlights start, requires a local BMI calculation a
   await page.locator('body').evaluate(body=>body.classList.add('app-shell'));
   assert.equal(await page.locator('[data-hub-item] svg').count(),2);
   await open(page,'ACESSO RESTRITO');
+  assert.match(await page.locator('[data-hub-item]').first().innerText(),/MEU HISTÓRICO VACINAL/);
   await open(page,'CADASTRO EPIDEMIOLÓGICO - SAHMT');
   await page.getByRole('heading',{name:'Equipe',exact:true}).waitFor();
   assert.equal(await page.getByRole('button',{name:'Indicadores Epidemiológicos'}).count(),0);
@@ -257,4 +258,4 @@ test('closing an attachment picker keeps the professional form and its draft ope
  await dialog.dispatchEvent('cancel',{bubbles:false,cancelable:true});
  assert.equal(await dialog.getAttribute('data-panel'),'institutional');
 }));
-test('duplicate participant cannot submit again and a late bootstrap cannot restore a closed banner',()=>run(async browser=>{const page=await browser.newPage();await page.goto(url+'?done');await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO EPIDEMIOLÓGICO - SAHMT');await page.getByText('Você já participou desta pesquisa neste ciclo. Não é possível enviar outra resposta.',{exact:true}).waitFor();assert.equal(await page.locator('form').isVisible(),false);await page.goto(url+'?late');await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO PROFISSIONAL - SAHMT');await page.waitForFunction(()=>!!window.releaseLate);await open(page,'VOLTAR');await page.evaluate(()=>window.releaseLate());await page.waitForTimeout(50);assert.equal(await page.locator('form').count(),0);assert.equal(await page.locator('[data-hub-item]').count(),4);}));
+test('duplicate participant cannot submit again and a late bootstrap cannot restore a closed banner',()=>run(async browser=>{const page=await browser.newPage();await page.goto(url+'?done');await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO EPIDEMIOLÓGICO - SAHMT');await page.getByText('Você já participou desta pesquisa neste ciclo. Não é possível enviar outra resposta.',{exact:true}).waitFor();assert.equal(await page.locator('form').isVisible(),false);await page.goto(url+'?late');await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO PROFISSIONAL - SAHMT');await page.waitForFunction(()=>!!window.releaseLate);await open(page,'VOLTAR');await page.evaluate(()=>window.releaseLate());await page.waitForTimeout(50);assert.equal(await page.locator('form').count(),0);assert.equal(await page.locator('[data-hub-item]').count(),5);}));

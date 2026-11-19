@@ -22,10 +22,12 @@ export async function createBiosafetyManualClient(user){
 export async function createFunctionalOccupationalReader(user,{isCurrent,auth}){
  const client=await createVaccinationClient(user,{isCurrent,auth});
  return {
-  async read(source,year){
-   if(source==='vaccination')return client.api('BOOTSTRAP',{year});
-
-   throw Error('FK_SOURCE_INVALID');
+  async read(year,subjectUid){
+   const own=subjectUid===user.uid;
+   const target=own?{year}:{year,uid:subjectUid};
+   const result=await client.api(own?'BOOTSTRAP':'DETAIL',target);
+   const receipts=await client.documents(own?'LIST_OWN':'LIST_ADMIN',{context:'VACCINATION',...target}).catch(()=>null);
+   return {record:result.record,files:receipts?.documents??null};
   },
   dispose:client.dispose
  };

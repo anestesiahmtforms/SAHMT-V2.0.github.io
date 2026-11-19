@@ -11,7 +11,7 @@ const folder = 'consultas/cadastro-profissional';
 const drivePath = '/v1/registration-drive';
 const professionalPath = '/v1/professional-registration';
 const actions = {
- [drivePath]:new Set(['LIST_OWN','UPLOAD']),
+ [drivePath]:new Set(['LIST_OWN','LIST_SUBJECT','UPLOAD']),
  [professionalPath]:new Set(['BOOTSTRAP','SAVE','LIST','DETAIL',...professionalObligationActions])
 };
 const fail = (code, status) => Object.assign(Error(code), {code,status});
