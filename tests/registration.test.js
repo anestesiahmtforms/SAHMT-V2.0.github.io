@@ -113,14 +113,17 @@ test('a complete epidemiological submission earns one point in FE and a partial 
  const service=createSurveyService({profileStore,responseStore,performanceEnabled:true,now});
  const input={survey:'epidemiological',cycle:'2026',response:epi()};
  await assert.rejects(service.execute('SUBMIT',input,identity),{code:'SURVEY_INVALID_INPUT'});
- const complete={...input,response:epi({answers:completeEpiAnswers(),comments:'Sem sugestão'})};
- for(const response of [{...complete.response,comments:'  '},{...complete.response,answers:{...complete.response.answers,conditions:[]}}])
+ const complete={...input,response:epi({answers:completeEpiAnswers(),comments:'  '})};
+ for(const answers of [{...complete.response.answers,conditions:[]},{...complete.response.answers,bmiBand:'NI'}]){
+  const response={...complete.response,answers};
   await assert.rejects(service.execute('SUBMIT',{...input,response},identity),{code:'SURVEY_INVALID_INPUT'});
+ }
  assert.equal((await responseStore.list('surveyParticipation')).length,0);
  assert.deepEqual(await service.execute('SUBMIT',complete,identity),{accepted:true,alreadyResponded:false});
  assert.deepEqual(await service.execute('SUBMIT',complete,identity),{accepted:true,alreadyResponded:true});
  assert.equal((await responseStore.get('fePerformanceSummaries',identity.uid)).total,1);
  assert.equal((await responseStore.list('fePerformanceAwards')).length,1);
+ assert.equal((await responseStore.list('epidemiologicalComments')).length,0);
 });
 test('epidemiological reports suppress small groups, rare cells and small missing complements',()=>{const row=()=>({survey_cycle:'2026',survey_version:'1.0',group:'team',answers:{sleep:'0',exercise:'0'}});const data=Array.from({length:10},row);const metric=r=>r.groups.team.questions.find(q=>q.id==='sleep');let r=aggregateEpidemiological(data);assert.equal(r.groups.resident.suppressed,true);assert.equal(metric(r).options[0].count,10);data[0].answers.sleep='1';assert.equal(metric(aggregateEpidemiological(data)).suppressed,true);data[0].answers.sleep='NI';assert.equal(metric(aggregateEpidemiological(data)).suppressed,true);assert.equal(aggregateEpidemiological(data.slice(0,4)).groups.team.suppressed,true);assert.equal(aggregateEpidemiological([row(),{...row(),answers:{sleep:'unknown'}}]).groups.team.suppressed,true);assert.equal(Object.hasOwn(r,'overall'),false);assert.doesNotMatch(JSON.stringify(r),/synthetic@example|52998224725/);});
 test('epidemiological report is only published after closure and only to configured active admin',async()=>{const profileStore=await fixture(),responseStore=vaccinationMemoryStore(),service=createSurveyService({profileStore,responseStore,reportReaderEmail:identity.email});profileStore.seed('users',identity.uid,{...identity,active:true,access:true,role:'administrador_app'});responseStore.seed('epidemiologicalCycles','2026',{status:'open'});responseStore.seed('epidemiologicalReports','2026',{grouping_version:2,groups:{}});const input={survey:'epidemiological',cycle:'2026'};assert.equal((await service.execute('REPORT',input,identity)).report,null);responseStore.seed('epidemiologicalCycles','2026',{status:'closed'});assert.equal((await service.execute('BOOTSTRAP',input,identity)).closed,true);assert.ok((await service.execute('REPORT',input,identity)).report);await assert.rejects(service.execute('DETAIL',{...input,uid:identity.uid},identity));profileStore.seed('users',identity.uid,{...identity,active:true,access:true});await assert.rejects(service.execute('REPORT',input,identity));});

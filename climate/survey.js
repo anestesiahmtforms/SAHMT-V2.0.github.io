@@ -15,8 +15,8 @@ mountSurveyFlow(document.querySelector('#app'), {
   questions: `<p>Considere os últimos seis meses. Marque N/A quando o item não se aplicar ou quando você não tiver informação para responder.</p>
     ${DIMENSIONS.map(([label], i) => `<section><h2>${i + 1}. ${label}</h2>${COMMON.slice(i * 4, i * 4 + 4).map(renderQuestion).join('')}</section>`).join('')}
     <section id="module"></section>
-    <section><h2>Comentários</h2><p>Evite nomes, datas exatas, casos clínicos e outros detalhes que possam identificar pessoas. Se não tiver contribuição para um campo, escreva “Sem sugestão”.</p>
-    ${OPEN.map(q => `<label class="open">${q.id}. ${q.text}<textarea name="${q.id}" maxlength="1500" rows="3" required></textarea></label>`).join('')}</section>`,
+    <section><h2>Comentários opcionais</h2><p>Evite nomes, datas exatas, casos clínicos e outros detalhes que possam identificar pessoas.</p>
+    ${OPEN.map(q => `<label class="open">${q.id}. ${q.text}<textarea name="${q.id}" maxlength="1500" rows="3"></textarea></label>`).join('')}</section>`,
   onGroup(group, form) {
     participantGroup = group;
     form.querySelector('#module').innerHTML = '<h2>Perguntas para sua função</h2>' + questionsForSelection(group).map(renderQuestion).join('');

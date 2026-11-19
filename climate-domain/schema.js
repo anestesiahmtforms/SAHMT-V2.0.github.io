@@ -26,7 +26,6 @@ export function validateCompleteSubmission(input) {
   const response = validateSubmission(input);
   const requiredQuestions = [...COMMON, ...questionsForSelection(response.group)];
   if (!requiredQuestions.every(q => Object.hasOwn(response.answers, q.id))) throw Error('INCOMPLETE_ANSWERS');
-  if (!OPEN.every(q => Object.hasOwn(response.comments, q.id))) throw Error('INCOMPLETE_COMMENTS');
   return response;
 }
 export function validateSubmission(input) {

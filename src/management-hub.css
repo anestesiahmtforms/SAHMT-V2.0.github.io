@@ -64,13 +64,85 @@ body:has(.management-hub-dialog[open]){overflow:hidden;overscroll-behavior:none}
 .management-hub-dialog[data-panel="epidemiological"] .management-hub-body{overflow:auto}
 [data-epidemiological].survey-app{width:100%;min-height:100%;padding:0}
 [data-epidemiological] .survey-banner{padding:16px;width:100%;box-shadow:none}
-[data-epidemiological] .survey-questions{color:#163844}
+[data-epidemiological] [data-consent]{
+ margin-top:16px;
+ padding:12px;
+ border:1px solid #94b5c1;
+ border-radius:14px;
+ background:#edf6f8;
+}
+[data-epidemiological] .consent{margin:0 0 10px;padding:0;background:none}
+[data-epidemiological] .consent input{width:20px;height:20px;flex:0 0 20px;accent-color:#185b7d}
+[data-epidemiological] [data-start]{
+ width:100%;
+ min-height:50px;
+ padding:10px 14px;
+ border:1px solid #143c5a;
+ border-radius:12px;
+ background:linear-gradient(150deg,#21658d,#173c59);
+ box-shadow:0 3px 0 #132e47;
+ color:white;
+ font:inherit;
+ font-weight:800;
+}
+[data-epidemiological] [data-start]:disabled{
+ border-color:#b7cbd2;
+ background:#dbe9ed;
+ box-shadow:none;
+ color:#3c5966;
+}
+[data-epidemiological] .survey-questions{
+ position:fixed;
+ width:min(90vw,60rem);
+ height:min(90dvh,54rem);
+ box-sizing:border-box;
+ color:#163844;
+}
+[data-epidemiological] .survey-question-body{
+ min-height:0;
+ overflow-x:hidden;
+ overflow-y:auto;
+ scrollbar-width:thin;
+ scrollbar-gutter:stable;
+ scrollbar-color:#7894a4 #e6edf0;
+}
+[data-epidemiological] .survey-questions :is(select,textarea,input:not([type=checkbox])){font-size:max(16px,1rem)}
 [data-epidemiological] .survey-questions .reg-section{margin-top:16px}
+[data-epidemiological] .survey-actions{
+ display:grid;
+ grid-template-columns:repeat(2,minmax(0,1fr));
+ max-width:36rem;
+ margin-inline:auto;
+}
+[data-epidemiological] .survey-actions button{
+ min-height:52px;
+ padding:10px 12px;
+ border:1px solid #7a9ba5;
+ border-radius:8px;
+ background:white;
+ color:#174653;
+ font:inherit;
+ font-weight:700;
+ white-space:normal;
+}
+[data-epidemiological] .survey-actions .primary{
+ border-color:#126866;
+ background:#126866;
+ color:white;
+}
+[data-epidemiological] .survey-actions button:disabled{opacity:.6}
+[data-epidemiological] .reg-bmi{padding:0;background:#edf6f8}
+[data-epidemiological] .reg-bmi summary{
+ min-height:44px;
+ padding:10px 12px;
+ cursor:pointer;
+ font-weight:750;
+}
+[data-epidemiological] .reg-bmi summary small{color:#415d6c;font-weight:650}
+[data-epidemiological] .reg-bmi-content{padding:0 12px 12px}
 .management-hub-dialog[data-panel="institutional"] .management-hub-grid{flex:0 0 auto;grid-auto-rows:minmax(76px,1fr)}
 .management-hub-dialog[data-panel="institutional"] .management-hub-body{overflow:auto}
 .management-survey-frame{display:block;flex:1 1 auto;min-height:180px;width:100%;height:100%;border:0;border-radius:12px;background:#f1f6f6}.management-hub-dialog[data-panel="climateForm"] .management-hub-body,.management-hub-dialog[data-panel="stressForm"] .management-hub-body{padding:0;overflow:hidden}
-
-.management-hub-dialog[data-panel="epidemiological"] .management-hub-body{overflow:auto}
 
 .management-hub-button--festive:not(:disabled){border-color:#f3d690;background:linear-gradient(155deg,#bc4750,#8d2634 55%,#681e2c);color:#fff4d2;box-shadow:0 6px 0 #501825,0 7px 0 1px #b99c64,0 13px 20px #4b102c30,inset 0 2px 0 #fff5d54d}
 .management-hub-button--festive .management-hub-medallion{background:linear-gradient(145deg,#fff3ba,#d7aa53);color:#8b2631}.management-hub-button--festive .management-hub-arrow{background:#6c1d2a;color:#ffe9ae}

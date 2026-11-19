@@ -49,8 +49,8 @@ test('responsive survey: conditional modules, mandatory answers, privacy, exact 
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
       await page.check('[name=Q01][value="4"]'); await page.locator('[type=submit]').click(); assert.equal(received.length, 0);
       await page.locator('input[type=radio][value="4"]').evaluateAll(inputs=>inputs.forEach(input=>{input.checked=true;}));
-      await page.locator('textarea').evaluateAll(fields=>fields.forEach(field=>{field.value='Sem sugestão';}));
-      await page.fill('[name=O01]', '<script>alert("text only")</script>');
+      assert.equal(await page.locator('textarea[required]').count(),0);
+      if(width!==320)await page.fill('[name=O01]', '<script>alert("text only")</script>');
       await page.locator('[type=submit]').click(); await page.getByRole('status').filter({hasText:'Tente reenviar as mesmas respostas.'}).waitFor();
       assert.equal(await page.locator('[name=Q01][value="4"]').isDisabled(), true);
       await page.getByRole('button', {name: 'Tentar reenviar'}).click(); await page.waitForURL(returnURL);
@@ -61,7 +61,11 @@ test('responsive survey: conditional modules, mandatory answers, privacy, exact 
       assert.equal(writes[0].update.fields.group.stringValue,assignedGroup);
       assert.equal(Object.keys(writes[0].update.fields.answers.mapValue.fields).length,37);
       assert.deepEqual(writes[0].update.fields.answers.mapValue.fields.Q01,{integerValue:'4'});
-      assert.notEqual(writes[0].update.name.split('/').at(-1),writes[1].update.name.split('/').at(-1));
+      assert.equal(writes.length,width===320?1:2);
+      if(width!==320){
+        assert.notEqual(writes[0].update.name.split('/').at(-1),writes[1].update.name.split('/').at(-1));
+        assert.deepEqual(Object.keys(writes[1].update.fields.comments.mapValue.fields),['O01']);
+      }
       for (const h of ['authorization','cookie','referer']) assert.equal(received[0].headers[h], undefined);
       assert.equal(requests.some(req => new URL(req.url()).origin !== origin && !req.url().includes('firestore.googleapis.com/') && req.url() !== returnURL.split('#')[0]), false);
       assert.deepEqual(errors, []); await context.close();

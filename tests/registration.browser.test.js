@@ -2,7 +2,84 @@ import test from 'node:test';import assert from 'node:assert/strict';import {chr
 const url='http://127.0.0.1:5178/SAHMT-V2.0.github.io/tests/fixtures/registration-preview.html';
 async function run(fn){const browser=await chromium.launch({headless:true,channel:'msedge'});try{await fn(browser);}finally{await browser.close();}}
 const open=(page,name)=>page.getByRole('button',{name,exact:true}).click();
-test('FE entry buttons and anonymous epidemiological form fit phones and desktop; BMI stays local',()=>run(async browser=>{const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));for(const width of [320,390,768,1440]){await page.setViewportSize({width,height:900});await page.goto(url);assert.equal(await page.locator('[data-hub-item] svg').count(),2);await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO EPIDEMIOLÓGICO - SAHMT');await page.getByRole('heading',{name:'Equipe',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Indicadores Epidemiológicos'}).count(),0);assert.equal(await page.locator('form').isVisible(),false);await page.check('[name=consent]');await open(page,'Iniciar Pesquisa');assert.equal(await page.locator('[name=group],[name=email],[name=fullName],[name=uid]').count(),0);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await open(page,'Enviar resposta');assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='SUBMIT')),false);for(const f of EPIDEMIOLOGICAL_FIELDS)if(f.type==='checks')await page.check(`[name="${f.id}"][value="${f.options[0][0]}"]`);else await page.selectOption(`[name="${f.id}"]`,f.options[0][0]);await page.check('[name=conditions][value=CARDIO]');await page.check('[name=conditions][value=NONE]');assert.equal(await page.locator('[name=conditions][value=CARDIO]').isChecked(),false);await page.locator('summary').click();await page.fill('[data-local-weight]','70');await page.fill('[data-local-height]','175');assert.equal(await page.locator('[name=bmiBand]').inputValue(),'MID');await page.fill('[name=comments]','Sem sugestão');await open(page,'Enviar resposta');await page.getByText('Sua participação foi registrada.',{exact:true}).waitFor();const input=await page.evaluate(()=>window.calls.find(c=>c.action==='SUBMIT').input);assert.equal(input.consent,true);assert.equal(input.answers.bmiBand,'MID');assert.doesNotMatch(JSON.stringify(input),/weight|height|email|uid|fullName/);assert.equal(await page.locator('form').count(),0);assert.deepEqual(await page.evaluate(()=>[localStorage.length,sessionStorage.length]),[0,0]);}assert.deepEqual(errors,[]);}));
+test('epidemiological modal highlights start, requires a local BMI calculation and accepts a blank suggestion',()=>run(async browser=>{
+ const page=await browser.newPage({isMobile:true,hasTouch:true});
+ const errors=[];
+ page.on('pageerror',error=>errors.push(error.message));
+ for(const width of [320,390,768,1440]){
+  await page.setViewportSize({width,height:740});
+  await page.goto(url);
+  await page.locator('body').evaluate(body=>body.classList.add('app-shell'));
+  assert.equal(await page.locator('[data-hub-item] svg').count(),2);
+  await open(page,'ACESSO RESTRITO');
+  await open(page,'CADASTRO EPIDEMIOLÓGICO - SAHMT');
+  await page.getByRole('heading',{name:'Equipe',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Indicadores Epidemiológicos'}).count(),0);
+  assert.equal(await page.locator('form').isVisible(),false);
+  const start=page.getByRole('button',{name:'Iniciar Pesquisa',exact:true});
+  assert.ok((await start.boundingBox()).height>=48);
+  assert.equal(await start.isDisabled(),true);
+  await page.check('[name=consent]');
+  await start.click();
+
+  const dialog=page.locator('.survey-questions');
+  const body=dialog.locator('.survey-question-body');
+  const footer=dialog.locator('footer');
+  const bounds=await dialog.boundingBox(), footerBounds=await footer.boundingBox();
+  assert.ok(bounds.x>=0&&bounds.x+bounds.width<=width);
+  assert.ok(footerBounds.y+footerBounds.height<=740);
+  for(const name of ['Voltar','Enviar resposta'])
+   assert.ok((await footer.getByRole('button',{name,exact:true}).boundingBox()).height>=52);
+  assert.equal(await dialog.evaluate(el=>getComputedStyle(el).position),'fixed');
+  assert.equal(await dialog.evaluate(el=>getComputedStyle(el).overflowY),'hidden');
+  assert.equal(await body.evaluate(el=>getComputedStyle(el).scrollbarWidth),'thin');
+  assert.ok(await body.evaluate(el=>{el.scrollTop=el.scrollHeight;return el.scrollTop;}));
+  assert.deepEqual(await footer.boundingBox(),footerBounds);
+  assert.equal(await page.locator('[name=group],[name=email],[name=fullName],[name=uid],[name=bmiBand]').count(),0);
+  assert.ok(await body.locator('input:not([type=checkbox]),select,textarea').evaluateAll(fields=>
+   fields.every(field=>parseFloat(getComputedStyle(field).fontSize)>=16)));
+
+  const calculator=dialog.locator('.reg-bmi');
+  const calculatorButton=calculator.getByText('Calcular faixa de IMC',{exact:true});
+  const age=dialog.locator('[name=ageBand]');
+  const exercise=dialog.locator('[name=exercise]');
+  assert.equal(await dialog.getByText('Faixa de IMC',{exact:true}).count(),0);
+  assert.ok((await age.boundingBox()).y<(await calculatorButton.boundingBox()).y);
+  assert.ok((await calculatorButton.boundingBox()).y<(await exercise.boundingBox()).y);
+  for(const field of EPIDEMIOLOGICAL_FIELDS){
+   if(field.id==='bmiBand')continue;
+   if(field.type==='checks')await page.check('[name="'+field.id+'"][value="'+field.options[0][0]+'"]');
+   else await page.selectOption('[name="'+field.id+'"]',field.options[0][0]);
+  }
+  await page.check('[name=conditions][value=CARDIO]');
+  await page.check('[name=conditions][value=NONE]');
+  assert.equal(await page.locator('[name=conditions][value=CARDIO]').isChecked(),false);
+  await open(page,'Enviar resposta');
+  assert.equal(await page.evaluate(()=>window.calls.some(call=>call.action==='SUBMIT')),false);
+  assert.equal(await calculator.evaluate(el=>el.open),true);
+  await page.fill('[data-local-weight]','70.2');
+  await page.fill('[data-local-height]','175');
+  assert.match(await page.locator('[data-local-bmi]').textContent(),/22,9/);
+  await page.fill('[data-local-height]','');
+  await calculatorButton.click();
+  await open(page,'Enviar resposta');
+  assert.equal(await page.evaluate(()=>window.calls.some(call=>call.action==='SUBMIT')),false);
+  assert.equal(await calculator.evaluate(el=>el.open),true);
+  await page.fill('[data-local-height]','175');
+  assert.equal(await page.locator('[name=comments]').inputValue(),'');
+  await open(page,'Enviar resposta');
+
+  await page.getByText('Sua participação foi registrada.',{exact:true}).waitFor();
+  const input=await page.evaluate(()=>window.calls.find(call=>call.action==='SUBMIT').input);
+  assert.equal(input.consent,true);
+  assert.equal(input.answers.bmiBand,'MID');
+  assert.equal(input.comments,'');
+  assert.doesNotMatch(JSON.stringify(input),/weight|height|email|uid|fullName/);
+  assert.equal(await page.locator('form').count(),0);
+  assert.deepEqual(await page.evaluate(()=>[localStorage.length,sessionStorage.length]),[0,0]);
+ }
+ assert.deepEqual(errors,[]);
+}));
 test('professional modal keeps a compact header and a fixed footer while the form scrolls',()=>run(async browser=>{
  const page=await browser.newPage({isMobile:true,hasTouch:true});
  for(const [width,height,headerLimit] of [[320,568,63],[390,844,75],[1440,900,75]]){

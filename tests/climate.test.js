@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {COMMON, MODULES, OPEN, DIMENSIONS, validateSubmission, VERSION, CYCLE,groupForModule} from '../climate-domain/schema.js';
+import {COMMON, MODULES, OPEN, DIMENSIONS, validateSubmission, validateCompleteSubmission, VERSION, CYCLE,groupForModule} from '../climate-domain/schema.js';
 import {aggregate as aggregateCurrent,summarize} from '../climate-domain/aggregate.js';
 import {actionIndicators} from '../climate-domain/actions.js';
 const answers = (value = 4) => Object.fromEntries(COMMON.map(q => [q.id, value]));
@@ -23,6 +23,17 @@ test('reject identifiers and unexpected data at every payload level', () => {
 test('validate consent, cycle, token, numeric values, comments and mixed modules', () => {
   for (const change of [{consent: false}, {survey_cycle: 'bad'}, {survey_version: '2'}, {submission_id: 'uid'}, {answers: {Q01: '4'}}, {answers: {Q01: 6}}, {answers: {Q01: 'NA'}}, {comments: {O01: 'x'.repeat(1501)}}, {answers: {...answers(), R01: 4, T01: 5}}]) assert.throws(() => validateSubmission({...payload(), ...change}));
   assert.equal(validateSubmission({...payload(),group:'resident', answers: {Q01: 1, Q02: 'NA', R01: 5}, comments: {}}).answers.Q02, 'NA');
+});
+test('require every applicable marking and accept blank or partial climate comments', () => {
+  for (const [group,questions] of [['team',MODULES.preceptor],['resident',MODULES.resident]]) {
+    const selected = {...answers(), ...Object.fromEntries(questions.map(q=>[q.id,4]))};
+    const response = {...payload(),group,answers:selected};
+    assert.deepEqual(validateCompleteSubmission({...response,comments:{}}).comments,{});
+    assert.deepEqual(validateCompleteSubmission({...response,comments:{O01:'  ',O03:' Ideia '}}).comments,{O03:'Ideia'});
+    const missing = {...selected};
+    delete missing[questions[0].id];
+    assert.throws(()=>validateCompleteSubmission({...response,answers:missing,comments:{}}),/INCOMPLETE_ANSWERS/);
+  }
 });
 test('favorability excludes NA and blanks and uses actual numeric denominators', () => {
   const rows = Array.from({length: 10}, (_, i) => ({group:'team',answers: answers(i < 5 ? 5 : 2)}));

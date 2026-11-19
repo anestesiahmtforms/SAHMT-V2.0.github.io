@@ -3,9 +3,23 @@ import {registrationField} from './registration-fields.js';
 import {EPIDEMIOLOGICAL_FIELDS,REGISTRATION_CYCLE,validateCompleteEpidemiologicalSubmission,bmiBand} from './registration-domain.js';
 import {mountSurveyFlow,surveyResponseId} from './survey-flow.js';
 
-const questions = EPIDEMIOLOGICAL_FIELDS.map(field => registrationField({...field,required:true})).join('') +
-  '<details class="reg-bmi"><summary>Calcular a faixa de IMC (opcional)</summary><p>Somente a faixa escolhida é enviada.</p><label>Peso em kg<input type="number" inputmode="decimal" data-local-weight></label><label>Altura em cm<input type="number" inputmode="decimal" data-local-height></label><output data-local-bmi></output></details>' +
-  '<label class="reg-field">Sugestão para um modelo de trabalho mais saudável<textarea name="comments" rows="3" maxlength="1500" required></textarea><small>Evite nomes e detalhes identificáveis. Se não tiver sugestão, escreva “Sem sugestão”.</small></label>';
+const bmiCalculator = `<details class="reg-bmi">
+  <summary><span>Calcular faixa de IMC</span> <small data-bmi-status>Obrigatório</small></summary>
+  <div class="reg-bmi-content">
+    <p>Somente a faixa calculada é enviada.</p>
+    <label>Peso em kg<input type="number" inputmode="decimal" min="10" max="500" step="any" data-local-weight required></label>
+    <label>Altura em cm<input type="number" inputmode="decimal" min="50" max="250" step="any" data-local-height required></label>
+    <output data-local-bmi aria-live="polite"></output>
+  </div>
+</details>`;
+const questions = EPIDEMIOLOGICAL_FIELDS.map(field =>
+  field.id === 'bmiBand' ? bmiCalculator : registrationField({...field,required:true})).join('') +
+  '<label class="reg-field">Sugestão para um modelo de trabalho mais saudável<textarea name="comments" rows="3" maxlength="1500"></textarea><small>Opcional. Evite nomes e detalhes identificáveis.</small></label>';
+
+const bmiInputs = '[data-local-weight],[data-local-height]';
+function calculateBmi(container) {
+  return bmiBand(container.querySelector('[data-local-weight]').value,container.querySelector('[data-local-height]').value);
+}
 
 export function mountEpidemiologicalSurvey(root,{request,onComplete}) {
   const controller = new AbortController();
@@ -20,8 +34,15 @@ export function mountEpidemiologicalSurvey(root,{request,onComplete}) {
       return state;
     },
     readResponse(data,form) {
+      const bmi = calculateBmi(form);
+      if (!bmi) {
+        const calculator = form.querySelector('.reg-bmi');
+        calculator.open = true;
+        calculator.querySelector('input:invalid')?.focus();
+        throw Error('Calcule a faixa de IMC para continuar.');
+      }
       const answers = Object.fromEntries(EPIDEMIOLOGICAL_FIELDS.map(field => [
-        field.id,field.type === 'checks' ? data.getAll(field.id) : data.get(field.id)
+        field.id,field.id === 'bmiBand' ? bmi.band : field.type === 'checks' ? data.getAll(field.id) : data.get(field.id)
       ]));
       const unanswered = EPIDEMIOLOGICAL_FIELDS.find(field => field.type === 'checks' && !answers[field.id].length);
       if (unanswered) {
@@ -36,6 +57,10 @@ export function mountEpidemiologicalSurvey(root,{request,onComplete}) {
     submit:(payload,signal)=>request('SUBMIT',payload,AbortSignal.any([controller.signal,signal])),
     onComplete
   });
+  const {signal} = controller;
+  root.addEventListener('invalid',event=>{
+    if (event.target.matches(bmiInputs)) event.target.closest('.reg-bmi').open = true;
+  },{capture:true,signal});
   root.addEventListener('change',event=>{
     const field = EPIDEMIOLOGICAL_FIELDS.find(field=>field.type==='checks'&&field.id===event.target.name);
     if (!field || !event.target.checked) return;
@@ -44,12 +69,14 @@ export function mountEpidemiologicalSurvey(root,{request,onComplete}) {
     for (const control of controls) {
       if (control!==event.target&&(exclusive.includes(control.value)||exclusive.includes(event.target.value))) control.checked=false;
     }
-  });
-  root.addEventListener('input',event=>{
-    if (!event.target.matches('[data-local-weight],[data-local-height]')) return;
-    const result = bmiBand(root.querySelector('[data-local-weight]').value,root.querySelector('[data-local-height]').value);
-    root.querySelector('[data-local-bmi]').textContent = result ? 'IMC calculado: '+String(result.value).replace('.',',') : 'Informe peso e altura nas unidades indicadas.';
-    if (result) root.querySelector('[name=bmiBand]').value=result.band;
-  });
+  },{signal});
+  function updateBmi(event) {
+    if (!event.target.matches(bmiInputs)) return;
+    const result = calculateBmi(root);
+    root.querySelector('[data-local-bmi]').textContent = result ? 'IMC calculado · '+String(result.value).replace('.',',') : '';
+    root.querySelector('[data-bmi-status]').textContent = result ? 'Calculado' : 'Obrigatório';
+  }
+  root.addEventListener('input',updateBmi,{signal});
+  root.addEventListener('change',updateBmi,{signal});
   return ()=>{controller.abort();root.replaceChildren();};
 }

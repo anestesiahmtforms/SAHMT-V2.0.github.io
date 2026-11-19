@@ -127,7 +127,7 @@ export function validateProfessionalAnswers(input){
 export function bmiBand(weight,height){const w=Number(String(weight).replace(',','.')),h=Number(String(height).replace(',','.'));if(!Number.isFinite(w)||!Number.isFinite(h)||w<10||w>500||h<50||h>250)return null;const value=w/(h/100)**2;return {value:Math.round(value*10)/10,band:value<18.5?'LOW':value<25?'MID':value<30?'UPPER':value<35?'B30':value<40?'B35':'B40'};}
 export function validateCompleteEpidemiologicalSubmission(input){
  const response=validateEpidemiologicalSubmission(input);
- if(!EPIDEMIOLOGICAL_FIELDS.every(f=>f.type==='checks'?response.answers[f.id].length>0:response.answers[f.id]!=='NI')||!response.comments)
+ if(!EPIDEMIOLOGICAL_FIELDS.every(f=>f.type==='checks'?response.answers[f.id].length>0:response.answers[f.id]!=='NI'))
   error('EPIDEMIOLOGICAL_INCOMPLETE');
  return response;
 }
