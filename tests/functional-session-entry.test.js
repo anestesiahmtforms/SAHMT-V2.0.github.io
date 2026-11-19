@@ -9,6 +9,38 @@ const person={uid:'same-uid',providerData:[{providerId:'google.com',uid:'same-go
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};
 const turn=()=>new Promise(resolve=>setImmediate(resolve));
 
+test('the Functional professional entry loads all saved answers and files only for the signed-in owner',async()=>{
+ const person={uid:'member',email:'member@example.invalid'},calls=[];
+ const record={uid:person.uid,email:person.email,answers:{fullName:'Pessoa Sintética',formation:['TEA'],motherName:'Mãe Sintética'}};
+ const files=[{name:'cv.pdf',subject:'CV',status:'STORED'}];
+ let selectedRecord=record,driveError=false;
+ const source=readFileSync(new URL('../src/functional-results.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'');
+ const context=vm.createContext({fcProfessionalRegistrationEnabled:true,
+  callRegistrationApi:async options=>{calls.push(options);
+   if(options.action==='BOOTSTRAP')return {record:selectedRecord};
+   if(driveError)throw Error('NOT_AVAILABLE');
+   return {files};
+  }});
+ vm.runInContext(source,context);
+ const load=subjectUid=>context.loadFunctionalResult({key:'professionalRegistration',uid:person.uid,subjectUid,
+  faAuth:{currentUser:person},isCurrent:()=>true});
+ const other=await load('other');
+ assert.equal(other.ownOnly,true);
+ assert.equal(calls.length,0);
+ const own=await load(person.uid);
+ assert.equal(own.record,record);
+ assert.equal(own.files,files);
+ assert.deepEqual(calls.map(({kind,action})=>[kind,action]),[['professional','BOOTSTRAP'],['drive','LIST_OWN']]);
+ selectedRecord={...record,uid:'other'};
+ const mismatch=await load(person.uid);
+ assert.equal(mismatch.record,null);
+ assert.equal(mismatch.files?.length??0,0);
+ selectedRecord=record;driveError=true;
+ const partial=await load(person.uid);
+ assert.equal(partial.record,record);
+ assert.equal(partial.files,null);
+});
+
 test('FK connects from the FA credential while an unrelated restoration is stalled',async()=>{
  const gate=deferred(),calls=[];
  const controller=createGoogleProjectAuth({targets:['FA','FB','FK'],getPrimaryUser:()=>person,

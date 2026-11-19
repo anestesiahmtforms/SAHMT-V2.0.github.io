@@ -82,6 +82,9 @@ test('professional form saves the grid and uploads immediately after file select
   if(f.required&&!f.options)await page.fill('[name="'+f.id+'"]',({fullName:'Pessoa Sintética',birthDate:'1990-01-01',cpf:'52998224725',crm:'12345',phone:'31999999999'}[f.id]||'Informação sintética'));
  }
  await page.getByRole('checkbox',{name:'Segunda-feira, Semanal'}).check();
+ await page.getByLabel('Mãe',{exact:true}).fill('Mãe Sintética');
+ await page.getByLabel('Pai',{exact:true}).fill('Pai Sintético');
+ assert.equal(await page.locator('[name=filiation]').count(),0);
  await page.getByRole('checkbox',{name:'Segunda-feira, Manhã'}).check();
  await page.getByRole('checkbox',{name:'Domingo, Plantão'}).check();
  for(const field of PROFESSIONAL_FIELDS.filter(field=>field.type==='multi-select')){
@@ -105,6 +108,8 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'SALVAR MEU CADASTRO');
  await page.getByText('Cadastro salvo com sucesso.',{exact:true}).waitFor();
  const answers=await page.evaluate(()=>window.calls.find(c=>c.action==='SAVE').input.answers);
+ assert.equal(answers.motherName,'Mãe Sintética');
+ assert.equal(answers.fatherName,'Pai Sintético');
  assert.deepEqual(answers.workDays,['0:WEEKLY','0:MORNING','6:ON_CALL']);
  assert.deepEqual(answers.surgicalAreas,['CARDIOVASCULAR','UROLOGY']);
  assert.deepEqual(answers.formation,['TEA','MESTRADO']);
@@ -135,6 +140,8 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
  await page.locator('[name=cpf]').waitFor();
  assert.equal(await page.locator('[name=cpf]').inputValue(),'52998224725');
+ assert.equal(await page.getByLabel('Mãe',{exact:true}).inputValue(),'Mãe Sintética');
+ assert.equal(await page.getByLabel('Pai',{exact:true}).inputValue(),'Pai Sintético');
  assert.match(await page.locator('[data-reg-age-value]').textContent(),/\d+ anos, \d+ (?:mês|meses) e \d+ (?:dia|dias)/);
  for(const field of ['surgicalAreas','formation','institutionalParticipation']){
   const selected=await page.locator(`input[name="${field}"]:checked`).evaluateAll(inputs=>inputs.map(input=>input.value));

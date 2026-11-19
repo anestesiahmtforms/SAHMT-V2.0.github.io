@@ -20,6 +20,8 @@
 .reg-age[hidden]{display:none}
 .reg-age strong{font-size:.68rem;letter-spacing:.035em}
 .reg-age output{font-size:.78rem;line-height:1.25}
+.reg-previous-filiation{grid-column:1/-1;margin:0;overflow-wrap:anywhere}
+.reg-grid > [data-field="fullName"]{grid-column:1/-1}
 .reg-attachments h3{margin:0 0 12px;text-align:center}
 .reg-attachments .reg-field{text-align:center}
 .reg-attachments select{padding-inline:24px;text-align:center;text-align-last:center}

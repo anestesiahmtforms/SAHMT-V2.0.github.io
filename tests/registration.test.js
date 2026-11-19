@@ -1,8 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {PROFESSIONAL_FIELDS,EPIDEMIOLOGICAL_FIELDS,validateProfessionalAnswers,validateEpidemiologicalSubmission,bmiBand} from '../src/registration-domain.js';
 import {createProfessionalRegistrationService} from '../worker-training/professional-registration-service.js';
+import {createFcRegistrationHandler} from '../worker-fc-integration/registration.js';
 import {createSurveyService} from '../worker-training/survey-service.js';
 import {aggregateEpidemiological} from '../src/epidemiological-aggregate.js';
+import {renderFunctionalResult} from '../src/functional-results.js';
 import {vaccinationMemoryStore} from './helpers/vaccination-memory-store.js';import {institutionalAssignmentKey} from '../src/institutional-group.js';
 export const identity={uid:'synthetic-registration',email:'synthetic@example.invalid',emailVerified:true,provider:'google.com'};
 export function professionalAnswers(){return {...Object.fromEntries(PROFESSIONAL_FIELDS.map(f=>[f.id,['checks','multi-select'].includes(f.type)?f.options.slice(0,f.min||1).map(([v])=>v):f.options?f.options[0][0]:f.required?'Informação sintética':''])),fullName:'Pessoa Sintética',birthDate:'1990-01-01',cpf:'52998224725',crm:'12345',workDays:['0:WEEKLY'],phone:'31999999999',lattes:'https://lattes.cnpq.br/1234567890123456'};}
@@ -51,16 +53,52 @@ test('a saved registration retains its original answers when updated to the new 
  const store=await fixture(),service=createProfessionalRegistrationService({store});
  const before={formation:'Formação livre',technicalSkills:'Técnica',leadership:'Liderança',institutionalParticipation:'Comissão'};
  const legacy={workDays:['0','7'],surgicalAreas:'Urologia',crmState:'MG',shifts:'Plantão',surgicalDetails:'',complementarySkills:'Nenhuma',...before};
- const v1={...professionalAnswers(),...legacy};
+ const {motherName,fatherName,...combinedFields}=professionalAnswers();
+ const filiation='Nomes registrados antes da separação';
+ const v1={...combinedFields,filiation,...legacy};
  const old=await service.execute('SAVE',{answers:v1,expectedVersion:0,truth:true},identity);
  assert.equal(old.record.schemaVersion,1);
- const v2={...professionalAnswers(),...before};
+ const v2={...combinedFields,filiation,...before};
  const second=await service.execute('SAVE',{answers:v2,expectedVersion:1,truth:true},identity);
  assert.equal(second.record.schemaVersion,2);
- const result=await service.execute('SAVE',{answers:professionalAnswers(),expectedVersion:2,truth:true},identity);
- assert.equal(result.record.schemaVersion,3);
- assert.deepEqual(result.record.legacyAnswers,legacy);
- await assert.rejects(service.execute('SAVE',{answers:v2,expectedVersion:3,truth:true},identity),{code:'REGISTRATION_SCHEMA_CHANGED'});
+ const v3={...combinedFields,filiation};
+ const previous=await service.execute('SAVE',{answers:v3,expectedVersion:2,truth:true},identity);
+ assert.equal(previous.record.schemaVersion,3);
+ const answers={...professionalAnswers(),motherName:'Mãe sintética',fatherName:'Pai sintético'};
+ store.seed('runtimePolicy','folders',{schemaVersion:1,revision:1,disabled:[]});
+ const request=createFcRegistrationHandler({verify:async()=>identity,build:()=>({store,professional:service})});
+ const path='/v1/professional-registration';
+ const response=await request(new Request('https://synthetic.invalid'+path,{method:'POST',
+  headers:{Origin:'https://anestesiahmtforms.github.io','Content-Type':'application/json'},
+  body:JSON.stringify({action:'SAVE',input:{answers,expectedVersion:3,truth:true}})}),
+  {FC_PROFESSIONAL_REGISTRATION_ENABLED:'true'},path);
+ assert.equal(response.status,200);
+ const result=await response.json();
+ assert.equal(result.record.schemaVersion,4);
+ assert.equal(result.record.answers.motherName,'Mãe sintética');
+ assert.equal(result.record.answers.fatherName,'Pai sintético');
+ assert.deepEqual(result.record.legacyAnswers,{...legacy,filiation});
+ await assert.rejects(service.execute('SAVE',{answers:v3,expectedVersion:4,truth:true},identity),{code:'REGISTRATION_SCHEMA_CHANGED'});
+});
+
+test('Funcional renders the full registration with translated choices, older answers and receipt metadata',()=>{
+ const answers={...professionalAnswers(),motherName:'Pessoa Mãe',fatherName:'Pessoa Pai',birthDate:'1990-01-02',
+  outsideWork:'YES',outsideWorkDetails:'Primeira linha\nSegunda linha',formation:['TEA','DOCENTE'],
+  workDays:['0:WEEKLY','0:MORNING','6:ON_CALL'],surgicalAreas:['THORACIC'],additionalInfo:'<script>Teste</script>'};
+ const record={cycle:'2026',email:identity.email,truth:true,answers,legacyAnswers:{filiation:'Filiação original',workDays:['7'],crmState:'MG'}};
+ const files=[{subject:'QUALIFICATIONS',name:'diploma.pdf',status:'STORED',uploadedAt:Date.parse('2026-11-19T16:00:00Z')}];
+ const result=renderFunctionalResult('professionalRegistration',{record,files});
+ for(const {label} of PROFESSIONAL_FIELDS)assert.ok(result.includes(label),label);
+ assert.match(result,/Pessoa Mãe[\s\S]*Pessoa Pai/);
+ assert.match(result,/02\/01\/1990[\s\S]*Idade atual[\s\S]*anos, \d+ (?:mês|meses) e \d+ (?:dia|dias)/);
+ for(const label of ['Segunda-feira · Semanal, Manhã','Domingo · Plantão','Torácica','TEA, Docente','Sim',
+  'Filiação original','Escala variável','UF do CRM','Diplomas e certificados','diploma.pdf','19/11/2026']){
+  assert.ok(result.includes(label),label);
+ }
+ assert.match(result,/&lt;script&gt;Teste&lt;\/script&gt;/);
+ assert.doesNotMatch(result,/<script>/);
+ const partial=renderFunctionalResult('professionalRegistration',{record,files:null});
+ assert.ok(partial.includes('Pessoa Mãe')&&partial.includes('Não foi possível consultar os comprovantes'));
 });
 const completeEpiAnswers=()=>Object.fromEntries(EPIDEMIOLOGICAL_FIELDS.map(f=>[f.id,f.type==='checks'?[f.options[0][0]]:f.options[0][0]]));
 const epi=(patch={})=>({survey_cycle:'2026',survey_version:'1.0',submission_id:'a'.repeat(32),consent:true,group:'team',answers:{sleep:'0'},...patch});

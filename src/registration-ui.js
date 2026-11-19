@@ -2,23 +2,10 @@ import './registration-ui.css';
 import {registrationField, isRegistrationList} from './registration-fields.js';
 import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers} from './registration-domain.js';
 import {prepareDocumentFile, documentBase64} from './document-image.js';
-import {isValidDateKey, localDateKey} from './schedule-date.js';
+import {formatBirthDateAge} from './date-format.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fileInput = '[data-reg-file]';
-
-function formatBirthDateAge(birthDate, today) {
- if (birthDate < '1900-01-01' || birthDate > today || !isValidDateKey(birthDate)) return '';
- const [birthYear,birthMonth,birthDay] = birthDate.split('-').map(Number);
- const [year,month,day] = today.split('-').map(Number);
- // In a shorter month the anniversary falls on its last day.
- const anniversaryDay = month => Math.min(birthDay,new Date(Date.UTC(year,month,0)).getUTCDate());
- const anchorMonth = anniversaryDay(month) <= day ? month : month - 1;
- const elapsedMonths = (year - birthYear) * 12 + anchorMonth - birthMonth;
- const elapsedDays = (Date.UTC(year,month-1,day) - Date.UTC(year,anchorMonth-1,anniversaryDay(anchorMonth))) / 86_400_000;
- const years = Math.floor(elapsedMonths / 12), months = elapsedMonths % 12;
- return `${years} ${years === 1 ? 'ano' : 'anos'}, ${months} ${months === 1 ? 'mês' : 'meses'} e ${elapsedDays} ${elapsedDays === 1 ? 'dia' : 'dias'}`;
-}
 
 function message(error) {
  const code = error.code || error.message;
@@ -92,7 +79,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
 
  function updateAge(event) {
   if (event && event.target.name !== 'birthDate') return;
-  const age = formatBirthDateAge(query('[name="birthDate"]').value,localDateKey());
+  const age = formatBirthDateAge(query('[name="birthDate"]').value);
   query('[data-reg-age]').hidden = !age;
   const output = query('[data-reg-age-value]');
   if (output.textContent !== age) output.textContent = age;
@@ -100,9 +87,16 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
 
  function render() {
   const values = state.record?.answers || {};
+  const formerFiliation = values.filiation || state.record?.legacyAnswers?.filiation;
+  const fields = PROFESSIONAL_FIELDS.map(field => {
+   const value = values[field.id] ?? (field.id === 'fullName' ? state.profile?.displayName : '');
+   const note = field.id === 'fatherName' && formerFiliation
+     ? '<p class="reg-help reg-previous-filiation">Filiação informada anteriormente · ' + escape(formerFiliation) + '</p>'
+     : '';
+   return registrationField(field,value) + note;
+  }).join('');
   root.innerHTML = `<div class="reg-notice" data-reg-notice role="status" aria-live="polite"></div>
-   <form class="reg-form"><div class="reg-grid">${PROFESSIONAL_FIELDS.map(field => registrationField(field,
-    values[field.id] ?? (field.id === 'fullName' ? state.profile?.displayName : ''))).join('')}</div>
+   <form class="reg-form"><div class="reg-grid">${fields}</div>
    <label class="reg-confirm"><input type="checkbox" name="truth" required>Confirmo que as informações declaradas são verdadeiras e se destinam ao cadastro institucional.</label>
    <button class="primary-button" type="submit" data-reg-save>SALVAR MEU CADASTRO</button></form>
    <section class="reg-attachments"><h3>Comprovantes</h3>

@@ -1,3 +1,5 @@
+import {isValidDateKey, localDateKey} from './schedule-date.js';
+
 const TIME_ZONE = 'America/Sao_Paulo';
 const dayFormatter = new Intl.DateTimeFormat('pt-BR', {timeZone: TIME_ZONE, day: '2-digit', month: '2-digit', year: 'numeric'});
 const timeFormatter = new Intl.DateTimeFormat('pt-BR', {timeZone: TIME_ZONE, hour: '2-digit', minute: '2-digit', hourCycle: 'h23'});
@@ -58,4 +60,16 @@ export function formatDisplayDateTime(value, {fallback = '', seconds = false} = 
   if (day !== null) return day || fallback;
   const date = displayValue(value);
   return date ? dayFormatter.format(date) + ', ' + (seconds ? secondsFormatter : timeFormatter).format(date) : fallback;
+}
+export function formatBirthDateAge(birthDate, today = localDateKey()) {
+  if (typeof birthDate !== 'string' || birthDate < '1900-01-01' || birthDate > today || !isValidDateKey(birthDate)) return '';
+  const [birthYear,birthMonth,birthDay] = birthDate.split('-').map(Number);
+  const [year,month,day] = today.split('-').map(Number);
+  // In a shorter month the anniversary falls on its last day.
+  const anniversaryDay = month => Math.min(birthDay,new Date(Date.UTC(year,month,0)).getUTCDate());
+  const anchorMonth = anniversaryDay(month) <= day ? month : month - 1;
+  const elapsedMonths = (year - birthYear) * 12 + anchorMonth - birthMonth;
+  const elapsedDays = (Date.UTC(year,month-1,day) - Date.UTC(year,anchorMonth-1,anniversaryDay(anchorMonth))) / 86_400_000;
+  const years = Math.floor(elapsedMonths / 12), months = elapsedMonths % 12;
+  return `${years} ${years === 1 ? 'ano' : 'anos'}, ${months} ${months === 1 ? 'mês' : 'meses'} e ${elapsedDays} ${elapsedDays === 1 ? 'dia' : 'dias'}`;
 }

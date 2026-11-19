@@ -21,10 +21,12 @@ const previousQualificationFields=[
  {id:'leadership',type:'textarea',required:true,max:3000}
 ];
 const previousParticipationField={id:'institutionalParticipation',type:'textarea',required:true,max:3000};
+const previousFiliationField={id:'filiation',type:'text',max:240};
 const qualifications=['TEA','RQE','TSA','MBA','Mestrado','Doutorado','Docente'].map(label=>[label.toUpperCase(),label]);
 export const PROFESSIONAL_FIELDS=[
  {id:'fullName',label:'Nome completo',type:'text',required:true,max:180,section:'Identificação'},
- {id:'filiation',label:'Filiação',type:'text',max:240},
+ {id:'motherName',label:'Mãe',type:'text',max:240},
+ {id:'fatherName',label:'Pai',type:'text',max:240},
  {id:'birthDate',label:'Data de nascimento',type:'date',required:true},
  {id:'cpf',label:'CPF',type:'text',required:true,max:14,inputmode:'numeric'},
  {id:'crm',label:'Número do CRM',type:'text',required:true,max:12,inputmode:'numeric'},
@@ -43,7 +45,9 @@ export const PROFESSIONAL_FIELDS=[
  {id:'outsideWorkDetails',label:'Se desejar, descreva suas atividades externas',type:'textarea',max:1500,when:['outsideWork','YES']},
  {id:'additionalInfo',label:'Outras experiências ou informações relevantes para o desenvolvimento da equipe',type:'textarea',max:3000}
 ];
-const previousProfessionalFields=PROFESSIONAL_FIELDS.flatMap(field=>{
+const combinedFiliationFields=PROFESSIONAL_FIELDS.filter(field=>field.id!=='fatherName')
+ .map(field=>field.id==='motherName'?previousFiliationField:field);
+const previousProfessionalFields=combinedFiliationFields.flatMap(field=>{
  if(field.id==='formation')return previousQualificationFields;
  if(field.id==='institutionalParticipation')return previousParticipationField;
  return field;
@@ -59,18 +63,16 @@ export function legacyProfessionalAnswers(answers){
  const ids=[];
  if(typeof answers.surgicalAreas==='string')ids.push('workDays','surgicalAreas',...retiredProfessionalFields.map(field=>field.id));
  if(typeof answers.formation==='string')ids.push('formation','technicalSkills','leadership','institutionalParticipation');
+ if(typeof answers.filiation==='string'&&answers.filiation.trim())ids.push('filiation');
  return Object.fromEntries(ids.filter(id=>Object.hasOwn(answers,id)).map(id=>[id,answers[id]]));
 }
 
 export function professionalSchemaVersion(answers){
+ if(Object.hasOwn(answers,'motherName')||Object.hasOwn(answers,'fatherName'))return 4;
  if(typeof answers.surgicalAreas==='string')return 1;
  return Array.isArray(answers.formation)||Array.isArray(answers.institutionalParticipation)?3:2;
 }
 
-export function formatProfessionalQualifications(value){
- if(!Array.isArray(value))return value;
- return qualifications.filter(([id])=>value.includes(id)).map(([,label])=>label).join(', ');
-}
 const choices=values=>values.map((label,i)=>[String(i),label]);
 const frequency=[['NEVER','Nunca'],['RARELY','Raramente'],['SOMETIMES','Às vezes'],['OFTEN','Quase sempre'],['ALWAYS','Sempre']];
 export const EPIDEMIOLOGICAL_FIELDS=[
@@ -99,7 +101,7 @@ const error=code=>{throw Object.assign(Error(code),{code,status:400});};
 export function validCpf(value){const v=String(value).replace(/\D/g,'');if(!/^\d{11}$/.test(v)||/^(\d)\1{10}$/.test(v))return false;return [9,10].every(n=>{const sum=[...v.slice(0,n)].reduce((s,d,i)=>s+Number(d)*(n+1-i),0);return (sum*10%11)%10===Number(v[n]);});}
 export function validateProfessionalAnswers(input){
  if(!input||typeof input!=='object'||Array.isArray(input))error('REGISTRATION_INVALID_INPUT');
- const fields=[legacyProfessionalFields,previousProfessionalFields,PROFESSIONAL_FIELDS][professionalSchemaVersion(input)-1];
+ const fields=[legacyProfessionalFields,previousProfessionalFields,combinedFiliationFields,PROFESSIONAL_FIELDS][professionalSchemaVersion(input)-1];
  if(Object.keys(input).some(key=>!fields.some(field=>field.id===key)))error('REGISTRATION_INVALID_INPUT');
  const out={};
  for(const field of fields){
