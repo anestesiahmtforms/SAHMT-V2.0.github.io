@@ -11,7 +11,7 @@ function fixture(){
   app:{querySelector:()=>null},renderOnlineGate:()=>calls.push('online-gate'),
   fakeRuntime:{maintainGoogleProjectSessions:async()=>{calls.push('auth');return {status:'ready'};}},
   revalidateOnlineSession:async()=>{calls.push('profile');forced=false;ctx.onlineValidationRequired=false;ctx.session.offline=false;},
-  cleanupCurrentModule:{suspend:()=>calls.push('suspend'),resume:()=>calls.push('resume'),setOnline:()=>{}},suspendedReportScopes:[],reportStates:new Map(),
+  cleanupCurrentModule:{suspend:()=>calls.push('suspend'),resumeLocal:()=>calls.push('resume-local'),resume:()=>calls.push('resume'),setOnline:()=>{}},suspendedReportScopes:[],reportStates:new Map(),
   liveReports:{get:kind=>scopes.has(kind)?{snapshot:()=>({scope:scopes.get(kind),state:'server'})}:null,setOnline:()=>{},close:(kind,reason)=>{closed.push([kind,reason]);scopes.delete(kind);},open:(kind,scope)=>{(scope.localOnly?localOpened:opened).push(kind);scopes.set(kind,scope);},refresh:kind=>refreshes.push(kind)},
   closeReportLive:(kind,reason)=>{closed.push([kind,reason]);scopes.delete(kind);},reportScopeCurrent:scope=>scope.uid===ctx.session.user.uid,
   syncOutbox(){},updateOutboxStatus(){},currentRoute:()=> 'checklist',shouldRenderHashChange:()=>true,render(){},updateReportSync(){},startupReports:{clear(){}},invalidateChecklistSignature(){}
@@ -48,6 +48,18 @@ test('profile confirmation does not wait for an interrupted cleanup task to fini
 test('a cached page return also reconnects when visibilitychange was not delivered',async()=>{
  const h=fixture();h.events.get('pagehide')?.({persisted:true});h.events.get('pageshow')({persisted:true});await tick();await tick();
  assert.deepEqual(h.opened,['events','labels','checklist']);assert.equal(h.closed.length,3);
+});
+
+test('returning to the app resumes the local module while auth recovery is still pending',async()=>{
+ const h=fixture();
+ let finishAuth;
+ h.ctx.fakeRuntime.maintainGoogleProjectSessions=()=>new Promise(resolve=>{finishAuth=resolve;});
+ h.hide();await h.show();
+ try{
+  assert.ok(h.calls.includes('resume-local'));
+  assert.ok(!h.calls.includes('resume'));
+ }finally{finishAuth({status:'ready'});await tick();}
+ assert.ok(h.calls.includes('resume'));
 });
 
 test('offline return keeps reports closed and presents the online requirement',async()=>{

@@ -6,7 +6,7 @@ import {onAuthStateChanged} from 'firebase/auth';
 import {doc, getDocFromServer} from 'firebase/firestore';
 import {getFunctionalFirestore} from './functional-firebase.js';
 import {getFunctionalAuth} from './functional-firebase.js';
-import {waitForGoogleProjectSession} from './google-project-auth-runtime.js';
+import {googleProjectAuth,waitForGoogleProjectSession} from './google-project-auth-runtime.js';
 import {refreshFunctionalOverview,readFunctionalTeamOverview} from './functional-client.js';
 import {listFunctionalTeam} from './functional-access.js';
 import {renderOperationalFolderDirectory} from './operational-folder-directory.js';
@@ -87,7 +87,8 @@ function performanceDetail({total,percentage,updatedAt}) {
     + '<p>'+feedback[tone]+'</p><small>Atualizado em '+escapeHtml(updated)+'</small></div>';
 }
 
-export async function mountFunctionalModule(root, {uid, displayName = '', faAuth, administrator = false, isCurrent = () => true, onSessionRequired = () => {}} = {}) {
+export async function mountFunctionalModule(root, {uid, displayName = '', faAuth, administrator = false, isCurrent = () => true,
+  onSessionRequired = () => {}, onRetry = () => {}} = {}) {
   let disposed = false;
   let stopAuth = () => {};
   let detailDialog, openSource = '', visibleSources = null;
@@ -120,7 +121,18 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   try {
     const fkAuth=getFunctionalAuth();
     const connected=await waitWithTimeout(waitForGoogleProjectSession('FK',{isCurrent:current}),30000,'FK_AUTH_CLIENT_TIMEOUT');
-    if(!connected){if(current())onSessionRequired();return cleanup;}
+    if(!connected){
+      if(!current())return cleanup;
+      const state=googleProjectAuth.snapshot().targets.FK;
+      const sessionMissing=state?.status==='pending'&&(
+        state.code==='AUTH_GOOGLE_SESSION_REQUIRED'||state.code==='AUTH_UID_MISMATCH'||(!state.code&&!fkAuth?.currentUser));
+      if(sessionMissing){onSessionRequired();return cleanup;}
+      paint('<section class="functional-page"><p role="status">O acesso individual ao Funcional está temporariamente indisponível.</p>'
+        +'<button class="secondary-button" type="button" data-fk-retry>Tentar novamente</button></section>');
+      cleanup.resume=()=>{if(current())onRetry();};
+      root.querySelector('[data-fk-retry]')?.addEventListener('click',cleanup.resume);
+      return cleanup;
+    }
     if(fkAuth?.currentUser?.uid!==uid)throw new Error('FK_AUTH_UID_MISMATCH');
     if (!current()) return cleanup;
     stopAuth = onAuthStateChanged(fkAuth, user => {

@@ -65,7 +65,15 @@ coordinator=createGoogleProjectAuth({primary,targets,getPrimaryUser:()=>auth.cur
     try{return await Promise.race([canConnectTarget(target,user),new Promise((_,reject)=>{timer=setTimeout(()=>reject(fail('AUTH_RESTORE_TIMEOUT')),restoreTimeoutMs);})]);}
     finally{clearTimeout(timer);}
   },
-  restoreTarget:async target=>{const instance=targetAuth(target);await ready(instance);const user=instance.currentUser;if(user&&!await verifyTargetSession(target))throw fail('AUTH_GOOGLE_SESSION_REQUIRED');return instance.currentUser;},
+  restoreTarget:async target=>{
+    const instance=targetAuth(target);await ready(instance);const user=instance.currentUser;
+    if(!user)return null;
+    // FK needs to distinguish an unavailable token refresh from missing Google authentication.
+    const verified=target==='FK'?await nativeGoogleSession(user,target):await verifyTargetSession(target);
+    if(instance.currentUser!==user)throw fail('AUTH_ACCOUNT_CHANGED');
+    if(!verified)throw fail('AUTH_GOOGLE_SESSION_REQUIRED');
+    return user;
+  },
   signOutTarget:(target,{isCurrent=()=>true}={})=>withTargetLock(target,async()=>{
     if(!isCurrent())return;const instance=targetAuth(target);await signOut(instance);
   }),

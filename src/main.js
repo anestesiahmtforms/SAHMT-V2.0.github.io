@@ -1674,7 +1674,8 @@ async function loadModule(route) {
     }
     const isCurrent=()=>generation===evaluationModuleGeneration&&content.isConnected&&currentRoute()==='functional'&&session.status==='signed-in'
       &&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
-    const cleanup=await mountFunctionalModule(content,{uid,displayName:session.profile.displayName||session.user.displayName,faAuth:auth,administrator:access.admin===true,isCurrent,onSessionRequired:()=>{
+    const cleanup=await mountFunctionalModule(content,{uid,displayName:session.profile.displayName||session.user.displayName,faAuth:auth,administrator:access.admin===true,isCurrent,
+      onRetry:()=>{if(isCurrent())void render();},onSessionRequired:()=>{
       if(!isCurrent())return;
       notice='Confirme sua conta na entrada do SAHMT para recuperar o acesso automático aos módulos.';
       navigate('offline');googleAccessPanel?.open();
@@ -5966,6 +5967,7 @@ window.addEventListener('online', () => {void connectionRecovery.recover('online
 window.addEventListener('pageshow', () => {resumeLocalConnections();void connectionRecovery.recover('pageshow');});
 // Local views must remain usable even when online recovery is unavailable.
 function resumeLocalConnections() {
+  if(!document.hidden)cleanupCurrentModule?.resumeLocal?.();
   if(!navigator.onLine||session.offline)renderOnlineGate();
 }
 // Both events can describe the same departure (including the back/forward cache).

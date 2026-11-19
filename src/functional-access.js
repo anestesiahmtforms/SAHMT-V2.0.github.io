@@ -13,11 +13,16 @@ export function functionalSessionEligible(user) {
   const prior=sessionEligibility.get(user);
   if(prior&&Date.now()-prior.at<60000)return prior.promise;
   const promise=(async()=>{
-    const snapshot=await getDocFromServer(doc(db,'users',user.uid));
+    const snapshot=await getDocFromServer(doc(db,'users',user.uid)).catch(error=>{
+      if(['unavailable','deadline-exceeded'].includes(error?.code?.replace(/^firestore\//,''))){
+        throw Object.assign(new Error('AUTH_ELIGIBILITY_UNAVAILABLE'),{code:'AUTH_ELIGIBILITY_UNAVAILABLE'});
+      }
+      throw error;
+    });
     const access=await getFunctionalAccess({status:'signed-in',user,profile:snapshot.exists()?snapshot.data():null});
     if(access.allowed)return true;
-    if(['PROFILE_INACTIVE','GROUP_NOT_ALLOWED'].includes(access.code))return false;
-    throw Object.assign(new Error('AUTH_UNAVAILABLE'),{code:'AUTH_UNAVAILABLE'});
+    if(access.code!=='TEAM_ASSIGNMENT_UNAVAILABLE')return false;
+    throw Object.assign(new Error('AUTH_ELIGIBILITY_UNAVAILABLE'),{code:'AUTH_ELIGIBILITY_UNAVAILABLE'});
   })();
   const entry={at:Date.now(),promise};sessionEligibility.set(user,entry);
   promise.catch(()=>{if(sessionEligibility.get(user)===entry)sessionEligibility.delete(user);});

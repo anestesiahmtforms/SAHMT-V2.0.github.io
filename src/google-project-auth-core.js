@@ -20,7 +20,7 @@ export function safeGoogleAuthCode(error) {
     'auth/popup-blocked','auth/popup-closed-by-user','auth/user-mismatch','auth/unauthorized-domain',
     'AUTH_RESTORE_TIMEOUT','AUTH_CONFIGURATION_REQUIRED','AUTH_AUDIENCE_NOT_VERIFIED','AUTH_UID_MISMATCH','AUTH_GOOGLE_SESSION_REQUIRED',
     'AUTH_GOOGLE_IDENTITY_MISMATCH','AUTH_EXISTING_ACCOUNT_REQUIRED','AUTH_ACCOUNT_CHANGED','AUTH_CREDENTIAL_REQUIRED',
-    'AUTH_OFFLINE','AUTH_UNAVAILABLE','AUTH_SOURCE_REQUIRED','AUTH_SOURCE_GOOGLE_LINK_REQUIRED','AUTH_SIGNUP_GUARD_REQUIRED',
+    'AUTH_OFFLINE','AUTH_UNAVAILABLE','AUTH_ELIGIBILITY_UNAVAILABLE','AUTH_SOURCE_REQUIRED','AUTH_SOURCE_GOOGLE_LINK_REQUIRED','AUTH_SIGNUP_GUARD_REQUIRED',
     'AUTH_LOGOUT_FAILED','AUTH_LOGOUT_IN_PROGRESS','AUTH_POPUP_BUSY']);
   for(const value of ['AUTH_GOOGLE_SCRIPT_TIMEOUT','AUTH_GOOGLE_SCRIPT_UNAVAILABLE','AUTH_GOOGLE_SCRIPT_INVALID','AUTH_GOOGLE_BUTTON_DISPOSED'])allowed.add(value);
   return allowed.has(code)?code:'AUTH_UNAVAILABLE';
@@ -50,12 +50,22 @@ export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGET
   function adopt(user){const next=googleIdentity(user);if((user?.uid||null)!==sourceUid||next?.uid!==identity?.uid||next?.googleUid!==identity?.googleUid){
     generation++;identity=next;sourceUid=user?.uid||null;states=Object.fromEntries(targets.map(t=>[t,{status:'pending',code:null}]));
   }return generation;}
-  async function restoreOne(target,ticket,expected){
+  async function restoreOne(target,ticket,expected,{retryEligibility=false}={}){
       if(!current(ticket,expected))return;
       if(states[target].status!=='ready')update(target,{status:'restoring',code:null},ticket);
       let eligible;
-      try{eligible=await canConnectTarget(target,getPrimaryUser());}
-      catch(error){update(target,{status:'pending',code:safeGoogleAuthCode(error)},ticket);return false;}
+      for(let attempt=0;attempt<2;attempt++){
+        try{eligible=await canConnectTarget(target,getPrimaryUser());break;}
+        catch(error){
+          const code=safeGoogleAuthCode(error);
+          if(attempt===0&&retryEligibility&&isOnline()&&(transient(code)||code==='AUTH_ELIGIBILITY_UNAVAILABLE')){
+            await sleep(700);
+            if(!current(ticket,expected))return false;
+            continue;
+          }
+          update(target,{status:'pending',code},ticket);return false;
+        }
+      }
       try{
         if(!current(ticket,expected))return;
         if(!eligible){await signOutTarget(target,{isCurrent:()=>current(ticket,expected)});update(target,{status:'excluded',code:null},ticket);return;}
@@ -102,7 +112,7 @@ export function createGoogleProjectAuth({primary='FA',targets=GOOGLE_AUTH_TARGET
       update(primary,{status:'ready',code:null},ticket);
       const slot=connectionSlots();
       await Promise.all(targets.filter(t=>t!==primary).map(async target=>{
-        const eligible=await restoreOne(target,ticket,expected);
+        const eligible=await restoreOne(target,ticket,expected,{retryEligibility:target==='FK'});
         if(!eligible||!current(ticket,expected)||['ready','excluded'].includes(states[target].status))return;
         return slot(async()=>{
         if(!current(ticket,expected))return;

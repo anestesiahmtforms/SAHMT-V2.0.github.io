@@ -21,20 +21,54 @@ export function watchFunctionalFolderPolicy(uid,onChange){
  const generation=++epoch;owner=uid;dispose?.();dispose=null;update(null);
  if(!uid)return;
  const current=()=>generation===epoch&&owner===uid;
- const offline=()=>{if(current())update(null,onChange);};
- let unsubscribe;
+ let unsubscribe,stopAuth,reconnect,reading=false,revision=0;
+ const reset=()=>{
+  revision++;reading=false;const stop=unsubscribe;unsubscribe=null;stop?.();
+  if(current())update(null,onChange);
+ };
+ const recover=()=>reconnect?.();
+ const visible=()=>{if(!globalThis.document?.hidden)recover();};
+ const offline=()=>reset();
  globalThis.addEventListener?.('offline',offline);
- dispose=()=>{unsubscribe?.();globalThis.removeEventListener?.('offline',offline);};
- void Promise.all([import('./functional-firebase.js')]).then(([{getFunctionalFirestore}])=>{
+ globalThis.addEventListener?.('online',recover);
+ globalThis.addEventListener?.('pageshow',recover);
+ globalThis.document?.addEventListener('visibilitychange',visible);
+ dispose=()=>{
+  stopAuth?.();reset();
+  globalThis.removeEventListener?.('offline',offline);
+  globalThis.removeEventListener?.('online',recover);
+  globalThis.removeEventListener?.('pageshow',recover);
+  globalThis.document?.removeEventListener('visibilitychange',visible);
+ };
+ void Promise.all([import('./functional-firebase.js'),import('./google-project-auth-runtime.js')]).then(([{getFunctionalFirestore},{googleProjectAuth,verifyGoogleProjectSession}])=>{
   if(!current())return;
-  const db=getFunctionalFirestore();if(!db){offline();return;}
-  unsubscribe=onSnapshot(doc(db,'runtimePolicy','folders'),{includeMetadataChanges:true},snapshot=>{
-   if(!current())return;
-   if(snapshot.metadata.fromCache||snapshot.metadata.hasPendingWrites||globalThis.navigator?.onLine===false){offline();return;}
-   const next=snapshot.exists()?snapshot.data():initialFunctionalFolderPolicy;
-   update(functionalFolderPolicyValid(next)?next:null,onChange);
-  },offline);
- }).catch(offline);
+  const ready=state=>current()&&state.uid===uid&&!state.signingOut&&state.targets.FK?.status==='ready';
+  reconnect=async()=>{
+   if(reading||globalThis.navigator?.onLine===false||!ready(googleProjectAuth.snapshot()))return;
+   reading=true;
+   const ticket=++revision;
+   const valid=()=>ticket===revision&&ready(googleProjectAuth.snapshot());
+   try{
+    const authenticated=await verifyGoogleProjectSession('FK');
+    if(!valid())return;
+    const db=authenticated&&getFunctionalFirestore();
+    if(!db){reset();return;}
+    unsubscribe=onSnapshot(doc(db,'runtimePolicy','folders'),{includeMetadataChanges:true},snapshot=>{
+     if(!valid())return;
+     if(snapshot.metadata.fromCache||snapshot.metadata.hasPendingWrites){update(null,onChange);return;}
+     const next=snapshot.exists()?snapshot.data():initialFunctionalFolderPolicy;
+     update(functionalFolderPolicyValid(next)?next:null,onChange);
+    },()=>{if(valid())reset();});
+   }catch{if(valid())reset();}
+  };
+  let wasReady=false;
+  stopAuth=googleProjectAuth.subscribe(state=>{
+   const nowReady=ready(state);
+   if(!nowReady&&wasReady)reset();
+   if(nowReady&&!wasReady)void recover();
+   wasReady=nowReady;
+  });
+ }).catch(()=>{if(current())reset();});
 }
 export function functionalFolderNotice(id){
  if(!functionalFolders[id])return '';

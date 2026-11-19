@@ -15,7 +15,8 @@ function fixture({signInDelay, exchangeError, claimsOverride, station = 'FJ'} = 
     subscribeSource: callback => {listener = callback; return () => {listener = null;};},
     exchange: async ({faUid, faIdToken}) => {
       calls.exchange++; assert.equal(faIdToken, 'synthetic-fa-proof-' + faUid);
-      if (exchangeError) throw Error('synthetic-provider-body-must-not-escape');
+      if (typeof exchangeError === 'function') exchangeError(calls.exchange);
+      else if (exchangeError) throw Error('synthetic-provider-body-must-not-escape');
       return {uid: faUid, customToken: 'synthetic-custom-token', expiresIn: 300};
     },
     signIn: async () => {
@@ -48,6 +49,37 @@ test('module sessions reuse only an unexpired lease for the exact FA user and re
   assert.equal(f.calls.exchange, 2);
   await f.session.dispose();
   assert.equal(f.targetAuth.currentUser, null);
+});
+
+test('FJ keeps its valid lease through a temporary renewal failure and retries automatically', async () => {
+  const f = fixture({exchangeError: attempt => {
+    if (attempt === 2) throw {code: 'MODULE_SESSION_UNAVAILABLE'};
+  }});
+  const user = await f.session.ensure('alice');
+  f.advance(240000);
+  await [...f.timers.values()].find(timer => timer.delay === 240000).callback();
+  assert.equal(f.targetAuth.currentUser, user);
+  assert.equal(f.calls.signOut, 0);
+  assert.equal(await f.session.ensure('alice'), user);
+  const retry = [...f.timers.values()].find(timer => timer.delay === 5000);
+  assert.ok(retry);
+  f.advance(5000);
+  await retry.callback();
+  assert.equal(f.calls.exchange, 3);
+  assert.equal(f.targetAuth.currentUser.uid, 'alice');
+  await f.session.dispose();
+});
+
+test('FJ immediately clears its valid lease if renewal is refused', async () => {
+  const f = fixture({exchangeError: attempt => {
+    if (attempt === 2) throw {code: 'MODULE_ACCESS_DENIED'};
+  }});
+  await f.session.ensure('alice');
+  f.advance(240000);
+  await [...f.timers.values()].find(timer => timer.delay === 240000).callback();
+  assert.equal(f.targetAuth.currentUser, null);
+  assert.equal(f.timers.size, 0);
+  await f.session.dispose();
 });
 
 test('FH sessions preserve the central UID and refuse other module or expired leases',async()=>{

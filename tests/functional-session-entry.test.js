@@ -29,10 +29,58 @@ test('a group excluded from FK completes other sessions without FK credential ex
  controller.observeTarget('FK',null);assert.equal(controller.snapshot().complete,true);
 });
 
-function ui({folderAllowed=()=>true,connected=true,refresh=async()=>{},initialReadFails=false,profileUid=person.uid,administrator=false,readTeam=async()=>({snapshot:null,recognition:null})}={}){
+test('FK retries a temporary eligibility failure while the FA login credential is available',async()=>{
+ const credential={idToken:'ephemeral'},calls=[];
+ let reads=0;
+ const controller=createGoogleProjectAuth({targets:['FA','FK'],getPrimaryUser:()=>person,
+  canConnectTarget:async()=>{if(++reads===1)throw {code:'auth/network-request-failed'};return true;},
+  restoreTarget:async()=>null,signOutTarget:async()=>{},sleep:async()=>{},
+  connectTarget:async(target,proof)=>{calls.push([target,proof]);return person;}});
+ await controller.connect(credential);
+ assert.equal(reads,2);
+ assert.deepEqual(calls,[['FK',credential]]);
+ assert.equal(controller.snapshot().targets.FK.status,'ready');
+});
+
+test('FK folder policy waits for verified auth and reopens after a terminated listener',async()=>{
+ const policy={disabled:[]},requests=[],events=new Map();
+ let authChanged,state={uid:person.uid,targets:{FK:{status:'pending'}}};
+ const controller={snapshot:()=>state,subscribe(callback){authChanged=callback;callback(state);return()=>{authChanged=null;};}};
+ const code=readFileSync(new URL('../src/functional-folder-policy.js',import.meta.url),'utf8')
+  .replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'')
+  .replaceAll("import('./functional-firebase.js')",'Promise.resolve(firebase)')
+  .replaceAll("import('./google-project-auth-runtime.js')",'Promise.resolve(runtime)');
+ const context=vm.createContext({
+  firebase:{getFunctionalFirestore:()=>({})},runtime:{googleProjectAuth:controller,verifyGoogleProjectSession:async()=>true},
+  doc:(_db,...path)=>path.join('/'),onSnapshot:(path,options,next,error)=>{
+   const request={path,next,error,stopped:false};requests.push(request);return()=>{request.stopped=true;};
+  },
+  navigator:{onLine:true},addEventListener:(name,fn)=>events.set(name,fn),removeEventListener:name=>events.delete(name),
+  functionalFolderPolicyValid:value=>value===policy
+ });
+ vm.runInContext(code,context);
+ context.watchFunctionalFolderPolicy(person.uid);
+ await turn();
+ assert.equal(requests.length,0);
+ state={...state,targets:{FK:{status:'ready'}}};authChanged(state);
+ await turn();
+ assert.equal(requests[0].path,'runtimePolicy/folders');
+ requests[0].next({metadata:{},exists:()=>true,data:()=>policy});
+ assert.equal(vm.runInContext('functionalFolderPolicy()',context),policy);
+ requests[0].error({code:'unavailable'});
+ assert.equal(vm.runInContext('functionalFolderPolicy()',context),null);
+ events.get('online')();
+ await turn();
+ assert.equal(requests.length,2);
+ context.watchFunctionalFolderPolicy('');
+ assert.equal(requests[1].stopped,true);
+ assert.equal(authChanged,null);
+});
+
+function ui({folderAllowed=()=>true,connected=true,fkState={status:'pending',code:'AUTH_GOOGLE_SESSION_REQUIRED'},refresh=async()=>{},initialReadFails=false,profileUid=person.uid,administrator=false,readTeam=async()=>({snapshot:null,recognition:null})}={}){
  const source=readFileSync(new URL('../src/functional-ui.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');
  const updates=[],auth={currentUser:{uid:person.uid}},sources={innerHTML:''},status={textContent:''};
- let recovery=0,reads=0,authChanged;
+ let recovery=0,retries=0,reads=0,authChanged;
  const listeners=new Map(),recognition={hidden:true},teamStatus={},select={disabled:true,focus(){}},owner={};
  const picker={hidden:true,querySelector:s=>s==='[data-fk-subject]'?select:teamStatus};
  const button={setAttribute(){},focus(){}},detailBody={innerHTML:'',replaceChildren(){this.innerHTML='';}},detailTitle={},detailIcon={};
@@ -40,7 +88,8 @@ function ui({folderAllowed=()=>true,connected=true,refresh=async()=>{},initialRe
   addEventListener(key,fn){if(key==='close')this.onClose=fn;},
   querySelector:key=>({'[data-fk-detail-body]':detailBody,'#fk-detail-title':detailTitle,'[data-fk-detail-icon]':detailIcon})[key]};
  const openSource=key=>listeners.get('click')({target:{closest:s=>s==='[data-fk-source]'?{dataset:{fkSource:key}}:null}});
- const hosts={'#fk-detail':detail,'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker};
+ const retryButton={addEventListener:(_event,listener)=>{retryButton.click=listener;}};
+ const hosts={'#fk-detail':detail,'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker,'[data-fk-retry]':retryButton};
  const header={querySelector:s=>hosts[s]};
  const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s],closest:()=>({querySelector:()=>header})};
  const openPicker=()=>listeners.get('click')({target:{closest:s=>s==='[data-fk-team]'?button:null}});
@@ -48,12 +97,23 @@ function ui({folderAllowed=()=>true,connected=true,refresh=async()=>{},initialRe
  const context=vm.createContext({renderOperationalFolderDirectory,formatDisplayDateTime,setTimeout,clearTimeout,env:{VITE_FK_INSTITUTIONAL_SURVEYS_ENABLED:'true'},
   onAuthStateChanged:(_auth,callback)=>{authChanged=callback;return()=>{};},
   getFunctionalAuth:()=>auth,getFunctionalFirestore:()=>({}),waitForGoogleProjectSession:async()=>connected,
+  googleProjectAuth:{snapshot:()=>({targets:{FK:fkState}})},
   readFunctionalTeamOverview:readTeam,listFunctionalTeam:async()=>[{uid:'ana',name:'Ana'},{uid:'bia',name:'Bia'}],
   refreshFunctionalOverview:refresh,operationalContentAllowed:folderAllowed,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
   getDocFromServer:async path=>{if(path.startsWith('functionalRecognition'))return {exists:()=>true,data:()=>({uid:person.uid,message:'Mensagem própria'})};reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}},biosafetyManual:{state:'READY'}}})};}});
  vm.runInContext(source,context);
- return {root,sources,status,owner,recognition,select,openPicker,choose,detail,detailBody,detailTitle,openSource,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++}),recovery:()=>recovery,changeFkUser:uid=>authChanged({uid})};
+ return {root,sources,status,owner,recognition,select,openPicker,choose,detail,detailBody,detailTitle,openSource,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++,onRetry:()=>retries++}),recovery:()=>recovery,retries:()=>retries,retryButton,changeFkUser:uid=>authChanged({uid})};
 }
+
+test('a temporary FK recovery failure stays in the module and retries instead of requesting a Google login',async()=>{
+ const f=ui({connected:false,fkState:{status:'pending',code:'AUTH_ELIGIBILITY_UNAVAILABLE'}});
+ const cleanup=await f.run();
+ assert.equal(f.recovery(),0);
+ assert.match(f.root.innerHTML,/Tentar novamente/);
+ f.retryButton.click();
+ assert.equal(f.retries(),1);
+ cleanup();
+});
 
 test('FK renders its profile before a slow refresh resolves',async()=>{
  const gate=deferred(),f=ui({refresh:()=>gate.promise});const cleanup=await f.run();
