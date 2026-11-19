@@ -52,15 +52,21 @@ test('professional form saves the grid and uploads immediately after file select
  await page.getByRole('checkbox',{name:'Segunda-feira, Semanal'}).check();
  await page.getByRole('checkbox',{name:'Segunda-feira, Manhã'}).check();
  await page.getByRole('checkbox',{name:'Domingo, Plantão'}).check();
- await page.locator('[data-field=surgicalAreas] summary').click();
+ for(const field of PROFESSIONAL_FIELDS.filter(field=>field.type==='multi-select')){
+  const group=page.locator(`[data-field="${field.id}"]`);
+  assert.equal(await group.locator('summary').count(),0);
+  const checkboxes=group.getByRole('checkbox');
+  assert.equal(await checkboxes.count(),field.options.length);
+  assert.ok(await checkboxes.evaluateAll(inputs=>inputs.every(input=>input.getClientRects().length>0)));
+ }
+ await page.getByRole('checkbox',{name:'Urologia',exact:true}).check();
  await page.getByRole('checkbox',{name:'Nenhuma',exact:true}).check();
+ assert.equal(await page.getByRole('checkbox',{name:'Urologia',exact:true}).isChecked(),false);
  await page.getByRole('checkbox',{name:'Cardiovascular',exact:true}).check();
  await page.getByRole('checkbox',{name:'Urologia',exact:true}).check();
  assert.equal(await page.getByRole('checkbox',{name:'Nenhuma',exact:true}).isChecked(),false);
- await page.getByText('Selecionar qualificações',{exact:true}).click();
  await page.getByRole('checkbox',{name:'TEA',exact:true}).check();
  await page.getByRole('checkbox',{name:'Mestrado',exact:true}).check();
- await page.getByText('Selecionar participações',{exact:true}).click();
  await page.getByRole('checkbox',{name:'Comissões',exact:true}).check();
  await page.getByRole('checkbox',{name:'Direção',exact:true}).check();
  await page.check('[name=truth]');
@@ -97,6 +103,10 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
  await page.locator('[name=cpf]').waitFor();
  assert.equal(await page.locator('[name=cpf]').inputValue(),'52998224725');
+ for(const field of ['surgicalAreas','formation','institutionalParticipation']){
+  const selected=await page.locator(`input[name="${field}"]:checked`).evaluateAll(inputs=>inputs.map(input=>input.value));
+  assert.deepEqual(selected,answers[field]);
+ }
  await page.evaluate(()=>window.invalidate());
  assert.equal(await page.locator('form').count(),0);
 }));

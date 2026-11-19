@@ -1,5 +1,5 @@
 import './registration-ui.css';
-import {registrationField, isRegistrationList, selectionLabel} from './registration-fields.js';
+import {registrationField, isRegistrationList} from './registration-fields.js';
 import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers} from './registration-domain.js';
 import {prepareDocumentFile, documentBase64} from './document-image.js';
 
@@ -188,13 +188,10 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   const target = event.target;
   conditionals();
   const field = PROFESSIONAL_FIELDS.find(field => field.id === target.name);
-  if (field?.type === 'multi-select') {
-   const options = [...root.querySelectorAll('[name="' + field.id + '"]')];
-   if (target.checked) for (const option of options) {
+  if (field?.none && target.checked) {
+   for (const option of root.querySelectorAll('[name="' + field.id + '"]')) {
     if (option !== target && (target.value === field.none || option.value === field.none)) option.checked = false;
    }
-   target.closest('[data-field]').querySelector('[data-reg-selection]').textContent =
-    selectionLabel(field,options.filter(option => option.checked).length);
   }
   if (target.matches('[data-reg-subject]')) {
    attachment = null;

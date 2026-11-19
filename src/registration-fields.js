@@ -1,10 +1,5 @@
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const isRegistrationList = field => ['checks','work-grid','multi-select'].includes(field.type);
-export function selectionLabel(field, count) {
- if(!count)return field.placeholder||'Selecionar áreas';
- if(field.placeholder)return count===1?'1 opção selecionada':count+' opções selecionadas';
- return count===1?'1 área selecionada':count+' áreas selecionadas';
-}
 
 function workGrid(field, value) {
  const selected = Array.isArray(value) ? value : [];
@@ -25,9 +20,9 @@ function multiSelect(field, value) {
  return `<fieldset class="reg-multi-select" data-field="${field.id}">
   <legend>${h(field.label)}${field.required?' *':''}</legend>
   ${typeof value === 'string' && value ? `<p class="reg-help">Cadastro anterior: ${h(value)}</p>` : ''}
-  <details><summary data-reg-selection>${h(selectionLabel(field,selected.length))}</summary><div class="reg-multi-options">
+  <div class="reg-multi-options">
   ${field.options.map(([id,label]) => `<label><input type="checkbox" name="${field.id}" value="${id}"${selected.includes(id) ? ' checked' : ''}>${h(label)}</label>`).join('')}
-  </div></details>
+  </div>
  </fieldset>`;
 }
 
