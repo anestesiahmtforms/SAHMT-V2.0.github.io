@@ -15,6 +15,13 @@ const retiredProfessionalFields=[
  {id:'surgicalDetails',type:'textarea',max:1500},
  {id:'complementarySkills',type:'textarea',required:true,max:3000},
 ];
+const previousQualificationFields=[
+ {id:'formation',type:'textarea',required:true,max:4000},
+ {id:'technicalSkills',type:'textarea',required:true,max:4000},
+ {id:'leadership',type:'textarea',required:true,max:3000}
+];
+const previousParticipationField={id:'institutionalParticipation',type:'textarea',required:true,max:3000};
+const qualifications=['TEA','RQE','TSA','MBA','Mestrado','Doutorado','Docente'].map(label=>[label.toUpperCase(),label]);
 export const PROFESSIONAL_FIELDS=[
  {id:'fullName',label:'Nome completo',type:'text',required:true,max:180,section:'Identificação'},
  {id:'filiation',label:'Filiação',type:'text',max:240},
@@ -27,26 +34,43 @@ export const PROFESSIONAL_FIELDS=[
  {id:'workDays',label:'Dias habituais de trabalho',type:'work-grid',required:true,options:WORK_DAYS,columns:WORK_OPTIONS},
  {id:'managementAreas',label:'Áreas de gestão em que gostaria de participar (mínimo de duas)',type:'checks',required:true,min:2,options:MANAGEMENT_AREA_SEED.map(a=>[a.id,a.name]),section:'Áreas de interesse'},
  {id:'surgicalAreas',label:'Área(s) cirúrgica(s) com maior entrosamento e preferência',type:'multi-select',required:true,options:SURGICAL_AREAS,none:'NONE'},
- {id:'formation',label:'Formação, títulos e qualificações',type:'textarea',required:true,max:4000,section:'Formação e competências',help:'Descreva suas qualificações ou informe Nenhum.'},
- {id:'technicalSkills',label:'Competências técnicas',type:'textarea',required:true,max:4000,help:'Descreva ou informe Nenhum.'},
- {id:'leadership',label:'Gestão, liderança e governança',type:'textarea',required:true,max:3000,help:'Descreva experiências ou informe Nenhum.'},
+ {id:'formation',label:'Formação, títulos e qualificações',type:'multi-select',options:qualifications,
+  placeholder:'Selecionar qualificações'},
  {id:'teachingResearch',label:'Ensino, pesquisa e inovação',type:'textarea',required:true,max:3000,help:'Descreva experiências ou informe Nenhum.'},
- {id:'institutionalParticipation',label:'Participação institucional',type:'textarea',required:true,max:3000,help:'Descreva comissões, projetos ou atividades, ou informe Nenhum.'},
+ {id:'institutionalParticipation',label:'Participação institucional',type:'multi-select',placeholder:'Selecionar participações',
+  options:[['GESTAO','Gestão'],['COMISSOES','Comissões'],['DIRECAO','Direção']]},
  {id:'lattes',label:'Link do Currículo Lattes',type:'url',max:300},
  {id:'outsideWork',label:'Exerce atividades profissionais fora do SAHMT?',type:'select',required:true,options:[['NO','Não'],['YES','Sim']],section:'Informações adicionais'},
  {id:'outsideWorkDetails',label:'Se desejar, descreva suas atividades externas',type:'textarea',max:1500,when:['outsideWork','YES']},
  {id:'additionalInfo',label:'Outras experiências ou informações relevantes para o desenvolvimento da equipe',type:'textarea',max:3000}
 ];
-const legacyProfessionalFields=PROFESSIONAL_FIELDS.map(field=>{
+const previousProfessionalFields=PROFESSIONAL_FIELDS.flatMap(field=>{
+ if(field.id==='formation')return previousQualificationFields;
+ if(field.id==='institutionalParticipation')return previousParticipationField;
+ return field;
+});
+const legacyProfessionalFields=previousProfessionalFields.map(field=>{
  if(field.id==='workDays')return {...field,type:'checks',options:[...WORK_DAYS,['7','Escala variável']]};
  if(field.id==='surgicalAreas')return {id:field.id,type:'textarea',required:true,max:2000};
  return field;
 }).concat(retiredProfessionalFields);
 
 export function legacyProfessionalAnswers(answers){
- if(typeof answers?.surgicalAreas!=='string')return {};
- const ids=['workDays','surgicalAreas',...retiredProfessionalFields.map(field=>field.id)];
+ if(!answers)return {};
+ const ids=[];
+ if(typeof answers.surgicalAreas==='string')ids.push('workDays','surgicalAreas',...retiredProfessionalFields.map(field=>field.id));
+ if(typeof answers.formation==='string')ids.push('formation','technicalSkills','leadership','institutionalParticipation');
  return Object.fromEntries(ids.filter(id=>Object.hasOwn(answers,id)).map(id=>[id,answers[id]]));
+}
+
+export function professionalSchemaVersion(answers){
+ if(typeof answers.surgicalAreas==='string')return 1;
+ return Array.isArray(answers.formation)||Array.isArray(answers.institutionalParticipation)?3:2;
+}
+
+export function formatProfessionalQualifications(value){
+ if(!Array.isArray(value))return value;
+ return qualifications.filter(([id])=>value.includes(id)).map(([,label])=>label).join(', ');
 }
 const choices=values=>values.map((label,i)=>[String(i),label]);
 const frequency=[['NEVER','Nunca'],['RARELY','Raramente'],['SOMETIMES','Às vezes'],['OFTEN','Quase sempre'],['ALWAYS','Sempre']];
@@ -76,7 +100,7 @@ const error=code=>{throw Object.assign(Error(code),{code,status:400});};
 export function validCpf(value){const v=String(value).replace(/\D/g,'');if(!/^\d{11}$/.test(v)||/^(\d)\1{10}$/.test(v))return false;return [9,10].every(n=>{const sum=[...v.slice(0,n)].reduce((s,d,i)=>s+Number(d)*(n+1-i),0);return (sum*10%11)%10===Number(v[n]);});}
 export function validateProfessionalAnswers(input){
  if(!input||typeof input!=='object'||Array.isArray(input))error('REGISTRATION_INVALID_INPUT');
- const fields=typeof input.surgicalAreas==='string'?legacyProfessionalFields:PROFESSIONAL_FIELDS;
+ const fields=[legacyProfessionalFields,previousProfessionalFields,PROFESSIONAL_FIELDS][professionalSchemaVersion(input)-1];
  if(Object.keys(input).some(key=>!fields.some(field=>field.id===key)))error('REGISTRATION_INVALID_INPUT');
  const out={};
  for(const field of fields){

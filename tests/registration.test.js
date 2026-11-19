@@ -35,15 +35,32 @@ test('the professional form accepts a weekly grid and several surgical areas wit
  for(const workDays of [['7:WEEKLY'],['0:INVALID'],['0:WEEKLY','0:WEEKLY']])assert.throws(()=>validateProfessionalAnswers({...answers,workDays}));
  assert.throws(()=>validateProfessionalAnswers({...answers,surgicalAreas:['NONE','UROLOGY']}));
 });
+test('the professional form saves multiple qualifications and institutional roles',()=>{
+ const fields=PROFESSIONAL_FIELDS.map(({id})=>id);
+ assert.deepEqual(fields.slice(fields.indexOf('formation'),fields.indexOf('lattes')),
+  ['formation','teachingResearch','institutionalParticipation']);
+ assert.equal(fields.includes('technicalSkills')||fields.includes('leadership'),false);
+ const input={...professionalAnswers(),formation:['TEA','RQE','DOCENTE'],institutionalParticipation:['GESTAO','DIRECAO']};
+ assert.deepEqual(validateProfessionalAnswers(input).formation,['TEA','RQE','DOCENTE']);
+ assert.deepEqual(validateProfessionalAnswers(input).institutionalParticipation,['GESTAO','DIRECAO']);
+ assert.deepEqual(validateProfessionalAnswers({...input,formation:[],institutionalParticipation:[]}).formation,[]);
+ assert.throws(()=>validateProfessionalAnswers({...input,formation:['OUTRA']}),{code:'REGISTRATION_INVALID_FORMATION'});
+ assert.throws(()=>validateProfessionalAnswers({...input,institutionalParticipation:['GESTAO','GESTAO']}),{code:'REGISTRATION_INVALID_INSTITUTIONALPARTICIPATION'});
+});
 test('a saved registration retains its original answers when updated to the new form',async()=>{
  const store=await fixture(),service=createProfessionalRegistrationService({store});
- const legacy={workDays:['0','7'],surgicalAreas:'Urologia',crmState:'MG',shifts:'Plantão',surgicalDetails:'',complementarySkills:'Nenhuma'};
- const old=await service.execute('SAVE',{answers:{...professionalAnswers(),...legacy},expectedVersion:0,truth:true},identity);
+ const before={formation:'Formação livre',technicalSkills:'Técnica',leadership:'Liderança',institutionalParticipation:'Comissão'};
+ const legacy={workDays:['0','7'],surgicalAreas:'Urologia',crmState:'MG',shifts:'Plantão',surgicalDetails:'',complementarySkills:'Nenhuma',...before};
+ const v1={...professionalAnswers(),...legacy};
+ const old=await service.execute('SAVE',{answers:v1,expectedVersion:0,truth:true},identity);
  assert.equal(old.record.schemaVersion,1);
- const result=await service.execute('SAVE',{answers:professionalAnswers(),expectedVersion:1,truth:true},identity);
- assert.equal(result.record.schemaVersion,2);
+ const v2={...professionalAnswers(),...before};
+ const second=await service.execute('SAVE',{answers:v2,expectedVersion:1,truth:true},identity);
+ assert.equal(second.record.schemaVersion,2);
+ const result=await service.execute('SAVE',{answers:professionalAnswers(),expectedVersion:2,truth:true},identity);
+ assert.equal(result.record.schemaVersion,3);
  assert.deepEqual(result.record.legacyAnswers,legacy);
- await assert.rejects(service.execute('SAVE',{answers:{...professionalAnswers(),...legacy},expectedVersion:2,truth:true},identity),{code:'REGISTRATION_SCHEMA_CHANGED'});
+ await assert.rejects(service.execute('SAVE',{answers:v2,expectedVersion:3,truth:true},identity),{code:'REGISTRATION_SCHEMA_CHANGED'});
 });
 const completeEpiAnswers=()=>Object.fromEntries(EPIDEMIOLOGICAL_FIELDS.map(f=>[f.id,f.type==='checks'?[f.options[0][0]]:f.options[0][0]]));
 const epi=(patch={})=>({survey_cycle:'2026',survey_version:'1.0',submission_id:'a'.repeat(32),consent:true,group:'team',answers:{sleep:'0'},...patch});

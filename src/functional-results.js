@@ -3,6 +3,7 @@ import {dosimetryMonths} from './dosimetry-domain.js';
 import {callInstitutionalSurvey} from './institutional-survey-client.js';
 import {callRegistrationApi} from './registration-client.js';
 import {fcProfessionalRegistrationEnabled} from './fc-integration-config.js';
+import {formatProfessionalQualifications} from './registration-domain.js';
 import {createFunctionalOccupationalReader} from './vaccination-client.js';
 import {DOSIMETRY_YEARS} from './dosimetry-domain.js';
 import {VACCINES,VACCINATION_STATUSES,VACCINATION_YEARS} from './vaccination-domain.js';
@@ -27,7 +28,7 @@ export async function loadFunctionalResult({key,year,uid,subjectUid,faAuth,isCur
     const email=faAuth.currentUser?.email?.trim().toLowerCase();
     if(!record||(fcProfessionalRegistrationEnabled ? !email||record.email!==email : record.uid!==uid))return {record:null};
     const {crm,crmState,rqe,formation}=record.answers||{};
-    return {record:{cycle:record.cycle,crm,crmState,rqe,formation}};
+    return {record:{cycle:record.cycle,crm,crmState,rqe,formation:formatProfessionalQualifications(formation)}};
   }
   const client=await createFunctionalOccupationalReader(faAuth.currentUser,{isCurrent,auth:faAuth});
   try{

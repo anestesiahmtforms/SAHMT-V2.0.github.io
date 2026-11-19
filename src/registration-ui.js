@@ -18,11 +18,15 @@ function message(error) {
   REGISTRATION_SCHEMA_CHANGED:'Reabra o cadastro para preencher a versão atual do formulário.',
   REGISTRATION_GROUP_UNAVAILABLE:'Seu vínculo institucional precisa ser conferido pelo administrador.',
   REGISTRATION_FORBIDDEN:'Seu acesso não está liberado.',
+  REGISTRATION_FOLDER_DISABLED:'O Cadastro Profissional está desativado para este perfil. Solicite a liberação à administração.',
+  REGDRIVE_FORBIDDEN:'O envio de comprovantes depende do vínculo institucional da conta. Solicite a conferência à administração.',
   REGDRIVE_AUTH_REQUIRED:'O armazenamento no Drive está indisponível. Solicite a verificação à administração.',
   REGDRIVE_NOT_CONFIGURED:'O armazenamento no Drive está indisponível. Solicite a verificação à administração.',
+  REGDRIVE_DESTINATION_INVALID:'A pasta de destino no Drive precisa ser conferida pela administração.',
   REGDRIVE_UPLOAD_LIMIT:'O limite diário de comprovantes foi atingido.',
   REGDRIVE_UPLOAD_CONFLICT:'Esta tentativa corresponde a outro arquivo. Selecione o comprovante novamente.',
-  DOCUMENT_FILE_TOO_LARGE:'O arquivo ultrapassa o limite permitido.'
+  DOCUMENT_FILE_TOO_LARGE:'O arquivo ultrapassa o limite permitido.',
+  REGISTRATION_INPUT_TOO_LARGE:'O arquivo ultrapassa o limite permitido.'
  })[code] || ([401,403].includes(error.status)
   ? 'Sua sessão mudou ou o acesso não está liberado. Reabra o cadastro.'
   : 'Não foi possível confirmar a operação. Tente novamente.');
@@ -38,12 +42,14 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
  async function call(target, action, input = {}) {
   if (!live()) throw Error('SESSION_CHANGED');
   const controller = new AbortController();
+  const deadline = setTimeout(() => controller.abort(),60000);
   pending.add(controller);
   try {
    const data = await request(target, action, input, controller.signal);
    if (!live()) throw Error('SESSION_CHANGED');
    return data;
   } finally {
+   clearTimeout(deadline);
    pending.delete(controller);
   }
  }
@@ -142,14 +148,25 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   if (uploading || !attachment || !live()) return;
   uploading = true;
   updateAttachmentControls();
-  notice('[data-reg-file-status]', 'Enviando comprovante ao Drive…');
   try {
    const attempt = attachment;
    const {file, subject, requestId} = attempt;
    if (!attempt.payload) {
-    const {blob, mimeType} = await prepareDocumentFile(file);
-    attempt.payload = {requestId, subject, mimeType, dataBase64:await documentBase64(blob)};
+    notice('[data-reg-file-status]', 'Preparando comprovante…');
+    try {
+     const {blob, mimeType} = await prepareDocumentFile(file);
+     attempt.payload = {requestId, subject, mimeType, dataBase64:await documentBase64(blob)};
+    } catch (error) {
+     attachment = null;
+     if (live()) {
+      const reason = error instanceof DOMException ? 'Não foi possível ler o arquivo. Selecione-o novamente.' : error.message;
+      notice('[data-reg-file-status]', reason, true);
+     }
+     return;
+    }
    }
+   if (!live()) return;
+   notice('[data-reg-file-status]', 'Enviando comprovante ao Drive…');
    const result = await call('drive', 'UPLOAD', attempt.payload);
    if (result.file?.status !== 'STORED') throw Error('REGDRIVE_UNCONFIRMED');
    attachment = null;
@@ -159,7 +176,10 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    if (live()) notice('[data-reg-file-status]', message(error), true);
   } finally {
    uploading = false;
-   if (live()) updateAttachmentControls();
+   if (live()) {
+    root.querySelectorAll(fileInputs).forEach(input => input.value = '');
+    updateAttachmentControls();
+   }
   }
  }
 
@@ -172,7 +192,8 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    if (target.checked) for (const option of options) {
     if (option !== target && (target.value === field.none || option.value === field.none)) option.checked = false;
    }
-   query('[data-reg-selection]').textContent = selectionLabel(options.filter(option => option.checked).length);
+   target.closest('[data-field]').querySelector('[data-reg-selection]').textContent =
+    selectionLabel(field,options.filter(option => option.checked).length);
   }
   if (target.matches('[data-reg-subject]')) {
    attachment = null;
@@ -181,7 +202,6 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   }
   if (target.matches(fileInputs) && target.files?.length && !uploading && query('[data-reg-subject]').value) {
    attachment = {file:target.files[0], subject:query('[data-reg-subject]').value, requestId:crypto.randomUUID()};
-   target.value = '';
    void upload();
   }
  }

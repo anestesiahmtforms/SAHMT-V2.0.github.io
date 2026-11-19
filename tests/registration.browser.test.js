@@ -26,17 +26,25 @@ test('professional form saves the grid and uploads immediately after file select
  await page.getByRole('checkbox',{name:'Segunda-feira, Semanal'}).check();
  await page.getByRole('checkbox',{name:'Segunda-feira, Manhã'}).check();
  await page.getByRole('checkbox',{name:'Domingo, Plantão'}).check();
- await page.locator('[data-reg-selection]').click();
+ await page.locator('[data-field=surgicalAreas] summary').click();
  await page.getByRole('checkbox',{name:'Nenhuma',exact:true}).check();
  await page.getByRole('checkbox',{name:'Cardiovascular',exact:true}).check();
  await page.getByRole('checkbox',{name:'Urologia',exact:true}).check();
  assert.equal(await page.getByRole('checkbox',{name:'Nenhuma',exact:true}).isChecked(),false);
+ await page.getByText('Selecionar qualificações',{exact:true}).click();
+ await page.getByRole('checkbox',{name:'TEA',exact:true}).check();
+ await page.getByRole('checkbox',{name:'Mestrado',exact:true}).check();
+ await page.getByText('Selecionar participações',{exact:true}).click();
+ await page.getByRole('checkbox',{name:'Comissões',exact:true}).check();
+ await page.getByRole('checkbox',{name:'Direção',exact:true}).check();
  await page.check('[name=truth]');
  await open(page,'SALVAR MEU CADASTRO');
  await page.getByText('Cadastro salvo com sucesso.',{exact:true}).waitFor();
  const answers=await page.evaluate(()=>window.calls.find(c=>c.action==='SAVE').input.answers);
  assert.deepEqual(answers.workDays,['0:WEEKLY','0:MORNING','6:ON_CALL']);
  assert.deepEqual(answers.surgicalAreas,['CARDIOVASCULAR','UROLOGY']);
+ assert.deepEqual(answers.formation,['TEA','MESTRADO']);
+ assert.deepEqual(answers.institutionalParticipation,['COMISSOES','DIRECAO']);
  assert.equal(await page.locator('[data-drive-connect],[data-reg-upload]').count(),0);
  assert.equal(await page.locator('[data-reg-camera]').getAttribute('capture'),'environment');
  assert.equal(await page.locator('[data-reg-file]').isDisabled(),true);
@@ -73,6 +81,11 @@ test('closing an attachment picker keeps the professional form and its draft ope
   assert.equal(await name.inputValue(),'Rascunho de teste');
  }
  assert.equal(await page.evaluate(()=>window.calls.some(call=>call.action==='UPLOAD')),false);
+ await page.locator('[data-reg-file]').setInputFiles({
+  name:'comprovante.pdf',mimeType:'application/octet-stream',buffer:Buffer.from('%PDF-1.7\nsynthetic\n%%EOF')
+ });
+ await page.getByText('Comprovante arquivado no Drive na pasta correspondente.',{exact:true}).waitFor();
+ await page.evaluate(()=>{window.createImageBitmap=async()=>{throw Error('Decodificador indisponível');};});
  const photo=await page.evaluate(()=>document.createElement('canvas').toDataURL('image/jpeg').split(',')[1]);
  await page.locator('[data-reg-camera]').setInputFiles({
   name:'foto.jpg',mimeType:'image/jpeg',buffer:Buffer.from(photo,'base64')
@@ -80,6 +93,8 @@ test('closing an attachment picker keeps the professional form and its draft ope
  await page.getByText('Comprovante arquivado no Drive na pasta correspondente.',{exact:true}).waitFor();
  assert.equal(await dialog.getAttribute('data-panel'),'professional');
  assert.equal(await name.inputValue(),'Rascunho de teste');
+ assert.deepEqual(await page.evaluate(()=>window.calls.filter(call=>call.action==='UPLOAD').map(call=>call.input.mimeType)),
+  ['application/pdf','image/jpeg']);
  await dialog.dispatchEvent('cancel',{bubbles:false,cancelable:true});
  assert.equal(await dialog.getAttribute('data-panel'),'institutional');
 }));
