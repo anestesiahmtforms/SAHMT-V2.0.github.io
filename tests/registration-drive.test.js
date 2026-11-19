@@ -5,6 +5,29 @@ import {createFcIntegrationWorker} from '../worker-fc-integration/worker.js';
 const owner='anestesiahmtforms@gmail.com',identity={uid:'synthetic-drive',email:'synthetic@example.invalid',emailVerified:true,provider:'google.com'},config={ownerEmail:owner,origin:'https://anestesiahmtforms.github.io',clientId:'123456789012-synthetic.apps.googleusercontent.com',clientSecret:'synthetic-secret-only',rootFolderId:'synthetic-root',teamParentId:'synthetic-team',substituteParentId:'synthetic-substitute'};
 async function setup(){const store=vaccinationMemoryStore(),files=new Map(),requests=[];let n=0;store.seed('users',identity.uid,{...identity,active:true,access:true,role:'administrador_app'});store.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:['SUBSTITUTO']});for(const key of ['rootFolderId','teamParentId','substituteParentId'])files.set(config[key],{id:config[key],mimeType:'application/vnd.google-apps.folder',parents:key==='rootFolderId'?[]:[config.rootFolderId],trashed:false,shared:false,owners:[{emailAddress:owner}]});let wrongOwner=false;const fetchImpl=async(url,options={})=>{requests.push({url,options});if(url==='https://oauth2.googleapis.com/token')return Response.json({access_token:'synthetic-access',refresh_token:'synthetic-refresh-PRIVATE',expires_in:3600,scope:'openid email https://www.googleapis.com/auth/drive'});if(url.includes('/userinfo'))return Response.json({email:wrongOwner?'other@example.invalid':owner,email_verified:true});const u=new URL(url);if(u.pathname.endsWith('/generateIds'))return Response.json({ids:['synthetic-id-'+ ++n]});if(u.hostname==='www.googleapis.com'&&u.pathname==='/upload/drive/v3/files'){const body=Buffer.from(options.body).toString('utf8'),metadata=JSON.parse(body.split('\r\n\r\n')[1].split('\r\n--')[0]),raw=body.split('\r\n\r\n')[2].split('\r\n--')[0];const file={...metadata,mimeType:'application/pdf',size:Buffer.byteLength(raw),shared:false};if(files.has(file.id))return Response.json({}, {status:409});files.set(file.id,file);return Response.json(file);}if(u.pathname==='/drive/v3/files'&&options.method==='POST'){const m=JSON.parse(options.body);if(files.has(m.id))return Response.json({}, {status:409});files.set(m.id,{...m,trashed:false,shared:false,owners:[{emailAddress:owner}]});return Response.json({id:m.id});}const file=files.get(decodeURIComponent(u.pathname.split('/').at(-1)));return file?Response.json(file):Response.json({}, {status:404});};const key=Buffer.alloc(32,7).toString('base64'),service=createRegistrationDrive({store,clientConfig:config,encryptionKey:key,fetchImpl});async function connect(){const {nonce}=await service.execute('BEGIN_CONNECT',{},identity);return service.execute('CONNECT',{nonce,code:'synthetic-code'},identity);}return {store,files,requests,service,connect,setWrongOwner:()=>wrongOwner=true,key,fetchImpl};}
 const upload={requestId:'d115646b-7d9d-4460-a3a4-101778400001',subject:'CV',mimeType:'application/pdf',dataBase64:Buffer.from('%PDF-1.7\nsynthetic\n%%EOF').toString('base64')};
+test('FC Drive uses the Worker-compatible redirect mode for every Google request',async()=>{
+ const f=await setup();
+ const drive=createRegistrationDrive({store:f.store,clientConfig:config,refreshToken:'synthetic-server-refresh-only',
+  interactive:false,fetchImpl:async(url,options)=>{
+   if(options.redirect!=='manual')throw new TypeError('Worker fetch requires manual redirect handling');
+   return f.fetchImpl(url,options);
+  }});
+ assert.equal((await drive.execute('UPLOAD',upload,identity)).file.status,'STORED');
+ assert.ok(f.requests.some(({url})=>url.startsWith('https://www.googleapis.com/upload/drive/')));
+});
+
+test('FC Drive refuses a Google redirect without sending any credential to its destination',async()=>{
+ const f=await setup(),requests=[];
+ const drive=createRegistrationDrive({store:f.store,clientConfig:config,refreshToken:'synthetic-server-refresh-only',
+  interactive:false,fetchImpl:async(url,options)=>{
+   requests.push({url,redirect:options.redirect});
+   return new Response(null,{status:302,headers:{Location:'https://unexpected.example/'}});
+  }});
+ await assert.rejects(drive.execute('UPLOAD',upload,identity),{code:'REGDRIVE_UNAVAILABLE'});
+ assert.deepEqual(requests,[{url:'https://oauth2.googleapis.com/token',redirect:'manual'}]);
+ assert.deepEqual(await f.store.list('registrationDriveFolders'),[]);
+});
+
 test('FC uploads use the configured owner credential without prompting the app and keep private receipts',async()=>{
  const f=await setup(),refreshToken='synthetic-server-refresh-only';
  const drive=createRegistrationDrive({store:f.store,clientConfig:config,refreshToken,interactive:false,fetchImpl:f.fetchImpl});

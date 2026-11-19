@@ -17,7 +17,22 @@ export function createRegistrationDrive({store,clientConfig,encryptionKey,refres
   : typeof refreshToken==='string'&&refreshToken.trim().length>20;
  const configured=clientConfig?.ownerEmail===OWNER&&clientConfig.origin===ORIGIN&&/^[0-9]+-[-A-Za-z0-9_]+\.apps\.googleusercontent\.com$/.test(clientConfig.clientId||'')&&typeof clientConfig.clientSecret==='string'&&clientConfig.clientSecret.length>10&&['rootFolderId','teamParentId','substituteParentId'].every(k=>id(clientConfig[k]))&&credentialsReady;
  let cached=null,refreshing;
- async function request(url,options={},missing=false){let r;try{r=await fetchImpl(url,{...options,redirect:'error',cache:'no-store',signal:AbortSignal.timeout(30000)});}catch{fail('REGDRIVE_UNAVAILABLE');}if(missing&&r.status===404){await r.body?.cancel();return null;}if(!r.ok){await r.body?.cancel();fail(r.status===409?'REGDRIVE_CONFLICT':r.status===401||r.status===403?'REGDRIVE_AUTH_REQUIRED':'REGDRIVE_UNAVAILABLE',r.status===409?409:503);}try{return await r.json();}catch{fail('REGDRIVE_UNAVAILABLE');}}
+ async function request(url,options={},missing=false){
+  let response;
+  try{
+   // Workers supports manual redirect handling. Reject all non-success
+   // responses below so OAuth credentials never follow a redirect.
+   response=await fetchImpl(url,{...options,redirect:'manual',cache:'no-store',signal:AbortSignal.timeout(30000)});
+  }catch{fail('REGDRIVE_UNAVAILABLE');}
+  if(!response.ok){
+   await response.body?.cancel();
+   if(missing&&response.status===404)return null;
+   const code=response.status===409?'REGDRIVE_CONFLICT':
+    [401,403].includes(response.status)?'REGDRIVE_AUTH_REQUIRED':'REGDRIVE_UNAVAILABLE';
+   fail(code,response.status===409?409:503);
+  }
+  try{return await response.json();}catch{fail('REGDRIVE_UNAVAILABLE');}
+ }
  async function crypt(mode,value){const key=await crypto.subtle.importKey('raw',Buffer.from(encryptionKey,'base64'),'AES-GCM',false,[mode]);if(mode==='encrypt'){const iv=crypto.getRandomValues(new Uint8Array(12));const bytes=await crypto.subtle.encrypt({name:'AES-GCM',iv,additionalData:new TextEncoder().encode('SAHMT_REGISTRATION_DRIVE_V1')},key,new TextEncoder().encode(value));return {iv:Buffer.from(iv).toString('base64'),ciphertext:Buffer.from(bytes).toString('base64')};}if(typeof value?.iv!=='string'||typeof value.ciphertext!=='string'||value.ciphertext.length>20000)fail('REGDRIVE_AUTH_REQUIRED');try{return new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:Buffer.from(value.iv,'base64'),additionalData:new TextEncoder().encode('SAHMT_REGISTRATION_DRIVE_V1')},key,Buffer.from(value.ciphertext,'base64')));}catch{fail('REGDRIVE_AUTH_REQUIRED');}}
  async function ownerToken(access){const u=await request('https://openidconnect.googleapis.com/v1/userinfo',{headers:{Authorization:'Bearer '+access}});if(u.email_verified!==true||u.email?.toLowerCase()!==OWNER)fail('REGDRIVE_WRONG_OWNER',403);}
  async function ownerRefreshToken(){
