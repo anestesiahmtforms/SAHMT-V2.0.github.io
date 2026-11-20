@@ -908,7 +908,7 @@ button:focus-visible,[role="button"]:focus-visible,input[type="button"]:focus-vi
 .app-shell--events .identity-card{flex:0 0 90%;width:90%;max-width:90%;margin-inline:auto}
 
 /* Modais do ecossistema: 90% da tela, fixos e sem barra visível. */
-.app-shell dialog:not(:where(#checklist-station-dialog,.management-area-dialog,.management-document-dialog,.management-hub-dialog[data-panel="communication"],.management-hub-dialog[data-panel="records"],.management-hub-dialog[data-panel="surveys"],.management-hub-dialog[data-panel="biosafety"],[data-epidemiological] .survey-questions)){position:fixed!important;inset:5vh 5vw!important;inset:5dvh 5vw!important;width:90vw!important;height:90vh!important;height:90dvh!important;max-width:90vw!important;max-height:90vh!important;max-height:90dvh!important;margin:0!important;box-sizing:border-box;overflow:auto!important;overscroll-behavior:contain;scrollbar-width:none}
+.app-shell dialog:not(:where(#checklist-station-dialog,.management-area-dialog,.management-document-dialog,.management-hub-dialog[data-panel="communication"],.management-hub-dialog[data-panel="records"],.management-hub-dialog[data-panel="surveys"],.management-hub-dialog[data-panel="biosafety"],[data-epidemiological] .survey-questions,.occurrence-followup)){position:fixed!important;inset:5vh 5vw!important;inset:5dvh 5vw!important;width:90vw!important;height:90vh!important;height:90dvh!important;max-width:90vw!important;max-height:90vh!important;max-height:90dvh!important;margin:0!important;box-sizing:border-box;overflow:auto!important;overscroll-behavior:contain;scrollbar-width:none}
 .app-shell dialog::-webkit-scrollbar,.app-shell dialog:not(:where(.management-hub-dialog[data-panel="professional"])) *:not(:where([data-epidemiological] .survey-question-body,.vac-scroll,[data-governance-content]))::-webkit-scrollbar{display:none!important;width:0!important;height:0!important}
 .app-shell dialog:not(:where(.management-hub-dialog[data-panel="professional"])) *:not(:where([data-epidemiological] .survey-question-body,.vac-scroll,[data-governance-content])){scrollbar-width:none}
 
@@ -2056,19 +2056,16 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--home .sigla-token--dc .sigla-token__release-time{font-size:clamp(.36rem,1.35vw,.46rem)}
 .first-login-cohort-controls{display:flex;flex:1 1 100%;flex-wrap:wrap;align-items:end;gap:8px;padding:8px;border-radius:10px;background:#f4f8fa}.first-login-cohort-controls label{display:grid;gap:4px;color:#526578;font-size:.7rem;font-weight:800}.first-login-cohort-controls select{min-height:38px;padding:6px 9px;border:1px solid #b9ccd5;border-radius:8px;background:white;color:var(--ink)}.first-login-cohort-controls small{flex-basis:100%;color:#526578;font-size:.68rem}.first-login-cohort-controls button{min-height:38px}
 /* Ocorrências: banner central com navegação no rodapé. */
-.app-shell--occurrences{
+.app-shell--occurrences,.occurrence-dialog.occurrence-followup{
   --occurrences-gap:clamp(7px,1.4dvh,12px);
+  --occurrences-banner-height:min(90dvh,42rem,calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));
   position:fixed;
   inset:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   box-sizing:border-box;
   width:min(94vw,42rem,calc(100vw - env(safe-area-inset-left) - env(safe-area-inset-right) - 12px));
-  height:min(90dvh,42rem,calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));
   min-height:0;
   margin:auto;
   padding:clamp(9px,2.5vw,16px);
-  display:flex;
-  flex-direction:column;
-  gap:var(--occurrences-gap);
   overflow:hidden;
   overscroll-behavior:none;
   border:2px solid #fff;
@@ -2076,6 +2073,17 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
   background:linear-gradient(145deg,#fff,#e4edf2);
   box-shadow:0 18px 65px #061b38a8;
 }
+.app-shell--occurrences{display:flex;flex-direction:column;gap:var(--occurrences-gap);height:var(--occurrences-banner-height)}
+.occurrence-dialog.occurrence-followup{max-width:none;height:fit-content;max-height:var(--occurrences-banner-height)}
+.occurrence-dialog.occurrence-followup[open]{display:flex;flex-direction:column}
+.occurrence-followup>.occurrence-dialog__form{flex:0 1 auto;height:auto;gap:var(--occurrences-gap)}
+.occurrence-followup .occurrence-dialog__header{
+  display:grid;place-items:center;min-height:46px;padding:8px 12px;border:2px solid #fff;border-radius:12px;
+  box-shadow:0 3px 0 #081f346b,inset 0 1px 0 #ffffff80;
+}
+.occurrence-followup .occurrence-dialog__body{padding:2px 3px 6px;overflow-y:auto;scrollbar-gutter:auto}
+.occurrence-followup .occurrence-dialog__footer{padding:0 3px;border:0;background:transparent}
+.occurrence-followup [data-followup-status]:empty{display:none}
 .app-shell--occurrences>.topbar{position:relative;top:auto;flex:0 0 auto;padding:0;background:transparent!important;box-shadow:none}
 .app-shell--occurrences .identity-card{flex:0 0 100%;max-width:100%;display:grid;grid-template-columns:52px minmax(0,1fr);grid-template-rows:42px auto;align-items:center;justify-items:stretch;gap:5px 8px;width:100%;min-height:0;height:auto;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
 .app-shell--occurrences .identity-card .brand{grid-column:1;grid-row:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;width:100%;min-width:0;min-height:0;padding:0;font-size:.6rem;line-height:1;letter-spacing:.13em}
@@ -2151,13 +2159,21 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-form-status{min-height:1.4em;margin:12px 0 0;color:#526578}
 @media(max-width:600px){.occurrence-form-grid{grid-template-columns:1fr}.occurrence-field--textarea{grid-column:auto}}
 @media(max-height:500px){
-  .app-shell--occurrences{--occurrences-gap:6px;height:min(96dvh,calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));padding:7px}
+  .app-shell--occurrences,.occurrence-dialog.occurrence-followup{
+    --occurrences-gap:6px;
+    --occurrences-banner-height:min(96dvh,calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px));
+    padding:7px;
+  }
+  .occurrence-followup .occurrence-dialog__header{min-height:36px;padding:5px 8px}
   .app-shell--occurrences .identity-card{grid-template-columns:40px minmax(0,1fr);grid-template-rows:28px auto;gap:3px}
   .app-shell--occurrences .identity-card .brand img{width:20px;height:20px}
   .app-shell--occurrences .occurrences-title{min-height:36px;padding:3px 6px;font-size:1rem}
   .occurrence-groups{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .occurrence-groups>.occurrence-group{font-size:.75rem;padding:6px 7px}
-  .occurrence-groups .occurrence-icon{flex-basis:24px;width:24px;height:24px;padding:3px}
+  :is(.occurrence-groups,.occurrence-followup-list)>.occurrence-group{font-size:.75rem;padding:6px 7px}
+  :is(.occurrence-groups,.occurrence-followup-list) .occurrence-icon{flex-basis:24px;width:24px;height:24px;padding:3px}
+}
+@media(max-height:500px) and (orientation:landscape){
+  .occurrence-followup-list:has(> .occurrence-group){grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 }
 
 @media(max-height:500px) and (min-width:600px){.occurrence-category-dialog .occurrence-group__items:has(>button:nth-child(5)){grid-template-columns:1fr 1fr;grid-template-rows:repeat(4,minmax(0,1fr));grid-auto-flow:row}.occurrence-category-dialog .occurrence-form-launch{font-size:.72rem}}

@@ -68,17 +68,55 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.getByRole('button',{name:'ACOMPANHAR REGISTROS'}).click();
   const followup=page.getByRole('dialog',{name:'OCORRÊNCIAS - SAHMT'});
   await followup.waitFor();
+  const followupBanner=page.locator('.occurrence-followup[open]');
+  const back=followupBanner.locator('[data-followup-back]');
+  async function checkFollowupBanner({compact=false}={}) {
+   const viewport=page.viewportSize(),frame=await followupBanner.boundingBox(),footer=await back.boundingBox();
+   const hint=JSON.stringify({viewport,frame,footer});
+   assert.ok(frame.width<=672&&Math.abs(frame.x+frame.width/2-viewport.width/2)<=1,hint);
+   assert.ok(Math.abs(frame.y+frame.height/2-viewport.height/2)<=1,hint);
+   if(compact)assert.ok(frame.height<viewport.height*.9,hint);
+   assert.ok(footer.height>=44&&footer.y+footer.height<=frame.y+frame.height,hint);
+  }
+  for (const viewport of [{width:320,height:568},{width:568,height:320},{width:1440,height:900}]) {
+   await page.setViewportSize(viewport);
+   await checkFollowupBanner({compact:true});
+  }
+  await page.setViewportSize({width:390,height:844});
   assert.equal(await followup.locator('[data-hospital-new]').count(),0);
+  for(const group of ['A','C','D']){
+   await followup.locator('[data-occurrence-group="'+group+'"]').click();
+   await checkFollowupBanner();
+   if(group==='A'){
+    await followupBanner.locator('[data-followup-form="F01"]').click();
+    await page.getByText('Nenhuma ocorrência registrada neste tema.').waitFor();
+    await checkFollowupBanner({compact:true});
+    await back.click();
+   }
+   await back.click();
+   await followup.waitFor();
+  }
   await followup.locator('[data-occurrence-group="B"]').click();
   await page.getByText('Nenhuma ocorrência registrada neste tema.').waitFor();
   await page.evaluate(()=>window.followupPublished=true);
   await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click({timeout:2000});
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
   await page.getByText('Relato completo aqui').waitFor();
+  await checkFollowupBanner();
   const hospitalTitle=page.locator('.occurrence-followup-report .occurrence-hospital-title');
   assert.equal(await hospitalTitle.textContent(),'Evento externo');
   assert.equal(await hospitalTitle.evaluate(element=>getComputedStyle(element).color),'rgb(7, 83, 161)');
   const analysis=page.locator('[data-followup-analysis]');
+  const scroll=await page.locator('.occurrence-followup').evaluate(dialog=>{
+   const body=dialog.querySelector('[data-followup-body]'),back=dialog.querySelector('[data-followup-back]');
+   const before=back.getBoundingClientRect().top;
+   body.scrollTop=body.scrollHeight;
+   const after=back.getBoundingClientRect().top;
+   return {before,after,scrolled:body.scrollTop,outer:dialog.scrollTop};
+  });
+  assert.ok(scroll.scrolled>0,JSON.stringify(scroll));
+  assert.equal(scroll.outer,0);
+  assert.equal(scroll.after,scroll.before);
   await analysis.locator('[name=problem]').fill('A');
   assert.equal(await analysis.locator('textarea[required]').count(),5);
   await analysis.getByRole('button',{name:'SALVAR ANÁLISE'}).click();
@@ -87,6 +125,12 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await analysis.getByRole('button',{name:'SALVAR ANÁLISE'}).click();
   await page.getByText('Análise salva.',{exact:true}).waitFor();
   assert.deepEqual(await page.evaluate(()=>window.analysis),{problem:'A',cause:'cause',review:'review',correction:'correction',plan:'plan'});
+  await back.click();
+  await page.getByRole('button',{name:'GR 001 · Evento externo'}).waitFor();
+  await back.click();
+  await followup.waitFor();
+  await back.click();
+  await followup.waitFor({state:'hidden'});
   assert.deepEqual(errors,[]);
  }finally{await browser?.close();await server.close();}
 });
