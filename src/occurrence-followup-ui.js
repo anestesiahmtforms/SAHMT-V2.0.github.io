@@ -78,9 +78,11 @@ export function mountOccurrenceFollowup(host,{
     if (!resume) {entries=new Map();after=null;}
     const current=render(getOccurrenceForm(formId).title,
       '<div class="occurrence-followup-list" data-followup-entries></div>'+
-      '<p role="status" data-followup-status></p><button type="button" class="secondary-button" data-followup-more hidden>CARREGAR MAIS</button>',groupForms().length===1?groups:categories);
+      '<p role="status" data-followup-status></p><div class="occurrence-followup-list">'+
+      '<button type="button" class="secondary-button" data-followup-more hidden>CARREGAR MAIS</button>'+
+      '<button type="button" class="secondary-button" data-followup-refresh>ATUALIZAR REGISTROS</button></div>',groupForms().length===1?groups:categories);
     const list=body.querySelector('[data-followup-entries]'),status=body.querySelector('[data-followup-status]'),
-      more=body.querySelector('[data-followup-more]');
+      more=body.querySelector('[data-followup-more]'),refresh=body.querySelector('[data-followup-refresh]');
     let loading=false;
     function showEntries() {
       list.innerHTML=[...entries.values()].map(entry=>
@@ -91,25 +93,30 @@ export function mountOccurrenceFollowup(host,{
       more.hidden=!after;
       more.textContent='CARREGAR MAIS';
     }
-    async function load() {
+    async function load(fromStart=false) {
       if (loading || !current()) return;
-      loading=true;more.disabled=true;
+      loading=true;more.disabled=refresh.disabled=true;
       status.textContent='Carregando ocorrências…';
       try {
-        const page=await repository.listFollowups({uid,formId,after});
+        const page=await repository.listFollowups({uid,formId,after:fromStart?null:after});
         if (!current()) return;
+        if(fromStart)entries.clear();
         for (const entry of page.entries) entries.set(entry.id,entry);
         after=page.next;
         showEntries();
       } catch {
-        if (current()) {status.textContent='Não foi possível consultar as ocorrências.';more.textContent='TENTAR NOVAMENTE';more.hidden=false;}
-      } finally {loading=false;more.disabled=false;}
+        if (current()) {
+          status.textContent='Não foi possível consultar as ocorrências.';
+          if(!fromStart&&after)more.textContent='TENTAR NOVAMENTE';
+        }
+      } finally {loading=false;more.disabled=refresh.disabled=false;}
     }
     list.addEventListener('click',event=>{
       const button=event.target.closest('[data-followup-record]');
       if (button&&current()) detail(entries.get(button.dataset.followupRecord));
     });
     more.addEventListener('click',()=>void load());
+    refresh.addEventListener('click',()=>void load(true));
     if(resume)showEntries();
     else void load();
   }

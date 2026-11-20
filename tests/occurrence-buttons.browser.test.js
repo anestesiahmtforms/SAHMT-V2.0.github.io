@@ -3,7 +3,8 @@ import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
  const stubs={
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>[],listAudit:async()=>[],loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
-   hospitalAccess:async()=>false,listFollowups:async({formId})=>({entries:formId==='F08'?[{id:'gr-1',formId,origin:'hospital',hospitalNumber:'1',title:'Evento externo',occurredOn:'2026-11-20',description:'Relato completo aqui',classification:{},details:{}}]:[],next:null}),
+   hospitalAccess:async()=>false,listFollowups:async({formId})=>({entries:formId==='F08'&&window.followupPublished?
+    [{id:'gr-1',formId,origin:'hospital',hospitalNumber:'1',title:'Evento externo',occurredOn:'2026-11-20',description:'Relato completo aqui',classification:{},details:{}}]:[],next:null}),
    readAnalysis:async()=>null,saveAnalysis:async({values})=>{window.analysis=values;return true;}};}`,
   'outbox.js':`export async function enqueueOccurrenceSubmission(){throw Error('No writes in this fixture');}export async function listUnsettledOperations(){return [];}`
  };
@@ -40,6 +41,9 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await followup.waitFor();
   assert.equal(await followup.locator('[data-hospital-new]').count(),0);
   await followup.locator('[data-occurrence-group="B"]').click();
+  await page.getByText('Nenhuma ocorrência registrada neste tema.').waitFor();
+  await page.evaluate(()=>window.followupPublished=true);
+  await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click({timeout:2000});
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
   await page.getByText('Relato completo aqui').waitFor();
   const hospitalTitle=page.locator('.occurrence-followup-report .occurrence-hospital-title');

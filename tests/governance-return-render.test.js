@@ -61,7 +61,7 @@ function dom() {
 const user={uid:'fixture-admin',displayName:'Fixture',email:'admin@example.invalid',emailVerified:true};
 const authorized=()=>({status:'signed-in',user,profile:{uid:user.uid,email:user.email,active:true,access:true,role:'administrador_app',permissions:{}},offline:false});
 const limited=()=>({status:'auth-limited',user,profile:{uid:user.uid,active:false,access:false,permissions:{}},offline:true,validatingProfile:true});
-function harness({route='management',target='FB',session=authorized()}={}){
+function harness({route='management',target='FB',session=authorized(),appFeatures=DEFAULT_APP_FEATURES}={}){
   const app=dom(),assignments=[],mounts=[],mountOptions=[],loaded=[];
   const ctx=vm.createContext({env:{BASE_URL:'/',VITE_FK_FUNCTIONAL_ENABLED:'true'},googleProjectAuthEnabled:true,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',operationalRouteFolder:()=>null,
     app,document:app,session,loadOwnLabelModuleProfile(){},loadOwnChecklistModuleProfile(){},readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
@@ -71,7 +71,7 @@ function harness({route='management',target='FB',session=authorized()}={}){
     labelReportLoad:0,labelReportLoadingMore:false,labelReportState:'idle',cleanupLabelMedia:null,stopChecklistQrScanner(){},
     cleanupDocumentTraining:null,cleanupUserInspection:null,cleanupCurrentModule:null,startupBannerActive:false,yearEndStartup:{visible:false,status:'inactive',setSession(){}},
     loginView:()=>'<main>Login</main>',bindLogin(){},canUseVacationModule,canUseManagementPilot,canUseGovernanceHub,canUseYearEndSchedule,climateSurveyEnabled:true,deniedOperationalModules:new Set(),notice:'',
-    canOpenRestrictedModule:()=>true,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
+    canOpenRestrictedModule:()=>true,featureEnabledForRoute,appFeatures,
     fdPerformanceEnabled:false,fePerformanceEnabled:false,communicationFeatureEnabled:false,forwardingButton:()=>'',communicationAdminSession:()=>false,
     bindProfileRetryControl(){},preloadOperationalDataWhenIdle(){},bindModuleForm(){},updateOutboxStatus(){},navigator:{onLine:true},isOfflineRuntimeForced:()=>false,onlineValidationRequired:false,syncOutbox(){},
     todayInputValue:()=>'2026-01-01',labelReportMode:'daily',labelReportOpen:false,
@@ -146,12 +146,25 @@ test('Etiquetas retains its HOME footer and original route',async()=>{
 test('residents and substitutes can open Governance with access only to institutional surveys in FE',async()=>{for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','epidemiological'])assert.equal(access[key],false);assert.equal(access.institutionalSurveys,true);}});
 test('administrators outside the team retain Governance access with the epidemiological form restricted',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','occurrences','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);assert.equal(access.epidemiological,false);});
 
+test('ordinary and team-mode sessions reach published occurrences through Registros',async()=>{
+ for(const accountMode of [undefined,'team']){
+  const session={...authorized(),accountMode};
+  session.profile.role='anestesiologista';
+  const h=harness({target:'FA',route:'management-hub',session,appFeatures:{...DEFAULT_APP_FEATURES,occurrences:true}});
+  await h.render();
+  const access=h.mountOptions[0].access;
+  assert.equal(access.records,true);assert.equal(access.occurrences,true);assert.equal(access.groups,false);
+  assert.equal(h.ctx.hasOccurrencePermission(),true);
+  assert.equal(session.profile.permissions.occurrencesWrite,undefined);
+ }
+});
+
 test('administrator opens Occurrences with registration enabled while the general feature is disabled',async()=>{
  const session=authorized(),content={isConnected:true,innerHTML:''},opened=[];
  const auth={currentUser:{uid:session.user.uid}},db={};
  const ctx=vm.createContext({route:'occurrences',session,content,evaluationModuleGeneration:0,
   currentRoute:()=> 'occurrences',can:key=>session.profile.role==='administrador_app'||session.profile.permissions[key]===true,
-  canUseManagementPilot,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
+  canUseManagementPilot,canUseGovernanceHub,featureEnabledForRoute,appFeatures:DEFAULT_APP_FEATURES,
   moduleFirebase:{getIndicatorsAuth:()=>auth,getIndicatorsFirestore:()=>db,waitForIndicatorsSession:async()=>{}},
   moduleSession:{waitForFcModuleSession:async()=>auth},
   moduleUi:{mountOccurrenceModule:(root,options)=>{opened.push(options);return ()=>{};}}

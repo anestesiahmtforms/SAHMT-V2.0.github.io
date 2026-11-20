@@ -223,7 +223,9 @@ test('Ocorrências fica dentro de Gestão sem conceder novas permissões ao usu�
     const cards = h.ui.moduleCards();
     assert.equal((cards.match(/data-route="occurrences"/g) || []).length, 0);
     assert.match(cards, /data-route="management-hub"/);
-    assert.equal(h.context.hasOccurrencePermission(), false);
+    assert.equal(h.context.hasOccurrencePermission(), true);
+    assert.equal(h.ui.can('occurrencesWrite'),false);
+    assert.equal(h.ui.can('occurrencesRead'),false);
     assert.doesNotMatch(cards, /NOTIFICAÇÕES DE EVENTOS|data-route="notifications"/);
     assert.deepEqual(session, before);
   }
