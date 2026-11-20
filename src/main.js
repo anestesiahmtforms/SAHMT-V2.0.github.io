@@ -1,6 +1,6 @@
 import {formatDisplayDate, formatDisplayDateTime} from './date-format.js';
 import {homeScheduleCache} from './home-entry-cache.js';
-import {operationalFolderPolicy, operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalRouteActivityAllowed, operationalContentAllowed, watchOperationalFolderPolicy, setOperationalFolderSession, operationalFolderNotice} from './operational-folder-runtime.js';
+import {operationalFolderPolicy, operationalFolderPolicyEnabled, operationalFolderRouteAllowed, operationalRouteActivityAllowed, operationalContentAllowed, watchOperationalFolderPolicy, setOperationalFolderSession, operationalFolderInactive} from './operational-folder-runtime.js';
 import {createConsultationsAccessReader} from './governance-consultations-access.js';
 import {isChecklistScienceOpen} from './checklist-science-clock.js';
 import {createAccountMode} from './account-mode.js';
@@ -775,11 +775,10 @@ function moduleCards() {
     && !['training', 'management-hub'].includes(route)
       && (commonModules.includes(route) || permissionFor[route]?.some(can))
       && (route === 'management' || featureEnabledForRoute(route, appFeatures))).sort(([a], [b]) => ['checklist','schedule','labels','management'].indexOf(a) - ['checklist','schedule','labels','management'].indexOf(b)).map(([route, [title, subtitle]]) => {
-    const activityBlocked=typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(route);
-    const routeDescription=activityBlocked?subtitle+'. Pasta inativa; as atividades estão bloqueadas até a reativação.':subtitle;
-    return `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}" aria-description="${escapeHtml(routeDescription)}"${typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(route==='management'?'management-hub':route)?' disabled aria-disabled="true" title="Pasta desativada ou sem confirmação do servidor"':route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
+    const inactive=typeof operationalFolderInactive==='function'&&operationalFolderInactive(operationalRouteFolder(route));
+    return `<button class="module-card" data-route="${route === 'management' ? 'management-hub' : route}" aria-description="${escapeHtml(subtitle)}"${inactive?' data-folder-inactive':''}${typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(route==='management'?'management-hub':route)?' disabled aria-disabled="true"':route === 'management' && !canUseGovernanceHub(session) && !canUseVacationModule(session) ? ' disabled aria-disabled="true" title="Governança temporariamente indisponível para este perfil"' : ''}>
     ${moduleIcons[route] ? `<img class="module-icon" src="${import.meta.env.BASE_URL}${moduleIcons[route]}" alt="" width="40" height="40" loading="lazy" decoding="async">` : `<span class="module-mark" aria-hidden="true">${{training:'DE',people:'PS',admin:'AD'}[route]}</span>`}
-    <span><strong>${title}</strong><small>${activityBlocked?'Pasta inativa · Navegação livre':subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
+    <span><strong>${title}</strong><small>${subtitle}</small></span><span class="arrow" aria-hidden="true">›</span>
   </button>`;}).join('');
 }
 
@@ -1607,7 +1606,7 @@ async function loadModule(route) {
       const policy=operationalFolderPolicy();
       return canManageActivity()&&policy?.revision>0&&!policy.pending?operationalFolderAllowed(policy,folder):null;
     };
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,folderNotice:operationalFolderNotice,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,folderInactive:typeof operationalFolderInactive==='function'?operationalFolderInactive:()=>false,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       activityAvailability,
       setActivityAvailability:async(folder,enabled,isCurrent)=>{
         const {fiControlRequest}=await import('./fi-control-client.js');
@@ -2038,12 +2037,12 @@ async function loadModule(route) {
       const areaSlug=location.hash.split('/')[2];
       if(items.some(item=>item.id===areaSlug))selectedManagementAreaId=areaSlug;
       if (!items.some((item) => item.id === selectedManagementAreaId)) selectedManagementAreaId = items[0]?.id || '';
-      const areas = items.map((item) => {const inactive=typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+item.id);return `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}${inactive?' is-inactive':''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}"${inactive?' aria-description="Pasta inativa. Navegação disponível; atividades bloqueadas."':''}>${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}${inactive?' · Pasta inativa':''}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;}).join('');
+      const areas = items.map((item) => {const inactive=typeof operationalFolderInactive==='function'&&operationalFolderInactive('gestao/'+item.id);return `<button class="area-card management-area-card${item.id === selectedManagementAreaId ? ' is-selected' : ''}" type="button" data-management-area="${escapeHtml(item.id)}" aria-pressed="${item.id === selectedManagementAreaId}"${inactive?' data-folder-inactive':''}>${managementAreaIcon(item)}<span><strong>${escapeHtml(item.name || item.title || item.id)}</strong><small>${escapeHtml(item.description || '')}</small></span><span class="arrow" aria-hidden="true">›</span></button>`;}).join('');
       const existingAreaIds = new Set(items.map((item) => item.id));
       const seedPanel = can('managementManage') && MANAGEMENT_AREA_SEED.some((area) => !existingAreaIds.has(area.id))
         ? `<section class="management-seed-panel"><p>Catálogo-base V1: 12 nomes confirmados. Criar apenas áreas ausentes; gestores e membros ficam sem atribuição até configuração autorizada.</p><button class="secondary-button" id="seed-management-areas" type="button">Completar catálogo de Gestão</button></section>`
         : '';
-      content.innerHTML = `<div id="management-evaluation-access"></div>${seedPanel}${areas ? `<div class="area-grid">${areas}</div><p class="area-footer">ESG e Inovação permanecem desativadas até existir conteúdo aprovado.</p><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2><div data-management-folder-notice></div></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div><footer class="management-area-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit" data-management-area-back autofocus><svg class="document-action-icon" data-document-icon="back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 6-6 6 6 6M9 12h12"/></svg><span>VOLTAR</span></button></form></footer></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
+      content.innerHTML = `<div id="management-evaluation-access"></div>${seedPanel}${areas ? `<div class="area-grid">${areas}</div><dialog class="management-area-dialog" id="management-area-dialog" aria-labelledby="management-area-dialog-title"><header class="management-area-dialog__header"><h2 id="management-area-dialog-title">ÁREA DE GESTÃO</h2></header><div class="management-area-dialog__body">${actionForm('management')}<section class="management-area-detail" id="management-area-detail" aria-live="polite"><p class="loading">Selecione uma área.</p></section></div><footer class="management-area-dialog__footer"><form method="dialog"><button class="secondary-button" type="submit" data-management-area-back autofocus><svg class="document-action-icon" data-document-icon="back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 6-6 6 6 6M9 12h12"/></svg><span>VOLTAR</span></button></form></footer></dialog>` : can('peopleManage') || can('usersManage') ? '<p class="empty-state">Use os atalhos de Gestão acima para acessar Pessoas e Administração.</p>' : '<p class="empty-state">As áreas de Gestão serão carregadas da configuração do Firestore.</p>'}`;
       const evaluationHost = content.querySelector('#management-evaluation-access');
       const requestUid = session.user?.uid;
       const generation = evaluationModuleGeneration;
@@ -3674,9 +3673,9 @@ async function loadManagementAreaActivities(area) {
   const requestUid = session.user?.uid;
   if (!detail) return;
   if (!area) { detail.innerHTML = '<p class="empty-state">Selecione uma área.</p>'; return; }
-  if(typeof operationalFolderNotice==='function'){
-    const status=detail.closest?.('.management-area-dialog')?.querySelector('[data-management-folder-notice]');
-    if(status)status.innerHTML=operationalFolderNotice('gestao/'+area.id);
+  if(typeof operationalFolderInactive==='function'){
+    const title=detail.closest?.('.management-area-dialog')?.querySelector('#management-area-dialog-title');
+    title?.toggleAttribute('data-folder-inactive',operationalFolderInactive('gestao/'+area.id));
   }
   const activityForm=detail.closest?.('.management-area-dialog')?.querySelector('[data-module-form]');
   if(activityForm)activityForm.hidden=typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+area.id);
@@ -3690,6 +3689,7 @@ async function loadManagementAreaActivities(area) {
         user:session.user,profile:session.profile,
         activitySelection:session.user.emailVerified===true&&session.accountMode!=='team'&&can('admin')?activitySelectionFor(session.user,'TRAINING'):null,
         initialTrainingId:required==='required'&&trainingId?decodeURIComponent(trainingId):'',
+        isAreaInactive:()=>typeof operationalFolderInactive==='function'&&operationalFolderInactive('gestao/'+area.id),
         onActivityExit:()=>{if(typeof obligationBanner!=='undefined')obligationBanner?.setActivityActive(null);}
       });
     } catch (error) {
@@ -3706,7 +3706,7 @@ async function loadManagementAreaActivities(area) {
     return;
   }
   if(typeof operationalContentAllowed==='function'&&!operationalContentAllowed('gestao/'+area.id)){
-    detail.innerHTML=renderOperationalFolderDirectory('gestao/'+area.id);
+    detail.innerHTML=renderOperationalFolderDirectory('gestao/'+area.id,{heading:false,inactive:operationalFolderInactive});
     const form=detail.closest('.management-area-dialog')?.querySelector('[data-module-form]');
     if(form)form.hidden=true;
     return;
@@ -4117,7 +4117,7 @@ async function loadManagementAreaActivities(area) {
 
   if(deployment.target==='FB'&&area.id==='area-gestao-de-pessoas'&&loadId===managementActivityLoad&&detail.isConnected&&session.user?.uid===requestUid){
     let previousCleanup=cleanupDocumentTraining;
-    const entryCleanup=mountVaccinationEntry(detail,{manualOnly:true,user:session.user,profile:session.profile,folderAllowed:operationalContentAllowed,
+    const entryCleanup=mountVaccinationEntry(detail,{manualOnly:true,user:session.user,profile:session.profile,folderAllowed:operationalContentAllowed,folderInactive:operationalFolderInactive,
       valid:()=>loadId===managementActivityLoad&&detail.isConnected&&session.user?.uid===requestUid&&session.status==='signed-in',
       onOpen:()=>{previousCleanup?.();previousCleanup=null;},onBack:()=>{void loadManagementAreaActivities(area);}});
     const cleanup=()=>{previousCleanup?.();previousCleanup=null;entryCleanup();};
@@ -5565,7 +5565,7 @@ async function render() {
       }
       if(!isCurrent())return;
       const host=document.querySelector('#fi-control-content');
-      const folderId=typeof operationalFolderNotice==='function'&&!searchOnly
+      const folderId=!searchOnly
         ? Object.keys(operationalFolders).find(id=>encodeURIComponent(id)===location.hash.split('/')[2])
         : undefined;
       if(!isCurrent())return;
@@ -5584,7 +5584,7 @@ async function render() {
     return;
   }
   if(!authLimited&&typeof operationalFolderRouteAllowed==='function'&&!operationalFolderRouteAllowed(requestedRoute)){
-    app.innerHTML='<main class="main-content"><p role="status">Esta pasta está desativada ou aguarda confirmação do servidor.</p><button type="button" class="secondary-button" data-folder-return>VOLTAR</button></main>';
+    app.innerHTML='<main class="main-content"><button type="button" class="secondary-button" data-folder-return>VOLTAR</button></main>';
     app.querySelector('[data-folder-return]')?.addEventListener('click',()=>navigate('home'));
     return;
   }
@@ -5652,7 +5652,7 @@ async function render() {
   }
   if(!authLimited&&typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(requestedRoute)&&requestedRoute!=='functional'){
     const folder=operationalRouteFolder(requestedRoute);
-    app.innerHTML='<main class="main-content">'+operationalFolderNotice(folder)+renderOperationalFolderDirectory(folder,{allowed:id=>id!=='operacao/checklist/desempenho'||canOpenRestrictedModule('fg-performance')})+'<button type="button" class="secondary-button" data-folder-return>VOLTAR</button></main>';
+    app.innerHTML='<main class="main-content">'+renderOperationalFolderDirectory(folder,{inactive:operationalFolderInactive,allowed:id=>id!=='operacao/checklist/desempenho'||canOpenRestrictedModule('fg-performance')})+'<button type="button" class="secondary-button" data-folder-return>VOLTAR</button></main>';
     app.querySelector('[data-folder-return]')?.addEventListener('click',()=>navigate('home'));
     return;
   }
@@ -5666,10 +5666,8 @@ async function render() {
     bindChecklistQrLauncher();
     if(!session.checklistProfileLoaded)void loadOwnChecklistModuleProfile(session.user?.uid);
   }
-  if(!authLimited&&typeof operationalFolderNotice==='function'){
-    const folder=operationalRouteFolder(requestedRoute);
-    const folderNotice=folder?operationalFolderNotice(folder):'';
-    if(folderNotice)app.querySelector('main')?.insertAdjacentHTML('afterbegin',folderNotice);
+  if(!authLimited&&typeof operationalFolderInactive==='function'&&operationalFolderInactive(operationalRouteFolder(requestedRoute))){
+    app.querySelector('main h1')?.setAttribute('data-folder-inactive','');
   }
   if(typeof syncHomeWelcomeMessage==='function')syncHomeWelcomeMessage();
   const profileReconnect=document.querySelector('[data-profile-reconnect]');

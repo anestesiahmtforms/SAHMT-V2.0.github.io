@@ -19,7 +19,7 @@ function message(error) {
   REGISTRATION_SCHEMA_CHANGED:'Reabra o cadastro para preencher a versão atual do formulário.',
   REGISTRATION_GROUP_UNAVAILABLE:'Seu vínculo institucional precisa ser conferido pelo administrador.',
   REGISTRATION_FORBIDDEN:'Seu acesso não está liberado.',
-  REGISTRATION_FOLDER_DISABLED:'O Cadastro Profissional está desativado para este perfil. Solicite a liberação à administração.',
+  REGISTRATION_FOLDER_DISABLED:'O Cadastro Profissional está indisponível.',
   REGDRIVE_FORBIDDEN:'O envio de comprovantes depende do vínculo institucional da conta. Solicite a conferência à administração.',
   REGDRIVE_AUTH_REQUIRED:'O armazenamento no Drive está indisponível. Solicite a verificação à administração.',
   REGDRIVE_NOT_CONFIGURED:'O armazenamento no Drive está indisponível. Solicite a verificação à administração.',

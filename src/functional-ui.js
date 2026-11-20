@@ -10,7 +10,7 @@ import {googleProjectAuth,waitForGoogleProjectSession} from './google-project-au
 import {refreshFunctionalOverview,readFunctionalTeamOverview} from './functional-client.js';
 import {listFunctionalTeam} from './functional-access.js';
 import {renderOperationalFolderDirectory} from './operational-folder-directory.js';
-import {operationalContentAllowed,operationalFolderNotice} from './operational-folder-runtime.js';
+import {operationalContentAllowed,operationalFolderInactive} from './operational-folder-runtime.js';
 import {loadFunctionalResult,renderFunctionalResult,resultYears} from './functional-results.js';
 
 let activeFunctionalMountCleanup = null;
@@ -56,11 +56,10 @@ function sourceCards(sources) {
   const states = {READY:'Dados sincronizados', PREPARING:'Em preparação', SESSION_REQUIRED:'Autenticação necessária', UNAVAILABLE:'Temporariamente indisponível'};
   return '<div class="functional-source-grid">' + keys.map(key => {
     const value = sources[key]??{state:'PREPARING'};
-    const available=operationalContentAllowed(sourceFolders[key]);
-    return '<div class="functional-source"><button class="functional-tile'+(available?'':' functional-tile--inactive')+'" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail"'+(!available?' aria-description="Pasta inativa. A navegação continua disponível; atividades bloqueadas."':'')+'>'
-      + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong>'+(!available?'<small>Pasta inativa ou indisponível</small>':key==='performance'?'<small>'+escapeHtml(states[value.state]||'Status não informado')+'</small>':'')+'</span>'
-      + '<span class="functional-chevron" aria-hidden="true">›</span></button>'
-      + operationalFolderNotice(sourceFolders[key])+'</div>';
+    const inactive=operationalFolderInactive(sourceFolders[key]);
+    return '<div class="functional-source"><button class="functional-tile" type="button" data-fk-source="'+key+'" aria-haspopup="dialog" aria-controls="fk-detail"'+(inactive?' data-folder-inactive':'')+'>'
+      + sourceIcon(key) + '<span><strong>'+escapeHtml(sourceLabels[key])+'</strong>'+(key==='performance'&&operationalContentAllowed(sourceFolders[key])?'<small>'+escapeHtml(states[value.state]||'Status não informado')+'</small>':'')+'</span>'
+      + '<span class="functional-chevron" aria-hidden="true">›</span></button></div>';
   }).join('') + '</div>';
 }
 
@@ -120,8 +119,9 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   };
   activeFunctionalMountCleanup?.();
   activeFunctionalMountCleanup = cleanup;
+  header?.querySelector('#functional-title')?.toggleAttribute?.('data-folder-inactive',operationalFolderInactive('funcional'));
   if(!operationalContentAllowed('funcional')){
-    paint(operationalFolderNotice('funcional')+renderOperationalFolderDirectory('funcional'));
+    paint(renderOperationalFolderDirectory('funcional',{inactive:operationalFolderInactive,heading:!header}));
     return cleanup;
   }
   paint('<section class="functional-page"><p role="status">Confirmando o acesso individual em FK…</p></section>');
@@ -249,7 +249,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
 
   function renderSourceDetail(){
     if(!operationalContentAllowed(sourceFolders[openSource])){
-      detailDialog.querySelector('[data-fk-detail-body]').innerHTML=operationalFolderNotice(sourceFolders[openSource])+renderOperationalFolderDirectory(sourceFolders[openSource]);
+      detailDialog.querySelector('[data-fk-detail-body]').innerHTML=renderOperationalFolderDirectory(sourceFolders[openSource],{inactive:operationalFolderInactive,heading:false});
       return;
     }
     const value=visibleSources[openSource]??{state:'PREPARING'};
@@ -268,9 +268,11 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       const result=await loadFunctionalResult({key,year,uid,subjectUid,administrator,faAuth,isCurrent:current});
       if(current())output.innerHTML=renderFunctionalResult(key,result);
     }catch(error){
-      if(current())output.textContent=error?.code?.endsWith('_FOLDER_DISABLED')
-        ?'A consulta está desativada no Controle de Pastas da área de origem.'
-        :'Não foi possível confirmar o resultado agora. Feche e reabra o painel para tentar novamente.';
+      if(!current())return;
+      if(error?.code?.endsWith('_FOLDER_DISABLED')){
+        detailDialog.querySelector('#fk-detail-title').setAttribute('data-folder-inactive','');
+        output.textContent='';
+      }else output.textContent='Não foi possível confirmar o resultado agora. Feche e reabra o painel para tentar novamente.';
     }
   }
 
@@ -375,7 +377,9 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     const doseAdmin=event.target.closest('[data-fk-dose-admin]');
     if(doseAdmin&&administrator&&ownSession()&&detailDialog&&!detailDialog.open&&hasSource('dosimetry')){
       openSource='dosimetry';
-      detailDialog.querySelector('#fk-detail-title').textContent='Atualizar histórico de dosimetria';
+      const title=detailDialog.querySelector('#fk-detail-title');
+      title.textContent='Atualizar histórico de dosimetria';
+      title.removeAttribute('data-folder-inactive');
       detailDialog.querySelector('[data-fk-detail-icon]').innerHTML=sourceIcon('dosimetry');
       detailDialog.querySelector('[data-fk-detail-body]').innerHTML='<div data-fk-dose-host></div>';
       detailDialog.showModal();
@@ -390,10 +394,12 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       const key = sourceButton.dataset.fkSource;
       if(!detailDialog||detailDialog.open||!hasSource(key))return;
       openSource=key;
-      detailDialog.querySelector('#fk-detail-title').textContent=sourceLabels[key];
+      const title=detailDialog.querySelector('#fk-detail-title');
+      title.textContent=sourceLabels[key];
+      title.toggleAttribute?.('data-folder-inactive',operationalFolderInactive(sourceFolders[key]));
       detailDialog.querySelector('[data-fk-detail-icon]').innerHTML=sourceIcon(key);
       if(!operationalContentAllowed(sourceFolders[key])){
-        detailDialog.querySelector('[data-fk-detail-body]').innerHTML=operationalFolderNotice(sourceFolders[key])+renderOperationalFolderDirectory(sourceFolders[key]);
+        detailDialog.querySelector('[data-fk-detail-body]').innerHTML=renderOperationalFolderDirectory(sourceFolders[key],{inactive:operationalFolderInactive,heading:false});
         detailDialog.showModal();
         return;
       }

@@ -1,7 +1,7 @@
 import {deployment} from './deployment-context.js';
-import {initialOperationalFolderPolicy,operationalFolderAllowed,operationalRouteFolder,operationalFolders} from './operational-folders.js';
+import {initialOperationalFolderPolicy,operationalFolderAllowed,operationalRouteFolder} from './operational-folders.js';
 import {governanceSessionReady} from './governance-access.js';
-import {functionalFolderContentAllowed,functionalFolderNotice,setFunctionalFolderSession,watchFunctionalFolderPolicy} from './functional-folder-policy.js';
+import {functionalFolderContentAllowed,functionalFolderInactive,setFunctionalFolderSession,watchFunctionalFolderPolicy} from './functional-folder-policy.js';
 
 // Folder availability is a permanent governance rule for FA and FB. Keeping it
 // behind a build flag silently re-enables every activity when CI omits that flag.
@@ -29,21 +29,13 @@ export function operationalContentAllowed(id) {
  if(id==='comunicacao'||id==='fi-control')return true;
  return !operationalFolderPolicyEnabled||administrator||operationalFolderAllowed(policy,id);
 }
-export function operationalFolderNotice(id) {
- if(typeof id==='string'&&(id==='funcional'||id.startsWith('funcional/')))return functionalFolderNotice(id);
- if(id==='comunicacao'||id==='fi-control')return '';
- if(!operationalFolderPolicyEnabled||!Object.hasOwn(operationalFolders,id))return '';
- if(!policy)return administrator?'':'<aside class="notice folder-inactive-notice" role="status">Atividades indisponíveis enquanto o servidor confirma a situação da pasta. A navegação continua disponível.</aside>';
- const blocker=id.split('/').map((_,index,parts)=>parts.slice(0,index+1).join('/')).find(folder=>policy.disabled.includes(folder));
- if(!blocker)return '';
- const label=blocker===id?(administrator?'Pasta inativa para os demais usuários.':'Pasta inativa.'):'Subpasta inativa por causa da pasta principal.';
- if(!administrator)return '<aside class="notice folder-inactive-notice" role="status"><strong>'+label+'</strong> Você pode navegar pelas subpastas. As atividades permanecem bloqueadas até a reativação.</aside>';
- return '<aside class="notice folder-inactive-notice"><strong>'+label+'</strong> <a href="'+(deployment.target==='FB'?deployment.faBase:'')+'#/fi-control/'+
-  encodeURIComponent(blocker)+'">Reativar no Controle de Pastas</a></aside>';
+export function operationalFolderInactive(id) {
+ if(typeof id==='string'&&(id==='funcional'||id.startsWith('funcional/')))return functionalFolderInactive(id);
+ return Boolean(operationalFolderPolicyEnabled&&policy&&typeof id==='string'&&id!=='comunicacao'&&id!=='fi-control'&&!operationalFolderAllowed(policy,id));
 }
 
 export function assertOperationalContentAllowed(id) {
- if(!operationalContentAllowed(id))throw Object.assign(Error('Área desativada ou sem confirmação do servidor.'),{code:'FOLDER_DISABLED'});
+ if(!operationalContentAllowed(id))throw Object.assign(Error('Esta atividade está indisponível.'),{code:'FOLDER_DISABLED'});
 }
 export function subscribeOperationalFolderPolicy(subscriber) {
  subscribers.add(subscriber);

@@ -25,6 +25,7 @@ html:has(.fi-folder-dialog[open]){overflow:hidden}
 .fi-folder-footer{display:flex;justify-content:flex-end;padding:10px clamp(12px,3vw,22px) max(10px,env(safe-area-inset-bottom));border-top:1px solid #cedde0;background:#fff}
 .fi-control .fi-folder-footer button{min-width:128px;background:#164f60;color:white;border-color:#164f60;font-weight:750}
 .fi-folder-tools{padding:14px;border:1px solid #d4e3e4;border-radius:14px;background:#fff}
+.fi-folder-description:empty{display:none}
 .fi-folder-description{margin:0 0 10px;font-size:.88rem;line-height:1.45;color:#35555f}
 .fi-folder-actions{display:flex;flex-wrap:wrap;gap:8px}
 .fi-control .fi-folder-actions button{padding:7px 11px;font-size:.83rem;font-weight:700}
@@ -48,20 +49,16 @@ html:has(.fi-folder-dialog[open]){overflow:hidden}
 .fi-folder-group summary strong{flex:1;min-width:0;font-size:.9rem;overflow-wrap:anywhere}
 .fi-folder-group summary span{flex:none;color:#44636b;font-size:.75rem}
 .fi-folder-group ul,.fi-folder-standalone{margin:0;padding:0;list-style:none}
-.fi-folder-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,148px) auto;gap:8px;align-items:center;padding:8px 12px}
+.fi-folder-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 12px}
 .fi-folder-group .fi-folder-row{border-top:1px solid #e0eaeb}
 .fi-folder-name strong,.fi-folder-name small{display:block;overflow-wrap:anywhere}
 .fi-folder-name strong{font-size:.86rem}
 .fi-folder-name small{margin-top:3px;color:#4a6770;font-size:.72rem;line-height:1.35}
-.fi-folder-state{justify-self:start;padding:4px 8px;border-radius:8px;font-size:.72rem;font-weight:750;line-height:1.25;background:#edf1f2;color:#42535a}
-.fi-folder-state[data-state=active]{background:#e0f3ea;color:#175940}
-.fi-folder-state[data-state=inherited]{background:#fff0d7;color:#70470e}
 .fi-control .fi-folder-row button{min-width:86px;padding:6px 9px;font-size:.78rem;font-weight:750}
 .fi-control .fi-folder-row button[data-enable=true]{border-color:#8fc9ac;background:#e5f7ee;color:#175940}
 @media(max-width:520px){
  .fi-folder-dialog{width:calc(100% - 14px);height:calc(100dvh - 14px);border-radius:15px}
  .fi-folder-row{grid-template-columns:minmax(0,1fr) auto;gap:4px 8px}
- .fi-folder-row button{grid-column:2;grid-row:1 / span 2}
  .fi-control .fi-folder-footer button{width:100%}
 }
 

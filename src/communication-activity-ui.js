@@ -7,7 +7,7 @@ const reasons = {FORBIDDEN:'Sem permissão para esta atividade',NOT_AUTHORIZED:'
 const needsGoogle=error=>['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH','COMM_SOURCE_SESSION_INVALID','COMM_SOURCE_IDENTITY_MISMATCH'].includes(error?.code);
 const refreshBeforeSending=Object.freeze({
   COMM_ACTIVITY_CHANGED:'A atividade foi atualizada. Atualize a lista e confira os destinatários novamente.',
-  COMM_ACTIVITY_UNAVAILABLE:'A atividade deixou de estar disponível. Atualize a lista e confira se a pasta está ativa.',
+  COMM_ACTIVITY_UNAVAILABLE:'A atividade deixou de estar disponível. Atualize a lista.',
   COMM_INVALID_ACTIVITY:'Confira a atividade e a nota mínima. Atualize a lista se a atividade tiver mudado.'
 });
 const reviewBeforeSending=Object.freeze({
@@ -144,7 +144,7 @@ export function openActivityComposer({root,client,render,status,report,isCurrent
         ? 'Link incluído. Não foi possível confirmar a atividade na origem. Atualize a lista para continuar.'
         : 'Link incluído. Libere a atividade no módulo de origem e atualize a lista antes de enviar.',true);
       else if(empty&&partial)status('Não foi possível consultar todas as origens. Atualize a lista para tentar novamente.',true);
-      else if(empty)status('Nenhuma atividade liberada para convocação. Verifique se a pasta está ativa e atualize a lista.');
+      else if(empty)status('Nenhuma atividade liberada para convocação. Atualize a lista para conferir.');
       else if(partial)status('Uma das origens está indisponível. Você pode usar as atividades carregadas.',true);
       else status('');
     }catch(error){if(current()&&ticket===catalogTicket){catalog=[];f.activity.innerHTML='<option value="">Atividades indisponíveis</option>';form.querySelector('[data-reload-activities]').hidden=false;form.querySelector('[data-recover-activity]').hidden=!needsGoogle(error);report(error,'Não foi possível consultar as atividades. Confira os módulos de origem e atualize a lista.');}}

@@ -24,7 +24,7 @@ export function mountHtmlTrainingPerformance(root,{user,container=root,isCurrent
  async function load(uid=subject){
   subject=uid;payload=null;const ticket=++seq;
   if(watchesPolicy&&(!policy||policy.disabled.length)){
-   if(valid())root.innerHTML='<h4>Resultados dos treinamentos</h4><p role="status">A pontuação geral fica indisponível enquanto houver pastas desativadas ou sem confirmação do servidor.</p>';
+   if(valid())root.innerHTML='<h4>Resultados dos treinamentos</h4>';
    return;
   }
   if(valid())root.innerHTML='<h4>Resultados dos treinamentos</h4><p role="status">Atualizando resultados…</p>';

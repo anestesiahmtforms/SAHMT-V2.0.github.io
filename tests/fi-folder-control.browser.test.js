@@ -72,7 +72,7 @@ test('the FI panel publishes independent parent and child settings through the W
   assert.equal(await center.locator('.fi-control-center-footer button').innerText(),'Voltar');
   assert.equal(await center.locator('.fi-control-navigation [data-fi-nav="management-hub"]').count(),0);
   const buttons=center.locator('.fi-control-navigation > button');
-  assert.deepEqual(await buttons.allTextContents(),['Pessoas','Administração','Controle de atualizações','Controle de pastas']);
+  assert.deepEqual(await buttons.allTextContents(),['Pessoas','Administração','Controle de atualizações','Controle de pastas','Pastas do Funcional FK']);
   for(const width of [320,390,1024]){
    await page.setViewportSize({width,height:680});
    const boxes=await Promise.all((await buttons.all()).map(button=>button.boundingBox()));
@@ -81,7 +81,7 @@ test('the FI panel publishes independent parent and child settings through the W
    assert.equal(boxes[0].y,boxes[1].y);assert.equal(boxes[2].y,boxes[3].y);
   }
   await page.setViewportSize({width:390,height:680});
-  await buttons.last().click();
+  await center.getByRole('button',{name:'Controle de pastas',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Controle de pastas'});
   await dialog.waitFor();
   const clickAndWait=async selector=>{
@@ -89,6 +89,7 @@ test('the FI panel publishes independent parent and child settings through the W
    await page.getByText('Atualização confirmada pelos serviços.',{exact:true}).waitFor();
   };
   await clickAndWait('[data-operational-folder-initialize]');
+  const initializedFolders=new Map([...records].map(([station,record])=>[station,[...record.value.disabled]]));
   const filter=dialog.getByRole('searchbox',{name:'Buscar pasta'});
   await filter.fill('ferias');
   assert.equal(await dialog.getByRole('button',{name:'Desativar Férias da escala diária',exact:true}).count(),1);
@@ -104,21 +105,23 @@ test('the FI panel publishes independent parent and child settings through the W
   const child='operacao/escala/ferias',parent='operacao/escala',sibling='operacao/eventos';
   const toggle=id=>`[data-operational-folder="${id}"]`;
   await clickAndWait(toggle(parent));
-  assert.equal(await dialog.getByText('Atividades bloqueadas pela pasta principal',{exact:true}).count(),1);
+  assert.equal(await dialog.getByText('Atividades bloqueadas pela pasta principal',{exact:true}).count(),0);
+  assert.equal(await dialog.locator('.fi-folder-row[data-folder-inactive]').filter({has:page.locator(toggle(child))}).count(),1);
   assert.equal(await page.locator(toggle(child)).textContent(),'Ativar');
   await clickAndWait(toggle(child));
-  for(const record of records.values())assert.deepEqual(record.value.disabled,[]);
+  for(const [station,record] of records)assert.deepEqual(record.value.disabled,initializedFolders.get(station));
   assert.equal(await page.locator(toggle(child)).textContent(),'Desativar');
   await clickAndWait(toggle(child));
   await clickAndWait(toggle(parent));
   await clickAndWait(toggle(parent));
-  for(const record of records.values())assert.deepEqual(record.value.disabled,[child]);
-  assert.equal(records.size,10);
+  for(const [station,record] of records)assert.deepEqual(record.value.disabled,[...initializedFolders.get(station),child].sort());
+  assert.equal(records.size,initializedFolders.size);
+  assert.equal(records.has('FK'),false);
   assert.equal(await page.locator(toggle(sibling)).textContent(),'Desativar');
   actor={uid:'member',profile:{active:true,access:true}};
   const status=await page.evaluate(()=>window.command('folders.publish',{id:'operacao/escala/ferias',enabled:true,revision:6}).catch(error=>error.status));
   assert.equal(status,403);
-  assert.deepEqual(records.get('FA').value.disabled,[child]);
+  assert.deepEqual(records.get('FA').value.disabled,[...initializedFolders.get('FA'),child].sort());
   await footer.click();
   assert.equal(await page.evaluate(()=>window.destination),'management-hub');
   assert.equal(await page.locator('dialog[open]').count(),0);

@@ -1520,9 +1520,6 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .management-area-dialog::backdrop{background:#041c30c9;backdrop-filter:blur(3px)}
 .management-area-dialog__header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:4px 2px 9px;border-bottom:1px solid #c7d9e1}
 .management-area-dialog__header h2{margin:0;font-size:clamp(.88rem,3.4vw,1.1rem);letter-spacing:.04em}
-.management-area-dialog__header:has(.folder-inactive-notice){display:grid;grid-template-columns:minmax(0,1fr);align-items:start}
-.management-area-dialog__header [data-management-folder-notice]{min-width:0;width:100%}
-.management-area-dialog__header .folder-inactive-notice{display:block;width:100%;box-sizing:border-box;overflow-wrap:break-word}
 .management-area-dialog__header form{flex:0 0 auto;margin:0}
 .management-area-dialog__header button{min-height:40px;padding:6px 10px}
 .management-area-dialog__body{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
@@ -2694,8 +2691,11 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
 .schedule-siglas-grid .sigla-item .sigla-token.sigla-token--delay{border-color:#d69c98!important;background:linear-gradient(145deg,#fce8e6,#f0c4bf)!important;color:#7a322e!important;box-shadow:0 2px 0 #d8b1ad,0 5px 11px #854c471f!important;text-shadow:none}
 .sigla-token__delays{display:flex;justify-content:center;gap:.25em;line-height:1}.sigla-token__delay{font-size:.66em;font-weight:900}
 
-.folder-inactive-notice,.material-viewer-inactive,.document-inactive-label{background:#fff0c7;color:#583700;border-radius:8px;padding:.45rem .65rem}
-.folder-inactive-notice a{color:inherit;font-weight:700;text-decoration:underline}
+.material-viewer-inactive,.document-inactive-label{background:#fff0c7;color:#583700;border-radius:8px;padding:.45rem .65rem}
+[data-folder-inactive],.html-trainings button[data-folder-inactive]{background:#fff0c2!important;border-color:#c5a157!important;color:#50380f!important}
+[data-folder-inactive] :is(.arrow,.ht-folder-arrow,.management-hub-label,.ht-folder-copy,.ht-document-title){color:inherit!important}
+.ht-document-folder[data-folder-inactive] .ht-document-face{background:transparent!important}
+:is(h1,h2)[data-folder-inactive]{border-radius:10px;padding-inline:.55em}
 .document-inactive-label{display:inline-block;margin-inline-start:.45rem}
 .material-viewer-dialog--inactive[open]{grid-template-rows:auto minmax(0,1fr) auto}
 .material-viewer-inactive:not([hidden]){display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
@@ -2715,16 +2715,6 @@ button.evaluation-link.material-viewer-trigger{padding:0;border:0;background:tra
   font-size: .72em;
   overflow-wrap: anywhere;
 }
-.operational-folder-inactive>summary{opacity:.68;filter:saturate(.62);border-style:dashed;cursor:pointer}
-.operational-folder-inactive>summary small{margin-left:auto;padding:3px 7px;border:1px solid #bda66f;border-radius:999px;background:#fff8e6;color:#69542a;font-size:.62rem;font-weight:850;line-height:1.2;text-align:center}
-.operational-folder-inactive>summary:focus-visible{outline:3px solid #1762a1;outline-offset:-3px}
-.operational-folder-inactive>p[role=status]{margin:0;padding:9px 14px;color:#586b70;font-size:.8rem;line-height:1.35}
-.management-area-card.is-inactive{opacity:.68;filter:saturate(.62);border-style:dashed;cursor:pointer}
-.management-area-card.is-inactive:focus-visible{opacity:1;filter:none;outline:3px solid #1762a1;outline-offset:2px}
-.functional-tile--inactive{opacity:.68;filter:saturate(.62);border-style:dashed!important;cursor:pointer}
-.functional-tile--inactive:focus-visible{opacity:1;filter:none}
-.functional-tile--inactive small{color:#69542a!important}
-.management-hub-button--inactive{opacity:.68;filter:saturate(.62)}
 .app-shell--home .module-card>span:nth-of-type(1){grid-template-columns:minmax(0,1fr);min-width:0;overflow:hidden}
 .app-shell--home .module-card strong,.app-shell--home .module-card small{display:block;min-width:0;width:100%;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .app-shell--home .module-card strong{white-space:nowrap}

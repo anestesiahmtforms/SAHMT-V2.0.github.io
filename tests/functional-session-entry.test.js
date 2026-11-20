@@ -144,7 +144,7 @@ function ui({folderAllowed=()=>true,connected=true,fkState={status:'pending',cod
   getFunctionalAuth:()=>auth,getFunctionalFirestore:()=>({}),waitForGoogleProjectSession:async()=>connected,
   googleProjectAuth:{snapshot:()=>({targets:{FK:fkState}})},
   readFunctionalTeamOverview:readTeam,listFunctionalTeam:async()=>[{uid:'ana',name:'Ana'},{uid:'bia',name:'Bia'}],
-  refreshFunctionalOverview:refresh,operationalContentAllowed:folderAllowed,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
+  refreshFunctionalOverview:refresh,operationalContentAllowed:folderAllowed,operationalFolderInactive:id=>!folderAllowed(id),doc:(_db,...path)=>path.join('/'),
   getDocFromServer:async path=>{if(path.startsWith('functionalRecognition'))return {exists:()=>true,data:()=>({uid:person.uid,message:'Mensagem própria',teamJoinedOn:'2019-09-01'})};reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}},biosafetyManual:{state:'READY'}}})};}});
  vm.runInContext(source,context);
  return {root,shell,header,button,sources,status,owner,recognition,intro,topics,tenure,duration,topicsTitle,show,select,openPicker,choose,detail,detailBody,detailTitle,openSource,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++,onRetry:()=>retries++}),recovery:()=>recovery,retries:()=>retries,retryButton,changeFkUser:uid=>authChanged({uid})};
@@ -262,7 +262,7 @@ test('inactive Funcional keeps the nested directory visible without starting sou
  let refreshes=0;
  const f=ui({folderAllowed:()=>false,refresh:async()=>refreshes++});
  const cleanup=await f.run();
- assert.match(f.root.innerHTML,/<summary><span>Biossegurança<\/span>[\s\S]*<summary><span>Dosimetria<\/span>/);
+ assert.match(f.root.innerHTML,/<summary data-folder-inactive><span>Biossegurança<\/span>[\s\S]*<summary data-folder-inactive><span>Dosimetria<\/span>/);
  assert.match(f.root.innerHTML,/Pesquisas institucionais/);
  assert.doesNotMatch(f.root.innerHTML,/data-fk-dose-admin|iframe/);
  assert.equal(refreshes,0);
@@ -276,7 +276,8 @@ test('inactive functional subfolder opens its status without launching a result 
  assert.doesNotMatch(f.root.innerHTML,/data-fk-source="professionalRegistration"[^>]*disabled/);
  f.openSource('professionalRegistration');
  assert.equal(f.detail.open,true);
- assert.match(f.detailBody.innerHTML,/Cadastro profissional/);
+ assert.match(f.root.innerHTML,/data-fk-source="professionalRegistration"[^>]*data-folder-inactive/);
+ assert.equal(f.detailTitle.textContent,'Cadastro Profissional');
  assert.doesNotMatch(f.detailBody.innerHTML,/data-fk-result|Consultando/);
  cleanup();
 });

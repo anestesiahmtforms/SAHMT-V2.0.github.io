@@ -76,15 +76,18 @@ test('administrator opens documents behind disabled parents and keeps visibility
  const path=['Protocolos','Protocolos do SAHMT','Adultos','Via aérea'];
  const h=trainings({admin:true,path,disabled:[path.slice(0,1),path.slice(0,3)]});t.after(()=>h.controller());await tick();
  assert.match(h.root.innerHTML,/Ativar Protocolos/);
- assert.match(h.root.innerHTML,/Inativa para os demais usuários/);
+ assert.match(h.root.innerHTML,/data-folder-inactive/);
+ assert.doesNotMatch(h.root.innerHTML,/inativa para os demais usuários/i);
  for(let depth=1;depth<=path.length;depth++){
   h.click('folder',{folder:JSON.stringify(path.slice(0,depth))});await tick();
   if(depth===2)assert.match(h.root.innerHTML,/Ativar Adultos/);
  }
- assert.match(h.root.innerHTML,/Pasta inativa para os demais usuários/);
+ assert.match(h.root.innerHTML,/data-folder-inactive/);
+ assert.doesNotMatch(h.root.innerHTML,/inativa para os demais usuários/i);
  h.click('open',{id:'one'});await tick();await tick();
  assert.ok(h.calls.includes('CONTENT'));assert.match(h.frame.srcdoc,/<p>Texto<\/p>/);
- assert.match(h.root.innerHTML,/Pasta inativa para os demais usuários/);
+ assert.match(h.root.innerHTML,/data-folder-inactive/);
+ assert.doesNotMatch(h.root.innerHTML,/inativa para os demais usuários/i);
  assert.ok(!h.calls.includes('SET_FOLDER_ACCESS'));
 });
 

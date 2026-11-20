@@ -53,7 +53,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
   query=fold(filter.value);
   const pending=!!policy?.pending;
   description.textContent=pending?'Atualização pendente. Retome a atualização para confirmar a mudança nos serviços.':
-   policy?'Todos os usuários autorizados podem navegar pelas pastas e subpastas inativas. As atividades ficam bloqueadas até a reativação. Ativar uma subpasta libera o caminho até ela e mantém os outros ramos inativos.':'Aguardando a confirmação do servidor.';
+   policy?'':'Aguardando a confirmação do servidor.';
   initializeButton.hidden=policy?.revision!==0;
   lockGovernanceButton.hidden=!policy||policy.revision===0||!governanceFolderRoots.some(id=>operationalFolderAllowed(policy,id));
   resumeButton.hidden=!pending;
@@ -66,13 +66,10 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
    ? `<section class="fi-folder-services" aria-label="Estado dos serviços"><h3>Estado dos serviços</h3><ul>${stations.map(item=>`<li><strong>${item.station}</strong> <span>${stationLabels[item.state]}</span></li>`).join('')}</ul></section>` : '';
 
   const row=({id,title,parents})=>{
-   const ownActive=!policy.disabled?.includes(id);
    const effective=operationalFolderAllowed(policy,id);
-   const state=effective?'Atividades habilitadas':ownActive?'Atividades bloqueadas pela pasta principal':'Atividades bloqueadas';
    const action=effective?'Desativar':'Ativar';
-   return `<li class="fi-folder-row">
+   return `<li class="fi-folder-row"${effective?'':' data-folder-inactive'}>
     <div class="fi-folder-name"><strong>${title}</strong>${parents?`<small>${parents}</small>`:''}</div>
-    <span class="fi-folder-state" data-state="${effective?'active':ownActive?'inherited':'disabled'}">${state}</span>
    <button type="button" data-operational-folder="${id}" data-enable="${!effective}" aria-label="${action} ${title}" ${busy||pending||policy.revision===0?'disabled':''}>${action}</button>
    </li>`;
   };
@@ -83,9 +80,8 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
    if(!matches.length)return '';
    visible+=matches.length;
    if(folders.length===1)return `<ul class="fi-folder-standalone">${row(folders[0])}</ul>`;
-   const active=matches.filter(folder=>operationalFolderAllowed(policy,folder.id)).length;
    return `<details class="fi-folder-group" data-folder-group="${id}" ${query||openGroups.has(id)?'open':''}>
-    <summary><strong>${operationalFolders[id]}</strong><span>${active} de ${matches.length} com atividades habilitadas</span></summary>
+    <summary${operationalFolderAllowed(policy,id)?'':' data-folder-inactive'}><strong>${operationalFolders[id]}</strong></summary>
     <ul>${matches.map(row).join('')}</ul>
    </details>`;
   }).join(''):'';
@@ -128,7 +124,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
     return;
    }
    inspection=null;
-   message=result.pending?'Alguns serviços ainda não confirmaram. Use Retomar atualização.':initialize||lockGovernance?'Governança desativada para usuários comuns; o administrador mantém acesso e pode reativar cada pasta.':'Atualização confirmada pelos serviços.';
+   message=result.pending?'Alguns serviços ainda não confirmaram. Use Retomar atualização.':'Atualização confirmada pelos serviços.';
   }catch(error){message=error.code==='FOLDER_POLICY_CONFLICT'?'O controle mudou em outra sessão. Atualize a consulta e tente novamente.'
    :error.code==='FOLDER_POLICY_INPUT'?'A Central FI ainda não reconhece esta pasta. Atualize o Worker de controle antes de alterar o estado.'
    :'Não foi possível concluir a operação na Central FI.';}

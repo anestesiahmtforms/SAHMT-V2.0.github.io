@@ -70,12 +70,6 @@ export function watchFunctionalFolderPolicy(uid,onChange){
   });
  }).catch(()=>{if(current())reset();});
 }
-export function functionalFolderNotice(id){
- if(!functionalFolders[id])return '';
- if(!policy)return administrator?'':'<aside class="notice folder-inactive-notice" role="status">Atividades do Funcional FK indisponíveis enquanto o servidor confirma a situação. A navegação continua disponível.</aside>';
- const blocker=id.split('/').map((_,index,parts)=>parts.slice(0,index+1).join('/')).find(folder=>policy.disabled.includes(folder));
- if(!blocker)return '';
- const label=blocker===id?(administrator?'Pasta inativa para os demais usuários.':'Pasta inativa.'):'Subpasta inativa por causa da pasta principal.';
- if(!administrator)return '<aside class="notice folder-inactive-notice" role="status"><strong>'+label+'</strong> Você pode navegar pelas subpastas. As atividades permanecem bloqueadas até a reativação.</aside>';
- return '<aside class="notice folder-inactive-notice"><strong>'+label+'</strong> <a href="#/fi-control/'+encodeURIComponent(blocker)+'">Reativar no Controle de Pastas FK</a></aside>';
+export function functionalFolderInactive(id){
+ return Boolean(policy&&Object.hasOwn(functionalFolders,id)&&!functionalFolderAllowed(policy,id));
 }
