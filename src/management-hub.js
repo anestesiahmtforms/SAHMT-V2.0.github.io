@@ -28,7 +28,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  };
  const navigationOnly=['surveys','institutional','general','records','biosafety'];
  const panelAllowed=name=>profilePanelAllowed(name)||Boolean(surveyForPanel(name))||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(name)&&Object.hasOwn(panelFolders,name)&&!folderAllowed(panelFolders[name]));
- const itemNavigable=item=>itemAllowed(item)||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(item.panel||item.route)&&Object.hasOwn(panelFolders,item.panel||item.route)&&!panelFolderAllowed(item.panel||item.route));
+ const itemNavigable=item=>item.access==='groups'?access.groups===true:itemAllowed(item)||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(item.panel||item.route)&&Object.hasOwn(panelFolders,item.panel||item.route)&&!panelFolderAllowed(item.panel||item.route));
  const profilePanelAllowed=name=>biosafetyPanels.includes(name)?access.biosafety===true:teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
  let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2><div data-hub-activity-actions></div></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
@@ -90,6 +90,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   dialog.querySelector('[data-hub-heading-icon]').innerHTML=panel==='home'?'<img class="management-hub-diamond" src="'+assetBase+'assets/selo-qga-accredited-qmentum-diamond.png" alt="Diamond Qmentum" width="88" height="88" decoding="async">':icon(spec.icon);
   body.innerHTML=spec.items?'<div class="management-hub-grid">'+spec.items.map((item,index)=>{
    if(item.access==='functional'&&access.functional!==true)return '';
+   if(item.access==='groups'&&!itemNavigable(item))return '';
    if(item.access==='communication'&&!communicationAllowed)return '';
    if(item.access==='fiControl'&&access.fiControl!==true)return '';
    if(['surveys','institutional'].includes(panel)&&!itemNavigable(item))return '';

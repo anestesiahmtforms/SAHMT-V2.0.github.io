@@ -60,7 +60,7 @@ html:has(.fi-folder-dialog[open]){overflow:hidden}
 .fi-control .fi-governance-toggle[data-enable=false]{background:#f3f8ff;border-color:#7dacdb;color:#183c65}
 @media(min-width:680px){
  .fi-governance-navigation[data-folder-page=home] .fi-governance-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
- .fi-governance-navigation[data-folder-page=home] [data-folder-card=fi-control],
+ .fi-governance-navigation[data-folder-page=home] .fi-governance-card:has(.management-hub-button--wide),
  .fi-governance-navigation[data-folder-page=home] [data-folder-card=other]{grid-column:1/-1}
 }
 @media(max-width:360px){

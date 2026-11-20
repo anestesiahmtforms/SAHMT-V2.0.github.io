@@ -11,7 +11,7 @@ import {governanceIcon as icon,governancePanels as panels,governancePanelFolders
 
 function hub(access={},initialPanel='home',syncStatusElement=null,climateEnabled=false,folderAllowed=()=>true){
  const syncHost={append(element){this.child=element;}},handlers={},heading={focus(){},setAttribute(_name,value){this.folderState=value;}},headingIcon={innerHTML:''},body={innerHTML:'',scrollTop:0,addEventListener:(n,fn)=>handlers[n]=fn},back={addEventListener:(n,fn)=>handlers['back-'+n]=fn},dialog={dataset:{},querySelector:s=>s==='[data-comm-origin]'?null:s==='[data-hub-sync]'?syncHost:s==='[data-hub-body]'?body:s==='[data-hub-back]'?back:s==='#management-hub-title'?heading:s==='[data-hub-heading-icon]'?headingIcon:{},addEventListener(){},showModal(){}},root={querySelector:()=>dialog};
- const navigations=[],ctx=vm.createContext({icon,panels,panelFolders,generalPerformance,renderOperationalFolderDirectory,consolidatedPerformanceFolders:['desempenho/sahmt'],operationalContentAllowed:()=>true});vm.runInContext(readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/^export /gm,''),ctx);ctx.mountManagementHub(root,{access,initialPanel,syncStatusElement,climateEnabled,folderAllowed,onExit(){navigations.push('home');},onNavigate:route=>navigations.push(route)});return {dialog,body,handlers,navigations,heading,headingIcon,root,back,syncHost};
+ const navigations=[],ctx=vm.createContext({icon,panels,panelFolders,generalPerformance,renderOperationalFolderDirectory,consolidatedPerformanceFolders:['desempenho/sahmt'],operationalContentAllowed:()=>true});vm.runInContext(readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/^export /gm,''),ctx);ctx.mountManagementHub(root,{access,initialPanel,communicationAllowed:access.communication===true,syncStatusElement,climateEnabled,folderAllowed,onExit(){navigations.push('home');},onNavigate:route=>navigations.push(route)});return {dialog,body,handlers,navigations,heading,headingIcon,root,back,syncHost};
 }
 test('Climate and stress appear only in the restricted area for effective team members',()=>{
  const released=hub({institutionalSurveys:true,teamSurveys:true},'institutional',null,true);
@@ -83,7 +83,7 @@ test('FE performance is available only inside FE institutional surveys',()=>{
 });
 
 test('common users do not see performance and deep links cannot open paused subpanels',()=>{
- for(const initialPanel of ['home','records','indicators','results','surveys','institutional','climateForm','stressForm','vacations2027']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,4);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,4);}
+ for(const initialPanel of ['home','records','indicators','results','surveys','institutional','climateForm','stressForm','vacations2027']){const h=hub({},initialPanel);assert.equal(h.dialog.dataset.panel,'home');assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,3);assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,3);}
  const h=hub({groups:true,performance:true,records:true,results:true,surveys:true,qmentum:true});assert.doesNotMatch(h.body.innerHTML,/ disabled /);
 });
 test('Governança header uses the existing Diamond seal while concentrating performance inside Indicators',()=>{
@@ -106,7 +106,7 @@ test('Governance keeps the live synchronization control visible in its modal hea
  const h=hub({records:true},'home',syncStatusElement);
  assert.equal(h.syncHost.child,syncStatusElement);
  assert.match(h.root.innerHTML,/<header[^>]*>.*identity-card__user-row.*data-hub-sync.*<\/header>/);
- h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'2'}}):null}});
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:String(panels.home.items.findIndex(item=>item.panel==='records'))}}):null}});
  assert.equal(h.dialog.dataset.panel,'records');
  assert.equal(h.syncHost.child,syncStatusElement);
  syncStatusElement.innerHTML='<button class="sync-status-button--synced">✓</button>';
@@ -133,8 +133,8 @@ test('Governance opens for every approved identity without granting protected de
 
 test('schedule access opens its menu while other survey panels retain their previous gate',()=>{
  const h=hub({yearEndSchedule:true},'home');
- assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,3);
- h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'4'}}):null}});
+ assert.equal((h.body.innerHTML.match(/ disabled /g)||[]).length,2);
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:String(panels.home.items.findIndex(item=>item.panel==='surveys'))}}):null}});
  assert.equal(h.dialog.dataset.panel,'surveys');assert.match(h.body.innerHTML,/ACESSO RESTRITO/);
  assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,1);
  h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});
@@ -164,4 +164,19 @@ test('FE shows only surveys to common profiles and the other four entries to tea
  const restricted=hub({...publicAccess,surveys:true,epidemiological:true,yearEndSchedule:true,vacations2027:true},'institutional');
  assert.equal((restricted.body.innerHTML.match(/data-hub-item=/g)||[]).length,4);
  assert.doesNotMatch(restricted.body.innerHTML,/PESQUISA DE CLIMA/);
+});
+
+test('Governança orders the modules and hides Grupos de Gestão even when an ordinary member can browse inactive folders',()=>{
+ const permissions={institutionalSurveys:true,records:true,functional:true,results:true,inactiveFolderNavigation:true};
+ const admin=hub({...permissions,groups:true,communication:true,fiControl:true});
+ const common=hub(permissions,'home',null,false,id=>id!=='gestao');
+ const labels=view=>[...view.body.innerHTML.matchAll(/class="management-hub-label">([^<]+)/g)].map(match=>match[1]);
+ const first=['Enquetes e Consultas','Registros','FUNCIONAL','INDICADORES - SAHMT'];
+ assert.deepEqual(labels(admin),[...first,'Grupos de Gestão','CENTRAL DE COMUNICAÇÃO','CENTRAL ADMINISTRATIVA E IA']);
+ assert.deepEqual(labels(common),first);
+ const group=String(panels.home.items.findIndex(item=>item.route==='management'));
+ common.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?{dataset:{hubItem:group}}:null}});
+ admin.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?{dataset:{hubItem:group}}:null}});
+ assert.deepEqual(common.navigations,[]);
+ assert.deepEqual(admin.navigations,['management']);
 });

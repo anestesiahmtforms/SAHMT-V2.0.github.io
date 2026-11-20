@@ -16,13 +16,13 @@ const paths={
 export const governanceIcon=kind=>'<svg class="management-hub-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[kind]+'"></path></svg>';
 export const governancePanels={
  home:{title:'Governança',icon:'groups',items:[
-  {label:'FUNCIONAL',icon:'professional',route:'functional',access:'functional'},
-  {label:'Grupos de Gestão',icon:'groups',route:'management',access:'groups'},
-  {label:'Registros',icon:'records',panel:'records',access:'records'},
-  {label:'INDICADORES - SAHMT',icon:'results',panel:'results',access:'results'},
   {label:'Enquetes e Consultas',icon:'surveys',panel:'surveys',access:'surveys'},
-  {label:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',panel:'communication',access:'communication'},
-  {label:'CENTRAL ADMINISTRATIVA E IA',icon:'groups',route:'fi-control',access:'fiControl'}
+  {label:'Registros',icon:'records',panel:'records',access:'records'},
+  {label:'FUNCIONAL',icon:'professional',route:'functional',access:'functional'},
+  {label:'INDICADORES - SAHMT',icon:'results',panel:'results',access:'results'},
+  {label:'Grupos de Gestão',icon:'groups',route:'management',access:'groups',className:'management-hub-button--wide'},
+  {label:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',panel:'communication',access:'communication',className:'management-hub-button--wide'},
+  {label:'CENTRAL ADMINISTRATIVA E IA',icon:'groups',route:'fi-control',access:'fiControl',className:'management-hub-button--wide'}
  ]},
  communication:{title:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',parent:'home'},
  records:{title:'Registros',icon:'records',parent:'home',items:[
