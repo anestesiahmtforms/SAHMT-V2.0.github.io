@@ -39,10 +39,9 @@
 .app-shell--home .module-card strong{font-size:clamp(.81rem,3.1vw,1rem);letter-spacing:.035em;line-height:1.1;white-space:nowrap}
 .app-shell--home .module-card small{font-size:clamp(.58rem,2.2vw,.73rem);line-height:1.15;white-space:nowrap}
 .app-shell--home .module-card .arrow{flex-basis:28px;width:28px;height:28px;font-size:1.2rem}
-.app-shell--home .module-card[data-ecosystem-search]:disabled{opacity:1;filter:none;cursor:default}
-.app-shell--home .module-card[data-ecosystem-search]::before{background:linear-gradient(#9de5ef,#2787a5)}
-.app-shell--home .module-card[data-ecosystem-search] .module-icon{background:linear-gradient(145deg,#f5fdff,#dceff3)}
-@media(max-width:360px){.app-shell--home .module-card[data-ecosystem-search] strong{font-size:.69rem;letter-spacing:0}}
+.app-shell--home .module-card[data-route="occurrences"]::before{background:linear-gradient(#9de5ef,#2787a5)}
+.app-shell--home .module-card[data-route="occurrences"] .module-icon{background:linear-gradient(145deg,#f5fdff,#dceff3)}
+@media(max-width:360px){.app-shell--home .module-card[data-route="occurrences"] strong{font-size:.75rem;letter-spacing:0}}
 .app-shell--home>.app-footer{gap:6px;padding-bottom:max(6px,env(safe-area-inset-bottom));min-height:0}
 .app-shell--home>.app-footer .home-welcome{
   box-sizing:border-box;

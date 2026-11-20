@@ -2,7 +2,6 @@ const paths={
  groups:'M3 7h18v14H3zM7 7V3h10v4M7 12h10M7 16h7',
  performance:'m3 17 6-6 4 3 8-10M15 4h6v6M3 21h18',
  records:'M5 3h14v18H5zM9 7h6M9 11h6M9 15h6',
- occurrence:'M12 3 2 21h20L12 3ZM12 9v5M12 17v1',
  indicators:'M4 21V11h4v10M10 21V3h4v18M16 21V7h4v14',
  results:'M3 3v18h18M7 15l4-5 4 3 6-8',
  surveys:'M3 3h18v14H9l-6 4V3ZM7 7h10M7 11h6',
@@ -26,7 +25,6 @@ export const governancePanels={
  ]},
  communication:{title:'CENTRAL DE COMUNICAÇÃO',icon:'surveys',parent:'home'},
  records:{title:'Registros',icon:'records',parent:'home',items:[
-  {label:'Registros de Ocorrências',icon:'occurrence',route:'occurrences',access:'occurrences'},
   {label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'}
  ]},
  results:{title:'INDICADORES - SAHMT',icon:'results',parent:'home',message:'Os indicadores consolidados do SAHMT serão exibidos nesta área.'},

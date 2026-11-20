@@ -144,16 +144,19 @@ test('Etiquetas retains its HOME footer and original route',async()=>{
 });
 
 test('residents and substitutes can open Governance with access only to institutional surveys in FE',async()=>{for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','epidemiological'])assert.equal(access[key],false);assert.equal(access.institutionalSurveys,true);}});
-test('administrators outside the team retain Governance access with the epidemiological form restricted',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','occurrences','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);assert.equal(access.epidemiological,false);});
+test('administrators outside the team retain Governance access with the epidemiological form restricted',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);assert.equal(access.epidemiological,false);});
 
-test('ordinary and team-mode sessions reach published occurrences through Registros',async()=>{
+test('ordinary and team-mode sessions can open Ocorrências and return to Home',async()=>{
  for(const accountMode of [undefined,'team']){
   const session={...authorized(),accountMode};
   session.profile.role='anestesiologista';
-  const h=harness({target:'FA',route:'management-hub',session,appFeatures:{...DEFAULT_APP_FEATURES,occurrences:true}});
+  const h=harness({target:'FA',route:'occurrences',session,appFeatures:{...DEFAULT_APP_FEATURES,occurrences:true}});
   await h.render();
-  const access=h.mountOptions[0].access;
-  assert.equal(access.records,true);assert.equal(access.occurrences,true);assert.equal(access.groups,false);
+  const footer=h.app.querySelector('.occurrences-home-button');
+  assert.equal(footer.textContent,'HOME');
+  assert.equal(footer.dataset.route,'home');
+  for(const click of footer.listeners.click||[])await click();
+  assert.equal(h.ctx.location.hash,'#/home');
   assert.equal(h.ctx.hasOccurrencePermission(),true);
   assert.equal(session.profile.permissions.occurrencesWrite,undefined);
  }

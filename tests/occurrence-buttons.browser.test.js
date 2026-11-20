@@ -2,13 +2,13 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
  const stubs={
-  'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>[],listAudit:async()=>[],loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
+  'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>[],loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
    hospitalAccess:async()=>false,listFollowups:async({formId})=>({entries:formId==='F08'&&window.followupPublished?
     [{id:'gr-1',formId,origin:'hospital',hospitalNumber:'1',title:'Evento externo',occurredOn:'2026-11-20',description:'Relato completo aqui',classification:{},details:{}}]:[],next:null}),
    readAnalysis:async()=>null,saveAnalysis:async({values})=>{window.analysis=values;return true;}};}`,
   'outbox.js':`export async function enqueueOccurrenceSubmission(){throw Error('No writes in this fixture');}export async function listUnsettledOperations(){return [];}`
  };
- const fixture=`import {mountOccurrenceModule} from '/src/occurrences-ui.js';window.calls=0;window.hang=false;const uid='synthetic';window.dispose=mountOccurrenceModule(document.querySelector('#root'),{uid,displayName:'Teste',auth:{currentUser:{uid}},db:{},permissions:{occurrencesWrite:true},isCurrent:()=>true,followupAllowed:true});`;
+ const fixture=`import {mountOccurrenceModule} from '/src/occurrences-ui.js';window.calls=0;window.recentReads=0;window.hang=false;const uid='synthetic';window.dispose=mountOccurrenceModule(document.querySelector('#root'),{uid,displayName:'Teste',auth:{currentUser:{uid}},db:{},permissions:{occurrencesRead:true,occurrencesWrite:true},isCurrent:()=>true,followupAllowed:true});`;
  const server=await createServer({configFile:false,base:'/',cacheDir:'.local-preview/vite-occurrence-buttons-'+engine,
   plugins:[{name:'isolated-occurrence-buttons',enforce:'pre',load(id){const m=id.replaceAll('\\','/').match(/\/src\/([^/?]+\.js)$/);if(m&&stubs[m[1]])return stubs[m[1]];},configureServer(s){s.middlewares.use((req,res,next)=>{if(req.url==='/fixture.js'){res.setHeader('Content-Type','text/javascript');return res.end(fixture);}if(req.url!=='/fixture')return next();res.setHeader('Content-Type','text/html');res.end('<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="/src/styles.css"><div id="root"></div><script type="module" src="/fixture.js"></script>');});}}],server:{host:'127.0.0.1',port:0,hmr:false,watch:{ignored:['**/.local-preview/**']}}});
  let browser;
@@ -36,6 +36,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.getByText(/O catálogo não respondeu no prazo/).waitFor({timeout:12000});
   await page.evaluate(()=>window.hang=false);await page.locator('[data-occurrence-form="F10"]').click();await page.locator('[data-occurrence-dialog-host] dialog[open]').waitFor();
   await page.locator('[data-occurrence-cancel]').click();await page.locator('[data-occurrence-group-cancel]').click();
+  assert.equal(await page.getByRole('heading',{name:'Registros recentes'}).count(),0);
+  assert.equal(await page.evaluate(()=>window.recentReads),0);
   await page.getByRole('button',{name:'ACOMPANHAR REGISTROS'}).click();
   const followup=page.getByRole('dialog',{name:'OCORRÊNCIAS - SAHMT'});
   await followup.waitFor();

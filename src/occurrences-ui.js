@@ -124,8 +124,8 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(activeCatalogDialog!==dialog)return;
     catalogLoadSequence++;loading=false;activeCatalogDialog=null;
   };
-  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.read||access.audit?`<div class="occurrence-review">${access.read?'<section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>':''}${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}</div>`:''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
-  const host=root.querySelector('[data-occurrence-dialog-host]'), records=root.querySelector('[data-occurrence-records]');
+  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.audit?'<div class="occurrence-review"><section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section></div>':''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
+  const host=root.querySelector('[data-occurrence-dialog-host]');
   const moduleStatus=root.querySelector('.occurrence-module-status');
   if (followupAllowed) {
     const module=root.querySelector('.occurrence-module');
@@ -134,12 +134,6 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
       {repository,uid,isCurrent,groupsMarkup:occurrenceGroupMarkup,canInteract,canShowHospital,isAdministrator});
     module.querySelector('[data-occurrence-followup]').addEventListener('click',openFollowup);
   }
-  const loadRecords=async()=>{
-    if(!access.read||!records||!canInteract())return;
-    try {await ensureSession();const items=await repository.list({uid,pageSize:30}); if(!isCurrent())return;
-      records.innerHTML=items.length?`<ul class="record-list">${items.map(item=>`<li><strong>${escape(item.formTitle)}</strong><small>${escape(item.occurredOn||'—')} · ${escape(item.authorLabel||'Anônimo')}</small><p>${escape(item.occurrence||'Registro de não conformidade')}</p><small class="record-meta">Pontuação: ${escape(item.pointsStatus||'PENDING_VALIDATION')}</small></li>`).join('')}</ul>`:'<p class="empty-state">Nenhuma ocorrência disponível.</p>';
-    } catch {if(isCurrent())records.innerHTML='<p class="empty-state" role="status">Não foi possível carregar os registros autorizados.</p>';}
-  };
   const auditRoot=root.querySelector('[data-occurrence-audit]');
   const loadAudit=async()=>{
     if(!access.audit||!auditRoot||!canInteract())return;
@@ -207,7 +201,6 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
         moduleStatus.textContent=result.status==='already-saved'?`Este envio já havia sido confirmado.${reference}`:`Registro confirmado pelo servidor.${reference} Pontuação aguardando validação.`;
         status.textContent='';
         dialog.close('saved');formElement.reset();formElement.dataset.dirty='false';
-        await loadRecords();
       } catch(error) {if(isCurrent())status.textContent=occurrenceWriteFailureMessage(error);}
       finally {saving=false;if(saveButton.isConnected){saveButton.disabled=false;saveButton.textContent='SALVAR';}if(cancelButton?.isConnected)cancelButton.disabled=false;}
     });
@@ -219,6 +212,6 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(forms?.length===1&&access.write&&canInteract()){void open(forms[0],{direct:true});return;}
     showCategory(button.dataset.occurrenceGroup);
   }));
-  void loadRecords();void loadAudit();
+  void loadAudit();
   return ()=>{disposed=true;catalogLoadSequence++;loading=false;activeCatalogDialog=null;repository.clear();root.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());root.replaceChildren();};
 }

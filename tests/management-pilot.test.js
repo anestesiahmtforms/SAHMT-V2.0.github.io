@@ -89,10 +89,10 @@ test('common users do not see performance and deep links cannot open paused subp
 test('Governança header uses the existing Diamond seal while concentrating performance inside Indicators',()=>{
  const h=hub({groups:true,performance:true,records:true,results:true,surveys:true,qmentum:true});assert.equal(h.heading.textContent,'Governança');assert.ok(h.root.innerHTML.includes('</header><div class="management-hub-content-panel">'));assert.match(h.headingIcon.innerHTML,/img[^>]+selo-qga-accredited-qmentum-diamond\.png[^>]+alt="Diamond Qmentum"/);assert.equal((h.body.innerHTML.match(/data-hub-item=/g)||[]).length,4);
 });
-test('Registro de Indicadores opens QMENTUM directly and the old folder link returns to Registros',()=>{
- const h=hub({records:true,qmentum:true},'indicators');assert.equal(h.dialog.dataset.panel,'records');assert.match(h.body.innerHTML,/Registro de Indicadores/);assert.doesNotMatch(h.body.innerHTML,/Indicadores Qmentum/);
- h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'1'}}):null}});assert.deepEqual(h.navigations,['qmentum']);
- const paused=hub({records:true},'records');paused.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'1'}}):null}});assert.deepEqual(paused.navigations,[]);
+test('Registros in Governança only presents Registro de Indicadores and preserves QMENTUM access',()=>{
+ const h=hub({records:true,qmentum:true},'indicators');assert.equal(h.dialog.dataset.panel,'records');assert.match(h.body.innerHTML,/Registro de Indicadores/);assert.doesNotMatch(h.body.innerHTML,/Indicadores Qmentum|Registros de Ocorrências/);
+ h.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});assert.deepEqual(h.navigations,['qmentum']);
+ const paused=hub({records:true},'records');paused.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?({disabled:false,dataset:{hubItem:'0'}}):null}});assert.deepEqual(paused.navigations,[]);
 });
 
 test('Governance HOME exits to the main home; a subpanel returns one level first',()=>{

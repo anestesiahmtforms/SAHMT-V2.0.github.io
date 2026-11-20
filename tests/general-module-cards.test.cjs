@@ -216,12 +216,14 @@ test('Gestão reúne a navegação sem liberar o conteúdo dos grupos ou de Dese
   assert.deepEqual(session, before);
 });
 
-test('Ocorrências fica dentro de Gestão sem conceder novas permissões ao usuário', () => {
+test('Ocorrências aparece logo abaixo de Etiquetas na Home sem conceder novas permissões', () => {
   for (const session of [approved(), approved({notificationsRead: false, occurrencesWrite: false}, 'gestor')]) {
     const before = structuredClone(session);
     const h = harness({session, appFeatures: {occurrences: true, notifications: false}});
+    h.context.fhLabelsEnabled=true;
     const cards = h.ui.moduleCards();
-    assert.equal((cards.match(/data-route="occurrences"/g) || []).length, 0);
+    assert.deepEqual(visibleRoutes(h),['schedule','labels','occurrences','management-hub']);
+    assert.match(cardMarkup(h,'occurrences'),/<strong>REGISTROS DE OCORRÊNCIAS<\/strong>/);
     assert.match(cards, /data-route="management-hub"/);
     assert.equal(h.context.hasOccurrencePermission(), true);
     assert.equal(h.ui.can('occurrencesWrite'),false);
@@ -244,7 +246,7 @@ test('flags false nas permissões não ocultam os cartões comuns nem alteram o 
 test('administradores preservam os cartões sem duplicar os atalhos da Central FI em Gestão', () => {
   for (const session of [approved({}, 'administrador_app'), approved({admin: true})]) {
     const h = harness({session});
-    assert.deepEqual(visibleRoutes(h), ['checklist', 'schedule', 'labels', 'management-hub']);
+    assert.deepEqual(visibleRoutes(h), ['checklist', 'schedule', 'labels', 'occurrences', 'management-hub']);
     assert.doesNotMatch(cardMarkup(h, 'management-hub'), /disabled/);
     assert.equal(h.context.canOpenRestrictedModule('training'), true);
     assert.equal(h.ui.managementUtilityCards(), '');
@@ -338,12 +340,13 @@ for (const role of ['gestor', 'coordenador', 'anestesiologista']) {
     assert.deepEqual(h.navigations, ['home']);
   });
 }
-test('Informações permanece removido inclusive para administrador; o cartão de ocorrências depende da flag', () => {
+test('Informações permanece removido e o administrador mantém o acesso a Ocorrências', () => {
   const h = harness({session:approved({}, 'administrador_app')});
   assert.doesNotMatch(h.ui.managementUtilityCards(), /data-route="notifications"/);
   assert.doesNotMatch(h.ui.managementUtilityCards(), /<strong>INFORMAÇÕES<\/strong>/);
   assert.doesNotMatch(h.ui.moduleCards(), /data-route="notifications"/);
-  assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS|data-route="occurrences"/);
+  assert.doesNotMatch(h.ui.moduleCards(), /NOTIFICAÇÕES DE EVENTOS/);
+  assert.match(h.ui.moduleCards(), /data-route="occurrences"/);
 });
 
 test('pausa administrativa mantém os dois módulos inativos mesmo com permissões individuais', () => {

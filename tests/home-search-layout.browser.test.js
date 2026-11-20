@@ -5,7 +5,7 @@ import {chromium,webkit} from 'playwright';
 import {createYearEndStartupPreview} from './helpers/year-end-startup-preview.js';
 const safari=process.env.SAHMT_BROWSER_ENGINE==='webkit',engine=safari?webkit:chromium;
 
-test('Home keeps search last and shows every tile without clipping or scrolling',async()=>{
+test('Home shows Ocorrências directly below Etiquetas and fits all five cards without search',async()=>{
  const preview=await createYearEndStartupPreview({homeModulesEnabled:true});let browser;
  try{
   browser=await engine.launch({headless:true,...(process.env.CI||safari?{}:{channel:'msedge'})});
@@ -15,12 +15,13 @@ test('Home keeps search last and shows every tile without clipping or scrolling'
    await page.goto(preview.url+'?account='+account);
    await page.locator('.app-shell--home [data-route="schedule"]').waitFor();
    await page.locator('.startup-logo').waitFor({state:'detached'});
-   const search=page.getByRole('button',{name:/BUSCAR NO ECOSISTEMA/});
-   await search.waitFor();assert.equal(await search.isDisabled(),true);
-   assert.equal(await page.locator('.module-grid .module-card').count(),5);
-   assert.equal(await page.locator('.module-grid .module-card:last-child strong').textContent(),'BUSCAR NO ECOSISTEMA');
-   assert.match(await search.locator('img').getAttribute('src'),/home-search\.svg$/);
-   assert.equal(await search.locator('img').evaluate(image=>image.complete&&image.naturalWidth>0),true);
+   const occurrence=page.getByRole('button',{name:/REGISTROS DE OCORRÊNCIAS/});
+   await occurrence.waitFor();assert.equal(await occurrence.isEnabled(),true);
+   assert.equal(await page.getByRole('button',{name:/BUSCAR NO ECOSISTEMA/}).count(),0);
+   assert.deepEqual(await page.locator('.module-grid .module-card').evaluateAll(cards=>cards.map(card=>card.dataset.route)),
+    ['checklist','schedule','labels','occurrences','management-hub']);
+   assert.match(await occurrence.locator('img').getAttribute('src'),/home-occurrences\.svg$/);
+   await occurrence.locator('img').evaluate(image=>image.decode());
    assert.ok(await page.locator('.home-welcome').evaluate(element=>parseFloat(getComputedStyle(element).borderTopWidth)>=2));
    for(const viewport of [{width:320,height:568},{width:360,height:640},{width:390,height:844},{width:430,height:932},{width:568,height:320},{width:844,height:390},{width:1366,height:900}]){
     await page.setViewportSize(viewport);await page.waitForTimeout(70);
