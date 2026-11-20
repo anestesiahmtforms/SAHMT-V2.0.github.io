@@ -1,4 +1,4 @@
-import {formatDisplayDateTime} from './date-format.js';
+import {formatCalendarDuration,formatDisplayDateTime} from './date-format.js';
 import {mountFunctionalDosimetryImport} from './functional-dosimetry-import.js';
 import {mountFunctionalDosimetry} from './functional-dosimetry.js';
 import {requestFunctionalDosimetry} from './functional-client.js';
@@ -91,12 +91,15 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   onSessionRequired = () => {}, onRetry = () => {}} = {}) {
   let disposed = false;
   let stopAuth = () => {};
-  let detailDialog, openSource = '', visibleSources = null;
+  let detailDialog, openSource = '', visibleSources = null, topicsOpen = false;
   let resultRequest=0,cleanupDosimetry=()=>{};
-  let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = '', ownPerformance = {state:'PREPARING'};
+  let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = 'Sua dedicação e seu trabalho fazem a diferença na nossa equipe.', ownPerformance = {state:'PREPARING'};
   const header=root.closest('.functional-dialog')?.querySelector('[data-fk-header]');
   const owner=header?.querySelector('[data-fk-owner]');
   const recognition=header?.querySelector('[data-fk-recognition]');
+  const tenure=header?.querySelector('[data-fk-tenure]');
+  const duration=header?.querySelector('[data-fk-duration]');
+  let ownJoinedOn;
   const current = () => !disposed && isCurrent() && faAuth?.currentUser?.uid === uid;
   const ownSession = () => current() && getFunctionalAuth()?.currentUser?.uid === uid;
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
@@ -106,6 +109,8 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     if(detailDialog?.open)detailDialog.close();
     showOwner('');
     showRecognition('');
+    ownJoinedOn=undefined;
+    showTenure();
     stopAuth();
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
     root?.removeEventListener('click', onFunctionalClick);
@@ -156,8 +161,11 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       + '<button class="secondary-button" type="button" data-fk-dose-admin>Atualizar histórico de dosimetria</button></div>':'';
     visibleSources=ownSources;
     showOwner(displayName||'Meu perfil');
-    paint('<section class="functional-page">'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
+    showRecognition(ownRecognition);
+    paint('<div class="functional-intro-actions" data-fk-intro><button class="secondary-button" type="button" data-fk-open-topics>Entrar nos tópicos funcionais</button></div>'
+      + '<section class="functional-page" data-fk-topics hidden><h2 data-fk-topics-title tabindex="-1">Tópicos funcionais</h2>'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
       + '<p class="functional-status" data-fk-refresh-status role="status">'+ownStatus+'</p>'
+      + '<button class="secondary-button" type="button" data-fk-back-intro>Voltar ao Funcional</button>'
       + '</section><dialog class="functional-detail" id="fk-detail" aria-labelledby="fk-detail-title">'
       + '<header><span class="functional-detail-icon" data-fk-detail-icon></span><h2 id="fk-detail-title" tabindex="-1" autofocus></h2></header>'
       + '<div class="functional-detail-body" data-fk-detail-body></div>'
@@ -188,9 +196,11 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       .then(snapshot=>{
         if(!ownSession()||!snapshot.exists())return;
         const entry=snapshot.data();
-        if(entry.uid!==uid||typeof entry.message!=='string')return;
-        ownRecognition=entry.message;
+        if(entry.uid!==uid)return;
+        if(typeof entry.message==='string'&&entry.message.trim())ownRecognition=entry.message;
+        ownJoinedOn=entry.teamJoinedOn;
         if(!selection)showRecognition(ownRecognition);
+        showTenure();
       }).catch(()=>{});
   } catch {
     if (activeFunctionalMountCleanup === cleanup) activeFunctionalMountCleanup = null;
@@ -274,6 +284,27 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     recognition.hidden=!message;
   }
 
+  function showTenure() {
+    if(!tenure||!duration)return;
+    const elapsed=topicsOpen?'':formatCalendarDuration(ownJoinedOn);
+    duration.textContent=elapsed;
+    tenure.hidden=!elapsed;
+  }
+
+  function showTopics(open) {
+    const intro=root.querySelector('[data-fk-intro]');
+    const topics=root.querySelector('[data-fk-topics]');
+    if(!intro||!topics)return;
+    topicsOpen=open;
+    intro.hidden=open;
+    topics.hidden=!open;
+    showTenure();
+    if(open){root.querySelector('[data-fk-topics-title]')?.focus();return;}
+    const subject=root.querySelector('[data-fk-subject]');
+    if(selection&&subject){subject.value='';void selectSubject('');}
+    root.querySelector('[data-fk-open-topics]')?.focus();
+  }
+
   async function openTeamPicker(button) {
     const picker=root.querySelector('[data-fk-picker]');
     if(!picker)return;
@@ -300,9 +331,11 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     } finally {loadingRoster=false;}
   }
 
-  async function onSubjectChange(event) {
-    if(!event.target.matches('[data-fk-subject]')||!administrator||!ownSession())return;
-    const value=event.target.value;
+  function onSubjectChange(event) {
+    if(event.target.matches('[data-fk-subject]')&&administrator&&ownSession())return selectSubject(event.target.value);
+  }
+
+  async function selectSubject(value) {
     const member=roster.find(row=>row.uid===value);
     if(value&&!member)return;
     const revision=++subjectRevision;
@@ -327,6 +360,8 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   }
 
   function onFunctionalClick(event) {
+    if(ownSession()&&event.target.closest('[data-fk-open-topics]')){showTopics(true);return;}
+    if(ownSession()&&event.target.closest('[data-fk-back-intro]')){showTopics(false);return;}
     const doseAdmin=event.target.closest('[data-fk-dose-admin]');
     if(doseAdmin&&administrator&&ownSession()&&detailDialog&&!detailDialog.open&&hasSource('dosimetry')){
       openSource='dosimetry';

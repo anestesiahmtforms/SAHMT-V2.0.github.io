@@ -34,6 +34,11 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
 }
 .functional-dialog > footer button { width: 100%; min-height: 44px; }
 .functional-page { display: grid; gap: 14px; }
+.functional-page > h2 { margin: 5px 0 0; font-size: 1.16rem; }
+.functional-intro-actions { display: flex; justify-content: center; padding-top: 6px; }
+.functional-intro-actions .secondary-button { width: min(100%, 340px); min-height: 50px; }
+.functional-tenure { max-width: 48ch; margin: 16px auto 0; color: #fffaf0; line-height: 1.45; }
+.functional-tenure strong { color: #f6db9c; }
 .functional-performance { display: grid; gap: 12px; }
 .functional-performance p { margin: 0; }
 .functional-performance-total { display: grid; gap: 4px; }

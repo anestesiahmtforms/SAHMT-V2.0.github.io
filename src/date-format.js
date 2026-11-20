@@ -61,14 +61,18 @@ export function formatDisplayDateTime(value, {fallback = '', seconds = false} = 
   const date = displayValue(value);
   return date ? dayFormatter.format(date) + ', ' + (seconds ? secondsFormatter : timeFormatter).format(date) : fallback;
 }
-export function formatBirthDateAge(birthDate, today = localDateKey()) {
-  if (typeof birthDate !== 'string' || birthDate < '1900-01-01' || birthDate > today || !isValidDateKey(birthDate)) return '';
-  const [birthYear,birthMonth,birthDay] = birthDate.split('-').map(Number);
+export function formatBirthDateAge(birthDate, today) {
+  return formatCalendarDuration(birthDate, today);
+}
+
+export function formatCalendarDuration(startDate, today = localDateKey()) {
+  if (typeof startDate !== 'string' || startDate < '1900-01-01' || startDate > today || !isValidDateKey(startDate) || !isValidDateKey(today)) return '';
+  const [startYear,startMonth,startDay] = startDate.split('-').map(Number);
   const [year,month,day] = today.split('-').map(Number);
   // In a shorter month the anniversary falls on its last day.
-  const anniversaryDay = month => Math.min(birthDay,new Date(Date.UTC(year,month,0)).getUTCDate());
+  const anniversaryDay = month => Math.min(startDay,new Date(Date.UTC(year,month,0)).getUTCDate());
   const anchorMonth = anniversaryDay(month) <= day ? month : month - 1;
-  const elapsedMonths = (year - birthYear) * 12 + anchorMonth - birthMonth;
+  const elapsedMonths = (year - startYear) * 12 + anchorMonth - startMonth;
   const elapsedDays = (Date.UTC(year,month-1,day) - Date.UTC(year,anchorMonth-1,anniversaryDay(anchorMonth))) / 86_400_000;
   const years = Math.floor(elapsedMonths / 12), months = elapsedMonths % 12;
   return `${years} ${years === 1 ? 'ano' : 'anos'}, ${months} ${months === 1 ? 'mês' : 'meses'} e ${elapsedDays} ${elapsedDays === 1 ? 'dia' : 'dias'}`;
