@@ -8,7 +8,7 @@ test('pilot requires the verified account, matching profile, and active approved
  const admin=pilot();admin.user.email='owner@example.test';admin.profile.role='administrador_app';assert.equal(canUseManagementPilot(admin),true);admin.profile.active=false;assert.equal(canUseManagementPilot(admin),false);
 });
 function hub(access={},initialPanel='home',syncStatusElement=null,climateEnabled=false,folderAllowed=()=>true){
- const syncHost={append(element){this.child=element;}},handlers={},heading={focus(){},toggleAttribute(_name,value){this.inactive=value;}},headingIcon={innerHTML:''},body={innerHTML:'',scrollTop:0,addEventListener:(n,fn)=>handlers[n]=fn},back={addEventListener:(n,fn)=>handlers['back-'+n]=fn},dialog={dataset:{},querySelector:s=>s==='[data-comm-origin]'?null:s==='[data-hub-sync]'?syncHost:s==='[data-hub-body]'?body:s==='[data-hub-back]'?back:s==='#management-hub-title'?heading:s==='[data-hub-heading-icon]'?headingIcon:{},addEventListener(){},showModal(){}},root={querySelector:()=>dialog};
+ const syncHost={append(element){this.child=element;}},handlers={},heading={focus(){},setAttribute(_name,value){this.folderState=value;}},headingIcon={innerHTML:''},body={innerHTML:'',scrollTop:0,addEventListener:(n,fn)=>handlers[n]=fn},back={addEventListener:(n,fn)=>handlers['back-'+n]=fn},dialog={dataset:{},querySelector:s=>s==='[data-comm-origin]'?null:s==='[data-hub-sync]'?syncHost:s==='[data-hub-body]'?body:s==='[data-hub-back]'?back:s==='#management-hub-title'?heading:s==='[data-hub-heading-icon]'?headingIcon:{},addEventListener(){},showModal(){}},root={querySelector:()=>dialog};
  const navigations=[],ctx=vm.createContext({renderOperationalFolderDirectory,consolidatedPerformanceFolders:['desempenho/sahmt'],operationalContentAllowed:()=>true});vm.runInContext(readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/^export /gm,''),ctx);ctx.mountManagementHub(root,{access,initialPanel,syncStatusElement,climateEnabled,folderAllowed,onExit(){navigations.push('home');},onNavigate:route=>navigations.push(route)});return {dialog,body,handlers,navigations,heading,headingIcon,root,back,syncHost};
 }
 test('Climate and stress appear only in the restricted area for effective team members',()=>{
@@ -35,7 +35,7 @@ test('inactive folders stay visible while profile gates hide restricted content'
  assert.doesNotMatch(view.body.innerHTML,/data-survey-panel="fePerformance" disabled/);
  view.handlers.click({target:{closest:selector=>selector==='[data-survey-panel]'?{dataset:{surveyPanel:'fePerformance'}}:null}});
  assert.equal(view.dialog.dataset.panel,'fePerformance');
- assert.equal(view.heading.inactive,true); assert.doesNotMatch(view.body.innerHTML,/Pasta inativa|role="status"/);
+ assert.equal(view.heading.folderState,'inactive'); assert.doesNotMatch(view.body.innerHTML,/Pasta inativa|role="status"/);
  assert.doesNotMatch(view.body.innerHTML,/data-fe-performance|iframe/);
  const effective=hub({...publicAccess,teamSurveys:true},'institutional',null,true,folderAllowed);
  assert.match(effective.body.innerHTML,/data-hub-item="1"/);
@@ -44,7 +44,7 @@ test('inactive folders stay visible while profile gates hide restricted content'
  assert.match(effective.body.innerHTML,/AVALIAÇÃO DE ESTRESSE E FADIGA/);
  const direct=hub({...publicAccess,teamSurveys:true},'climateForm',null,true,folderAllowed);
  assert.equal(direct.dialog.dataset.panel,'climateForm');
- assert.equal(direct.heading.inactive,true); assert.doesNotMatch(direct.body.innerHTML,/Pasta inativa|role="status"/);
+ assert.equal(direct.heading.folderState,'inactive'); assert.doesNotMatch(direct.body.innerHTML,/Pasta inativa|role="status"/);
  assert.doesNotMatch(direct.body.innerHTML,/iframe/);
  assert.equal(hub(publicAccess,'climateForm',null,true,folderAllowed).dialog.dataset.panel,'home');
 });
@@ -61,7 +61,7 @@ test('restricted FE opens vaccination directly, excludes dosimetry and respects 
  assert.doesNotMatch(paused.body.innerHTML,/data-hub-item="0" disabled/);
  paused.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?{dataset:{hubItem:'0'}}:null}});
  assert.equal(paused.dialog.dataset.panel,'vaccinationHistory');
- assert.equal(paused.heading.inactive,true); assert.doesNotMatch(paused.body.innerHTML,/Pasta inativa|role="status"/);
+ assert.equal(paused.heading.folderState,'inactive'); assert.doesNotMatch(paused.body.innerHTML,/Pasta inativa|role="status"/);
  allowed.handlers.click({target:{closest:selector=>selector==='[data-hub-item]'?{dataset:{hubItem:'0'}}:null}});
  assert.equal(allowed.dialog.dataset.panel,'vaccinationHistory');
  allowed.handlers['back-click']();assert.equal(allowed.dialog.dataset.panel,'institutional');

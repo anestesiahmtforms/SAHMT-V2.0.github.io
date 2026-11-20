@@ -60,7 +60,7 @@ const panels={
 };
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
-export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,surveySelection=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},openOccupationalHistory=null,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderInactive=id=>Boolean(id&&!folderAllowed(id)),activityAvailability=()=>null,setActivityAvailability=null}={}){
+export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,surveySelection=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},openOccupationalHistory=null,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderState=id=>id?(folderAllowed(id)?'active':'inactive'):null,activityAvailability=()=>null,setActivityAvailability=null}={}){
  access={...access,professional:access.professional??access.surveys,communication:communicationAllowed,teamSurveys:climateEnabled&&access.teamSurveys===true};
  if(['biosafety','dosimetryHistory'].includes(initialPanel))initialPanel='institutional';
  if(initialPanel==='indicators')initialPanel='records';
@@ -73,10 +73,16 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const itemAllowed=item=>item.panel==='surveys'?consultationsAllowed():item.panel==='institutional'?restrictedAllowed():Boolean(surveyForPanel(item.panel))||!item.access||access[item.access]===true;
  const biosafetyPanels=['vaccinationHistory'];
  const biosafetyFolder='consultas/biosseguranca';
- const panelFolders={biosafety:biosafetyFolder,vaccinationHistory:biosafetyFolder+'/vacinacao',functional:'funcional',management:'gestao',communication:'comunicacao',results:'indicadores',records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',institutional:'consultas',general:'consultas/pesquisas',fePerformance:'desempenho/fe',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027'};
+ const panelFolders={biosafety:biosafetyFolder,vaccinationHistory:biosafetyFolder+'/vacinacao',functional:'funcional',management:'gestao',communication:'comunicacao','fi-control':'fi-control',results:'indicadores',records:'registros',occurrences:'registros/ocorrencias',qmentum:'registros/qmentum',surveys:'consultas',institutional:'consultas',general:'consultas/pesquisas',fePerformance:'desempenho/fe',climateForm:'consultas/pesquisas/clima',stressForm:'consultas/pesquisas/estresse',professional:'consultas/cadastro-profissional',epidemiological:'consultas/epidemiologico',yearEnd:'consultas/escala-final-de-ano',vacations2027:'consultas/ferias-2027'};
  const panelFolderAllowed=name=>(name!=='fePerformance'||folderAllowed('consultas/pesquisas'))&&
   (!biosafetyPanels.includes(name)||folderAllowed('consultas'))&&(!Object.hasOwn(panelFolders,name)||folderAllowed(panelFolders[name]));
- const panelInactive=name=>folderInactive(panelFolders[name])||(name==='fePerformance'&&folderInactive('consultas/pesquisas'));
+ const panelFolderState=name=>{
+  const state=folderState(panelFolders[name]);
+  if(name!=='fePerformance')return state;
+  const surveysState=folderState('consultas/pesquisas');
+  if(state==='inactive'||surveysState==='inactive')return 'inactive';
+  return state==='active'&&surveysState==='active'?'active':null;
+ };
  const navigationOnly=['surveys','institutional','general','records','biosafety'];
  const panelAllowed=name=>profilePanelAllowed(name)||Boolean(surveyForPanel(name))||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(name)&&Object.hasOwn(panelFolders,name)&&!folderAllowed(panelFolders[name]));
  const itemNavigable=item=>itemAllowed(item)||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(item.panel||item.route)&&Object.hasOwn(panelFolders,item.panel||item.route)&&!panelFolderAllowed(item.panel||item.route));
@@ -108,7 +114,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   dialog.querySelector('[data-hub-user]').textContent=['climateForm','stressForm','epidemiological'].includes(panel)?'Participação por grupo':displayName;
   dialog.querySelector('#management-hub-title').textContent=spec.title;
   const folder=panelFolders[panel],activityActions=dialog.querySelector('[data-hub-activity-actions]');
-  dialog.querySelector('#management-hub-title').toggleAttribute?.('data-folder-inactive',panelInactive(panel));
+  dialog.querySelector('#management-hub-title').setAttribute('data-folder-state',panelFolderState(panel)||'');
   activityActions.innerHTML='';
   if(setActivityAvailability&&[...teamSurveyPanels,'professional','epidemiological'].includes(panel)){
    let enabled=activityAvailability(folder);
@@ -145,13 +151,13 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    if(item.access==='fiControl'&&access.fiControl!==true)return '';
    if(['surveys','institutional'].includes(panel)&&!itemNavigable(item))return '';
    if(['performance','faPerformance','fcPerformance'].includes(item.access)&&access[item.access]!==true)return '';
-   const inactive=panelInactive(item.panel||item.route);
+   const state=panelFolderState(item.panel||item.route);
    const allowed=itemNavigable(item);
-   return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+(inactive?' data-folder-inactive':'')+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
+   return '<button type="button" class="management-hub-button '+(item.className||'')+'" data-hub-item="'+index+'"'+' data-folder-state="'+(state||'')+'"'+(item.access==='communication'?' data-comm-hub':'')+(allowed?'':' disabled aria-disabled="true" title="Acesso não liberado para este perfil"')+'><span class="management-hub-medallion">'+icon(item.icon)+'</span><span class="management-hub-label">'+(item.route==='training'&&fbPerformanceReleased?'Desempenho FB':item.label)+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
   }).join('')+'</div>':'<div class="management-hub-empty">'+icon(spec.icon)+'<p>'+spec.message+'</p></div>';
   if(!panelFolderAllowed(panel)&&!navigationOnly.includes(panel)&&!spec.items){
    const folder=panelFolders[panel];
-   body.innerHTML=folder&&typeof renderOperationalFolderDirectory==='function'?renderOperationalFolderDirectory(folder,{inactive:folderInactive,heading:false}):'';
+   body.innerHTML=folder&&typeof renderOperationalFolderDirectory==='function'?renderOperationalFolderDirectory(folder,{folderState,heading:false}):'';
    back.textContent=spec.parent?'VOLTAR':'HOME';body.scrollTop=0;onPanelChange(panel);
    dialog.querySelector('#management-hub-title').focus({preventScroll:true});
    return;
@@ -182,7 +188,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
    void import('./year-end-schedule-ui.js').then(({mountYearEndSchedule})=>{if(!current())return;cleanupYearEnd=mountYearEndSchedule(body,{isCurrent:current,onConfirmed:onYearEndConfirmed,connectAccess:connectYearEndAccess,createRepository:current=>createYearEndRepository(current)});}).catch(()=>{if(current())body.innerHTML='<p role="alert">Não foi possível abrir a escala. Volte e tente novamente.</p>';});
   }
   if(panel==='general'&&institutionalAllowed()){
-  const surveyCard=(kind,panel,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+panel+'"'+(panelInactive(panel)?' data-folder-inactive':'')+'><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong>'+(panelFolderAllowed(panel)?'<span class="management-survey-subtitle">'+subtitle+'</span>':'')+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
+  const surveyCard=(kind,panel,title,subtitle)=>'<button type="button" class="management-hub-button management-survey-card" data-survey-panel="'+panel+'"'+' data-folder-state="'+(panelFolderState(panel)||'')+'"'+'><span class="management-hub-medallion">'+icon(kind)+'</span><span class="management-hub-label"><strong class="management-survey-title">'+title+'</strong>'+(panelFolderAllowed(panel)?'<span class="management-survey-subtitle">'+subtitle+'</span>':'')+'</span><span class="management-hub-arrow" aria-hidden="true">›</span></button>';
    body.innerHTML='<div class="management-surveys">'+(climateEnabled&&access.fePerformance===true?'<div class="management-survey-links">'+surveyCard('performance','fePerformance','DESEMPENHO FE','Minha pontuação nas pesquisas')+'</div>':'<p class="management-surveys-pending">Nenhuma opção disponível nesta área no momento.</p>')+'</div>';
   }
   if(teamSurveyPanels.includes(panel)&&access.teamSurveys){

@@ -19,9 +19,9 @@ export function mountFunctionalFolderAdmin(root,{request,isCurrent,folderId}={})
   status.textContent=message||(!policy?'Aguardando confirmação do Firestore FK.':'');
   if(!policy){list.innerHTML='';return;}
   list.innerHTML=[...groups].map(([id,folders])=>{
-   return `<details class="fi-folder-group" open><summary${functionalFolderAllowed(policy,id)?'':' data-folder-inactive'}><strong>${functionalFolders[id]}</strong></summary><ul>${folders.map(folder=>{
+   return `<details class="fi-folder-group" open><summary data-folder-state="${functionalFolderAllowed(policy,id)?'active':'inactive'}"><strong>${functionalFolders[id]}</strong></summary><ul>${folders.map(folder=>{
     const effective=functionalFolderAllowed(policy,folder.id);
-    return `<li class="fi-folder-row"${effective?'':' data-folder-inactive'}><div class="fi-folder-name"><strong>${folder.title}</strong>${folder.parents?`<small>${folder.parents}</small>`:''}</div><button type="button" data-fk-folder="${folder.id}" ${busy||policy.revision===0?'disabled':''}>${effective?'Desativar':'Ativar'}</button></li>`;
+    return `<li class="fi-folder-row" data-folder-state="${effective?'active':'inactive'}"><div class="fi-folder-name"><strong>${folder.title}</strong>${folder.parents?`<small>${folder.parents}</small>`:''}</div><button type="button" data-fk-folder="${folder.id}" ${busy||policy.revision===0?'disabled':''}>${effective?'Desativar':'Ativar'}</button></li>`;
    }).join('')}</ul></details>`;
   }).join('');
  }

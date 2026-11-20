@@ -1,5 +1,5 @@
 /** Keep existing activities until the professional opens Biossegurança. */
-export function mountVaccinationEntry(root,{user,profile,manualOnly=false,folderAllowed=()=>true,folderInactive=id=>!folderAllowed(id),valid=()=>true,onOpen=()=>{},onBack=()=>{},loadModule=()=>import('./vaccination.js'),loadDosimetryModule=()=>import('./dosimetry.js'),loadManualModule=()=>import('./biosafety-manual.js')}={}){
+export function mountVaccinationEntry(root,{user,profile,manualOnly=false,folderAllowed=()=>true,folderState=id=>folderAllowed(id)?'active':'inactive',valid=()=>true,onOpen=()=>{},onBack=()=>{},loadModule=()=>import('./vaccination.js'),loadDosimetryModule=()=>import('./dosimetry.js'),loadManualModule=()=>import('./biosafety-manual.js')}={}){
  const folder='gestao/area-gestao-de-pessoas/biosseguranca';
  const childFolder={vaccination:folder+'/vacinacao',dosimetry:folder+'/dosimetria',manual:folder+'/manual'};
  let disposed=false,active=null,loading=false,stage='entry',generation=0;
@@ -13,16 +13,16 @@ export function mountVaccinationEntry(root,{user,profile,manualOnly=false,folder
  if(manualOnly?!canOpenChild('manual'):!folderAllowed(folder)){
   launcher.disabled=manualOnly;
  }
- launcher.toggleAttribute('data-folder-inactive',folderInactive(manualOnly?childFolder.manual:folder));
+ launcher.setAttribute('data-folder-state',folderState(manualOnly?childFolder.manual:folder)||'');
  root.prepend(section);
  const live=()=>!disposed&&root.isConnected&&valid();
  function menu(){
   if(!live())return;generation++;active?.();active=null;stage='menu';loading=false;
-  root.innerHTML='<section class="biosafety-panel"><header class="biosafety-header"'+(folderInactive(folder)?' data-folder-inactive':'')+'>'+shield+'<div><p class="eyebrow">GESTÃO DE PESSOAS</p><h3>BIOSSEGURANÇA</h3><p>Manual institucional e seus históricos individuais.</p></div></header><div class="biosafety-grid biosafety-manual-row"><button type="button" class="primary-button biosafety-choice biosafety-book" data-manual-open>'+book+'<span>MANUAL DE BIOSSEGURANÇA - HMT</span><span aria-hidden="true">›</span></button></div><div class="biosafety-grid"><button type="button" class="primary-button biosafety-choice" data-vaccination-open>'+shield+'<span>MEU HISTÓRICO VACINAL</span><span aria-hidden="true">›</span></button><button type="button" class="primary-button biosafety-choice" data-dosimetry-open>'+radiation+'<span>MEU HISTÓRICO DOSIMETRIA</span><span aria-hidden="true">›</span></button></div><p role="status" data-biosafety-status></p><button type="button" class="secondary-button" data-biosafety-back>VOLTAR PARA GESTÃO DE PESSOAS</button></section>';
+  root.innerHTML='<section class="biosafety-panel"><header class="biosafety-header"'+' data-folder-state="'+(folderState(folder)||'')+'"'+'>'+shield+'<div><p class="eyebrow">GESTÃO DE PESSOAS</p><h3>BIOSSEGURANÇA</h3><p>Manual institucional e seus históricos individuais.</p></div></header><div class="biosafety-grid biosafety-manual-row"><button type="button" class="primary-button biosafety-choice biosafety-book" data-manual-open>'+book+'<span>MANUAL DE BIOSSEGURANÇA - HMT</span><span aria-hidden="true">›</span></button></div><div class="biosafety-grid"><button type="button" class="primary-button biosafety-choice" data-vaccination-open>'+shield+'<span>MEU HISTÓRICO VACINAL</span><span aria-hidden="true">›</span></button><button type="button" class="primary-button biosafety-choice" data-dosimetry-open>'+radiation+'<span>MEU HISTÓRICO DOSIMETRIA</span><span aria-hidden="true">›</span></button></div><p role="status" data-biosafety-status></p><button type="button" class="secondary-button" data-biosafety-back>VOLTAR PARA GESTÃO DE PESSOAS</button></section>';
   for(const kind of Object.keys(childFolder)){
    const button=root.querySelector('[data-'+kind+'-open]');
    button.disabled=!canOpenChild(kind);
-   button.toggleAttribute('data-folder-inactive',folderInactive(childFolder[kind]));
+   button.setAttribute('data-folder-state',folderState(childFolder[kind])||'');
   }
  }
  async function child(kind){

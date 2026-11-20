@@ -106,11 +106,12 @@ test('the FI panel publishes independent parent and child settings through the W
   const toggle=id=>`[data-operational-folder="${id}"]`;
   await clickAndWait(toggle(parent));
   assert.equal(await dialog.getByText('Atividades bloqueadas pela pasta principal',{exact:true}).count(),0);
-  assert.equal(await dialog.locator('.fi-folder-row[data-folder-inactive]').filter({has:page.locator(toggle(child))}).count(),1);
+  assert.equal(await dialog.locator('.fi-folder-row[data-folder-state="inactive"]').filter({has:page.locator(toggle(child))}).count(),1);
   assert.equal(await page.locator(toggle(child)).textContent(),'Ativar');
   await clickAndWait(toggle(child));
   for(const [station,record] of records)assert.deepEqual(record.value.disabled,initializedFolders.get(station));
   assert.equal(await page.locator(toggle(child)).textContent(),'Desativar');
+  assert.equal(await dialog.locator('.fi-folder-row[data-folder-state="active"]').filter({has:page.locator(toggle(child))}).count(),1);
   await clickAndWait(toggle(child));
   await clickAndWait(toggle(parent));
   await clickAndWait(toggle(parent));

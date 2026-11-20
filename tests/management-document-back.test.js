@@ -76,17 +76,17 @@ test('administrator opens documents behind disabled parents and keeps visibility
  const path=['Protocolos','Protocolos do SAHMT','Adultos','Via aérea'];
  const h=trainings({admin:true,path,disabled:[path.slice(0,1),path.slice(0,3)]});t.after(()=>h.controller());await tick();
  assert.match(h.root.innerHTML,/Ativar Protocolos/);
- assert.match(h.root.innerHTML,/data-folder-inactive/);
+ assert.match(h.root.innerHTML,/data-folder-state="inactive"/);
  assert.doesNotMatch(h.root.innerHTML,/inativa para os demais usuários/i);
  for(let depth=1;depth<=path.length;depth++){
   h.click('folder',{folder:JSON.stringify(path.slice(0,depth))});await tick();
   if(depth===2)assert.match(h.root.innerHTML,/Ativar Adultos/);
  }
- assert.match(h.root.innerHTML,/data-folder-inactive/);
+ assert.match(h.root.innerHTML,/data-folder-state="inactive"/);
  assert.doesNotMatch(h.root.innerHTML,/inativa para os demais usuários/i);
  h.click('open',{id:'one'});await tick();await tick();
  assert.ok(h.calls.includes('CONTENT'));assert.match(h.frame.srcdoc,/<p>Texto<\/p>/);
- assert.match(h.root.innerHTML,/data-folder-inactive/);
+ assert.match(h.root.innerHTML,/data-folder-state="inactive"/);
  assert.doesNotMatch(h.root.innerHTML,/inativa para os demais usuários/i);
  assert.ok(!h.calls.includes('SET_FOLDER_ACCESS'));
 });
@@ -116,14 +116,14 @@ test('document back preserves its subfolder and traverses only one ancestor per 
   assert.equal(typeof h.controller.goBack, 'function');
   assert.equal(h.controller.goBack(), true);
   await tick();
-  assert.match(h.root.innerHTML, /<h2>Protocolos do SAHMT<\/h2>/);
+  assert.match(h.root.innerHTML, /<h2 data-folder-state="active">Protocolos do SAHMT<\/h2>/);
   assert.match(h.root.innerHTML, /data-ht="open" data-id="one"/);
   assert.match(h.root.innerHTML, /Documento sintético/);
   assert.equal(h.controller.goBack(), true);
   assert.match(h.root.innerHTML, /<strong>Protocolos do SAHMT<\/strong>/);
   assert.doesNotMatch(h.root.innerHTML, /data-ht="open"/);
   assert.equal(h.controller.goBack(), true);
-  assert.match(h.root.innerHTML, /<h2>GESTÃO DE DOCUMENTOS<\/h2>/);
+  assert.match(h.root.innerHTML, /<h2 data-folder-state="active">GESTÃO DE DOCUMENTOS<\/h2>/);
   assert.equal(h.controller.goBack(), false);
   assert.deepEqual(h.calls.filter(action=>action!=='OPEN'), ['LIST', 'CONTENT', 'BEGIN', 'LIST']);
 });
@@ -134,7 +134,7 @@ test('back cancels a stalled document open and ignores its late response', async
   h.click('open', {id: 'one'}); await tick();
   assert.equal(h.controller.goBack(), true);
   assert.equal(h.controller.goBack(), true);
-  assert.match(h.root.innerHTML, /<h2>GESTÃO DE DOCUMENTOS<\/h2>/);
+  assert.match(h.root.innerHTML, /<h2 data-folder-state="active">GESTÃO DE DOCUMENTOS<\/h2>/);
   h.releaseOpen(); await tick(); await tick();
   assert.doesNotMatch(h.root.innerHTML, /ht-content-frame/);
   assert.equal(h.calls.includes('BEGIN'), false);
@@ -146,7 +146,7 @@ test('returning to the same folder refreshes catalog metadata', async t => {
   h.click('open', {id: 'one'}); await tick(); await tick();
   h.training.title = 'Título publicado atualizado';
   h.controller.goBack(); await tick();
-  assert.match(h.root.innerHTML, /<h2>Protocolos do SAHMT<\/h2>/);
+  assert.match(h.root.innerHTML, /<h2 data-folder-state="active">Protocolos do SAHMT<\/h2>/);
   assert.match(h.root.innerHTML, /data-ht="open" data-id="one"/);
   assert.match(h.root.innerHTML, /Título publicado atualizado/);
 });

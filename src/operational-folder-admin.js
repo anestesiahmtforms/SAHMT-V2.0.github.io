@@ -68,7 +68,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
   const row=({id,title,parents})=>{
    const effective=operationalFolderAllowed(policy,id);
    const action=effective?'Desativar':'Ativar';
-   return `<li class="fi-folder-row"${effective?'':' data-folder-inactive'}>
+   return `<li class="fi-folder-row" data-folder-state="${effective?'active':'inactive'}">
     <div class="fi-folder-name"><strong>${title}</strong>${parents?`<small>${parents}</small>`:''}</div>
    <button type="button" data-operational-folder="${id}" data-enable="${!effective}" aria-label="${action} ${title}" ${busy||pending||policy.revision===0?'disabled':''}>${action}</button>
    </li>`;
@@ -81,7 +81,7 @@ export function mountOperationalFolderAdmin(root,{request,isCurrent,folderId}) {
    visible+=matches.length;
    if(folders.length===1)return `<ul class="fi-folder-standalone">${row(folders[0])}</ul>`;
    return `<details class="fi-folder-group" data-folder-group="${id}" ${query||openGroups.has(id)?'open':''}>
-    <summary${operationalFolderAllowed(policy,id)?'':' data-folder-inactive'}><strong>${operationalFolders[id]}</strong></summary>
+    <summary data-folder-state="${operationalFolderAllowed(policy,id)?'active':'inactive'}"><strong>${operationalFolders[id]}</strong></summary>
     <ul>${matches.map(row).join('')}</ul>
    </details>`;
   }).join(''):'';

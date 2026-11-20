@@ -22,9 +22,10 @@ test('inactive parent and descendants remain navigable while activities fail clo
   assert.equal(f.run('operationalRouteActivityAllowed('+JSON.stringify(route)+')'),false);
  }
  assert.throws(()=>f.run("assertOperationalContentAllowed('operacao/checklist')"),{code:'FOLDER_DISABLED'});
- assert.equal(f.run("operationalFolderInactive('operacao/checklist')"),true);
+ assert.equal(f.run("operationalFolderState('operacao/checklist')"),'inactive');
  f.set(['operacao/checklist']);
  assert.equal(f.run("operationalRouteActivityAllowed('schedule')"),true);
+ assert.equal(f.run("operationalFolderState('operacao/escala')"),'active');
  assert.equal(f.run("operationalRouteActivityAllowed('checklist')"),false);
  f.set([]);
  assert.equal(f.run("operationalRouteActivityAllowed('checklist')"),true);
@@ -35,17 +36,19 @@ test('missing availability confirmation permits navigation and blocks activity; 
  f.run('policy=null');
  assert.equal(f.run("operationalFolderRouteAllowed('labels')"),true);
  assert.equal(f.run("operationalRouteActivityAllowed('labels')"),false);
- assert.equal(f.run("operationalFolderInactive('operacao/etiquetas')"),false);
+ assert.equal(f.run("operationalFolderState('operacao/etiquetas')"),null);
  f.set(['operacao']);
  f.run("setOperationalFolderSession({profile:{role:'administrador_app'}})");
  assert.equal(f.run("operationalRouteActivityAllowed('labels')"),true);
- assert.equal(f.run("operationalFolderInactive('operacao/etiquetas')"),true);
+ assert.equal(f.run("operationalFolderState('operacao/etiquetas')"),'inactive');
+ f.set([]);
+ assert.equal(f.run("operationalFolderState('operacao/etiquetas')"),'active');
 });
 
 test('inactive directory exposes each nested folder without activity actions and prunes unauthorized branches',()=>{
- const html=renderOperationalFolderDirectory('funcional');
- assert.match(html,/<summary data-folder-inactive><span>Pesquisas institucionais<\/span><\/summary>[\s\S]*<summary data-folder-inactive><span>Pesquisa de clima/);
- assert.match(html,/<summary data-folder-inactive><span>Biossegurança<\/span><\/summary>[\s\S]*<summary data-folder-inactive><span>Dosimetria/);
+ const html=renderOperationalFolderDirectory('funcional',{folderState:id=>id.includes('biosseguranca')?'active':'inactive'});
+ assert.match(html,/<summary data-folder-state="inactive"><span>Pesquisas institucionais<\/span><\/summary>[\s\S]*<summary data-folder-state="inactive"><span>Pesquisa de clima/);
+ assert.match(html,/<summary data-folder-state="active"><span>Biossegurança<\/span><\/summary>[\s\S]*<summary data-folder-state="active"><span>Dosimetria/);
  assert.doesNotMatch(html,/<button|<iframe|href=|role="status"|INATIVA/);
  const folders={'root':'Raiz','root/public':'Pública','root/private':'Restrita','root/private/secret':'Segredo'};
  const restricted=renderOperationalFolderDirectory('root',{folders,allowed:id=>id!=='root/private'});

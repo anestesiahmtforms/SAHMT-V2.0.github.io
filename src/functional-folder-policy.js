@@ -70,6 +70,7 @@ export function watchFunctionalFolderPolicy(uid,onChange){
   });
  }).catch(()=>{if(current())reset();});
 }
-export function functionalFolderInactive(id){
- return Boolean(policy&&Object.hasOwn(functionalFolders,id)&&!functionalFolderAllowed(policy,id));
+export function functionalFolderState(id){
+ if(!policy||!Object.hasOwn(functionalFolders,id))return null;
+ return functionalFolderAllowed(policy,id)?'active':'inactive';
 }

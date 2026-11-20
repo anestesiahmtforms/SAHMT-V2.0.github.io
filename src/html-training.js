@@ -78,7 +78,8 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
   const pathAllowed=path=>accessAdmin()||!areaInactive&&trainingPathAllowed(folderAccess,path);
   const contentAllowed=training=>pathAllowed(trainingAccessPath(training));
   const folderInactive=path=>areaInactive||isAreaInactive()||!trainingPathAllowed(folderAccess,path);
-  const titleTint=path=>folderInactive(path)?' data-folder-inactive':'';
+  const folderState=path=>folderInactive(path)?'inactive':'active';
+  const titleTint=path=>' data-folder-state="'+folderState(path)+'"';
   const canSelectActivity=training=>Boolean(activitySelection&&training?.status==='PUBLISHED'&&contentAllowed(training)&&trainingPathAllowed(folderAccess,trainingAccessPath(training)));
   const navigationAllowed=path=>path[0]!=='Documentos administrativos'||path[1]!=='Acesso restrito'||accessAdmin()||restrictedNavigationAllowed;
   const folderLevel=()=>{
@@ -154,7 +155,7 @@ export function mountHtmlTrainings(root, {user,profile={},api:providedApi,subscr
        return `<div class="ht-navigation-card">${entry}${trainingFolderToggle(folder.path)}</div>`;
     }).join('');
     const documents=visible.map(t=>contentAllowed(t)
-      ?renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t),folderInactive:folderInactive(trainingAccessPath(t))})
+      ?renderTrainingDocumentCard(t,{compact:leaf,canManage:canManageTraining(t,user,profile),activity:activityFor(t),folderState:folderState(trainingAccessPath(t))})
       :renderTrainingDocumentCard(t,{compact:leaf,inactive:true})).join('');
     const count=level.folders.length+visible.length;
     const grid=count?`<div class="ht-browser-grid ht-folders${visible.length?' ht-catalog':''}${leaf?' ht-compact-documents':''}" style="--ht-grid-rows:${Math.ceil(count/2)};--ht-document-count:${Math.max(1,visible.length)};--ht-document-rows:${Math.max(1,Math.ceil(visible.length/2))}" role="group" aria-label="Pastas e documentos">${folders}${documents}</div>`:'<div class="ht-empty"><h3>Nenhum documento disponível nesta pasta</h3><p>Somente os materiais autorizados para seu perfil aparecem aqui.</p></div>';

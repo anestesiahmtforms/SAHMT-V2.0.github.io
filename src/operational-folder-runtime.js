@@ -1,7 +1,7 @@
 import {deployment} from './deployment-context.js';
 import {initialOperationalFolderPolicy,operationalFolderAllowed,operationalRouteFolder} from './operational-folders.js';
 import {governanceSessionReady} from './governance-access.js';
-import {functionalFolderContentAllowed,functionalFolderInactive,setFunctionalFolderSession,watchFunctionalFolderPolicy} from './functional-folder-policy.js';
+import {functionalFolderContentAllowed,functionalFolderState,setFunctionalFolderSession,watchFunctionalFolderPolicy} from './functional-folder-policy.js';
 
 // Folder availability is a permanent governance rule for FA and FB. Keeping it
 // behind a build flag silently re-enables every activity when CI omits that flag.
@@ -29,9 +29,12 @@ export function operationalContentAllowed(id) {
  if(id==='comunicacao'||id==='fi-control')return true;
  return !operationalFolderPolicyEnabled||administrator||operationalFolderAllowed(policy,id);
 }
-export function operationalFolderInactive(id) {
- if(typeof id==='string'&&(id==='funcional'||id.startsWith('funcional/')))return functionalFolderInactive(id);
- return Boolean(operationalFolderPolicyEnabled&&policy&&typeof id==='string'&&id!=='comunicacao'&&id!=='fi-control'&&!operationalFolderAllowed(policy,id));
+export function operationalFolderState(id) {
+ if(typeof id!=='string')return null;
+ if(id==='funcional'||id.startsWith('funcional/'))return functionalFolderState(id);
+ if(id==='comunicacao'||id==='fi-control')return 'active';
+ if(!operationalFolderPolicyEnabled||!policy)return null;
+ return operationalFolderAllowed(policy,id)?'active':'inactive';
 }
 
 export function assertOperationalContentAllowed(id) {
