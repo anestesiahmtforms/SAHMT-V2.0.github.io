@@ -82,10 +82,10 @@ test('o administrador consulta os remetentes e o gestor vê somente criar evento
    await open(page,'MENSAGENS ENVIADAS');
    await open(page,'EVENTOS ENVIADOS');
    await page.getByText('Aviso do gestor',{exact:true}).click();
-   await page.getByText(/Gestor operacional/).waitFor();
+   await page.getByText('Para EQUIPE',{exact:true}).waitFor();
    await open(page,'CARREGAR MAIS');
    await page.getByText('Aviso do administrador',{exact:true}).click();
-   await page.getByText(/^Administrador/).waitFor();
+   await page.getByText('Para TODOS',{exact:true}).waitFor();
    const dialog=page.getByRole('dialog',{name:'MENSAGENS ENVIADAS'});
    const back=dialog.getByRole('button',{name:'VOLTAR',exact:true});
    const before=await back.boundingBox();

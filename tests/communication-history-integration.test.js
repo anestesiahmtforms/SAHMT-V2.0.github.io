@@ -74,3 +74,26 @@ test('individual inbox spans live and Drive messages with identity-bound, idempo
  assert.equal((await f.call('INBOX',{...input,cursor:first.cursor},person)).items[0].readAt,time);
  assert.equal((await f.call('SENT_DETAIL',{id:archived.id})).recipients[0].readAt,time);
 });
+
+test('sent summaries show only the intended recipient names and retain archived names at time of send',async()=>{
+ const archived={id:'old-event',title:'Arquivada',message:'Histórico',publishAt:time-10000,audienceType:'USER',audienceValue:'one',recipientsRecorded:true,recipientStart:9,recipientCount:1,historyRow:2};
+ const drive={
+  readMessages:async()=>({items:[archived],cursor:null}),
+  readIndividualRecipients:async rows=>new Map(rows.map(row=>[row.id,{uid:'one',displayName:'Nome na data do envio'}]))
+ };
+ const f=fixture(drive);
+ await f.call('CREATE_EVENT',{id:'event-person',title:'Individual',description:'Mensagem individual',audience:'USER',recipient:'one'});
+ await f.call('CREATE_EVENT',{id:'event-team',title:'Equipe',description:'Mensagem coletiva',audience:'institutional-team'});
+ f.store.data.get('users/one').displayName='Nome atualizado depois do envio';
+ f.store.data.set('communicationMessages/old-event',{status:'archived',history:{messageRow:2},firstPublishedAt:time-8000});
+ const first=await f.call('SENT_MESSAGES',{summary:true});
+ const byId=new Map(first.items.map(m=>[m.id,m]));
+ assert.equal(byId.get('event-person').recipient,'Pessoa Um');
+ assert.equal(byId.get('event-team').recipient,'EQUIPE');
+ assert.ok(!Object.hasOwn(byId.get('event-person'),'audienceValue'));
+ assert.ok(!Object.hasOwn(byId.get('event-person'),'sender'));
+ const old=(await f.call('SENT_MESSAGES',{summary:true,cursor:'archive:3'})).items[0];
+ assert.equal(old.sentAt,time-8000);
+ assert.equal(old.recipient,'Nome na data do envio');
+ await assert.rejects(f.call('SENT_MESSAGES',{summary:true},person),{code:'COMM_FORBIDDEN'});
+});

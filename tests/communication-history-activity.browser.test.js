@@ -56,7 +56,8 @@ test('Central real components: catalog, preview, exact retry, history, receipts 
    await page.getByText('Prazo: 6 hora(s) a partir do envio.',{exact:true}).waitFor();
    assert.equal(await page.evaluate(()=>window.calls.find(c=>c.action==='PREVIEW_ACTIVITY').input.deadlineHours),6);
    await page.goto(url+'?deadline');await open('MENSAGENS ENVIADAS');await open('ATIVIDADES');
-   await page.locator('[data-sent-id] summary').first().click();
+   await page.locator('[data-sent-id]>summary').first().click();
+   await page.getByText('Registros do envio',{exact:true}).click();
    const editor=page.locator('[data-update-activity-deadline]');
    await editor.getByLabel('Novo prazo a partir de agora').fill('2');
    await editor.getByRole('button',{name:'ALTERAR PRAZO'}).click();
@@ -102,16 +103,21 @@ test('Central real components: catalog, preview, exact retry, history, receipts 
    // Session ownership must be checked before invoking any mutation.
    assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='CREATE_ACTIVITY')),false);
   });
-  await t.test('history filters and pagination retain full body, person receipts and legacy honesty',async()=>{
-   await page.goto(url);await open('MENSAGENS ENVIADAS');await open('ATIVIDADES');await page.locator('[data-sent-id] summary').first().click();await page.getByText('Conclusão confirmada:',{exact:false}).waitFor();
+  await t.test('sent folders display only message, date and recipient, with optional activity records',async()=>{
+   await page.goto(url);await open('MENSAGENS ENVIADAS');await open('ATIVIDADES');await page.locator('[data-sent-id]>summary').first().click();
+   await page.getByText('Registros do envio',{exact:true}).click();await page.getByText('Conclusão confirmada:',{exact:false}).waitFor();
    assert.match(await page.locator('.comm-message').innerText(),/Corpo integral\nSegunda linha/);assert.equal(await page.getByText('Conclusão na origem:',{exact:false}).count(),0);assert.match(await page.locator('.comm-recipient-record').innerText(),/Mensagem aberta:/);
    assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='MESSAGE_READ')),false);
    await open('REPETIR SINCRONIZAÇÃO');await page.getByText(/Sincronização solicitada/).waitFor();
    await page.getByLabel('Justificativa do cancelamento').fill('Atividade retirada');await open('CANCELAR CONVOCAÇÃO');await page.getByText('Cancelamento: Atividade retirada',{exact:true}).waitFor();
-   await open('VOLTAR ÀS PASTAS');await open('LIBERAÇÃO');await page.getByText('L2',{exact:true}).waitFor();assert.deepEqual(await page.locator('[data-sent-id] summary strong').allTextContents(),['L2','AB']);
-   await open('VOLTAR ÀS PASTAS');await open('EVENTOS ENVIADOS');await open('CARREGAR MAIS');await page.getByText('Histórico legado',{exact:true}).click();await page.getByText('Destinatários e leituras: não registrado no envio original.',{exact:true}).waitFor();
-   await open('VOLTAR ÀS PASTAS');await open('ATIVIDADES');await page.getByLabel('De',{exact:true}).fill('2026-11-01');await page.getByLabel('Tipo',{exact:true}).selectOption('SURVEY');await page.getByLabel('Pesquisar título, texto ou remetente').fill('Convocação');await open('FILTRAR');
-   const request=await page.evaluate(()=>window.calls.filter(c=>c.action==='SENT_MESSAGES').at(-1).input);assert.equal(request.cursor,'');assert.deepEqual(request.filters,{from:Date.parse('2026-11-01T00:00:00-03:00'),kind:'SURVEY',search:'Convocação'});
+   await open('VOLTAR ÀS PASTAS');await open('LIBERAÇÃO');await page.getByText('Para Pessoa L2',{exact:true}).waitFor();
+   assert.deepEqual(await page.locator('[data-sent-id]>summary span:last-child').allTextContents(),['Para Pessoa L2','Para Pessoa AB']);
+   await open('VOLTAR ÀS PASTAS');await open('EVENTOS ENVIADOS');await open('CARREGAR MAIS');const legacy=page.locator('[data-sent-id="legacy-message"]');await legacy.locator(':scope>summary').click();await legacy.getByText('Registros do envio',{exact:true}).click();
+   await page.getByText('Destinatários e leituras: não registrado no envio original.',{exact:true}).waitFor();
+   assert.deepEqual(await page.locator('[data-sent-id]>summary strong').allTextContents(),['Evento de teste','Histórico legado']);
+   assert.equal(await page.locator('input[type=date],input[type=search],button:has-text("FILTRAR")').count(),0);
+   const calls=await page.evaluate(()=>window.calls.filter(c=>c.action==='SENT_MESSAGES').map(c=>c.input));
+   assert.ok(calls.every(input=>input.summary===true&&!input.filters));
   });
   await t.test('inbox listing is not a read; hidden expansion is deferred; repeats are idempotent',async()=>{
    await page.goto(url+'?common');await page.getByText('Convocação sintética',{exact:true}).waitFor();

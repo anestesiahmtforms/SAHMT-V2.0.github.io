@@ -111,6 +111,38 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return {recorded:true,readAt};
   });
  }
+
+ async function sentSummaries(messages,{archived=false}={}){
+  const individuals=messages.filter(m=>m.audienceType==='USER'&&m.audienceValue);
+  const groupIds=[...new Set(messages.filter(m=>m.audienceType==='GROUP'&&m.audienceValue&&!BUILTIN_GROUPS.some(g=>g.id===m.audienceValue)).map(m=>m.audienceValue))];
+  const areaIds=[...new Set(messages.filter(m=>m.audienceType==='AREA'&&m.audienceValue).map(m=>m.audienceValue))];
+  const name=person=>typeof person?.displayName==='string'?person.displayName.trim():'';
+  const byId=async(collection,ids)=>{
+   if(!ids.length)return new Map();
+   const docs=await store.getMany(collection,ids);
+   return new Map(ids.map((key,index)=>[key,docs[index]]));
+  };
+  const archivedIndividuals=archived?individuals.filter(m=>m.recipientsRecorded&&m.recipientCount===1):[];
+  const liveIndividuals=archived?[]:individuals.filter(m=>m.history&&!m.historyLegacy);
+  const [archivedNames,liveRecipients,groups,areas]=await Promise.all([
+   archivedIndividuals.length?historyDrive.readIndividualRecipients(archivedIndividuals):new Map(),
+   byId('communicationMessageRecipients',liveIndividuals.map(m=>m.id)),
+   byId('communicationGroups',groupIds),byId('managementAreas',areaIds)
+  ]);
+  const savedName=m=>name(archivedNames.get(m.id)||liveRecipients.get(m.id)?.items?.find(person=>person.uid===m.audienceValue));
+  const profiles=await byId('users',[...new Set(individuals.filter(m=>!savedName(m)).map(m=>m.audienceValue))]);
+  return messages.map(m=>{
+   const value=m.audienceValue;
+   const recipient=m.audienceType==='USER'
+    ? savedName(m)||(profiles.get(value)?.uid===value&&name(profiles.get(value)))||''
+    : m.audienceType==='GROUP'
+     ? BUILTIN_GROUPS.find(group=>group.id===value)?.name||groups.get(value)?.name||'Grupo não identificado'
+     : m.audienceType==='AREA'?areas.get(value)?.name||areas.get(value)?.title||'Área não identificada'
+     : m.audienceType==='ALL'?'Todos':value;
+   return {id:m.id,title:m.title,message:m.message,publishAt:m.publishAt,sentAt:Math.max(m.firstPublishedAt||0,m.publishAt||0),
+    audienceType:m.audienceType,recipient,activity:m.activity||null,...(m.historyRow?{historyRow:m.historyRow}:{})};
+  });
+ }
  const paged=rows=>({items:rows.slice(0,PAGE_SIZE),cursor:rows.length>PAGE_SIZE?rows[PAGE_SIZE-1].id:null});
  async function resolveRecipients({audience:selection,recipient}={}){
   if(selection==='USER'){
@@ -526,11 +558,16 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return {items,cursor:rows.length===5?(recent?`${last.publishAt}|${last.id}`:last.id):null,...(pushEnrollment===undefined?{}:{pushEnrollment})};
   }
   if(action==='SENT_MESSAGES'){
+   const summary=input.summary===true;
    if(historyDrive&&typeof input.cursor==='string'&&input.cursor.startsWith('archive:')){
     const before=Number(input.cursor.slice(8)),result=await historyDrive.readMessages({before,limit:input.filters?.recipient?5:20,filters:input.filters||{}});
     const active=await store.getMany('communicationMessages',result.items.map(m=>m.id));let items=result.items.filter((m,n)=>!active[n]||active[n].status==='archived'||active[n].status==='cancelled');
     if(input.filters?.recipient){const match=String(input.filters.recipient).toLocaleLowerCase('pt-BR'),keep=[];for(const m of items){const people=m.recipientsRecorded?await historyDrive.readRecipients({start:m.recipientStart,count:m.recipientCount}):[];if(people.some(p=>p.uid===match||[p.displayName,p.email].some(v=>v.toLocaleLowerCase('pt-BR').includes(match))))keep.push(m);}items=keep;}
     const saved=new Map(result.items.map((m,index)=>[m.id,active[index]]));
+    if(summary){
+     const records=items.map(m=>({...m,firstPublishedAt:saved.get(m.id)?.firstPublishedAt}));
+     return {items:await sentSummaries(records,{archived:true}),cursor:result.cursor?'archive:'+result.cursor:null};
+    }
     return {items:items.map(m=>{const metadata=saved.get(m.id);return {...m,sender:communicationSenderRole(m.senderEmail)||m.senderEmail,...(metadata?.dueAt?{dueAt:metadata.dueAt}:{}),...(metadata?.activityTitle&&m.activity?{activity:{...m.activity,title:metadata.activityTitle}}:{})};}),cursor:result.cursor?`archive:${result.cursor}`:null};
    }
    const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:PAGE_SIZE,publishedBefore:now()});
@@ -541,6 +578,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    const last=rows.at(-1);
    let cursor=rows.length===PAGE_SIZE?`${last.publishAt}|${last.id}`:null;
    if(!cursor&&historyDrive){const state=await store.get('communicationHistoryState','2026');if(state?.nextMessageRow>2)cursor=`archive:${state.nextMessageRow}`;}
+   if(summary)return {items:await sentSummaries(rows.filter(m=>communicationSenderRole(m.createdBy?.email))),cursor};
    const f=input.filters||{};return {items:items.filter(m=>(!f.from||m.publishAt>=Number(f.from))&&(!f.to||m.publishAt<=Number(f.to))&&(!f.kind||f.kind===(m.activity?.kind||'MESSAGE'))&&(!f.audience||f.audience===m.audienceValue||f.audience===m.audienceType)&&(!f.search||[m.title,m.message,m.senderEmail||m.sender].some(v=>String(v).toLocaleLowerCase('pt-BR').includes(String(f.search).toLocaleLowerCase('pt-BR'))))),cursor};
   }
   if(action==='MESSAGE'){

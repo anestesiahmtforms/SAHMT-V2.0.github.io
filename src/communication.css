@@ -375,16 +375,11 @@
 .communication--activity [data-activity-link] { color:#15476a; font-size:.78rem; overflow-wrap:anywhere; }
 .communication--activity .comm-activity-outgoing-message { white-space:pre-wrap; overflow-wrap:anywhere; padding:10px; border-left:3px solid #b99b5e; background:#fff9e8; border-radius:6px; }
 .communication--activity [data-activity-meta] { overflow-wrap:anywhere; }
-.comm-history-filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-.comm-history-filters label { margin:0; font-size:.85rem; }
-.comm-history-search { grid-column:1/-1; }
-.comm-history-filters button { align-self:end; }
 .comm-recipient-record { padding:10px 0; border-top:1px solid #cedbe3; }
 .comm-recipient-record h4,.comm-recipient-record p { margin:4px 0; }
 .comm-recipient-record p { font-size:.88rem; }
 .comm-history-recipients { max-height:55dvh; overflow-y:auto; overscroll-behavior:contain; }
 [data-cancel-activity], [data-update-activity-deadline] { margin-top:14px; padding-top:12px; border-top:1px solid #cedbe3; }
-@media(max-width:380px) { .comm-history-filters { grid-template-columns:minmax(0,1fr); } }
 .communication [hidden]{display:none!important}
 .comm-home-notice--checklist-conference{border-color:#177c61;background:linear-gradient(115deg,#f2fff8,#d6f5e7);box-shadow:0 0 0 3px #ffffffb0,0 8px 26px #102d4a55}.comm-home-notice--checklist-conference header{color:#12654f}.comm-home-notice--checklist-conference .comm-home-notice__ack-status:empty{display:none}.comm-home-notice--checklist-conference .comm-home-notice__ack-status:not(:empty){margin:8px 0;padding:8px;border-radius:8px;background:#fff0e7;color:#7d320f;font-size:.82rem}.comm-home-notice--checklist-conference .comm-home-notice__ack{display:block;width:min(100%,180px);min-height:44px;margin:12px auto 0;background:#17654f;color:#fff;border-color:#10513e;font-weight:900;letter-spacing:.08em}.comm-home-notice--checklist-conference .comm-home-notice__ack:disabled{opacity:.65}
 
@@ -438,10 +433,12 @@
 }
 
 .comm-history-folders{display:grid;gap:12px}
-.comm-history-folders[hidden],.comm-history-filters[hidden],[data-history-heading][hidden],[data-history-folders-back][hidden]{display:none}
+.comm-history-folders[hidden],[data-history-heading][hidden],[data-history-folders-back][hidden]{display:none}
 .communication--sent .comm-history-folders button{min-height:52px}
 .communication--sent [data-sent-id]>summary{display:grid;gap:5px}
 .communication--sent [data-sent-id]>summary span{font-size:.82rem}
+.comm-sent-records{margin-top:12px}
+.comm-sent-records>summary{font-size:.84rem;font-weight:700}
 .communication--received .comm-card[data-read-state="unread"]{background:#fff1bf;border-color:#c59929}
 .communication--received .comm-card[data-read-state="read"]{background:#e3f4e6;border-color:#699675}
 .comm-received-date .comm-read-state{margin-inline-start:8px;font-weight:800}

@@ -63,6 +63,21 @@ export function createCommunicationHistoryDrive({getToken,fetchImpl=fetch,spread
   }
   if(requests.length)await request(root+':batchUpdate',{requests});
  }
+
+ async function readIndividualRecipients(messages){
+  if(!Array.isArray(messages)||messages.length<1||messages.length>20||!messages.every(m=>integer(m.recipientStart,2,200000)&&m.recipientCount===1))throw fail('COMM_INVALID_INPUT');
+  await verify();
+  const params=new URLSearchParams({valueRenderOption:'UNFORMATTED_VALUE'});
+  for(const m of messages)params.append('ranges',`Destinatarios!A${m.recipientStart}:K${m.recipientStart}`);
+  const result=await request(root+'/values:batchGet?'+params);
+  if(result.valueRanges?.length!==messages.length)throw fail('COMM_HISTORY_SCHEMA_INVALID',503);
+  const recipients=new Map();
+  for(const [index,message] of messages.entries()){
+   const row=result.valueRanges[index]?.values?.[0];
+   if(row?.[0]===message.id&&row?.[1]===message.audienceValue)recipients.set(message.id,parseHistoryRecipient(row));
+  }
+  return recipients;
+ }
  return {verify,
   async formatExistingDates(){
    await verify();
@@ -91,19 +106,11 @@ export function createCommunicationHistoryDrive({getToken,fetchImpl=fetch,spread
   },
   async readMessage({row}={}){if(!integer(row,2,200000))throw fail('COMM_INVALID_INPUT');const rows=await read(`Mensagens!A${row}:Q${row}`);return rows.length?{...parseHistoryMessage(rows[0]),historyRow:row}:null;},
 
+
+  readIndividualRecipients,
   async readIndividualReceipts(messages,uid){
-   if(!Array.isArray(messages)||messages.length<1||messages.length>20||!messages.every(m=>integer(m.recipientStart,2,200000)&&m.recipientCount===1))throw fail('COMM_INVALID_INPUT');
-   await verify();
-   const params=new URLSearchParams({valueRenderOption:'UNFORMATTED_VALUE'});
-   for(const m of messages)params.append('ranges',`Destinatarios!A${m.recipientStart}:K${m.recipientStart}`);
-   const result=await request(root+'/values:batchGet?'+params);
-   if(result.valueRanges?.length!==messages.length)throw fail('COMM_HISTORY_SCHEMA_INVALID',503);
-   const receipts=new Map();
-   for(const [index,message] of messages.entries()){
-    const row=result.valueRanges[index]?.values?.[0];
-    if(row?.[0]===message.id&&row?.[1]===uid)receipts.set(message.id,parseHistoryRecipient(row).readAt);
-   }
-   return receipts;
+   const recipients=await readIndividualRecipients(messages.map(m=>({...m,audienceValue:uid})));
+   return new Map([...recipients].map(([key,person])=>[key,person.readAt]));
   },
   async readRecipients({start,count}={}){if(!integer(start,2,200000)||!integer(count,0,200)||start+count>200001)throw fail('COMM_INVALID_INPUT');if(!count)return [];return (await read(`Destinatarios!A${start}:K${start+count-1}`)).filter(r=>r[0]).map(parseHistoryRecipient);}
  };
