@@ -124,23 +124,17 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(activeCatalogDialog!==dialog)return;
     catalogLoadSequence++;loading=false;activeCatalogDialog=null;
   };
-  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.audit?'<div class="occurrence-review"><section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section></div>':''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
+  const followupButton=followupAllowed?'<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup>ACOMPANHAR REGISTROS</button>':'';
+  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}${followupButton}</div><div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]');
   const moduleStatus=root.querySelector('.occurrence-module-status');
   if (followupAllowed) {
     const module=root.querySelector('.occurrence-module');
-    module.insertAdjacentHTML('beforeend','<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup>ACOMPANHAR REGISTROS</button><div data-occurrence-followup-host></div>');
+    module.insertAdjacentHTML('beforeend','<div data-occurrence-followup-host></div>');
     const openFollowup=mountOccurrenceFollowup(module.querySelector('[data-occurrence-followup-host]'),
       {repository,uid,isCurrent,groupsMarkup:occurrenceGroupMarkup,canInteract,canShowHospital,isAdministrator});
     module.querySelector('[data-occurrence-followup]').addEventListener('click',openFollowup);
   }
-  const auditRoot=root.querySelector('[data-occurrence-audit]');
-  const loadAudit=async()=>{
-    if(!access.audit||!auditRoot||!canInteract())return;
-    try {await ensureSession();const items=await repository.listAudit({uid,pageSize:30});if(!isCurrent())return;
-      auditRoot.innerHTML=items.length?`<ul class="record-list">${items.map(item=>`<li><strong>${escape(item.formId)}</strong><small>${escape(item.anonymous?'Identidade preservada em trilha restrita':'Registro autenticado')} · ${escape(item.reportId)}</small></li>`).join('')}</ul>`:'<p class="empty-state">Nenhum evento de auditoria disponível.</p>';
-    } catch {if(isCurrent())auditRoot.innerHTML='<p class="empty-state">Não foi possível carregar a auditoria autorizada.</p>';}
-  };
   const categoryHost=root.querySelector('[data-occurrence-category-host]');
   const showCategory=groupId=>{
     categoryHost.innerHTML=occurrenceCategoryMarkup(groupId,{canWrite:access.write&&canInteract()});
@@ -212,6 +206,5 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(forms?.length===1&&access.write&&canInteract()){void open(forms[0],{direct:true});return;}
     showCategory(button.dataset.occurrenceGroup);
   }));
-  void loadAudit();
   return ()=>{disposed=true;catalogLoadSequence++;loading=false;activeCatalogDialog=null;repository.clear();root.querySelectorAll('dialog[open]').forEach(dialog=>dialog.close());root.replaceChildren();};
 }

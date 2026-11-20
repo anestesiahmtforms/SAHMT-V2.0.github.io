@@ -152,7 +152,8 @@ test('ordinary and team-mode sessions can open Ocorrências and return to Home',
   session.profile.role='anestesiologista';
   const h=harness({target:'FA',route:'occurrences',session,appFeatures:{...DEFAULT_APP_FEATURES,occurrences:true}});
   await h.render();
-  const footer=h.app.querySelector('.occurrences-home-button');
+  const footer=h.app.querySelector('.app-footer .occurrences-home-button');
+  assert.ok(footer,'HOME belongs to the fixed Occurrences footer');
   assert.equal(footer.textContent,'HOME');
   assert.equal(footer.dataset.route,'home');
   for(const click of footer.listeners.click||[])await click();
