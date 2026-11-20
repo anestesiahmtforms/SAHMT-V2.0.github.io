@@ -1785,7 +1785,9 @@ async function loadModule(route) {
     const fcAuth=getIndicatorsAuth(),db=getIndicatorsFirestore();if(!fcAuth||!db){content.innerHTML='<p class="empty-state" role="status">O Firebase Registros não está configurado para este módulo.</p>';return;}
     const auth=await waitForFcModuleSession(content,{auth:fcAuth,sourceUid:requestUid,title:'Registro de Ocorrências',isCurrent:current,restoreSession:()=>waitForIndicatorsSession({isCurrent:current})});if(!auth||!current())return;
     cleanupCurrentModule = mountOccurrenceModule(content,{uid:requestUid,displayName:session.profile?.displayName||session.user?.displayName||'Usuário',
-      auth,db,permissions:{...session.profile.permissions,occurrencesWrite:can('admin') || session.profile.permissions?.occurrencesWrite === true},isCurrent:current});
+      auth,db,permissions:{...session.profile.permissions,occurrencesWrite:can('admin') || session.profile.permissions?.occurrencesWrite === true},isCurrent:current,
+      followupAllowed:true,canInteract:()=>operationalRouteActivityAllowed('occurrences'),
+      canShowHospital:()=>session.accountMode!=='team',isAdministrator:can('admin')&&session.accountMode!=='team'});
     return;
   }
   if (route === 'management' && hasFinanceOnlyManagementAccess(session.profile)) {
@@ -1955,8 +1957,19 @@ async function loadModule(route) {
       }:null;
       const directory=document.createElement('section');
       content.replaceChildren(directory);
+      const occurrenceHospitalAccess=adminCurrent()?async (subjectUid,enabled)=>{
+        const [{getIndicatorsAuth,getIndicatorsFirestore,waitForIndicatorsSession},{createOccurrenceRepository}]=await Promise.all([
+          import('./fc-module-firebase.js'),import('./occurrence-data.js')
+        ]);
+        if(!adminCurrent()||!await waitForIndicatorsSession({isCurrent:adminCurrent})||!adminCurrent())throw Error('OCCURRENCE_SESSION_INVALID');
+        const repository=createOccurrenceRepository({db:getIndicatorsFirestore(),auth:getIndicatorsAuth(),isCurrent:adminCurrent});
+        if(enabled===undefined)return repository.getHospitalGrant({uid,subjectUid});
+        await repository.saveHospitalGrant({uid,subjectUid,enabled});
+        return enabled;
+      }:null;
       mountPeopleDirectory(directory,{contacts,profiles:adminCurrent()&&profilesResult.value||[],registrationRequest,readTeamEntry,isCurrent:current,
         contactFailed:contactsResult.status==='rejected',profilesFailed:profilesResult.status==='rejected',
+        occurrenceHospitalAccess,
         roleLabel:role=>userRoles.find(([id])=>id===role)?.[1]||role,
         onEdit:contact=>{
           const form=document.querySelector('[data-module-form="people"]');
@@ -5679,7 +5692,7 @@ async function render() {
     navigate('home');
     return;
   }
-  if(!authLimited&&typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(requestedRoute)&&requestedRoute!=='functional'){
+  if(!authLimited&&typeof operationalRouteActivityAllowed==='function'&&!operationalRouteActivityAllowed(requestedRoute)&&!['functional','occurrences'].includes(requestedRoute)){
     const folder=operationalRouteFolder(requestedRoute);
     app.innerHTML='<main class="main-content">'+renderOperationalFolderDirectory(folder,{folderState:operationalFolderState,allowed:id=>id!=='operacao/checklist/desempenho'||canOpenRestrictedModule('fg-performance')})+'<button type="button" class="secondary-button" data-folder-return>VOLTAR</button></main>';
     app.querySelector('[data-folder-return]')?.addEventListener('click',()=>navigate('home'));

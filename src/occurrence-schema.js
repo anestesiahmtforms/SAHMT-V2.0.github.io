@@ -107,6 +107,37 @@ export function getOccurrenceForm(formId) {
   return OCCURRENCE_FORMS.find(form => form.id === formId) || null;
 }
 
+export function occurrenceAppProtocol(sequence) {
+  return Number.isSafeInteger(sequence) && sequence > 0 ? `GRA ${String(sequence).padStart(3,'0')}` : '';
+}
+
+export const OCCURRENCE_ANALYSIS_FIELDS = Object.freeze({
+  problem: 'IDENTIFICAÇÃO DO PROBLEMA',
+  cause: 'IDENTIFICAÇÃO DA CAUSA',
+  review: 'ANÁLISE DO PROBLEMA',
+  correction: 'AÇÃO DE CORREÇÃO',
+  plan: 'PLANO E AÇÃO'
+});
+export const OCCURRENCE_ANALYSIS_LIMIT = 3000;
+export const OCCURRENCE_PRIVATE_FIELDS = Object.freeze(['attendance','patientOrAttendance','prescriptionNumber','othersInformed','eventDiscovery']);
+
+export function occurrenceHospitalNumber(value) {
+  const digits = /^(?:GR\s*)?(\d{1,12})$/i.exec(String(value ?? '').trim())?.[1];
+  return digits?.replace(/^0+/,'') || '';
+}
+
+export function occurrenceProtocol(entry) {
+  return entry.origin === 'hospital' ? `GR ${entry.hospitalNumber.padStart(3,'0')}` : occurrenceAppProtocol(entry.sequence);
+}
+
+export function readOccurrenceAnalysis(values) {
+  const analysis = Object.fromEntries(Object.keys(OCCURRENCE_ANALYSIS_FIELDS).map(key => [key,String(values?.[key] ?? '').trim()]));
+  const fields = Object.values(analysis);
+  if (fields.every(text => !text)) return null;
+  if (fields.some(text => !text || text.length > OCCURRENCE_ANALYSIS_LIMIT)) throw new Error('OCCURRENCE_ANALYSIS_INCOMPLETE');
+  return analysis;
+}
+
 export function validateOccurrenceValues(formId, values, catalogs = {}) {
   const form = getOccurrenceForm(formId);
   if (!form || !values || typeof values !== 'object' || Array.isArray(values)) return {valid: false, errors: ['FORM_INVALID']};

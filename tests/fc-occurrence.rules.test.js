@@ -55,10 +55,90 @@ test('administrator with registration permission opens the current catalog and s
  const result=await repository.save({uid:adminUid,recordId:id,formId:'F10',displayName:'Administrador sintético',
   values:{sourceSector:loaded.catalogs.SETORES_55[0],destinationSector:loaded.catalogs.SETORES_55[1]}});
  assert.equal(result.status,'saved');
+ assert.equal(result.protocol,'GRA 001');
  const report=(await getDoc(doc(database,'occurrenceReports',id))).data();
  assert.equal(report.formId,'F10');assert.equal(report.authorLabel,'Administrador sintético');
  const claim=(await getDoc(doc(database,'occurrenceScoreClaims',id))).data();
  assert.equal(claim.originProjectId,'indicadores---sahmt');
+});
+
+test('a numeração FC é consecutiva em gravações concorrentes e o contador não pode avançar sozinho',async()=>{
+ const db=google(uid);
+ const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
+  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
+   runTransaction:(_,callback)=>runTransaction(db,callback)}});
+ const data={uid,formId:'F10',displayName:'Autor sintético',catalogs,
+  values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1]}};
+ const ids=[id,'10000000-0000-4000-8000-000000000002'];
+ const results=await Promise.all(ids.map(recordId=>repository.save({...data,recordId})));
+ assert.deepEqual(results.map(result=>result.protocol).sort(),['GRA 001','GRA 002']);
+ assert.equal((await repository.save({...data,recordId:id})).protocol,results[0].protocol);
+ await assertFails(setDoc(doc(db,'occurrenceSequences','app'),{last:3,reportId:id}));
+ assert.equal((await getDocFromServer(doc(db,'occurrenceSequences','app'))).data().last,2);
+});
+
+test('a equipe consulta a cópia sem autoria e grava somente a própria análise completa',async()=>{
+ const db=google(uid),member='unauthorized-synthetic',memberDb=google(member);
+ const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
+  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
+   runTransaction:(_,callback)=>runTransaction(db,callback)}});
+ await repository.save({uid,formId:'F10',recordId:id,displayName:'Autor sintético',catalogs,
+  values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],patientOrAttendance:'Paciente sintético'}});
+ await assertFails(getDocFromServer(doc(memberDb,'occurrenceReports',id)));
+ await assertFails(getDocFromServer(doc(memberDb,'occurrenceAudit',id)));
+ const visible=await assertSucceeds(getDocs(query(collection(memberDb,'occurrenceFollowups'),limit(30))));
+ assert.equal(visible.size,1);
+ assert.doesNotMatch(JSON.stringify(visible.docs[0].data()),/Autor sintético|Paciente sintético|patientOrAttendance|authorLabel/);
+ const ref=doc(memberDb,'occurrenceFollowups',id,'analyses',member);
+ const valid={problem:'Problema',cause:'Causa',review:'Análise',correction:'Correção',plan:'Plano'};
+ await assertFails(setDoc(ref,{analysis:{problem:'Incompleta'},updatedAt:serverTimestamp()}));
+ await assertFails(setDoc(ref,{analysis:{...valid,plan:'  \n'},updatedAt:serverTimestamp()}));
+ await assertFails(setDoc(doc(memberDb,'occurrenceFollowups',id,'analyses',uid),{analysis:valid,updatedAt:serverTimestamp()}));
+ await assertSucceeds(setDoc(ref,{analysis:valid,updatedAt:serverTimestamp()}));
+ await assertFails(getDocFromServer(doc(db,'occurrenceFollowups',id,'analyses',member)));
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'runtimePolicy','folders'),{schemaVersion:1,revision:2,disabled:['registros']}));
+ await assertSucceeds(getDocFromServer(doc(memberDb,'occurrenceFollowups',id)));
+ await assertFails(setDoc(ref,{analysis:valid,updatedAt:serverTimestamp()}));
+});
+
+test('a projeção do formulário mais extenso preserva contexto e não expõe o atendimento',async()=>{
+ const db=google(uid);
+ const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
+  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
+   runTransaction:(_,callback)=>runTransaction(db,callback)}});
+ const values={eventDate:'2026-11-20',occurrence:'Queda',description:'Relato sintético',attendance:'Identificador sintético',
+  causingSector:catalogs.SETORES_9[0],fallDate:'2026-11-20',fallTime:'08:00',fallRisk:catalogs.RISCO_QUEDA[0],
+  fallRiskGuidance:catalogs.SIM_NAO_NI[0],lastAssessmentDate:'2026-11-19',redWristband:catalogs.SIM_NAO_NI[0],
+  fallLocation:catalogs.LOCAL_QUEDA[0],fallMechanism:catalogs.MECANISMO_QUEDA[0],adequateFootwear:catalogs.SIM_NAO_NI[0],
+  consciousness:catalogs.CONSCIENCIA[0],injury:catalogs.SIM_NAO_NI[0],symptomAfterEvent:catalogs.SIM_NAO_NI[0],
+  immediateAction:'Ação sintética',eventPeriod:catalogs.PERIODO[0]};
+ assert.equal((await repository.save({uid,formId:'F05',recordId:id,displayName:'Autor sintético',catalogs,values})).protocol,'GRA 001');
+ const entry=await assertSucceeds(getDocFromServer(doc(google('unauthorized-synthetic'),'occurrenceFollowups',id)));
+ assert.equal(entry.data().details.fallTime,'08:00');
+ assert.equal(Object.hasOwn(entry.data().details,'attendance'),false);
+});
+
+test('somente administrador delega registros GR, cujo protocolo preserva unicidade e não gera pontuação',async()=>{
+ const admin='occurrence-admin',member='unauthorized-synthetic',memberDb=google(member),adminDb=google(admin);
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'users',admin),{uid:admin,active:true,access:true,role:'administrador_app'}));
+ const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:member}},
+  firestore:{doc:(_,name,key)=>doc(memberDb,name,key),getDocFromServer,runTransaction:(_,callback)=>runTransaction(memberDb,callback)}});
+ const payload={uid:member,formId:'F03',number:'GR 004',occurredOn:'2026-11-20',title:'Relato do Núcleo',description:'Descrição para análise'};
+ await assert.rejects(repository.saveHospital(payload),{message:'OCCURRENCE_PERMISSION_DENIED'});
+ await assertFails(setDoc(doc(memberDb,'occurrenceHospitalGrants',member),{enabled:true,updatedBy:member,updatedAt:serverTimestamp()}));
+ await assertSucceeds(setDoc(doc(adminDb,'occurrenceHospitalGrants',member),{enabled:true,updatedBy:admin,updatedAt:serverTimestamp()}));
+ assert.equal(await repository.saveHospital(payload),'GR 004');
+ assert.equal(await repository.saveHospital({...payload,number:'4'}),'GR 004');
+ await assert.rejects(repository.saveHospital({...payload,title:'Outro título'}),{message:'OCCURRENCE_HOSPITAL_DUPLICATE'});
+ const entry=await assertSucceeds(getDocFromServer(doc(memberDb,'occurrenceFollowups','gr-4')));
+ assert.equal(entry.data().origin,'hospital');
+ assert.equal(Object.hasOwn(entry.data(),'uid'),false);
+ await assertFails(getDocFromServer(doc(memberDb,'occurrenceHospitalAudit','gr-4')));
+ await env.withSecurityRulesDisabled(async c=>{
+  assert.equal((await getDocFromServer(doc(c.firestore(),'occurrenceScoreClaims','gr-4'))).exists(),false);
+ });
+ await assertSucceeds(setDoc(doc(adminDb,'occurrenceHospitalGrants',member),{enabled:false,updatedBy:admin,updatedAt:serverTimestamp()}));
+ await assert.rejects(repository.saveHospital({...payload,number:'GR 005'}),{message:'OCCURRENCE_PERMISSION_DENIED'});
 });
 
 test('catalog access follows registration authorization and rejects blocked or read-only profiles',async()=>{

@@ -2,6 +2,7 @@ import {assertOnlineOperation,unconfirmedWrite} from './online-only.js';
 import {OCCURRENCE_GROUPS, getOccurrenceForm, validateOccurrenceValues} from './occurrence-schema.js';
 import {createOccurrenceRepository} from './occurrence-data.js';
 import {withinDeadline} from './async-deadline.js';
+import {mountOccurrenceFollowup} from './occurrence-followup-ui.js';
 
 const FORM_ORDER = Object.freeze({A:['F01','F02','F03','F04','F05','F06','F07'],B:['F08'],C:['F09'],D:['F10']});
 const ICONS = Object.freeze({
@@ -56,12 +57,12 @@ export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
     <label class="occurrence-field"><span>Autor</span><input value="${escape(displayName)}" readonly aria-describedby="occurrence-author-note"></label>
     ${form.fields.filter(item=>['eventDate','occurrence','description'].includes(item.id)).map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}
     </div></section>`;
-  const privacy=`<section class="occurrence-privacy"><label class="occurrence-anonymous"><input type="checkbox" name="anonymous"><span>Realizar registro anônimo</span></label><small id="occurrence-author-note">No modo anônimo, o relato será exibido como “Anônimo”; o identificador ainda será mantido internamente para auditoria. Isto não é anonimato absoluto.</small></section>`;
+  const privacy=`<section class="occurrence-privacy"><label class="occurrence-anonymous"><input type="checkbox" name="anonymous"><span>Realizar registro anônimo</span></label><small id="occurrence-author-note">O nome do autor fica oculto no acompanhamento. O modo anônimo também oculta o nome no registro original. A identidade é mantida para auditoria restrita.</small></section>`;
   const generalIds=new Set(['eventDate','occurrence','description']);
   const classification=form.classification.length?`<section class="occurrence-form-section"><h4>Classificação</h4><div class="occurrence-form-grid">${form.classification.map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}</div></section>`:'';
   const details=form.fields.filter(item=>!generalIds.has(item.id));
   const additional=details.length?`<section class="occurrence-form-section"><h4>Dados do formulário</h4><div class="occurrence-form-grid">${details.map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}</div></section>`:'';
-  return `<dialog class="occurrence-dialog" aria-labelledby="occurrence-form-title"><form class="occurrence-dialog__form" novalidate><header class="occurrence-dialog__header"><h3 id="occurrence-form-title" tabindex="-1" autofocus>${escape(form.title.toLocaleUpperCase('pt-BR'))}</h3></header><div class="occurrence-dialog__body">${general}${classification}${additional}${privacy}<p class="occurrence-form-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer"><button type="button" class="secondary-button" data-occurrence-cancel>VOLTAR</button><button type="submit" class="primary-button" data-occurrence-save>SALVAR</button></footer></form></dialog>`;
+  return `<dialog class="occurrence-dialog" aria-labelledby="occurrence-form-title"><form class="occurrence-dialog__form" novalidate><header class="occurrence-dialog__header"><h3 id="occurrence-form-title" tabindex="-1" autofocus>${escape(form.title.toLocaleUpperCase('pt-BR'))}</h3></header><div class="occurrence-dialog__body"><p class="occurrence-privacy-note">No texto do relato, evite nomes, números de atendimento e outros dados que identifiquem pessoas. O relato será disponibilizado à equipe.</p>${general}${classification}${additional}${privacy}<p class="occurrence-form-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer"><button type="button" class="secondary-button" data-occurrence-cancel>VOLTAR</button><button type="submit" class="primary-button" data-occurrence-save>SALVAR</button></footer></form></dialog>`;
 }
 
 const recoverableCatalogErrors = new Set(['OCCURRENCE_SESSION_INVALID', 'OCCURRENCE_PERMISSION_DENIED',
@@ -109,12 +110,13 @@ export function createOccurrenceSessionGate({auth,uid,isCurrent}={}) {
   };
 }
 
-export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID()}={}) {
+export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID(),
+  followupAllowed=false,canInteract=()=>true,canShowHospital=()=>true,isAdministrator=false}={}) {
   const pageCurrent=isCurrent;
   let disposed=false;
   isCurrent=()=>!disposed&&root.isConnected&&pageCurrent();
   const access=occurrenceModuleAccess(permissions);
-  if(!access.any||!uid||!db||!auth||!isCurrent()) { root.innerHTML='<p class="empty-state" role="status">Sessão de Resultados ou autorização específica indisponível.</p>'; return ()=>{}; }
+  if((!access.any&&!followupAllowed)||!uid||!db||!auth||!isCurrent()) { root.innerHTML='<p class="empty-state" role="status">Sessão de Resultados ou autorização específica indisponível.</p>'; return ()=>{}; }
   const repository=createOccurrenceRepository({db,auth,idGenerator,isCurrent});
   const ensureSession=createOccurrenceSessionGate({auth,uid,isCurrent});
   let catalogs={},saving=false,loading=false,pendingRecordId=null,catalogLoadSequence=0,activeCatalogDialog=null;
@@ -125,22 +127,29 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
   root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}</div>${access.read||access.audit?`<div class="occurrence-review">${access.read?'<section class="occurrence-records" aria-live="polite"><h3>Registros recentes</h3><div data-occurrence-records><p class="loading">Carregando…</p></div></section>':''}${access.audit?'<section class="occurrence-records occurrence-audit"><h3>Auditoria restrita</h3><div data-occurrence-audit><p class="loading">Carregando…</p></div></section>':''}</div>`:''}<div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]'), records=root.querySelector('[data-occurrence-records]');
   const moduleStatus=root.querySelector('.occurrence-module-status');
+  if (followupAllowed) {
+    const module=root.querySelector('.occurrence-module');
+    module.insertAdjacentHTML('beforeend','<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup>ACOMPANHAR REGISTROS</button><div data-occurrence-followup-host></div>');
+    const openFollowup=mountOccurrenceFollowup(module.querySelector('[data-occurrence-followup-host]'),
+      {repository,uid,isCurrent,groupsMarkup:occurrenceGroupMarkup,canInteract,canShowHospital,isAdministrator});
+    module.querySelector('[data-occurrence-followup]').addEventListener('click',openFollowup);
+  }
   const loadRecords=async()=>{
-    if(!access.read||!records)return;
+    if(!access.read||!records||!canInteract())return;
     try {await ensureSession();const items=await repository.list({uid,pageSize:30}); if(!isCurrent())return;
       records.innerHTML=items.length?`<ul class="record-list">${items.map(item=>`<li><strong>${escape(item.formTitle)}</strong><small>${escape(item.occurredOn||'—')} · ${escape(item.authorLabel||'Anônimo')}</small><p>${escape(item.occurrence||'Registro de não conformidade')}</p><small class="record-meta">Pontuação: ${escape(item.pointsStatus||'PENDING_VALIDATION')}</small></li>`).join('')}</ul>`:'<p class="empty-state">Nenhuma ocorrência disponível.</p>';
     } catch {if(isCurrent())records.innerHTML='<p class="empty-state" role="status">Não foi possível carregar os registros autorizados.</p>';}
   };
   const auditRoot=root.querySelector('[data-occurrence-audit]');
   const loadAudit=async()=>{
-    if(!access.audit||!auditRoot)return;
+    if(!access.audit||!auditRoot||!canInteract())return;
     try {await ensureSession();const items=await repository.listAudit({uid,pageSize:30});if(!isCurrent())return;
       auditRoot.innerHTML=items.length?`<ul class="record-list">${items.map(item=>`<li><strong>${escape(item.formId)}</strong><small>${escape(item.anonymous?'Identidade preservada em trilha restrita':'Registro autenticado')} · ${escape(item.reportId)}</small></li>`).join('')}</ul>`:'<p class="empty-state">Nenhum evento de auditoria disponível.</p>';
     } catch {if(isCurrent())auditRoot.innerHTML='<p class="empty-state">Não foi possível carregar a auditoria autorizada.</p>';}
   };
   const categoryHost=root.querySelector('[data-occurrence-category-host]');
   const showCategory=groupId=>{
-    categoryHost.innerHTML=occurrenceCategoryMarkup(groupId,{canWrite:access.write});
+    categoryHost.innerHTML=occurrenceCategoryMarkup(groupId,{canWrite:access.write&&canInteract()});
     const dialog=categoryHost.querySelector('dialog');
     categoryHost.querySelector('[data-occurrence-group-cancel]').addEventListener('click',()=>{if(saving)return;cancelCatalogLoad(dialog);dialog.close();});
     dialog.addEventListener('cancel',event=>{if(saving)event.preventDefault();else cancelCatalogLoad(dialog);});
@@ -150,7 +159,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
   };
   const open=async (formId,{direct=false}={})=>{
     if(!isCurrent()||saving||loading)return;
-    if(!access.write){moduleStatus.textContent='Seu perfil permite consultar registros, mas não tem autorização para abrir um novo registro.';return;}
+    if(!access.write||!canInteract()){moduleStatus.textContent='Os formulários deste tema estão indisponíveis para preenchimento.';return;}
     const form=getOccurrenceForm(formId);if(!form)return;
     const categoryDialog=direct?showCategory(form.group):categoryHost.querySelector('dialog');
     const categoryStatus=categoryHost.querySelector('.occurrence-category-status');
@@ -186,7 +195,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     dialog.addEventListener('close',()=>{if(dialog.returnValue!=='saved')pendingRecordId=null;});
     formElement.addEventListener('input',()=>{formElement.dataset.dirty='true';});
     formElement.addEventListener('submit',async event=>{
-      event.preventDefault();if(saving||!isCurrent())return;
+      event.preventDefault();if(saving||!isCurrent()||!canInteract())return;
       const values=Object.fromEntries([...new FormData(formElement)].filter(([key])=>key!=='anonymous').map(([key,value])=>[key,String(value)]));
       const check=validateOccurrenceValues(formId,values,catalogs);
       if(!check.valid){status.textContent='Confira os campos obrigatórios e as opções selecionadas.';return;}
@@ -194,7 +203,8 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
       try {pendingRecordId ||= idGenerator();const input={uid,displayName,anonymous:formElement.elements.anonymous.checked,formId,values,recordId:pendingRecordId,catalogs};
         const result=await submitOccurrenceWithFallback({repository,input,isCurrent});
         if(!isCurrent())return;pendingRecordId=null;
-        moduleStatus.textContent=result.status==='already-saved'?'Este envio já havia sido confirmado.':'Registro confirmado pelo servidor. Pontuação aguardando validação.';
+        const reference=result.protocol?` ${result.protocol}.`:'';
+        moduleStatus.textContent=result.status==='already-saved'?`Este envio já havia sido confirmado.${reference}`:`Registro confirmado pelo servidor.${reference} Pontuação aguardando validação.`;
         status.textContent='';
         dialog.close('saved');formElement.reset();formElement.dataset.dirty='false';
         await loadRecords();
@@ -206,7 +216,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
   root.querySelectorAll('[data-occurrence-group]').forEach(button=>button.addEventListener('click',()=>{
     if(!isCurrent()||saving||loading)return;
     const forms=FORM_ORDER[button.dataset.occurrenceGroup];
-    if(forms?.length===1){void open(forms[0],{direct:true});return;}
+    if(forms?.length===1&&access.write&&canInteract()){void open(forms[0],{direct:true});return;}
     showCategory(button.dataset.occurrenceGroup);
   }));
   void loadRecords();void loadAudit();

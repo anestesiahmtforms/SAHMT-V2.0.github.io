@@ -1,5 +1,6 @@
 import {readFile, writeFile} from 'node:fs/promises';
 import {addMemberCategoryRules} from './lib/member-category-rules.js';
+import {OCCURRENCE_FORMS,OCCURRENCE_PRIVATE_FIELDS} from '../src/occurrence-schema.js';
 
 const source=(await readFile('firestore.occurrences.rules','utf8')).replaceAll('\r\n','\n');
 const replacements=[
@@ -66,8 +67,24 @@ const folderRules = `
 const begin=output.indexOf(marker);
 const end=output.indexOf('    match /indicators/',begin);
 if(begin<0||end<0)throw Error('FC_RECORDS_RULE_SCOPE_MISSING');
-const occurrenceRules=output.slice(begin,end).replace(/(allow [a-z, ]+: if )(?!false\s*;)([^;]+);/g,
+const occurrenceRules=output.slice(begin,end).replace('validReport(reportId, request.resource.data) && pairedAfter(reportId);',
+  "validReport(reportId, request.resource.data) && pairedAfter(reportId) &&\n        (!request.resource.data.keys().hasAny(['sequence']) || validOccurrenceNumber(reportId,request.resource.data));")
+  .replace(/(allow [a-z, ]+: if )(?!false\s*;)([^;]+);/g,
   (_,prefix,condition)=>prefix+"fcRecordsFolderOpen_('registros/ocorrencias') && ("+condition+");");
 output=output.slice(0,begin)+folderRules+occurrenceRules+output.slice(end);
+output=output.replace("'anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&",
+  "'anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt','sequence']) &&");
+const commonKeys=new Set(['eventDate','occurrence','description',...OCCURRENCE_PRIVATE_FIELDS]);
+function followupFields(fields,name){
+  const keys=fields.map(field=>field.id).filter(key=>!commonKeys.has(key));
+  if(!keys.length)return `${name}.size() == 0`;
+  return [`${name}.keys().hasOnly(${JSON.stringify(keys)})`,
+    ...keys.map(key=>`${name}.get('${key}','') is string`)].join(' &&\n          ');
+}
+const formFields=OCCURRENCE_FORMS.map(form=>`(data.formId == '${form.id}' && ${followupFields(form.fields,'fields')} &&
+          ${followupFields(form.classification,'classification')})`).join(' ||\n        ');
+const followupRules=(await readFile('scripts/occurrence-followup.fc.rules.inc','utf8'))
+  .replace('OCCURRENCE_FOLLOWUP_FORM_FIELDS',formFields);
+output=output.replace(marker,()=>followupRules+'\n'+marker);
 await writeFile('firestore.fc.base.rules',addMemberCategoryRules(output));
 console.log('FC_MODULE_RULE_BASE_PREPARED');

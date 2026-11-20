@@ -87,13 +87,37 @@ test('grava relatório anonimizado, auditoria restrita e claim pendente em um co
   const first=await repository.save({...input,anonymous:true,displayName:''});
   const retry=await repository.save({...input,anonymous:true,displayName:''});
   assert.equal(first.status,'saved'); assert.equal(retry.status,'already-saved');
-  assert.equal(store.size,3);
+  assert.equal(store.size,5);
+  assert.equal(first.protocol,'GRA 001');
+  assert.equal(retry.protocol,first.protocol);
   const report=store.get(`occurrenceReports/${input.recordId}`);
   assert.equal(report.authorLabel,'Anônimo'); assert.equal(report.anonymous,true);
+  assert.equal(report.sequence,1);
   assert.equal(Object.hasOwn(report,'uid'),false); assert.equal(Object.hasOwn(report,'createdByUid'),false);
   assert.equal(store.get(`occurrenceAudit/${input.recordId}`).uid,input.uid);
   const score=store.get(`occurrenceScoreClaims/${input.recordId}`);
   assert.equal(score.points,2); assert.equal(score.status,'PENDING_VALIDATION');
+});
+
+test('publica somente o relato de acompanhamento sem o autor e o atendimento',async()=>{
+  const {repository,store}=harness({claims:allClaims});
+  await repository.save({...input,values:{...input.values,description:'Atendimento sintético acompanhado por Profissional Sintético.'}});
+  const entry=store.get(`occurrenceFollowups/${input.recordId}`);
+  assert.equal(entry.formId,'F01');
+  assert.equal(entry.origin,'app');
+  assert.equal(entry.sequence,1);
+  assert.deepEqual(entry.details,{causingSector:'Opção sintética 1',medicationName:'Medicamento sintético',lotNumber:'L-1',
+    symptomAfterEvent:'Opção sintética 2',immediateAction:'Ação sintética',eventPeriod:'Opção sintética 1'});
+  const publicJson=JSON.stringify(entry);
+  for(const secret of ['Atendimento sintético','Profissional Sintético','uid-synthetic','authorLabel','attendance'])assert.ok(!publicJson.includes(secret));
+});
+
+test('dois registros distintos recebem protocolos consecutivos no mesmo FC',async()=>{
+  const {repository}=harness({claims:allClaims});
+  const first=await repository.save(input);
+  const second=await repository.save({...input,recordId:'10000000-0000-4000-8000-000000000002'});
+  assert.equal(first.protocol,'GRA 001');
+  assert.equal(second.protocol,'GRA 002');
 });
 
 test('preserva o autor quando não anônimo, mas não inclui e-mail nem uid no relatório', async()=>{

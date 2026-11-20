@@ -1,11 +1,15 @@
-import {collection, doc, getDocFromServer, getDocsFromServer, limit, orderBy, query, runTransaction, serverTimestamp} from 'firebase/firestore';
+import {collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query, runTransaction, serverTimestamp, startAfter, where} from 'firebase/firestore';
 import {FIREBASE_PROJECTS} from './firebase-projects.js';
-import {OCCURRENCE_CATALOG_SPECS, getOccurrenceForm, validateOccurrenceValues} from './occurrence-schema.js';
+import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_PRIVATE_FIELDS, getOccurrenceForm, occurrenceAppProtocol,
+  occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues} from './occurrence-schema.js';
+import {isValidDateKey} from './schedule-date.js';
 
 const REPORTS = 'occurrenceReports';
 const AUDIT = 'occurrenceAudit';
 const SCORE_CLAIMS = 'occurrenceScoreClaims';
 const CATALOGS = 'occurrenceCatalogs';
+const FOLLOWUPS = 'occurrenceFollowups';
+const GRANTS = 'occurrenceHospitalGrants';
 const SOURCE_PROJECT = FIREBASE_PROJECTS.FC.projectId;
 const MAX_RECORD_BYTES = 500000;
 const TRANSIENT_FIRESTORE_CODES = new Set(['unavailable','deadline-exceeded','network-request-failed','resource-exhausted']);
@@ -13,6 +17,22 @@ const plain = value => value !== null && typeof value === 'object' && !Array.isA
   && [Object.prototype, null].includes(Object.getPrototypeOf(value));
 const boundedText = (value, max) => typeof value === 'string' && value.trim().length > 0 && value.trim().length <= max;
 const jsonBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
+const validUid = value => boundedText(value,128) && !value.includes('/');
+const fcAdministrator = profile => profile?.role === 'administrador_app' || profile?.permissions?.admin === true;
+const followupId = id => /^[A-Fa-f0-9-]{36}$|^gr-[1-9]\d{0,11}$/.test(id || '');
+
+function safeAppNarrative(report, displayName, extraIdentityValues) {
+  const confidential = [displayName, ...extraIdentityValues].filter(text => boundedText(text,5000))
+    .map(text => text.trim()).sort((a,b) => b.length - a.length);
+  const identity = confidential.map(value => value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
+  const pattern = identity ? new RegExp(`(^|[^\\p{L}\\p{N}])(?:${identity})(?![\\p{L}\\p{N}])`,'giu') : null;
+  const redact = text => typeof text !== 'string' || !pattern ? text :
+    text.replace(pattern,(_match,before) => before+'…');
+  const safeFields = values => Object.fromEntries(Object.entries(values)
+    .filter(([key]) => !OCCURRENCE_PRIVATE_FIELDS.includes(key)).map(([key,value]) => [key,redact(value)]));
+  return {title:redact(report.occurrence),description:redact(report.description),
+    classification:safeFields(report.classification),details:safeFields(report.details)};
+}
 
 export function validateOccurrenceCatalogDocument(value) {
   if (!plain(value) || value.schemaVersion !== 1 || !plain(value.catalogs)) throw new Error('OCCURRENCE_CATALOG_INVALID');
@@ -39,7 +59,10 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     orderBy: firestore.orderBy || orderBy,
     query: firestore.query || query,
     runTransaction: firestore.runTransaction || runTransaction,
-    serverTimestamp: firestore.serverTimestamp || serverTimestamp
+    serverTimestamp: firestore.serverTimestamp || serverTimestamp,
+    where: firestore.where || where,
+    documentId: firestore.documentId || documentId,
+    startAfter: firestore.startAfter || startAfter
   };
   let catalogCache = null;
 
@@ -60,7 +83,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       || (permission && profile.permissions?.[permission] !== true)) {
       throw new Error('OCCURRENCE_PERMISSION_DENIED');
     }
-    return user;
+    return {user,profile};
   };
 
   const loadCatalog = async ({uid} = {}) => {
@@ -81,7 +104,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
 
   const save = async ({uid, displayName, anonymous = false, formId, values, recordId, catalogs} = {}) => {
-    const user = await requirePermission(uid, 'sahmtOccurrencesWrite');
+    const {user} = await requirePermission(uid, 'sahmtOccurrencesWrite');
     if (!/^[A-Fa-f0-9-]{36}$/.test(recordId || '') || typeof anonymous !== 'boolean') throw new Error('OCCURRENCE_INPUT_INVALID');
     const form = getOccurrenceForm(formId);
     if (!form) throw new Error('OCCURRENCE_FORM_INVALID');
@@ -110,6 +133,9 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const reportRef = api.doc(db, REPORTS, recordId);
     const auditRef = api.doc(db, AUDIT, recordId);
     const scoreRef = api.doc(db, SCORE_CLAIMS, recordId);
+    const sequenceRef = api.doc(db, 'occurrenceSequences', 'app');
+    const followupRef = api.doc(db,FOLLOWUPS,recordId);
+    const safe = safeAppNarrative(report,displayName,[user.email,values.attendance,values.patientOrAttendance,values.prescriptionNumber]);
     try {
       const result = await api.runTransaction(db, async transaction => {
         const [priorReport, priorAudit, priorScore] = await Promise.all([
@@ -118,20 +144,28 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
         if (priorReport.exists() || priorAudit.exists() || priorScore.exists()) {
           if (priorReport.exists() && priorAudit.exists() && priorScore.exists()
             && priorAudit.data()?.uid === uid && priorReport.data()?.formId === formId
-            && priorScore.data()?.uid === uid && priorScore.data()?.sourceId === recordId) return 'already-saved';
+            && priorScore.data()?.uid === uid && priorScore.data()?.sourceId === recordId) {
+            return {status:'already-saved',sequence:priorReport.data().sequence};
+          }
           throw new Error('OCCURRENCE_RECONCILIATION_REQUIRED');
         }
+        const counter = await transaction.get(sequenceRef);
+        const sequence = counter.exists() ? counter.data().last + 1 : 1;
+        if (!occurrenceAppProtocol(sequence)) throw new Error('OCCURRENCE_RECONCILIATION_REQUIRED');
         if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
-        transaction.set(reportRef, report);
+        transaction.set(sequenceRef, {last:sequence,reportId:recordId});
+        transaction.set(reportRef, {...report,sequence});
+        transaction.set(followupRef,{schemaVersion:1,id:recordId,origin:'app',formId,sequence,
+          occurredOn:report.occurredOn,...safe,createdAt:api.serverTimestamp()});
         transaction.set(auditRef, audit);
         transaction.set(scoreRef, scoreClaim);
-        return 'saved';
+        return {status:'saved',sequence};
       });
       if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
       // A confirmed FC record is not undone by FB unavailability. Its existing
       // pending claim supports recovery; no point amount is sent by the browser.
       Promise.resolve().then(()=>notifyScore({id:recordId,uid,auth,isCurrent})).catch(()=>{});
-      return Object.freeze({status:result,id:recordId,pointsStatus:'PENDING_VALIDATION'});
+      return Object.freeze({status:result.status,id:recordId,protocol:occurrenceAppProtocol(result.sequence),pointsStatus:'PENDING_VALIDATION'});
     } catch (error) {
       if (['OCCURRENCE_SESSION_CHANGED','OCCURRENCE_RECONCILIATION_REQUIRED'].includes(error?.message)) throw error;
       if (error?.code === 'permission-denied') throw new Error('OCCURRENCE_PERMISSION_DENIED');
@@ -169,5 +203,84 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     }
   };
 
-  return Object.freeze({loadCatalog,save,list,listAudit,clear:()=>{catalogCache=null;}});
+  const hospitalAccess = async ({uid} = {}) => {
+    const {profile} = await requirePermission(uid);
+    if (fcAdministrator(profile)) return true;
+    const grant = await api.getDocFromServer(api.doc(db,GRANTS,uid));
+    return grant.exists() && grant.data().enabled === true;
+  };
+  const listFollowups = async ({uid,formId,after} = {}) => {
+    await requirePermission(uid);
+    if (!getOccurrenceForm(formId)) throw new Error('OCCURRENCE_INPUT_INVALID');
+    const pageSize = 30;
+    const criteria = [api.where('formId','==',formId),api.orderBy(api.documentId()),api.limit(pageSize)];
+    if (after) criteria.push(api.startAfter(after));
+    const page = await api.getDocsFromServer(api.query(api.collection(db,FOLLOWUPS),...criteria));
+    return {entries:page.docs.map(doc => doc.data()),next:page.docs.length === pageSize ? page.docs.at(-1) : null};
+  };
+  const readAnalysis = async ({uid,id} = {}) => {
+    await requirePermission(uid);
+    if (!followupId(id)) throw new Error('OCCURRENCE_INPUT_INVALID');
+    const row = await api.getDocFromServer(api.doc(db,FOLLOWUPS,id,'analyses',uid));
+    return row.exists() ? row.data().analysis : null;
+  };
+  const saveAnalysis = async ({uid,id,values} = {}) => {
+    await requirePermission(uid);
+    if (!followupId(id)) throw new Error('OCCURRENCE_INPUT_INVALID');
+    const analysis = readOccurrenceAnalysis(values);
+    if (!analysis) return false;
+    await api.runTransaction(db,async tx => {
+      tx.set(api.doc(db,FOLLOWUPS,id,'analyses',uid),{analysis,updatedAt:api.serverTimestamp()});
+    });
+    return true;
+  };
+  const listAnalyses = async ({uid,id,after} = {}) => {
+    const {profile} = await requirePermission(uid);
+    if (!fcAdministrator(profile) || !followupId(id)) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const pageSize = 30;
+    const criteria = [api.orderBy(api.documentId()),api.limit(pageSize)];
+    if (after) criteria.push(api.startAfter(after));
+    const page = await api.getDocsFromServer(api.query(api.collection(db,FOLLOWUPS,id,'analyses'),...criteria));
+    return {entries:page.docs.map(doc => doc.data()),next:page.docs.length === pageSize ? page.docs.at(-1) : null};
+  };
+  const saveHospital = async ({uid,formId,number,occurredOn,title,description} = {}) => {
+    if (!await hospitalAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const hospitalNumber = occurrenceHospitalNumber(number);
+    if (!hospitalNumber || !getOccurrenceForm(formId) || !isValidDateKey(occurredOn)
+      || !boundedText(title,180) || !boundedText(description,5000)) throw new Error('OCCURRENCE_INPUT_INVALID');
+    const id = 'gr-'+hospitalNumber;
+    const entry = {schemaVersion:1,id,origin:'hospital',formId,hospitalNumber,occurredOn,title:title.trim(),
+      description:description.trim(),classification:{},details:{},createdAt:api.serverTimestamp()};
+    await api.runTransaction(db,async transaction => {
+      const ref = api.doc(db,FOLLOWUPS,id);
+      const prior = await transaction.get(ref);
+      if (prior.exists()) {
+        if (['formId','occurredOn','title','description'].some(key => prior.data()[key] !== entry[key])) {
+          throw new Error('OCCURRENCE_HOSPITAL_DUPLICATE');
+        }
+        return;
+      }
+      transaction.set(ref,entry);
+      transaction.set(api.doc(db,'occurrenceHospitalAudit',id),{uid,createdAt:api.serverTimestamp()});
+    });
+    return occurrenceProtocol(entry);
+  };
+  const getHospitalGrant = async ({uid,subjectUid} = {}) => {
+    const {profile} = await requirePermission(uid);
+    if (!fcAdministrator(profile) || !validUid(subjectUid)) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const value = await api.getDocFromServer(api.doc(db,GRANTS,subjectUid));
+    return value.exists() && value.data().enabled === true;
+  };
+  const saveHospitalGrant = async ({uid,subjectUid,enabled} = {}) => {
+    const {profile} = await requirePermission(uid);
+    if (!fcAdministrator(profile) || !validUid(subjectUid) || typeof enabled !== 'boolean') {
+      throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    }
+    await api.runTransaction(db,async tx => {
+      tx.set(api.doc(db,GRANTS,subjectUid),{enabled,updatedBy:uid,updatedAt:api.serverTimestamp()});
+    });
+  };
+
+  return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
+    hospitalAccess,saveHospital,getHospitalGrant,saveHospitalGrant,clear:()=>{catalogCache=null;}});
 }
