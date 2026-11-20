@@ -1957,19 +1957,19 @@ async function loadModule(route) {
       }:null;
       const directory=document.createElement('section');
       content.replaceChildren(directory);
-      const occurrenceHospitalAccess=adminCurrent()?async (subjectUid,enabled)=>{
+      const occurrenceGrantAccess=adminCurrent()?async (kind,subjectUid,enabled)=>{
         const [{getIndicatorsAuth,getIndicatorsFirestore,waitForIndicatorsSession},{createOccurrenceRepository}]=await Promise.all([
           import('./fc-module-firebase.js'),import('./occurrence-data.js')
         ]);
         if(!adminCurrent()||!await waitForIndicatorsSession({isCurrent:adminCurrent})||!adminCurrent())throw Error('OCCURRENCE_SESSION_INVALID');
         const repository=createOccurrenceRepository({db:getIndicatorsFirestore(),auth:getIndicatorsAuth(),isCurrent:adminCurrent});
-        if(enabled===undefined)return repository.getHospitalGrant({uid,subjectUid});
-        await repository.saveHospitalGrant({uid,subjectUid,enabled});
+        if(enabled===undefined)return repository.getGrant({uid,subjectUid,kind});
+        await repository.saveGrant({uid,subjectUid,kind,enabled});
         return enabled;
       }:null;
       mountPeopleDirectory(directory,{contacts,profiles:adminCurrent()&&profilesResult.value||[],registrationRequest,readTeamEntry,isCurrent:current,
         contactFailed:contactsResult.status==='rejected',profilesFailed:profilesResult.status==='rejected',
-        occurrenceHospitalAccess,
+        occurrenceGrantAccess,
         roleLabel:role=>userRoles.find(([id])=>id===role)?.[1]||role,
         onEdit:contact=>{
           const form=document.querySelector('[data-module-form="people"]');

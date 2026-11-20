@@ -17,6 +17,10 @@
       return occurrenceAdministrator() || (activeUser() && exists(occurrenceGrantPath(request.auth.uid)) &&
         get(occurrenceGrantPath(request.auth.uid)).data.enabled == true);
     }
+    function canEditOccurrenceDescription() {
+      let grant = /databases/$(database)/documents/occurrenceDescriptionGrants/$(request.auth.uid);
+      return occurrenceAdministrator() || (activeUser() && exists(grant) && get(grant).data.enabled == true);
+    }
     function validOccurrenceNumber(id, data) {
       let counter = getAfter(occurrenceCounterPath()).data;
       let entry = getAfter(occurrenceFollowupPath(id)).data;
@@ -81,7 +85,10 @@
       allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && validOccurrenceFollowup(id,request.resource.data) &&
         ((request.resource.data.origin == 'app' && canWrite() && validAppOccurrenceFollowup(id,request.resource.data)) ||
           (request.resource.data.origin == 'hospital' && canRegisterHospitalOccurrence() && validHospitalOccurrenceFollowup(id,request.resource.data)));
-      allow update, delete: if false;
+      allow update: if canEditOccurrenceDescription() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description']) &&
+        occurrenceText(request.resource.data.description,5000);
+      allow delete: if false;
       match /analyses/{uid} {
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
         allow list: if occurrenceAdministrator() && request.query.limit != null && request.query.limit <= 30;
@@ -99,6 +106,12 @@
       allow list, update, delete: if false;
     }
     match /occurrenceHospitalGrants/{uid} {
+      allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
+      allow create, update: if occurrenceAdministrator() && request.resource.data.keys().hasOnly(['enabled','updatedAt','updatedBy']) &&
+        request.resource.data.enabled is bool && request.resource.data.updatedAt == request.time && request.resource.data.updatedBy == request.auth.uid;
+      allow list, delete: if false;
+    }
+    match /occurrenceDescriptionGrants/{uid} {
       allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
       allow create, update: if occurrenceAdministrator() && request.resource.data.keys().hasOnly(['enabled','updatedAt','updatedBy']) &&
         request.resource.data.enabled is bool && request.resource.data.updatedAt == request.time && request.resource.data.updatedBy == request.auth.uid;

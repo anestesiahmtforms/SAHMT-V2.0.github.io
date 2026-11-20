@@ -9,7 +9,10 @@ const AUDIT = 'occurrenceAudit';
 const SCORE_CLAIMS = 'occurrenceScoreClaims';
 const CATALOGS = 'occurrenceCatalogs';
 const FOLLOWUPS = 'occurrenceFollowups';
-const GRANTS = 'occurrenceHospitalGrants';
+const GRANTS = new Map([
+  ['hospital','occurrenceHospitalGrants'],
+  ['descriptions','occurrenceDescriptionGrants']
+]);
 const SOURCE_PROJECT = FIREBASE_PROJECTS.FC.projectId;
 const MAX_RECORD_BYTES = 500000;
 const TRANSIENT_FIRESTORE_CODES = new Set(['unavailable','deadline-exceeded','network-request-failed','resource-exhausted']);
@@ -203,11 +206,29 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     }
   };
 
-  const hospitalAccess = async ({uid} = {}) => {
+  const hasGrant = async (uid,kind) => {
     const {profile} = await requirePermission(uid);
     if (fcAdministrator(profile)) return true;
-    const grant = await api.getDocFromServer(api.doc(db,GRANTS,uid));
+    const grant = await api.getDocFromServer(api.doc(db,GRANTS.get(kind),uid));
     return grant.exists() && grant.data().enabled === true;
+  };
+  const hospitalAccess = ({uid} = {}) => hasGrant(uid,'hospital');
+  const descriptionAccess = ({uid} = {}) => hasGrant(uid,'descriptions');
+  const saveDescription = async ({uid,id,description,expectedDescription} = {}) => {
+    if (!followupId(id) || !boundedText(description,5000) ||
+      (expectedDescription !== null && typeof expectedDescription !== 'string')) throw new Error('OCCURRENCE_INPUT_INVALID');
+    if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const next = description.trim(),ref=api.doc(db,FOLLOWUPS,id);
+    await api.runTransaction(db,async tx => {
+      const snapshot = await tx.get(ref);
+      if (!isCurrent() || auth.currentUser?.uid !== uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      if (!snapshot.exists()) throw new Error('OCCURRENCE_RECORD_NOT_FOUND');
+      const previous = snapshot.data().description ?? null;
+      if (previous === next) return;
+      if (previous !== expectedDescription) throw new Error('OCCURRENCE_DESCRIPTION_CHANGED');
+      tx.update(ref,{description:next});
+    });
+    return next;
   };
   const listFollowups = async ({uid,formId,after} = {}) => {
     await requirePermission(uid);
@@ -265,22 +286,24 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     });
     return occurrenceProtocol(entry);
   };
-  const getHospitalGrant = async ({uid,subjectUid} = {}) => {
+  const getGrant = async ({uid,subjectUid,kind} = {}) => {
     const {profile} = await requirePermission(uid);
-    if (!fcAdministrator(profile) || !validUid(subjectUid)) throw new Error('OCCURRENCE_PERMISSION_DENIED');
-    const value = await api.getDocFromServer(api.doc(db,GRANTS,subjectUid));
+    const target = GRANTS.get(kind);
+    if (!target || !fcAdministrator(profile) || !validUid(subjectUid)) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const value = await api.getDocFromServer(api.doc(db,target,subjectUid));
     return value.exists() && value.data().enabled === true;
   };
-  const saveHospitalGrant = async ({uid,subjectUid,enabled} = {}) => {
+  const saveGrant = async ({uid,subjectUid,kind,enabled} = {}) => {
     const {profile} = await requirePermission(uid);
-    if (!fcAdministrator(profile) || !validUid(subjectUid) || typeof enabled !== 'boolean') {
+    const target = GRANTS.get(kind);
+    if (!target || !fcAdministrator(profile) || !validUid(subjectUid) || typeof enabled !== 'boolean') {
       throw new Error('OCCURRENCE_PERMISSION_DENIED');
     }
     await api.runTransaction(db,async tx => {
-      tx.set(api.doc(db,GRANTS,subjectUid),{enabled,updatedBy:uid,updatedAt:api.serverTimestamp()});
+      tx.set(api.doc(db,target,subjectUid),{enabled,updatedBy:uid,updatedAt:api.serverTimestamp()});
     });
   };
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
-    hospitalAccess,saveHospital,getHospitalGrant,saveHospitalGrant,clear:()=>{catalogCache=null;}});
+    hospitalAccess,saveHospital,descriptionAccess,saveDescription,getGrant,saveGrant,clear:()=>{catalogCache=null;}});
 }

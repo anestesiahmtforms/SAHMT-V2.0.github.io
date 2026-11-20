@@ -19,7 +19,7 @@ function descriptionMarkup(entry) {
   });
   if (entry.occurredOn) details.unshift(['Data da ocorrência',formatDisplayDate(entry.occurredOn)]);
   return '<article class="occurrence-followup-report"><h4'+(entry.origin==='hospital'?' class="occurrence-hospital-title"':'')+'>'+
-    escape(labelFor(entry))+'</h4>'+(entry.description?'<p>'+escape(entry.description)+'</p>':'')+
+    escape(labelFor(entry))+'</h4><p data-occurrence-description'+(entry.description?'':' hidden')+'>'+escape(entry.description)+'</p>'+
     '<dl>'+details.map(([label,value])=>'<div><dt>'+escape(label)+'</dt><dd>'+escape(value)+'</dd></div>').join('')+'</dl></article>';
 }
 
@@ -123,6 +123,7 @@ export function mountOccurrenceFollowup(host,{
 
   function detail(entry) {
     const current=render(occurrenceProtocol(entry),descriptionMarkup(entry)+
+      '<div data-occurrence-description-tools hidden></div>'+
       '<form class="occurrence-followup-analysis" data-followup-analysis><h4>ANÁLISE DO PROBLEMA</h4>'+
       '<p>Ao preencher um campo, preencha os cinco para salvar a análise.</p><fieldset disabled>'+
       fields.map(([key,label])=>'<label class="occurrence-field"><span>'+label+'</span><textarea rows="3" name="'+key+
@@ -131,7 +132,7 @@ export function mountOccurrenceFollowup(host,{
       (isAdministrator?'<details data-admin-analyses><summary>ANÁLISES ENVIADAS</summary><div data-analyses-list></div>'+
         '<p role="status"></p><button type="button" class="secondary-button" hidden>CARREGAR MAIS</button></details>':''),()=>records(true));
     heading.classList.toggle('occurrence-hospital-heading',entry.origin==='hospital');
-    const form=body.querySelector('form'),container=form.querySelector('fieldset'),status=form.querySelector('[data-analysis-status]');
+    const form=body.querySelector('[data-followup-analysis]'),container=form.querySelector('fieldset'),status=form.querySelector('[data-analysis-status]');
     function values() {return Object.fromEntries(fields.map(([key])=>[key,form.elements[key].value]));}
     function requireTogether() {
       const started=Object.values(values()).some(value=>value.trim());
@@ -160,6 +161,52 @@ export function mountOccurrenceFollowup(host,{
       finally {writing=false;if(current()) container.disabled=!canInteract();}
     });
     if (isAdministrator) bindAnalyses(body.querySelector('[data-admin-analyses]'),entry.id,current);
+    if (canShowHospital()) void repository.descriptionAccess({uid}).then(allowed=>{
+      if (allowed&&current()) bindDescriptionEditor(body.querySelector('[data-occurrence-description-tools]'),entry,current);
+    }).catch(()=>{});
+  }
+
+  function bindDescriptionEditor(panel,entry,current) {
+    panel.innerHTML='<button type="button" class="secondary-button" data-edit-occurrence-description>EDITAR DESCRIÇÃO</button>'+
+      '<form class="occurrence-followup-analysis" hidden><p>'+privacyNote+'</p><fieldset>'+
+      '<label class="occurrence-field"><span>Descrição da ocorrência</span><textarea name="description" rows="5" maxlength="5000" required></textarea></label>'+
+      '<button type="submit" class="primary-button">SALVAR DESCRIÇÃO</button>'+
+      '<button type="button" class="secondary-button" data-cancel-description>CANCELAR</button></fieldset></form><p role="status"></p>';
+    panel.hidden=false;
+    const edit=panel.querySelector('[data-edit-occurrence-description]'),form=panel.querySelector('form'),
+      inputs=form.querySelector('fieldset'),input=form.elements.description,status=panel.querySelector('[role="status"]');
+    function close() {form.hidden=true;edit.hidden=false;edit.focus({preventScroll:true});}
+    edit.addEventListener('click',()=>{
+      if (!current()||writing||!canShowHospital()) return;
+      input.value=entry.description||'';
+      status.textContent='';
+      edit.hidden=true;
+      form.hidden=false;
+      input.focus();
+    });
+    form.querySelector('[data-cancel-description]').addEventListener('click',()=>{status.textContent='';close();});
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+      if (!current()||writing||!canShowHospital()) return;
+      const description=input.value.trim();
+      if (!description) {status.textContent='Preencha a descrição da ocorrência.';return;}
+      writing=true;inputs.disabled=true;status.textContent='Salvando descrição…';
+      try {
+        const saved=await repository.saveDescription({uid,id:entry.id,description,expectedDescription:entry.description??null});
+        if (!current()) return;
+        entry.description=saved;
+        const published=body.querySelector('[data-occurrence-description]');
+        published.textContent=saved;
+        published.hidden=false;
+        status.textContent='Descrição atualizada.';
+        close();
+      } catch(error) {
+        if (!current()) return;
+        status.textContent=error.message==='OCCURRENCE_DESCRIPTION_CHANGED'
+          ?'A descrição mudou desde que você abriu o registro. Volte e atualize a lista antes de editar novamente.'
+          :'Não foi possível salvar a descrição. Confira o seu acesso e tente novamente.';
+      } finally {writing=false;if(current())inputs.disabled=false;}
+    });
   }
 
   function bindAnalyses(panel,id,current) {

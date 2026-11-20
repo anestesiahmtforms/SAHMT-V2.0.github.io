@@ -89,7 +89,7 @@ function personCard({contact,profile,name,email},index,roleLabel){
  </li>`;
 }
 
-export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest,readTeamEntry,occurrenceHospitalAccess,contactFailed=false,profilesFailed=false,isCurrent,onEdit,roleLabel}) {
+export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest,readTeamEntry,occurrenceGrantAccess,contactFailed=false,profilesFailed=false,isCurrent,onEdit,roleLabel}) {
  const rows=combinePeople(contacts,profiles);
  const partial=[contactFailed&&'Contatos',profilesFailed&&'Contas do app'].filter(Boolean);
  host.innerHTML=`${partial.length?`<p role="status">${h(partial.join(' e '))} · consulta indisponível.</p>`:''}
@@ -109,16 +109,19 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
   let loading=false,loaded=false;
   const target=details.querySelector('[data-person-fc]');
   const fk=details.querySelector('[data-person-fk]');
-  if(occurrenceHospitalAccess&&row.profile&&row.canLinkProfessional){
-   details.insertAdjacentHTML('beforeend','<div class="people-occurrence-grant" data-people-occurrence-grant><h4>Núcleo de Segurança do Hospital</h4>'+
-    '<label><input type="checkbox" disabled> Pode registrar relatos no SAHMT</label>'+
+  if(occurrenceGrantAccess&&row.profile&&row.canLinkProfessional)for(const [kind,title,label] of [
+   ['hospital','Núcleo de Segurança do Hospital','Pode registrar relatos no SAHMT'],
+   ['descriptions','Registros de Ocorrências','Pode editar as descrições das ocorrências']
+  ]){
+   details.insertAdjacentHTML('beforeend',`<div class="people-occurrence-grant" data-people-occurrence-grant="${kind}"><h4>${title}</h4>`+
+    `<label><input type="checkbox" disabled> ${label}</label>`+
     '<button type="button" class="secondary-button" disabled>SALVAR PERMISSÃO</button><p role="status"></p></div>');
-   const grant=details.querySelector('[data-people-occurrence-grant]'),checkbox=grant.querySelector('input'),button=grant.querySelector('button'),status=grant.querySelector('p');
+   const grant=details.querySelector(`[data-people-occurrence-grant="${kind}"]`),checkbox=grant.querySelector('input'),button=grant.querySelector('button'),status=grant.querySelector('p');
    let ready=false,busy=false;
    const refresh=async()=>{
     busy=true;button.disabled=true;status.textContent='Consultando permissão…';
     try{
-     const enabled=await occurrenceHospitalAccess(row.profile.uid);
+     const enabled=await occurrenceGrantAccess(kind,row.profile.uid);
      if(!isCurrent())return;
      checkbox.checked=enabled;checkbox.disabled=false;ready=true;status.textContent='';button.textContent='SALVAR PERMISSÃO';
     }catch{if(isCurrent()){status.textContent='Permissão indisponível no FC.';button.textContent='TENTAR NOVAMENTE';}}
@@ -129,7 +132,7 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
     if(busy||!isCurrent())return;
     if(!ready){void refresh();return;}
     busy=true;checkbox.disabled=button.disabled=true;status.textContent='Salvando…';
-    try{await occurrenceHospitalAccess(row.profile.uid,checkbox.checked);if(isCurrent())status.textContent='Permissão salva.';}
+    try{await occurrenceGrantAccess(kind,row.profile.uid,checkbox.checked);if(isCurrent())status.textContent='Permissão salva.';}
     catch{if(isCurrent())status.textContent='Não foi possível confirmar a permissão. Tente novamente.';}
     finally{busy=false;checkbox.disabled=button.disabled=false;}
    });

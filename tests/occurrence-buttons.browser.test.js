@@ -5,7 +5,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
    hospitalAccess:async()=>false,listFollowups:async({formId})=>({entries:formId==='F08'&&window.followupPublished?
     [{id:'gr-1',formId,origin:'hospital',hospitalNumber:'1',title:'Evento externo',occurredOn:'2026-11-20',description:'Relato completo aqui',classification:{},details:{}}]:[],next:null}),
-   readAnalysis:async()=>null,saveAnalysis:async({values})=>{window.analysis=values;return true;}};}`,
+   readAnalysis:async()=>null,saveAnalysis:async({values})=>{window.analysis=values;return true;},
+   descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;}};}`,
   'outbox.js':`export async function enqueueOccurrenceSubmission(){throw Error('No writes in this fixture');}export async function listUnsettledOperations(){return [];}`
  };
  const fixture=`import {mountOccurrenceModule} from '/src/occurrences-ui.js';window.calls=0;window.recentReads=0;window.auditReads=0;window.hang=false;const uid='synthetic';window.dispose=mountOccurrenceModule(document.querySelector('#root'),{uid,displayName:'Teste',auth:{currentUser:{uid}},db:{},permissions:{occurrencesRead:true,occurrencesWrite:true,occurrencesAuditRead:true},isCurrent:()=>true,followupAllowed:true});`;
@@ -102,6 +103,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click({timeout:2000});
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
   await page.getByText('Relato completo aqui').waitFor();
+  assert.equal(await followupBanner.getByRole('button',{name:'EDITAR DESCRIÇÃO'}).count(),0);
   await checkFollowupBanner();
   const hospitalTitle=page.locator('.occurrence-followup-report .occurrence-hospital-title');
   assert.equal(await hospitalTitle.textContent(),'Evento externo');
@@ -126,7 +128,22 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.getByText('Análise salva.',{exact:true}).waitFor();
   assert.deepEqual(await page.evaluate(()=>window.analysis),{problem:'A',cause:'cause',review:'review',correction:'correction',plan:'plan'});
   await back.click();
-  await page.getByRole('button',{name:'GR 001 · Evento externo'}).waitFor();
+  await page.evaluate(()=>window.canEditDescription=true);
+  await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
+  await followupBanner.getByRole('button',{name:'EDITAR DESCRIÇÃO'}).click();
+  const editor=followupBanner.getByRole('textbox',{name:'Descrição da ocorrência'});
+  assert.equal(await editor.inputValue(),'Relato completo aqui');
+  await editor.fill('Texto revisado');
+  await followupBanner.getByRole('button',{name:'SALVAR DESCRIÇÃO'}).click();
+  await followupBanner.getByText('Descrição atualizada.',{exact:true}).waitFor();
+  assert.equal(await followupBanner.locator('[data-occurrence-description]').textContent(),'Texto revisado');
+  assert.deepEqual(await page.evaluate(()=>window.descriptionEdit),{
+   uid:'synthetic',id:'gr-1',description:'Texto revisado',expectedDescription:'Relato completo aqui'
+  });
+  await back.click();
+  await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
+  await followupBanner.getByText('Texto revisado',{exact:true}).waitFor();
+  await back.click();
   await back.click();
   await followup.waitFor();
   await back.click();

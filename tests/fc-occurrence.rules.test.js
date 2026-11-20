@@ -2,7 +2,7 @@ import {readFile} from 'node:fs/promises';
 import {before,after,beforeEach,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
-import {collection,doc,getDoc,getDocFromServer,getDocs,limit,query,runTransaction,serverTimestamp,setDoc,writeBatch} from 'firebase/firestore';
+import {collection,doc,getDoc,getDocFromServer,getDocs,limit,query,runTransaction,serverTimestamp,setDoc,updateDoc,writeBatch} from 'firebase/firestore';
 import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 import {createOccurrenceRepository} from '../src/occurrence-data.js';
 
@@ -139,6 +139,46 @@ test('somente administrador delega registros GR, cujo protocolo preserva unicida
  });
  await assertSucceeds(setDoc(doc(adminDb,'occurrenceHospitalGrants',member),{enabled:false,updatedBy:admin,updatedAt:serverTimestamp()}));
  await assert.rejects(repository.saveHospital({...payload,number:'GR 005'}),{message:'OCCURRENCE_PERMISSION_DENIED'});
+});
+
+test('administrador e gestor designado podem editar apenas a descrição de ocorrências GRA e GR',async()=>{
+ const admin='occurrence-admin',delegate='occurrence-delegate',ordinary='reader-synthetic';
+ const hospitalId='gr-4',records=[id,hospitalId];
+ await env.withSecurityRulesDisabled(async context=>{
+  const db=context.firestore();
+  await Promise.all([
+   setDoc(doc(db,'users',admin),{uid:admin,active:true,access:true,role:'administrador_app'}),
+   setDoc(doc(db,'users',delegate),{uid:delegate,active:true,access:true,role:'gestor'}),
+   setDoc(doc(db,'occurrenceHospitalGrants',delegate),{enabled:true}),
+   setDoc(doc(db,'runtimePolicy','folders'),{schemaVersion:1,revision:2,disabled:['registros']}),
+   setDoc(doc(db,'occurrenceFollowups',id),{id,origin:'app',formId:'F10',sequence:1,description:null}),
+   setDoc(doc(db,'occurrenceFollowups',hospitalId),{id:hospitalId,origin:'hospital',formId:'F08',hospitalNumber:'4',description:'Original'})
+  ]);
+ });
+ const adminDb=google(admin),delegateDb=google(delegate),memberDb=google(ordinary);
+ const followup=(db,key)=>doc(db,'occurrenceFollowups',key);
+ const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:delegate}},
+  firestore:{doc:(_,name,key)=>doc(delegateDb,name,key),getDocFromServer,runTransaction:(_,callback)=>runTransaction(delegateDb,callback)}});
+ const adminRepository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:admin}},
+  firestore:{doc:(_,name,key)=>doc(adminDb,name,key),getDocFromServer,runTransaction:(_,callback)=>runTransaction(adminDb,callback)}});
+ await assertFails(updateDoc(followup(memberDb,id),{description:'Não autorizado'}));
+ await assertFails(updateDoc(followup(delegateDb,id),{description:'Só autorizado a registrar relatos do Núcleo'}));
+ await assertFails(setDoc(doc(delegateDb,'occurrenceDescriptionGrants',delegate),{enabled:true,updatedBy:delegate,updatedAt:serverTimestamp()}));
+ await adminRepository.saveGrant({uid:admin,subjectUid:delegate,kind:'descriptions',enabled:true});
+ assert.equal(await adminRepository.getGrant({uid:admin,subjectUid:delegate,kind:'descriptions'}),true);
+ await assertFails(updateDoc(followup(delegateDb,id),{description:'Mudança',sequence:2}));
+ await assertFails(updateDoc(followup(adminDb,id),{description:' \n '}));
+ await assertSucceeds(updateDoc(followup(adminDb,hospitalId),{description:'Revisto pela administração'}));
+ for(const key of records){
+  const previous=(await getDocFromServer(followup(memberDb,key))).data().description;
+  const input={uid:delegate,id:key,expectedDescription:previous,description:'Descrição revisada'};
+  assert.equal(await repository.saveDescription(input),'Descrição revisada');
+  assert.equal(await repository.saveDescription(input),'Descrição revisada');
+  assert.equal((await getDocFromServer(followup(memberDb,key))).data().description,'Descrição revisada');
+  await assert.rejects(repository.saveDescription({...input,description:'Sobrescrita desatualizada'}),{message:'OCCURRENCE_DESCRIPTION_CHANGED'});
+ }
+ await adminRepository.saveGrant({uid:admin,subjectUid:delegate,kind:'descriptions',enabled:false});
+ await assertFails(updateDoc(followup(delegateDb,id),{description:'Permissão revogada'}));
 });
 
 test('catalog access follows registration authorization and rejects blocked or read-only profiles',async()=>{
