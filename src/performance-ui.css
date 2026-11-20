@@ -28,3 +28,11 @@
 .evaluation-governance-dialog .evaluation-page--governance .evaluation-heading h3{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 
 .evaluation-dialog :is(input,select,textarea):disabled{background:#e5e9ec;color:#6d7b87;opacity:.8}
+.evaluation-governance-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden!important;padding:0}
+.evaluation-governance-dialog>header,.evaluation-governance-dialog>footer{position:static;margin:0;padding:12px clamp(12px,3vw,22px);background:#f2f3ee}
+.evaluation-governance-dialog>header{justify-content:center;text-align:center;border-bottom:1px solid #ccdae0}
+.evaluation-governance-dialog>[data-governance-content]{align-content:start;min-height:0;padding:14px clamp(12px,3vw,22px);overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable}
+.evaluation-governance-dialog>[data-governance-content]::-webkit-scrollbar{width:7px}
+.evaluation-governance-dialog>[data-governance-content]::-webkit-scrollbar-thumb{background:#8aa6b5;border-radius:8px}
+.evaluation-governance-dialog>footer{display:flex;justify-content:center;border-top:1px solid #ccdae0;padding-bottom:max(12px,env(safe-area-inset-bottom))}
+.evaluation-governance-dialog>footer>button{width:min(100%,320px);min-height:44px}

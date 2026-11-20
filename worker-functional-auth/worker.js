@@ -1,3 +1,5 @@
+import {isValidDateKey} from '../src/schedule-date.js';
+
 const MAX_BODY = 20000;
 const PERFORMANCE_CRON = '50 2 * * SUN';
 const hex = bytes => [...new Uint8Array(bytes)].map(value => value.toString(16).padStart(2, '0')).join('');
@@ -137,7 +139,7 @@ export function createFunctionalAuthWorker({fetchImpl = fetch, clock = Date.now}
         if (result.code !== 'FK_TEAM_OVERVIEW' || result.uid !== subjectUid ||
             (result.snapshot !== null && result.snapshot?.uid !== subjectUid))
           throw new Error('UPSTREAM_RESPONSE_INVALID');
-        return Response.json({uid:subjectUid,snapshot:result.snapshot,recognition:typeof result.recognition === 'string' ? result.recognition : null,performance:result.performance?.uid===subjectUid?result.performance:null},{status:200,headers});
+        return Response.json({uid:subjectUid,snapshot:result.snapshot,recognition:typeof result.recognition === 'string' ? result.recognition : null,performance:result.performance?.uid===subjectUid?result.performance:null,teamJoinedOn:typeof result.teamJoinedOn==='string'&&isValidDateKey(result.teamJoinedOn)?result.teamJoinedOn:null},{status:200,headers});
       } catch {
         return Response.json({code:'FK_TEAM_OVERVIEW_UNAVAILABLE'},{status:503,headers});
       }

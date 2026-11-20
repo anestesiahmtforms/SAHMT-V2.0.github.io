@@ -1,4 +1,5 @@
 import test from 'node:test';
+import {combinePeople} from '../src/people-directory.js';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
@@ -75,4 +76,29 @@ test('FJ session endpoint admits a people-only local grant after checking the cu
  {MODULE_STATION:'FJ',MODULE_PROJECT_ID:'sahmt-escala-fj',MODULE_CUTOVER_ACTIVE:'true',ALLOWED_ORIGINS:'https://example.test',MODULE_SERVICE_ACCOUNT_JSON:'{}'});
  assert.equal(response.status,200);assert.equal((await response.json()).uid,actor.uid);
  assert.equal(urls.length,2);assert.match(urls[0],/projects\/sahmt-17a16\/.*\/users\/actor$/);assert.match(urls[1],/projects\/sahmt-escala-fj\/.*\/users\/actor$/);
+});
+
+test('Pessoas links contact and user by unique identifiers and leaves inconsistent identities separate',()=>{
+ const accounts=[
+  {uid:'lia',sigla:'LM',email:'lia@example.invalid',displayName:'Lia Machado'},
+  {uid:'ana',sigla:'AN',email:'ana@example.invalid',displayName:'Ana Silva'},
+  {uid:'paulo',sigla:'PA',email:'other@example.invalid',displayName:'Paulo Lima'},
+  {uid:'roster-only',email:'beatriz@example.invalid',displayName:'Beatriz Souza'}
+ ];
+ const contacts=[
+  {sigla:'LM',email:' LIA@example.invalid ',name:'Lia Machado'},
+  {sigla:'AN',email:'',name:'Ana Silva'},
+  {sigla:'PA',email:'paulo@example.invalid',name:'Paulo Lima'}
+ ];
+ const rows=combinePeople(contacts,accounts);
+ assert.deepEqual(rows.map(row=>row.name),['Ana Silva','Beatriz Souza','Lia Machado','Paulo Lima','Paulo Lima']);
+ assert.equal(rows[0].profile.uid,'ana');
+ assert.equal(rows[2].profile.uid,'lia');
+ assert.equal(rows[3].profile,undefined);
+ assert.equal(rows[1].contact,null);
+ assert.equal(rows[1].canLinkProfessional,true);
+ const ambiguous=combinePeople(contacts,[...accounts,{uid:'duplicate',email:'lia@example.invalid',displayName:'Outra conta'}]);
+ assert.ok(ambiguous.filter(row=>row.email==='lia@example.invalid').every(row=>!row.canLinkProfessional));
+ const wrongSigla=combinePeople([{sigla:'ZZ',name:'Paulo Lima',email:'other@example.invalid'}],accounts);
+ assert.ok(wrongSigla.filter(row=>row.email==='other@example.invalid').every(row=>!row.canLinkProfessional));
 });

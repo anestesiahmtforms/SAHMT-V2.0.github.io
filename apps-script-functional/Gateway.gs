@@ -328,17 +328,19 @@ function readTeamOverview_(idToken, subjectUid) {
     ? decodeFirestoreFields_(JSON.parse(recognitionResponse.getContentText()).fields || {}) : null;
   var message = recognition && recognition.uid === subjectUid && typeof recognition.message === 'string'
     ? recognition.message : null;
+  var teamJoinedOn = recognition && recognition.uid === subjectUid && typeof recognition.teamJoinedOn === 'string'
+    ? recognition.teamJoinedOn : null;
   var scoreResponse = responses[2];
   var performance = scoreResponse.getResponseCode() === 200
     ? decodeFirestoreFields_(JSON.parse(scoreResponse.getContentText()).fields || {}) : null;
   if (performance && performance.uid !== subjectUid) performance = null;
   var status = response.getResponseCode();
-  if (status === 404) return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:null, recognition:message, performance:performance};
+  if (status === 404) return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:null, recognition:message, performance:performance, teamJoinedOn:teamJoinedOn};
   if (status !== 200) throw new Error('FK_TEAM_OVERVIEW_UNAVAILABLE');
   var snapshot = decodeFirestoreFields_(JSON.parse(response.getContentText()).fields || {});
   if (snapshot.uid !== subjectUid) throw new Error('FK_SNAPSHOT_INVALID');
   validateSnapshot_(snapshot);
-  return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:snapshot, recognition:message, performance:performance};
+  return {code:'FK_TEAM_OVERVIEW', uid:subjectUid, snapshot:snapshot, recognition:message, performance:performance, teamJoinedOn:teamJoinedOn};
 }
 
 function writeOwnSnapshot_(snapshot) {

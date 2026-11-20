@@ -12,3 +12,13 @@
 .vac-vaccines{min-inline-size:0;padding-top:16px;border:2px solid #c4a468}
 .vac-vaccines legend{width:100%;padding:12px 8px;border:1px solid #d5b974;border-radius:12px;background:linear-gradient(125deg,#185777,#123a54);color:white;text-align:center;font-size:clamp(1.15rem,4.5vw,1.5rem);font-weight:900;line-height:1.3}
 .management-hub-dialog[data-panel="vaccinationHistory"] .vac-footer{display:none}
+.management-hub-dialog[data-panel="vaccinationHistory"] .vac-app{grid-template-rows:auto minmax(0,1fr);flex:1;min-height:0;gap:8px}
+.management-hub-dialog[data-panel="vaccinationHistory"] .vac-toolbar{padding:0 0 5px}
+.management-hub-dialog[data-panel="vaccinationHistory"] .vac-period{padding:2px 12px;border-radius:12px}
+.management-hub-dialog[data-panel="vaccinationHistory"] .vac-period label{flex-wrap:nowrap;gap:12px;font-size:.85rem}
+.management-hub-dialog[data-panel="vaccinationHistory"] .vac-period select{height:30px;min-height:30px;padding:0 6px;font-size:16px;line-height:1.1}
+.management-hub-dialog[data-panel="vaccinationHistory"] .vac-scroll{min-width:0;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-gutter:stable;padding:0 4px 10px}
+.vac-scroll{display:grid;align-content:start;gap:18px}
+.vac-scroll::-webkit-scrollbar{width:7px}
+.vac-scroll::-webkit-scrollbar-thumb{background:#8aa6b5;border-radius:8px}
+.management-hub-dialog[data-panel="vaccinationHistory"] .vac-scroll :is(select,textarea){font-size:16px}

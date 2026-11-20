@@ -18,8 +18,9 @@ const client={async manual(){window.manualRequests=(window.manualRequests||0)+1;
 window.invalidate=()=>{valid=false;invalidated();};
 const root=document.querySelector('#app');
 if(new URL(location.href).searchParams.has('hub')){
+ document.body.classList.add('app-shell');
  const {mountManagementHub}=await import('/src/management-hub.js');
- const cleanup=mountManagementHub(root,{access:{surveys:true,institutionalSurveys:true,biosafety:true},initialPanel:'biosafety',displayName:profile.displayName,isSurveySessionCurrent:()=>valid,onExit:()=>{},
+ const cleanup=mountManagementHub(root,{access:{surveys:true,institutionalSurveys:true,biosafety:true,professional:true,epidemiological:true},initialPanel:'biosafety',displayName:profile.displayName,isSurveySessionCurrent:()=>valid,onExit:()=>{},
   openOccupationalHistory:async(host,panel,isCurrent,onBack)=>(panel==='vaccinationHistory'?mountVaccination:mountDosimetry)(host,{user,profile,onBack,clientFactory:async()=>client})});
 }else if(new URL(location.href).searchParams.has('entry')){
  const {mountVaccinationEntry}=await import('/src/vaccination-entry.js');

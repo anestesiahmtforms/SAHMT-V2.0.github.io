@@ -62,7 +62,7 @@ try{
     await request(api+'/content',token,{method:'PUT',body:{scriptId,files:[
       {name:'appsscript',type:'JSON',source:manifestText},{name:'Gateway',type:'SERVER_JS',source:desired}
     ]}});
-    const version=await request(api+'/versions',token,{method:'POST',body:{description:'FK: importação de dosimetria por integrante com acesso individual'}});
+    const version=await request(api+'/versions',token,{method:'POST',body:{description:process.env.SAHMT_FK_RELEASE_MESSAGE || 'Atualização do Apps Script do Funcional FK'}});
     demand(Number.isInteger(version.versionNumber)&&version.versionNumber>config.versionNumber,'FK_APPS_SCRIPT_VERSION_INVALID');
     const deploymentConfig={scriptId,versionNumber:version.versionNumber,manifestFileName:config.manifestFileName,
       description:config.description||'SAHMT Funcional FK - snapshots e pesquisas'};

@@ -1926,36 +1926,65 @@ async function loadModule(route) {
     return;
   }
   if (route === 'people') {
+    const uid=session.user.uid,generation=evaluationModuleGeneration;
+    const current=()=>generation===evaluationModuleGeneration&&content.isConnected&&currentRoute()===route&&
+      session.status==='signed-in'&&session.user?.uid===uid&&session.profile?.active===true&&session.profile?.access===true;
+    const adminCurrent=()=>current()&&can('admin')&&session.accountMode!=='team';
     try {
-      const {listContactCatalog} = await import('./fi-admin-data.js');
-      const contacts = await listContactCatalog({uid: session.user.uid});
-      content.innerHTML = `${contacts.length ? `<ul class="record-list">${contacts.map((item) => `<li><div class="contact-list-heading"><strong>${escapeHtml(item.sigla)} · ${escapeHtml(item.name)}</strong><button class="secondary-button" type="button" data-contact-edit="${escapeHtml(item.sigla)}">Editar</button></div><small>${escapeHtml(item.role || '')}${item.phone ? ` · ${escapeHtml(item.phone)}` : ''}</small><small class="record-meta">${item.active ? 'Ativo' : 'Inativo'}</small></li>`).join('')}</ul>` : '<p class="empty-state">Nenhum contato cadastrado. Use o formulário acima para criar o catálogo inicial.</p>'}<button class="secondary-button" type="button" id="sync-event-members">Atualizar siglas de Eventos</button><p id="event-members-sync-status" class="record-meta" role="status" aria-live="polite"></p>`;
-      content.querySelector('#sync-event-members')?.addEventListener('click', async (event) => {
-        const button = event.currentTarget;
-        const status = content.querySelector('#event-members-sync-status');
-        button.disabled = true;
-        if (status) status.textContent = 'Sincronizando somente sigla, nome e estado ativo…';
-        try {
-          const {syncEventMemberDirectory} = await import('./fi-admin-data.js');
-          const count = await syncEventMemberDirectory(session.user.uid);
-          if (status) status.textContent = `${count} contato(s) processado(s). O seletor de Eventos já pode usar as siglas ativas.`;
-        } catch (error) {
-          if (status) status.textContent = `Não foi possível atualizar o catálogo. ${error.message || ''}`;
-          button.disabled = false;
+      const [{listContactCatalog,listUserProfiles,listMemberCategoryAssignments},{mountPeopleDirectory}]=await Promise.all([
+        import('./fi-admin-data.js'),import('./people-directory.js')
+      ]);
+      if(!current())return;
+      const readProfiles=adminCurrent()
+        ? Promise.all([listUserProfiles(),listMemberCategoryAssignments().catch(()=>null)]).then(([profiles,assignments])=>{
+          if(!assignments)return profiles;
+          try{return mergeMemberCategoryAssignments(profiles,assignments);}catch{return profiles;}
+        })
+        : Promise.resolve([]);
+      const [contactsResult,profilesResult]=await Promise.allSettled([listContactCatalog({uid}),readProfiles]);
+      if(!current())return;
+      const contacts=contactsResult.status==='fulfilled'?contactsResult.value:[];
+      const registrationRequest=adminCurrent()?async(action,input)=>{
+        const {callRegistrationApi}=await import('./registration-client.js');
+        return callRegistrationApi({uid,isCurrent:adminCurrent,kind:'professional',action,input});
+      }:null;
+      const readTeamEntry=adminCurrent()&&import.meta.env.VITE_FK_FUNCTIONAL_ENABLED==='true'?async subjectUid=>{
+        const [{readFunctionalTeamOverview},{auth:faAuth}]=await Promise.all([import('./functional-client.js'),import('./firebase-auth.js')]);
+        const result=await readFunctionalTeamOverview({faAuth,uid,subjectUid,isCurrent:adminCurrent});
+        return result.teamJoinedOn;
+      }:null;
+      const directory=document.createElement('section');
+      content.replaceChildren(directory);
+      mountPeopleDirectory(directory,{contacts,profiles:adminCurrent()&&profilesResult.value||[],registrationRequest,readTeamEntry,isCurrent:current,
+        contactFailed:contactsResult.status==='rejected',profilesFailed:profilesResult.status==='rejected',
+        roleLabel:role=>userRoles.find(([id])=>id===role)?.[1]||role,
+        onEdit:contact=>{
+          const form=document.querySelector('[data-module-form="people"]');
+          if(!form)return;
+          for(const field of ['sigla','name','role','phone','email','whatsAppLink','crm','entryDate'])form.elements[field].value=contact[field]||'';
+          form.elements.active.checked=contact.active===true;
+          form.elements.sigla.readOnly=true;
+          form.closest('details').open=true;
+          form.scrollIntoView({behavior:'smooth',block:'center'});
+          form.elements.name.focus({preventScroll:true});
         }
       });
-      content.querySelectorAll('[data-contact-edit]').forEach((button) => button.addEventListener('click', () => {
-        const contact = contacts.find((item) => item.sigla === button.dataset.contactEdit);
-        const form = document.querySelector('[data-module-form="people"]');
-        if (!contact || !form) return;
-        for (const field of ['sigla', 'name', 'role', 'phone', 'email', 'whatsAppLink', 'crm', 'entryDate']) form.elements[field].value = contact[field] || '';
-        form.elements.active.checked = contact.active === true;
-        form.elements.sigla.readOnly = true;
-        form.scrollIntoView({behavior: 'smooth', block: 'center'});
-        form.elements.name.focus({preventScroll: true});
-      }));
+      content.insertAdjacentHTML('beforeend','<button class="secondary-button" type="button" id="sync-event-members">Atualizar siglas de Eventos</button><p id="event-members-sync-status" class="record-meta" role="status" aria-live="polite"></p>');
+      content.querySelector('#sync-event-members').addEventListener('click',async event=>{
+        const button=event.currentTarget,status=content.querySelector('#event-members-sync-status');
+        button.disabled=true;
+        status.textContent='Sincronizando somente sigla, nome e estado ativo…';
+        try {
+          const {syncEventMemberDirectory}=await import('./fi-admin-data.js');
+          if(!current())return;
+          const count=await syncEventMemberDirectory(uid);
+          if(current())status.textContent=count+' contato(s) processado(s). O seletor de Eventos já pode usar as siglas ativas.';
+        }catch(error){
+          if(current()){status.textContent='Não foi possível atualizar o catálogo. '+(error.message||'');button.disabled=false;}
+        }
+      });
     } catch (error) {
-      content.innerHTML = `<p class="empty-state">Não foi possível carregar os contatos. ${escapeHtml(error.message || '')}</p>`;
+      if(current())content.innerHTML='<p class="empty-state">Não foi possível carregar os contatos. '+escapeHtml(error.message||'')+'</p>';
     }
     return;
   }

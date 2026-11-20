@@ -49,3 +49,29 @@ test('the simplified form stays responsive and preserves private document compre
  await page.locator('.vac-preview img').waitFor();assert.match(await page.locator('.vac-preview').innerText(),/1600 × 1200/);
  await page.getByRole('button',{name:'Enviar comprovante',exact:true}).click();await page.getByText('Comprovante salvo em FE.',{exact:true}).waitFor();
 }));
+
+test('Acesso Restrito uses the same card treatment and vaccination scroll keeps title, period and footer fixed',()=>browserRun(async browser=>{
+ const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+ await page.goto(base+'?hub');
+ const professional=page.getByRole('button',{name:'CADASTRO PROFISSIONAL - SAHMT',exact:true});
+ const vaccination=page.getByRole('button',{name:'MEU HISTÓRICO VACINAL',exact:true});
+ const style=button=>button.evaluate(el=>{
+  const s=getComputedStyle(el),label=getComputedStyle(el.querySelector('.management-hub-label'));
+  return [s.height,s.background,s.borderRadius,s.padding,label.fontSize,label.fontWeight];
+ });
+ assert.deepEqual(await style(professional),await style(vaccination));
+ await vaccination.click();
+ await page.locator('[data-vac-year]:enabled').waitFor();
+ const dialog=page.getByRole('dialog',{name:'Meu histórico vacinal',exact:true});
+ const title=dialog.locator('.management-hub-header'),period=dialog.locator('.vac-period');
+ const footer=dialog.locator('.management-hub-footer'),body=dialog.locator('.vac-scroll');
+ const before=await Promise.all([title.boundingBox(),period.boundingBox(),footer.boundingBox()]);
+ assert.ok(before[0].height<=79);
+ assert.ok(before[1].height<=39);
+ assert.equal(await dialog.evaluate(el=>getComputedStyle(el).overflowY),'hidden');
+ assert.equal(await body.evaluate(el=>getComputedStyle(el).scrollbarWidth),'thin');
+ assert.ok(await body.evaluate(el=>{el.scrollTop=el.scrollHeight;return el.scrollTop;}));
+ assert.deepEqual(await Promise.all([title.boundingBox(),period.boundingBox(),footer.boundingBox()]),before);
+ await footer.getByRole('button',{name:'VOLTAR',exact:true}).click();
+ await vaccination.waitFor();
+}));

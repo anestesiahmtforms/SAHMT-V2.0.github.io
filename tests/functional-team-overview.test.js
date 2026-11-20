@@ -28,7 +28,7 @@ test('FK administrative lookup checks the actor and active effective assignment 
  const env={UrlFetchApp:{fetchAll(input){return input.map(({url,...options})=>this.fetch(url,options));},fetch(url,options){
   requests.push([url,options.method]);
   if(url.includes('/functionalPerformance/'))return {getResponseCode:()=>404};
-  if(url.includes('/functionalRecognition/'))return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({fields:{uid:{stringValue:'person'},message:{stringValue:'Mensagem individual'}}})};
+  if(url.includes('/functionalRecognition/'))return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({fields:{uid:{stringValue:'person'},message:{stringValue:'Mensagem individual'},teamJoinedOn:{stringValue:'2019-09-01'}}})};
   return {getResponseCode:()=>200,getContentText:()=>JSON.stringify({fields:{uid:{stringValue:'person'},schemaVersion:{integerValue:'1'},
    updatedAt:{integerValue:'1'},sources:{mapValue:{fields:{}}}}})};
  }}};
@@ -51,6 +51,7 @@ test('FK administrative lookup checks the actor and active effective assignment 
  const overview=env.readTeamOverview_('login','person');
  assert.equal(overview.snapshot.uid,'person');
  assert.equal(overview.recognition,'Mensagem individual');
+ assert.equal(overview.teamJoinedOn,'2019-09-01');
  assert.deepEqual(requests.map(([url,method])=>[url.split('/documents/').at(-1),method]),
   [['functionalProfiles/person','get'],['functionalRecognition/person','get'],['functionalPerformance/person','get']]);
 });
@@ -70,6 +71,8 @@ test('FK worker signs the selected UID and rejects a mismatched result',async()=
  assert.equal((await call({faIdToken:token,subjectUid:'person'})).status,503);
  result={code:'FK_AUTH_DENIED'};
  assert.equal((await call({faIdToken:token,subjectUid:'person'})).status,403);
- result={code:'FK_TEAM_OVERVIEW',uid:'person',snapshot:null,recognition:'Mensagem individual'};
- assert.deepEqual(await (await call({faIdToken:token,subjectUid:'person'})).json(),{uid:'person',snapshot:null,recognition:'Mensagem individual',performance:null});
+ result={code:'FK_TEAM_OVERVIEW',uid:'person',snapshot:null,recognition:'Mensagem individual',teamJoinedOn:'2019-09-01'};
+ assert.deepEqual(await (await call({faIdToken:token,subjectUid:'person'})).json(),{uid:'person',snapshot:null,recognition:'Mensagem individual',performance:null,teamJoinedOn:'2019-09-01'});
+ result.teamJoinedOn='2019-02-29';
+ assert.equal((await (await call({faIdToken:token,subjectUid:'person'})).json()).teamJoinedOn,null);
 });

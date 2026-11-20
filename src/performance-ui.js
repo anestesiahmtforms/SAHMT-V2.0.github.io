@@ -534,7 +534,7 @@ export function mountPerformanceModule(content, {uid, profile = {}, category = '
 export function mountManagementEvaluationAccess(host, options) {
   let activeCleanup = null, disposed = false, accessBlocked = false;
   const controller = new AbortController();
-  host.innerHTML = '<button class="primary-button evaluation-management-launch" type="button">Avaliação dos Gestores</button><dialog class="evaluation-dialog evaluation-governance-dialog"><header><h3>AVALIAÇÃO DOS GESTORES</h3><button class="secondary-button" type="button" data-governance-close>VOLTAR</button></header><div class="evaluation-dialog-body" data-governance-content></div></dialog>';
+  host.innerHTML = '<button class="primary-button evaluation-management-launch" type="button">Avaliação dos Gestores</button><dialog class="evaluation-dialog evaluation-governance-dialog" aria-labelledby="evaluation-governance-title"><header><h3 id="evaluation-governance-title" tabindex="-1" autofocus>AVALIAÇÃO DOS GESTORES</h3></header><div class="evaluation-dialog-body" data-governance-content tabindex="0" role="region" aria-label="Conteúdo da avaliação"></div><footer><button class="secondary-button" type="button" data-governance-close>VOLTAR</button></footer></dialog>';
   const dialog = host.querySelector('dialog'), body = host.querySelector('[data-governance-content]');
   const current = () => !disposed && !accessBlocked && host.isConnected && options.isCurrent();
   host.querySelector('.evaluation-management-launch').addEventListener('click', () => {
