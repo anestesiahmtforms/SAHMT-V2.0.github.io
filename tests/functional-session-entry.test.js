@@ -122,7 +122,7 @@ function ui({folderAllowed=()=>true,connected=true,fkState={status:'pending',cod
  const source=readFileSync(new URL('../src/functional-ui.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');
  const updates=[],auth={currentUser:{uid:person.uid}},sources={innerHTML:''},status={textContent:''};
  let recovery=0,retries=0,reads=0,authChanged;
- const intro={hidden:false},topics={hidden:true},tenure={hidden:true},duration={},topicsTitle={focus(){this.focused=true;}};
+ const intro={hidden:false},topics={hidden:true},tenure={hidden:true},duration={},topicsTitle={hidden:true,focus(){this.focused=true;}};
  const listeners=new Map(),recognition={hidden:true},teamStatus={},select={disabled:true,focus(){}},owner={};
  const picker={hidden:true,querySelector:s=>s==='[data-fk-subject]'?select:teamStatus};
  const button={setAttribute(){},focus(){}},detailBody={innerHTML:'',replaceChildren(){this.innerHTML='';}},detailTitle={},detailIcon={};
@@ -134,7 +134,7 @@ function ui({folderAllowed=()=>true,connected=true,fkState={status:'pending',cod
  const hosts={'#fk-detail':detail,'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker,'[data-fk-retry]':retryButton,'[data-fk-intro]':intro,'[data-fk-topics]':topics,'#fk-topics-title':topicsTitle,'[data-fk-team]':button,
   '[data-fk-tenure]':tenure,'[data-fk-duration]':duration,'[data-fk-open-topics]':button};
  const header={querySelector:s=>hosts[s],hidden:false};
- const shell={querySelector:()=>header,setAttribute(_name,value){this.labelledBy=value;}};
+ const shell={querySelector:selector=>selector==='[data-fk-header]'?header:hosts[selector],setAttribute(_name,value){this.labelledBy=value;}};
  const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s],closest:()=>shell};
  const openPicker=()=>listeners.get('click')({target:{closest:s=>s==='[data-fk-team]'?button:null}});
  const choose=value=>listeners.get('change')({target:{value,matches:s=>s==='[data-fk-subject]'}});
@@ -169,24 +169,24 @@ test('FK renders its profile before a slow refresh resolves',async()=>{
  assert.match(f.root.innerHTML,/aria-haspopup="dialog"/);
  assert.match(f.root.innerHTML,/data-fk-topics hidden/);
  assert.equal(f.intro.hidden,false);
+ assert.equal(f.topicsTitle.hidden,true);
+ assert.doesNotMatch(f.root.innerHTML,/data-fk-back-intro|Voltar ao Funcional/);
  await turn();
  assert.equal(f.tenure.hidden,false);
  assert.equal(f.duration.textContent,'7 anos, 2 meses e 18 dias');
  f.show('open-topics');
  assert.equal(f.topics.hidden,false);
  assert.equal(f.intro.hidden,true);
- assert.equal(f.tenure.hidden,true);
  assert.equal(f.topicsTitle.focused,true);
+ assert.equal(f.topicsTitle.hidden,false);
  assert.equal(f.header.hidden,true);
  assert.equal(f.shell.labelledBy,'fk-topics-title');
- f.show('back-intro');
- assert.equal(f.topics.hidden,true);
- assert.equal(f.header.hidden,false);
- assert.equal(f.shell.labelledBy,'functional-title');
- assert.equal(f.tenure.hidden,false);
  assert.doesNotMatch(f.root.innerHTML,/ACESSO INDIVIDUAL|SAHMT/);
  const loaded=f.sources.innerHTML;
  cleanup();gate.resolve();await turn();assert.equal(f.sources.innerHTML,loaded);
+ assert.equal(f.header.hidden,false);
+ assert.equal(f.topicsTitle.hidden,true);
+ assert.equal(f.shell.labelledBy,'functional-title');
  assert.equal(f.tenure.hidden,true);
 });
 

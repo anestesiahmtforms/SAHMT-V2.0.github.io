@@ -90,11 +90,12 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   onSessionRequired = () => {}, onRetry = () => {}} = {}) {
   let disposed = false;
   let stopAuth = () => {};
-  let detailDialog, openSource = '', visibleSources = null, topicsOpen = false;
+  let detailDialog, openSource = '', visibleSources = null;
   let resultRequest=0,cleanupDosimetry=()=>{};
   let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = 'Sua dedicação e seu trabalho fazem a diferença na nossa equipe.', ownPerformance = {state:'PREPARING'};
   const functionalDialog=root.closest('.functional-dialog');
   const header=functionalDialog?.querySelector('[data-fk-header]');
+  const topicsTitle=functionalDialog?.querySelector('#fk-topics-title');
   const owner=header?.querySelector('[data-fk-owner]');
   const recognition=header?.querySelector('[data-fk-recognition]');
   const tenure=header?.querySelector('[data-fk-tenure]');
@@ -165,9 +166,8 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     showOwner(displayName||'Meu perfil');
     showRecognition(ownRecognition);
     paint('<div class="functional-intro-actions" data-fk-intro><button class="secondary-button" type="button" data-fk-open-topics>Entrar nos tópicos funcionais</button></div>'
-      + '<section class="functional-page" data-fk-topics hidden><h2 id="fk-topics-title" tabindex="-1">Tópicos funcionais</h2>'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
+      + '<section class="functional-page" data-fk-topics hidden>'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
       + '<p class="functional-status" data-fk-refresh-status role="status">'+ownStatus+'</p>'
-      + '<button class="secondary-button" type="button" data-fk-back-intro>Voltar ao Funcional</button>'
       + '</section><dialog class="functional-detail" id="fk-detail" aria-labelledby="fk-detail-title">'
       + '<header><span class="functional-detail-icon" data-fk-detail-icon></span><h2 id="fk-detail-title" tabindex="-1" autofocus></h2></header>'
       + '<div class="functional-detail-body" data-fk-detail-body></div>'
@@ -290,29 +290,25 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
 
   function showTenure() {
     if(!tenure||!duration)return;
-    const elapsed=topicsOpen?'':formatCalendarDuration(ownJoinedOn);
+    const elapsed=formatCalendarDuration(ownJoinedOn);
     duration.textContent=elapsed;
     tenure.hidden=!elapsed;
   }
 
   function showEntryHeader(show) {
     if(header)header.hidden=!show;
+    if(topicsTitle)topicsTitle.hidden=show;
     functionalDialog?.setAttribute('aria-labelledby',show?'functional-title':'fk-topics-title');
   }
 
-  function showTopics(open) {
+  function openTopics() {
     const intro=root.querySelector('[data-fk-intro]');
     const topics=root.querySelector('[data-fk-topics]');
     if(!intro||!topics)return;
-    topicsOpen=open;
-    intro.hidden=open;
-    topics.hidden=!open;
-    showEntryHeader(!open);
-    showTenure();
-    if(open){root.querySelector('#fk-topics-title')?.focus();return;}
-    const subject=root.querySelector('[data-fk-subject]');
-    if(selection&&subject){subject.value='';void selectSubject('');}
-    root.querySelector('[data-fk-open-topics]')?.focus();
+    intro.hidden=true;
+    topics.hidden=false;
+    showEntryHeader(false);
+    topicsTitle?.focus({preventScroll:true});
   }
 
   async function openTeamPicker(button) {
@@ -372,8 +368,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   }
 
   function onFunctionalClick(event) {
-    if(ownSession()&&event.target.closest('[data-fk-open-topics]')){showTopics(true);return;}
-    if(ownSession()&&event.target.closest('[data-fk-back-intro]')){showTopics(false);return;}
+    if(ownSession()&&event.target.closest('[data-fk-open-topics]')){openTopics();return;}
     const doseAdmin=event.target.closest('[data-fk-dose-admin]');
     if(doseAdmin&&administrator&&ownSession()&&detailDialog&&!detailDialog.open&&hasSource('dosimetry')){
       openSource='dosimetry';
