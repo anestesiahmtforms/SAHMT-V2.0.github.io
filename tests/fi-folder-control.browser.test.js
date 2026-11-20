@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {chromium} from 'playwright';
+import {governancePanels} from '../src/governance-navigation.js';
 import {createFiControlWorker} from '../worker-fi-control/worker.js';
 
 test('the FI panel publishes independent parent and child settings through the Worker', async () => {
@@ -39,6 +40,7 @@ test('the FI panel publishes independent parent and child settings through the W
    }
    if(pathname==='/src/operational-folder-runtime.js'){
     return route.fulfill({contentType:'text/javascript',body:`
+     export const operationalFolderState=id=>id==='funcional'?'inactive':null;
      export const subscribeOperationalFolderPolicy = callback => {
       window.receivePolicy = callback;
       void fetch('/runtime').then(r=>r.json()).then(callback);
@@ -47,11 +49,11 @@ test('the FI panel publishes independent parent and child settings through the W
     `});
    }
    if(/^\/(src|server)\/[a-z-]+\.js$/.test(pathname)){
-    const body=await readFile(new URL('..'+pathname,import.meta.url),'utf8');
+    const body=(await readFile(new URL('..'+pathname,import.meta.url),'utf8')).replace("import './management-hub.css';",'');
     return route.fulfill({contentType:'text/javascript',body});
    }
-   if(pathname==='/src/fi-control.css')return route.fulfill({contentType:'text/css',body:await readFile(new URL('../src/fi-control.css',import.meta.url),'utf8')});
-   return route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/src/fi-control.css"><style>*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif}</style><main class="fi-control-stage"><div id="fi"></div></main><script type="module">
+   if(/^\/src\/(fi-control|management-hub|styles)\.css$/.test(pathname))return route.fulfill({contentType:'text/css',body:await readFile(new URL('..'+pathname,import.meta.url),'utf8')});
+   return route.fulfill({contentType:'text/html',body:`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/src/management-hub.css"><link rel="stylesheet" href="/src/styles.css"><link rel="stylesheet" href="/src/fi-control.css"><style>*{box-sizing:border-box}body{margin:0;font:16px system-ui,sans-serif}</style><main class="fi-control-stage"><div id="fi"></div></main><script type="module">
     import {mountFiControl} from '/src/fi-control-ui.js';
     import {mountOperationalFolderAdmin} from '/src/operational-folder-admin.js';
     window.command=async(action,input)=>{
@@ -90,12 +92,43 @@ test('the FI panel publishes independent parent and child settings through the W
   };
   await clickAndWait('[data-operational-folder-initialize]');
   const initializedFolders=new Map([...records].map(([station,record])=>[station,[...record.value.disabled]]));
+
+  const cards=()=>dialog.locator('.fi-governance-card .management-hub-label').allTextContents();
+  assert.deepEqual(await cards(),[...governancePanels.home.items.map(item=>item.label),'Outras pastas']);
+  for(const id of ['fi-control','comunicacao']){
+   const card=dialog.locator(`[data-folder-card="${id}"]`);
+   assert.equal(await card.locator('.management-hub-button').getAttribute('data-folder-state'),'active');
+   assert.equal(await card.locator('[data-operational-folder]').count(),0);
+  }
+  assert.equal(await dialog.getByRole('link',{name:'FUNCIONAL'}).getAttribute('href'),'#/fi-control/funcional');
+  assert.equal(await dialog.locator('[data-operational-folder="funcional"]').count(),0);
+  await dialog.getByRole('button',{name:'Grupos de Gestão',exact:true}).click();
+  assert.match(await dialog.getByRole('link',{name:'Gestão de Documentos'}).getAttribute('href'),/#\/management\/area-gestao-de-documentos$/);
+  await dialog.getByRole('button',{name:'Voltar para Governança'}).click();
+  await dialog.getByRole('button',{name:'Registros',exact:true}).click();
+  assert.deepEqual(await cards(),governancePanels.records.items.map(item=>item.label));
+  await dialog.getByRole('button',{name:'Voltar para Governança'}).click();
+  await dialog.getByRole('button',{name:'Enquetes e Consultas',exact:true}).click();
+  assert.deepEqual(await cards(),governancePanels.surveys.items.map(item=>item.label));
+  await dialog.getByRole('button',{name:'ACESSO RESTRITO',exact:true}).click();
+  assert.deepEqual(await cards(),governancePanels.institutional.items.map(item=>item.label));
+  await dialog.getByRole('button',{name:'Voltar para Enquetes e Consultas'}).click();
+  await dialog.getByRole('button',{name:'ACESSO GERAL',exact:true}).click();
+  assert.deepEqual(await cards(),['DESEMPENHO FE']);
+  for(const width of [320,390,1024]){
+   await page.setViewportSize({width,height:680});
+   assert.equal(await dialog.locator('.fi-folder-scroll').evaluate(node=>node.scrollWidth<=node.clientWidth),true);
+  }
+  await page.setViewportSize({width:390,height:680});
+  await dialog.getByRole('button',{name:'Voltar para Enquetes e Consultas'}).click();
+  await dialog.getByRole('button',{name:'Voltar para Governança'}).click();
   const filter=dialog.getByRole('searchbox',{name:'Buscar pasta'});
   await filter.fill('ferias');
   assert.equal(await dialog.getByRole('button',{name:'Desativar Férias da escala diária',exact:true}).count(),1);
   assert.equal(await dialog.getByRole('button',{name:'Desativar Etiquetas',exact:true}).count(),0);
   await filter.clear();
-  await dialog.locator('[data-folder-group="operacao"] > summary').click();
+  await dialog.getByRole('button',{name:'Outras pastas',exact:true}).click();
+  await dialog.getByRole('button',{name:'Operação',exact:true}).click();
   const scroller=dialog.locator('.fi-folder-scroll');
   const footer=dialog.getByRole('button',{name:'Voltar',exact:true});
   const footerTop=(await footer.boundingBox()).y;
@@ -105,14 +138,19 @@ test('the FI panel publishes independent parent and child settings through the W
   const child='operacao/escala/ferias',parent='operacao/escala',sibling='operacao/eventos';
   const toggle=id=>`[data-operational-folder="${id}"]`;
   await clickAndWait(toggle(parent));
+  await dialog.getByRole('button',{name:'Escala diária',exact:true}).click();
   assert.equal(await dialog.getByText('Atividades bloqueadas pela pasta principal',{exact:true}).count(),0);
-  assert.equal(await dialog.locator('.fi-folder-row[data-folder-state="inactive"]').filter({has:page.locator(toggle(child))}).count(),1);
+  const childCard=dialog.locator('[data-folder-card="operacao/escala/ferias"] .management-hub-button');
+  assert.equal(await childCard.getAttribute('data-folder-state'),'inactive');
+  assert.equal(await childCard.evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(255, 240, 194)');
   assert.equal(await page.locator(toggle(child)).textContent(),'Ativar');
   await clickAndWait(toggle(child));
   for(const [station,record] of records)assert.deepEqual(record.value.disabled,initializedFolders.get(station));
   assert.equal(await page.locator(toggle(child)).textContent(),'Desativar');
-  assert.equal(await dialog.locator('.fi-folder-row[data-folder-state="active"]').filter({has:page.locator(toggle(child))}).count(),1);
+  assert.equal(await childCard.getAttribute('data-folder-state'),'active');
+  assert.equal(await childCard.evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(220, 236, 255)');
   await clickAndWait(toggle(child));
+  await dialog.getByRole('button',{name:'Voltar para Operação'}).click();
   await clickAndWait(toggle(parent));
   await clickAndWait(toggle(parent));
   for(const [station,record] of records)assert.deepEqual(record.value.disabled,[...initializedFolders.get(station),child].sort());

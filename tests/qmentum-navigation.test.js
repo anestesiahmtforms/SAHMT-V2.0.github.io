@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
-const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8'),router=readFileSync(new URL('../src/router.js',import.meta.url),'utf8'),hub=readFileSync(new URL('../src/management-hub.js',import.meta.url),'utf8');
+const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8'),router=readFileSync(new URL('../src/router.js',import.meta.url),'utf8'),hub=readFileSync(new URL('../src/governance-navigation.js',import.meta.url),'utf8');
 test('QMENTUM opens directly from Registro de Indicadores and is absent from Clinical Coordination',()=>{
  assert.doesNotMatch(main,/qmentum-open/);
  assert.match(hub,/label:'Registro de Indicadores',icon:'indicators',route:'qmentum',access:'qmentum'/);
