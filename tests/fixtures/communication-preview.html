@@ -26,6 +26,7 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{const b=docu
    const m={id:input.id,title:input.title,message:input.description,publishAt:Date.now(),category:'COMUNICADO GERAL'};records.splice(0,records.length,m);
    return {message:m,pushQueued:false};
  }
+ if(action==='MESSAGE_READ')return {recorded:true,readAt:Date.now()};
  if(action==='MESSAGE')return {message:records[0]};
  throw Error('Unexpected synthetic operation '+action);
 }};

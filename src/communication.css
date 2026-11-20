@@ -436,3 +436,13 @@
   overflow:auto;
   pointer-events:auto;
 }
+
+.comm-history-folders{display:grid;gap:12px}
+.comm-history-folders[hidden],.comm-history-filters[hidden],[data-history-heading][hidden],[data-history-folders-back][hidden]{display:none}
+.communication--sent .comm-history-folders button{min-height:52px}
+.communication--sent [data-sent-id]>summary{display:grid;gap:5px}
+.communication--sent [data-sent-id]>summary span{font-size:.82rem}
+.communication--received .comm-card[data-read-state="unread"]{background:#fff1bf;border-color:#c59929}
+.communication--received .comm-card[data-read-state="read"]{background:#e3f4e6;border-color:#699675}
+.comm-received-date .comm-read-state{margin-inline-start:8px;font-weight:800}
+.app-shell .comm-inbox-shortcut[data-unread="true"]{background:#a91d2d!important;border-color:#7f1421!important;color:#fff!important}

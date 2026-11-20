@@ -83,13 +83,28 @@ export function createCommunicationHistoryDrive({getToken,fetchImpl=fetch,spread
   },
   async write(data){checkedData(data);await verify();await ensureRows(data);await request(root+'/values:batchUpdate',{valueInputOption:'RAW',data});return {saved:true};},
   async readMessages({before,limit=20,filters={}}={}){
-   if(!integer(before,2,200001)||!integer(limit,1,50)||!filters||Array.isArray(filters)||Object.keys(filters).some(k=>!['from','to','kind','audience','recipient','search'].includes(k)))throw fail('COMM_INVALID_INPUT');
+   if(!integer(before,2,200001)||!integer(limit,1,50)||!filters||Array.isArray(filters)||Object.keys(filters).some(k=>!['from','to','kind','audience','recipient','search','individual'].includes(k)))throw fail('COMM_INVALID_INPUT');
    if(before===2)return {items:[],cursor:null};
    const end=before-1,start=Math.max(2,end-limit+1),rows=await read(`Mensagens!A${start}:Q${end}`);
-   const items=rows.map((r,i)=>({...parseHistoryMessage(r),historyRow:start+i})).filter(r=>r.id).reverse().filter(m=>(!filters.from||m.publishAt>=Number(filters.from))&&(!filters.to||m.publishAt<=Number(filters.to))&&(!filters.kind||filters.kind===(m.activity?.kind||'MESSAGE'))&&(!filters.audience||filters.audience===m.audienceValue||filters.audience===m.audienceType)&&(!filters.search||[m.title,m.message,m.senderEmail].some(t=>t.toLocaleLowerCase('pt-BR').includes(String(filters.search).toLocaleLowerCase('pt-BR')))));
+   const items=rows.map((r,i)=>({...parseHistoryMessage(r),historyRow:start+i})).filter(r=>r.id).reverse().filter(m=>(!filters.individual||m.audienceType==='USER'&&m.audienceValue===filters.individual)&&(!filters.from||m.publishAt>=Number(filters.from))&&(!filters.to||m.publishAt<=Number(filters.to))&&(!filters.kind||filters.kind===(m.activity?.kind||'MESSAGE'))&&(!filters.audience||filters.audience===m.audienceValue||filters.audience===m.audienceType)&&(!filters.search||[m.title,m.message,m.senderEmail].some(t=>t.toLocaleLowerCase('pt-BR').includes(String(filters.search).toLocaleLowerCase('pt-BR')))));
    return {items,cursor:start>2?start:null};
   },
   async readMessage({row}={}){if(!integer(row,2,200000))throw fail('COMM_INVALID_INPUT');const rows=await read(`Mensagens!A${row}:Q${row}`);return rows.length?{...parseHistoryMessage(rows[0]),historyRow:row}:null;},
+
+  async readIndividualReceipts(messages,uid){
+   if(!Array.isArray(messages)||messages.length<1||messages.length>20||!messages.every(m=>integer(m.recipientStart,2,200000)&&m.recipientCount===1))throw fail('COMM_INVALID_INPUT');
+   await verify();
+   const params=new URLSearchParams({valueRenderOption:'UNFORMATTED_VALUE'});
+   for(const m of messages)params.append('ranges',`Destinatarios!A${m.recipientStart}:K${m.recipientStart}`);
+   const result=await request(root+'/values:batchGet?'+params);
+   if(result.valueRanges?.length!==messages.length)throw fail('COMM_HISTORY_SCHEMA_INVALID',503);
+   const receipts=new Map();
+   for(const [index,message] of messages.entries()){
+    const row=result.valueRanges[index]?.values?.[0];
+    if(row?.[0]===message.id&&row?.[1]===uid)receipts.set(message.id,parseHistoryRecipient(row).readAt);
+   }
+   return receipts;
+  },
   async readRecipients({start,count}={}){if(!integer(start,2,200000)||!integer(count,0,200)||start+count>200001)throw fail('COMM_INVALID_INPUT');if(!count)return [];return (await read(`Destinatarios!A${start}:K${start+count-1}`)).filter(r=>r[0]).map(parseHistoryRecipient);}
  };
 }

@@ -53,7 +53,7 @@ export function createCommunicationHistory({store,drive,pushQueue,now=Date.now,y
    if(!message?.history||!Number.isSafeInteger(message.historyArchiveAfter)||message.historyArchiveAfter>now()||
       !snapshot||snapshot.version!==snapshot.syncVersion||job?.done!==true)return false;
    if(message.hasActivity&&message.status!=='cancelled'&&snapshot.items.some(item=>item.status==='PENDING'))return false;
-   tx.set('communicationMessages',messageId,{id:messageId,status:'archived',history:message.history,firstPublishedAt:message.firstPublishedAt??null});
+   tx.set('communicationMessages',messageId,{id:messageId,status:'archived',history:message.history,firstPublishedAt:message.firstPublishedAt??null,...(message.hasActivity?{dueAt:obligationDueAt(message),activityTitle:message.activity?.title||message.title}: {})});
    tx.set('communicationMessageRecipients',messageId,{messageId,archived:true});
    return true;
   });

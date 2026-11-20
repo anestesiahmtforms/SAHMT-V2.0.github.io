@@ -7,7 +7,7 @@ import {communicationSenderRole,operationalNoticeIdentity,urgentNoticeInput,RELE
 import {COMMUNICATION_LIMITS,communicationUsagePeriod} from '../src/communication-usage.js';
 import {isSystemOwnerEmail} from '../src/system-account-exclusions.js';
 import {createObligationService} from './obligation-service.js';
-import {OBLIGATION_HOUR,sameObligation,validObligationHours,validateObligation} from '../communication/obligations.js';
+import {OBLIGATION_HOUR,obligationDueAt,sameObligation,validObligationHours,validateObligation} from '../communication/obligations.js';
 const digest=v=>createHash('sha256').update(v).digest('hex');
 const counters=()=>({published:0,sent:0,devices:0,accepted:0,failed:0,unknown:0,categories:{}});
 const actorData=a=>({uid:a.uid,sourceUid:a.sourceUid,email:a.email});
@@ -51,6 +51,65 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return area?.active===true&&matches(m,localUid,p,[...(area.memberUids||[]),...(area.managerUids||[])]);
   }
   return matches(m,localUid,p);
+ }
+
+ const personalKey=(uid,messageId)=>digest(JSON.stringify([uid,messageId]));
+ const personalCollection='communicationIndividualReads';
+ const individual=(m,uid)=>m?.audienceType==='USER'&&m.audienceValue===uid&&Number.isSafeInteger(m.publishAt)&&m.publishAt<=now();
+ const personalReceipts=(uid,messages)=>store.getMany(personalCollection,messages.map(m=>personalKey(uid,m.id)));
+ async function archivedReadAt(message,uid){
+  if(!message.recipientsRecorded)return null;
+  const people=await historyDrive.readRecipients({start:message.recipientStart,count:message.recipientCount});
+  return people.find(person=>person.uid===uid)?.readAt||null;
+ }
+ async function individualInbox(uid,cursor,unreadOnly){
+  if(typeof cursor!=='string')throw fail('COMM_INVALID_INPUT');
+  let rows,next,readTimes=[];
+  if(cursor.startsWith('archive:')){
+   if(!historyDrive)return {items:[],cursor:null,hasUnread:false};
+   const result=await historyDrive.readMessages({before:Number(cursor.slice(8)),limit:20,filters:{individual:uid}});
+   const documents=await store.getMany('communicationMessages',result.items.map(m=>m.id));
+   rows=result.items.filter((m,index)=>individual(m,uid)&&['archived','cancelled'].includes(documents[index]?.status));
+   next=result.cursor?'archive:'+result.cursor:null;
+   const stored=await personalReceipts(uid,rows);
+   const archived=rows.filter((m,index)=>m.recipientsRecorded&&!stored[index]?.readAt&&m.recipientCount===1);
+   const receipts=archived.length?await historyDrive.readIndividualReceipts(archived,uid):new Map();
+   readTimes=rows.map((m,index)=>stored[index]?.readAt||receipts.get(m.id)||null);
+  }else{
+   const page=await store.page('communicationMessages',{cursor,limit:PAGE_SIZE,publishedBefore:now()});
+   rows=page.filter(m=>individual(m,uid));
+   const [stored,snapshots]=await Promise.all([personalReceipts(uid,rows),store.getMany('communicationMessageRecipients',rows.map(m=>m.id))]);
+   readTimes=rows.map((m,index)=>snapshots[index]?.items?.find(person=>person.uid===uid)?.readAt||stored[index]?.readAt||null);
+   const last=page.at(-1);
+   next=page.length===PAGE_SIZE?String(last.publishAt)+'|'+last.id:null;
+   if(!next&&historyDrive){
+    const state=await store.get('communicationHistoryState','2026');
+    if(state?.nextMessageRow>2)next='archive:'+state.nextMessageRow;
+   }
+  }
+  const hasUnread=readTimes.some(time=>!time);
+  const items=unreadOnly?[]:rows.map((m,index)=>({id:m.id,title:m.title,message:m.message,category:m.category||'',publishAt:m.publishAt,
+   ...(m.linkUrl?{linkUrl:m.linkUrl,linkLabel:m.linkLabel||''}:{}),readAt:readTimes[index]}));
+  return {items,cursor:next,hasUnread};
+ }
+ async function acknowledgeIndividual(key,uid){
+  const m=await store.get('communicationMessages',key);
+  if(m?.status==='published'&&individual(m,uid)&&history&&m.history&&!m.historyLegacy)return history.markRead({id:key},uid);
+  const archived=m?.status==='archived'&&historyDrive
+   ? await historyDrive.readMessage({row:m.history?.messageRow})
+   : null;
+  if(archived&&archived.id!==key||!individual(archived||m,uid)||(!archived&&!['published','cancelled'].includes(m?.status)))throw fail('COMM_FORBIDDEN',403);
+  const receiptKey=personalKey(uid,key),existing=await store.get(personalCollection,receiptKey);
+  if(existing?.readAt)return {recorded:true,readAt:existing.readAt,alreadyRecorded:true};
+  const archivedAt=archived?await archivedReadAt(archived,uid):null;
+  if(archivedAt)return {recorded:true,readAt:archivedAt,alreadyRecorded:true};
+  return store.transaction(async tx=>{
+   const existing=await tx.get(personalCollection,receiptKey);
+   if(existing?.readAt)return {recorded:true,readAt:existing.readAt,alreadyRecorded:true};
+   const readAt=now();
+   tx.create(personalCollection,receiptKey,{readAt});
+   return {recorded:true,readAt};
+  });
  }
  const paged=rows=>({items:rows.slice(0,PAGE_SIZE),cursor:rows.length>PAGE_SIZE?rows[PAGE_SIZE-1].id:null});
  async function resolveRecipients({audience:selection,recipient}={}){
@@ -420,6 +479,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    return obligations.execute(action,input,a);
   }
   if(action==='MESSAGE_READ'){
+   if(input.individual===true&&Object.keys(input).length===2)return acknowledgeIndividual(id(input.id),a.sourceUid);
    if(Object.keys(input).length!==1)throw fail('COMM_INVALID_INPUT');const m=await store.get('communicationMessages',id(input.id));
    if(!m||!isCurrentMessage(m,now())||!await audience(m,ownProfile,a.sourceUid))throw fail('COMM_FORBIDDEN',403);
    return history&&m.history&&!m.historyLegacy?history.markRead(input,a.sourceUid):{recorded:false,legacy:true};
@@ -439,7 +499,12 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
    if(!historyDrive)throw fail('COMM_NOT_FOUND',404);
    const archived=await historyDrive.readMessage({row:m?.history?.messageRow||input.historyRow});
    if(!archived||archived.id!==key)throw fail('COMM_NOT_FOUND',404);
-   return {message:archived,recipients:archived.recipientsRecorded?await historyDrive.readRecipients({start:archived.recipientStart,count:archived.recipientCount}):[],recipientsRecorded:archived.recipientsRecorded,syncPending:false,serverNow:now()};
+   const recipients=archived.recipientsRecorded?await historyDrive.readRecipients({start:archived.recipientStart,count:archived.recipientCount}):[];
+   if(archived.audienceType==='USER'&&recipients.length===1){
+    const [receipt]=await personalReceipts(archived.audienceValue,[archived]);
+    if(receipt?.readAt&&!recipients[0].readAt&&recipients[0].uid===archived.audienceValue)recipients[0].readAt=receipt.readAt;
+   }
+   return {message:{...archived,...(m?.dueAt?{dueAt:m.dueAt}:{}),...(m?.activityTitle&&archived.activity?{activity:{...archived.activity,title:m.activityTitle}}:{})},recipients,recipientsRecorded:archived.recipientsRecorded,syncPending:false,serverNow:now()};
   }
   if(['BOOTSTRAP','INBOX','REGISTER_DEVICE'].includes(action))await presence(input.installation,a);
   if(action==='USAGE')return usage();
@@ -447,6 +512,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   if(action==='PUSH_TEAM_STATUS')return pushTeamStatus(input);
   if(action==='REGISTER_DEVICE'||action==='DISABLE_DEVICE')return device(input,a,action==='REGISTER_DEVICE');
   if(action==='INBOX'){
+   if(input.individual===true)return individualInbox(a.sourceUid,input.cursor||'',input.unreadOnly===true);
    const recent=input.recent===true;
    const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:5,...(recent?{publishedBefore:now()}:{filters:[['status','published']]})}),items=[];
    if(!input.cursor&&!(recent&&input.chronological===true)){const pointer=await store.get('communicationReleaseInboxes',a.sourceUid);if(pointer?.messageId){const release=await store.get('communicationMessages',id(pointer.messageId));if(release?.audienceType==='USER'&&release.audienceValue===a.sourceUid&&isCurrentMessage(release,now()))items.push(release);}}
@@ -464,12 +530,13 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
     const before=Number(input.cursor.slice(8)),result=await historyDrive.readMessages({before,limit:input.filters?.recipient?5:20,filters:input.filters||{}});
     const active=await store.getMany('communicationMessages',result.items.map(m=>m.id));let items=result.items.filter((m,n)=>!active[n]||active[n].status==='archived'||active[n].status==='cancelled');
     if(input.filters?.recipient){const match=String(input.filters.recipient).toLocaleLowerCase('pt-BR'),keep=[];for(const m of items){const people=m.recipientsRecorded?await historyDrive.readRecipients({start:m.recipientStart,count:m.recipientCount}):[];if(people.some(p=>p.uid===match||[p.displayName,p.email].some(v=>v.toLocaleLowerCase('pt-BR').includes(match))))keep.push(m);}items=keep;}
-    return {items:items.map(m=>({...m,sender:communicationSenderRole(m.senderEmail)||m.senderEmail})),cursor:result.cursor?`archive:${result.cursor}`:null};
+    const saved=new Map(result.items.map((m,index)=>[m.id,active[index]]));
+    return {items:items.map(m=>{const metadata=saved.get(m.id);return {...m,sender:communicationSenderRole(m.senderEmail)||m.senderEmail,...(metadata?.dueAt?{dueAt:metadata.dueAt}:{}),...(metadata?.activityTitle&&m.activity?{activity:{...m.activity,title:metadata.activityTitle}}:{})};}),cursor:result.cursor?`archive:${result.cursor}`:null};
    }
    const rows=await store.page('communicationMessages',{cursor:input.cursor||'',limit:PAGE_SIZE,publishedBefore:now()});
    const items=rows.flatMap(m=>{
     const sender=communicationSenderRole(m.createdBy?.email);
-    return sender?[{id:m.id,title:m.title,message:m.message,category:m.category,publishAt:m.publishAt,audienceType:m.audienceType,audienceValue:history?m.audienceValue:m.audienceType==='GROUP'?m.audienceValue:'',sender,...(history?{senderEmail:m.createdBy?.email||'',activity:m.activity||null,recipientsRecorded:Boolean(m.history&&!m.historyLegacy),historyRow:m.history?.messageRow}: {})}]:[];
+    return sender?[{id:m.id,title:m.title,message:m.message,category:m.category,publishAt:m.publishAt,audienceType:m.audienceType,audienceValue:history?m.audienceValue:m.audienceType==='GROUP'?m.audienceValue:'',sender,...(history?{senderEmail:m.createdBy?.email||'',activity:m.activity||null,...(m.activity?{dueAt:obligationDueAt(m)}:{}),recipientsRecorded:Boolean(m.history&&!m.historyLegacy),historyRow:m.history?.messageRow}: {})}]:[];
    });
    const last=rows.at(-1);
    let cursor=rows.length===PAGE_SIZE?`${last.publishAt}|${last.id}`:null;

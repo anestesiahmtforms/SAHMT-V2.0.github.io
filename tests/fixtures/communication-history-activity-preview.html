@@ -7,7 +7,8 @@ const training={kind:'TRAINING',id:'training-synthetic',title:'Treinamento publi
 const secondTraining={...training,id:'training-other',title:'Cirurgia Segura',folderPath:['Protocolos','Protocolos do SAHMT']};
 const survey={kind:'SURVEY',id:'survey-synthetic',title:'Enquete publicada',cycle:'2026-11'};
 const now=1794700000000;
-const message={id:'synthetic-message',title:'Convocação sintética',message:'Corpo integral\nSegunda linha https://example.test',publishAt:now,audienceType:'ALL',senderEmail:'admin@example.test',status:'published',activity:{...survey}};
+const message={id:'synthetic-message',title:'Convocação sintética',message:'Corpo integral\nSegunda linha https://example.test',publishAt:now,audienceType:'USER',audienceValue:'synthetic-person',senderEmail:'admin@example.test',status:'published',activity:{...survey}};
+const personal=[{...message,id:'user-one',title:'Mensagem mais recente',readAt:null},{...message,id:'user-two',title:'Mensagem anterior',publishAt:now-60000,readAt:null}];
 let cancelled=false,creates=0,previewCount=0,dueAt=now+120*3600000;
 window.calls=[];window.current=true;
 const client={dispose(){},connectGoogle:async(host,{onConnected})=>{host.innerHTML='<button type="button">Confirmar acesso de teste</button>';host.firstChild.onclick=onConnected;return()=>host.replaceChildren();},request:async(action,input={})=>{
@@ -17,7 +18,7 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{host.innerHT
  if(action==='ACTIVITY_CATALOG')return {items:input.kind==='TRAINING'?[training,secondTraining]:[survey]};
  if(action==='PREVIEW_ACTIVITY'){await new Promise(resolve=>setTimeout(resolve,30));return {previewId:'preview-'+(++previewCount),activity:input.activity,deadlineHours:input.deadlineHours,recipients:[person],excluded:[{uid:'excluded-person',reason:'FORBIDDEN'}]};}
  if(action==='CREATE_ACTIVITY'){creates++;if(params.has('lost')&&creates===1)throw Error('Resposta perdida');if(params.has('expired')&&creates===1)throw Object.assign(Error(),{code:'COMM_ACTIVITY_PREVIEW_EXPIRED'});return {message:{...message,id:input.id},syncQueued:true};}
- if(action==='SENT_MESSAGES')return {items:input.cursor?[{...message,id:'legacy-message',title:'Histórico legado',activity:null,historyRow:4}]:[{...message,historyRow:3}],cursor:input.cursor?null:'next'};
+ if(action==='SENT_MESSAGES')return {items:input.cursor?[{...message,id:'legacy-message',title:'Histórico legado',activity:null,historyRow:4,publishAt:now-4000}]:[{...message,historyRow:3,dueAt},{...message,id:'release-2026-11-14-AB-1794700000000',activity:null,publishAt:now-3000},{...message,id:'release-2026-11-14-L2-1794700000005',activity:null,publishAt:now-1000},{...message,id:'event-synthetic',title:'Evento de teste',activity:null,publishAt:now-2000}],cursor:input.cursor?null:'next'};
  if(action==='SENT_DETAIL')return {message:{...message,id:input.id,dueAt,status:cancelled?'cancelled':'published',...(cancelled?{cancellationReason:'Atividade retirada'}:{})},recipients:input.id==='legacy-message'?[]:[{...person,status:cancelled?'CANCELLED':params.has('deadline')?'PENDING':'COMPLETED',readAt:now+1000,completedAt:params.has('deadline')?null:now+2000,sourceCompletedAt:null,score:null}],recipientsRecorded:input.id!=='legacy-message',syncPending:true,serverNow:now+3000};
  if(action==='UPDATE_ACTIVITY_DEADLINE'){
   if(input.expectedDueAt!==dueAt)throw Object.assign(Error(),{code:'COMM_ACTIVITY_DEADLINE_CHANGED'});
@@ -26,7 +27,11 @@ const client={dispose(){},connectGoogle:async(host,{onConnected})=>{host.innerHT
  }
  if(action==='CANCEL_ACTIVITY'){cancelled=true;return {cancelled:true};}
  if(action==='HISTORY_RETRY')return {syncQueued:true};
- if(action==='INBOX')return {items:[message,{...message,id:'legacy-message',title:'Aviso legado'}],cursor:null};
+ if(params.has('unread')&&action==='INBOX')return {items:input.unreadOnly?[]:personal,hasUnread:personal.some(item=>!item.readAt),cursor:null};
+ if(params.has('unread')&&action==='MESSAGE_READ'){
+  const item=personal.find(item=>item.id===input.id);item.readAt=now+1000;return {recorded:true,readAt:item.readAt};
+ }
+ if(action==='INBOX')return {items:[{...message,id:'legacy-message',title:'Aviso legado',publishAt:now-10000,readAt:now-5000},{...message,readAt:null}],cursor:null,hasUnread:true};
  if(action==='MESSAGE_READ')return input.id==='legacy-message'?{recorded:false,legacy:true}:{recorded:true,readAt:now+1000};
  throw Error('Unexpected action '+action);
 }};
@@ -38,6 +43,25 @@ else if(params.has('survey-toggle')){
  window.folderRequests=[];
  window.unmount=mountManagementHub(root,{initialPanel:'professional',access:{professional:true},isSurveySessionCurrent:()=>true,folderAllowed:()=>false,
   activityAvailability:()=>admin?enabled:null,setActivityAvailability:async(folder,next)=>{window.folderRequests.push({folder,enabled:next});enabled=next;return {pending:false};}});
+}
+
+else if(params.has('unread')){
+ const {mountCommunicationHomeBanners}=await import('../../src/communication-home-banners.js');
+ const user={uid:'fixture-unread',email:'person@example.test',emailVerified:true};
+ localStorage.setItem('sahmt-communication-push-request-v2:browser:'+user.uid,'confirmed');
+ document.body.classList.add('app-shell');
+ let cleanup;
+ function home(){
+  cleanup?.();
+  root.innerHTML='<div data-notices></div><button class="comm-inbox-shortcut">MENSAGENS RECEBIDAS</button>';
+  const shortcut=root.querySelector('.comm-inbox-shortcut');
+  cleanup=mountCommunicationHomeBanners(root.querySelector('[data-notices]'),{client,user,inboxShortcut:shortcut});
+  shortcut.onclick=()=>{
+   cleanup();root.replaceChildren();
+   cleanup=mountCommunication(root,{client,appSession:{user},onBack:home});
+  };
+ }
+ home();
 }
 else window.unmount=mount(root);
 </script></html>

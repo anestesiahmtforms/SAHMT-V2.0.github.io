@@ -80,6 +80,7 @@ test('o administrador consulta os remetentes e o gestor vê somente criar evento
    await page.goto(url+'?'+params);
    await open(page,'CENTRAL DE COMUNICAÇÃO');
    await open(page,'MENSAGENS ENVIADAS');
+   await open(page,'EVENTOS ENVIADOS');
    await page.getByText('Aviso do gestor',{exact:true}).click();
    await page.getByText(/Gestor operacional/).waitFor();
    await open(page,'CARREGAR MAIS');

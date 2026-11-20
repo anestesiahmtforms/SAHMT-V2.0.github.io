@@ -6,6 +6,7 @@ import {communicationLimitMessage} from './communication-usage.js';
 import {openActivityComposer} from './communication-activity-ui.js';
 import {restoreActivitySelection} from './communication-activity-selection.js';
 import {openCommunicationHistory, communicationDate} from './communication-history-ui.js';
+import {setInboxUnread} from './communication-inbox-state.js';
 import {communicationRecipientOptions} from './communication-recipient-directory.js';
 import './communication.css';
 
@@ -36,7 +37,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     inboxDialog.showModal();
   }
   const root = inboxDialog || host;
-  let inboxObserver;
+  let inboxObserver,reviewInbox=()=>{};
   let disposed = false;
   let generation = 0;
   let cleanupGoogle = () => {};
@@ -60,6 +61,7 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
 
   function render(title, content, {compose = false, menu = false, inbox = false, sent = false, activity = false} = {}) {
     inboxObserver?.disconnect();
+    reviewInbox=()=>{};
     generation++;
     root.classList.add('communication');
     root.classList.toggle('communication--compose', compose);
@@ -272,11 +274,13 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     openActivityComposer({root, client, render, status, report, isCurrent: active, audienceOptions,
       loadDirectory, state: activityState, onRecover: recoverGoogle});
   }
-  function receivedCard(message, open = false) {
+  function receivedCard(message, open = false, individual = false) {
     const legacyLink = message.linkUrl && /^https:\/\//.test(message.linkUrl) ?
       `<a class="comm-home-notice__destination" href="${esc(message.linkUrl)}"${message.linkUrl.startsWith('https://anestesiahmtforms.github.io/') ? '' : ' target="_blank" rel="noopener noreferrer"'}>${esc(message.linkLabel || 'ABRIR DESTINO')}</a>` : '';
-    const date = new Date(message.publishAt).toLocaleString('pt-BR', {timeZone: 'America/Sao_Paulo'});
-    return `<details class="comm-card" data-message-id="${esc(message.id)}"${open?' open':''}><summary><h3>${esc(message.title)}</h3><span class="comm-received-date">${esc(date)} · ${esc(message.category)}</span></summary><div class="comm-received-body"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}<p class="comm-note" data-read-status></p></div></details>`;
+    const date = communicationDate(message.publishAt);
+    const seen = Boolean(message.readAt);
+    const receipt = individual ? ` data-individual="true" data-read-state="${seen?'read':'unread'}"${seen?' data-read-recorded="true"' :''}` : '';
+    return `<details class="comm-card" data-message-id="${esc(message.id)}"${receipt}${open?' open':''}><summary><h3>${esc(message.title)}</h3><span class="comm-received-date">${esc(date)}${message.category?' · '+esc(message.category):''}<span class="comm-read-state" data-comm-read-label>${individual?(seen?'Lida':'Não lida'):''}</span></span></summary><div class="comm-received-body"><p class="comm-message">${linkedNoticeText(message.message)}</p>${legacyLink}<p class="comm-note" data-read-status></p></div></details>`;
   }
 
   async function recordRead(card) {
@@ -285,10 +289,11 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     card.dataset.readPending = 'true';
     const readStatus = card.querySelector('[data-read-status]');
     try {
-      const result = await client.request('MESSAGE_READ', {id: card.dataset.messageId});
+      const result = await client.request('MESSAGE_READ', {id: card.dataset.messageId,...(card.dataset.individual?{individual:true}:{})});
       if (!active() || !card.isConnected) return;
       if (result.recorded === true) {
         card.dataset.readRecorded = 'true';
+        if(card.dataset.individual){card.dataset.readState='read';card.querySelector('[data-comm-read-label]').textContent='Lida';reviewInbox();}
         readStatus.textContent = `Abertura registrada: ${communicationDate(result.readAt)}`;
       } else if (result.legacy) {
         card.dataset.readRecorded = 'legacy';
@@ -314,8 +319,12 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
     const retry = root.querySelector('[data-retry-received]');
     const list = root.querySelector('[data-received-list]');
     const end = root.querySelector('[data-received-end]');
-    const seen = new Set();
+    const seen = new Map();
     let cursor = '', loading = false;
+    reviewInbox=()=>{
+      const hasUnread=Boolean(list.querySelector('[data-read-state="unread"]'));
+      if(hasUnread||cursor===null)setInboxUnread(appSession?.user?.uid,hasUnread);
+    };
     const loadNext = async () => {
       if (loading || cursor === null || !active() || generation !== ticket) return;
       loading = true;
@@ -323,15 +332,17 @@ export function mountCommunication(host, {client, adminMode = false, appSession 
       retry.hidden = true;
       end.textContent = 'Carregando mensagens…';
       try {
-        const page = await client.request('INBOX', {recent: true, chronological: true, cursor});
+        const page = await client.request('INBOX', {individual: true, cursor});
         if (!active() || generation !== ticket) return;
         for (const message of page.items) {
           if (seen.has(message.id)) continue;
-          seen.add(message.id);
-          list.insertAdjacentHTML('beforeend', receivedCard(message));
+          seen.set(message.id,message.publishAt);
+          list.insertAdjacentHTML('beforeend', receivedCard(message,false,true));
         }
+        for(const card of [...list.children].sort((a,b)=>seen.get(b.dataset.messageId)-seen.get(a.dataset.messageId)||b.dataset.messageId.localeCompare(a.dataset.messageId)))if(card!==list.lastElementChild)list.append(card);
         if (page.cursor && page.cursor === cursor) throw Error('COMM_CURSOR_REPEATED');
         cursor = page.cursor || null;
+        reviewInbox();
         end.textContent = !seen.size && cursor === null ? 'Nenhuma mensagem recebida.' : '';
         if (cursor !== null) inboxObserver.observe(end);
       } catch (error) {

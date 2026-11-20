@@ -1,4 +1,5 @@
 import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from './communication-notice-text.js';
+import {inboxUnread,setInboxUnread} from './communication-inbox-state.js';
 import {activateCommunicationPush, isPushCampaignRecipient, pushActivationMessage} from './communication-push-activation.js';
 import {appDisplayMode} from './app-updates-targeted.js';
 
@@ -37,7 +38,7 @@ function saveDismissed(uid, dismissed) {
   } catch {}
 }
 
-export function mountCommunicationHomeBanners(root, {client, user, isCurrent = () => true} = {}) {
+export function mountCommunicationHomeBanners(root, {client, user, inboxShortcut, isCurrent = () => true} = {}) {
   let disposed = false;
   let visibleItems = [];
   let pushedItems = [];
@@ -55,6 +56,41 @@ export function mountCommunicationHomeBanners(root, {client, user, isCurrent = (
   const active = () => !disposed && root.isConnected && isCurrent();
   const dismissed = readDismissed(user.uid);
 
+
+  let nextUnreadCheck=0,checkingUnread=false,checkAgain=false,unreadCursor='';
+  function unread(value){
+    if(!inboxShortcut||!active())return;
+    setInboxUnread(user.uid,value);
+    inboxShortcut.dataset.unread=String(value);
+    if(value)inboxShortcut.setAttribute('aria-label','Mensagens recebidas — há mensagens não lidas');
+    else inboxShortcut.removeAttribute('aria-label');
+  }
+
+  async function checkUnread(force){
+    if(!inboxShortcut||!active()||document.visibilityState==='hidden')return;
+    if(checkingUnread){if(force)checkAgain=true;return;}
+    if(!force&&Date.now()<nextUnreadCheck)return;
+    checkingUnread=true;
+    nextUnreadCheck=Date.now()+30000;
+    if(force)unreadCursor='';
+    let cursor=unreadCursor;
+    try{
+      // Leave headroom in FF for the Home checklist and regular user actions.
+      for(let page=0;page<10;page++){
+        const result=await client.request('INBOX',{individual:true,unreadOnly:true,cursor});
+        if(!active()||typeof result.hasUnread!=='boolean')return;
+        if(result.hasUnread||!result.cursor){unreadCursor='';unread(result.hasUnread);return;}
+        if(result.cursor===cursor)return;
+        cursor=result.cursor;
+        unreadCursor=cursor;
+      }
+    }catch{
+      // A transient connection failure must not mark messages as seen.
+    }finally{
+      checkingUnread=false;
+      if(checkAgain){checkAgain=false;void checkUnread(true);}
+    }
+  }
   function saveEnrollment(state) {
     enrollmentState = state;
     try { localStorage.setItem(enrollmentKey, state); } catch {}
@@ -182,6 +218,7 @@ export function mountCommunicationHomeBanners(root, {client, user, isCurrent = (
         dismissed.add(id);
         saveDismissed(user.uid, dismissed);
         acknowledgementErrors.delete(id);
+        void checkUnread(true);
       }).catch(error => {
         if (active()) acknowledgementErrors.set(id, ['COMM_SESSION_INVALID','COMM_IDENTITY_MISMATCH'].includes(error.code)
           ? 'Conecte sua conta à Central para registrar a leitura.'
@@ -203,12 +240,16 @@ export function mountCommunicationHomeBanners(root, {client, user, isCurrent = (
 
   const onServiceWorkerMessage = event => {
     const data = event.data;
-    if (data?.source === 'SAHMT_FF' && data.type === 'NEW_COMMUNICATION') void appendPushedMessage(data.communicationId);
+    if (data?.source === 'SAHMT_FF' && data.type === 'NEW_COMMUNICATION') {
+      void appendPushedMessage(data.communicationId);
+      void checkUnread(true);
+    }
   };
 
   const onResume = () => {
     if (document.visibilityState === 'hidden' || !active()) return;
     void checkEnrollment();
+    void checkUnread(false);
     if (Date.now() - lastLoadAt > 2000) void load();
     void client.refreshPushRegistration?.().catch(() => {});
   };
@@ -218,9 +259,13 @@ export function mountCommunicationHomeBanners(root, {client, user, isCurrent = (
   document.addEventListener('visibilitychange', onResume);
   window.addEventListener('focus', onResume);
   if (enrollmentState === 'pending') render(visibleItems);
+  const poll = inboxShortcut ? setInterval(()=>void checkUnread(false),90000) : null;
+  const cached=inboxShortcut?inboxUnread(user.uid):undefined;
+  if(cached!==undefined)unread(cached);
   onResume();
   return () => {
     disposed = true;
+    if(poll!==null)clearInterval(poll);
     root.removeEventListener('click', onClick);
     navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage);
     document.removeEventListener('visibilitychange', onResume);

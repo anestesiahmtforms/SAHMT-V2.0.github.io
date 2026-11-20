@@ -55,7 +55,7 @@ test('Central real components: catalog, preview, exact retry, history, receipts 
    await open('CONFERIR DESTINATÁRIOS');
    await page.getByText('Prazo: 6 hora(s) a partir do envio.',{exact:true}).waitFor();
    assert.equal(await page.evaluate(()=>window.calls.find(c=>c.action==='PREVIEW_ACTIVITY').input.deadlineHours),6);
-   await page.goto(url+'?deadline');await open('MENSAGENS ENVIADAS');
+   await page.goto(url+'?deadline');await open('MENSAGENS ENVIADAS');await open('ATIVIDADES');
    await page.locator('[data-sent-id] summary').first().click();
    const editor=page.locator('[data-update-activity-deadline]');
    await editor.getByLabel('Novo prazo a partir de agora').fill('2');
@@ -103,21 +103,46 @@ test('Central real components: catalog, preview, exact retry, history, receipts 
    assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='CREATE_ACTIVITY')),false);
   });
   await t.test('history filters and pagination retain full body, person receipts and legacy honesty',async()=>{
-   await page.goto(url);await open('MENSAGENS ENVIADAS');await page.locator('[data-sent-id] summary').first().click();await page.getByText('Conclusão confirmada:',{exact:false}).waitFor();
+   await page.goto(url);await open('MENSAGENS ENVIADAS');await open('ATIVIDADES');await page.locator('[data-sent-id] summary').first().click();await page.getByText('Conclusão confirmada:',{exact:false}).waitFor();
    assert.match(await page.locator('.comm-message').innerText(),/Corpo integral\nSegunda linha/);assert.equal(await page.getByText('Conclusão na origem:',{exact:false}).count(),0);assert.match(await page.locator('.comm-recipient-record').innerText(),/Mensagem aberta:/);
    assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='MESSAGE_READ')),false);
    await open('REPETIR SINCRONIZAÇÃO');await page.getByText(/Sincronização solicitada/).waitFor();
    await page.getByLabel('Justificativa do cancelamento').fill('Atividade retirada');await open('CANCELAR CONVOCAÇÃO');await page.getByText('Cancelamento: Atividade retirada',{exact:true}).waitFor();
-   await open('CARREGAR MAIS');await page.getByText('Histórico legado',{exact:true}).click();await page.getByText('Destinatários e leituras: não registrado no envio original.',{exact:true}).waitFor();
-   await page.getByLabel('De',{exact:true}).fill('2026-11-01');await page.getByLabel('Tipo',{exact:true}).selectOption('SURVEY');await page.getByLabel('Pesquisar título, texto ou remetente').fill('Convocação');await open('FILTRAR');
+   await open('VOLTAR ÀS PASTAS');await open('LIBERAÇÃO');await page.getByText('L2',{exact:true}).waitFor();assert.deepEqual(await page.locator('[data-sent-id] summary strong').allTextContents(),['L2','AB']);
+   await open('VOLTAR ÀS PASTAS');await open('EVENTOS ENVIADOS');await open('CARREGAR MAIS');await page.getByText('Histórico legado',{exact:true}).click();await page.getByText('Destinatários e leituras: não registrado no envio original.',{exact:true}).waitFor();
+   await open('VOLTAR ÀS PASTAS');await open('ATIVIDADES');await page.getByLabel('De',{exact:true}).fill('2026-11-01');await page.getByLabel('Tipo',{exact:true}).selectOption('SURVEY');await page.getByLabel('Pesquisar título, texto ou remetente').fill('Convocação');await open('FILTRAR');
    const request=await page.evaluate(()=>window.calls.filter(c=>c.action==='SENT_MESSAGES').at(-1).input);assert.equal(request.cursor,'');assert.deepEqual(request.filters,{from:Date.parse('2026-11-01T00:00:00-03:00'),kind:'SURVEY',search:'Convocação'});
   });
   await t.test('inbox listing is not a read; hidden expansion is deferred; repeats are idempotent',async()=>{
-   await page.goto(url+'?common');await page.getByText('Convocação sintética',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='MESSAGE_READ')),false);
+   await page.goto(url+'?common');await page.getByText('Convocação sintética',{exact:true}).waitFor();
+   const unread=page.locator('[data-message-id="synthetic-message"]'),read=page.locator('[data-message-id="legacy-message"]');
+   assert.deepEqual(await page.locator('[data-message-id] summary h3').allTextContents(),['Convocação sintética','Aviso legado']);
+   assert.equal(await unread.getAttribute('data-read-state'),'unread');assert.equal(await read.getAttribute('data-read-state'),'read');assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='MESSAGE_READ')),false);
    await page.evaluate(()=>Object.defineProperty(document,'visibilityState',{configurable:true,value:'hidden'}));await page.getByText('Convocação sintética',{exact:true}).click();await page.waitForTimeout(30);assert.equal(await page.evaluate(()=>window.calls.some(c=>c.action==='MESSAGE_READ')),false);
    await page.evaluate(()=>{Object.defineProperty(document,'visibilityState',{configurable:true,value:'visible'});document.dispatchEvent(new Event('visibilitychange'));});await page.getByText(/Abertura registrada:/).waitFor();
    await page.getByText('Convocação sintética',{exact:true}).click();await page.getByText('Convocação sintética',{exact:true}).click();await page.waitForTimeout(30);assert.equal(await page.evaluate(()=>window.calls.filter(c=>c.action==='MESSAGE_READ').length),1);
-   await page.getByText('Aviso legado',{exact:true}).click();await page.getByText('Leitura: não registrado no envio original.',{exact:true}).waitFor();assert.equal(await page.locator('[data-message-id="legacy-message"]').getAttribute('data-read-recorded'),'legacy');
+   assert.equal(await unread.getAttribute('data-read-state'),'read');
+  });
+
+  await t.test('a Home mantém o botão vermelho até abrir as duas mensagens amarelas',async()=>{
+   await page.goto(url+'?common&unread');
+   const shortcut=page.locator('.comm-inbox-shortcut');
+   await page.locator('.comm-inbox-shortcut[data-unread="true"]').waitFor();
+   assert.equal(await shortcut.evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(169, 29, 45)');
+   await shortcut.click();
+   const latest=page.locator('[data-message-id="user-one"]'),older=page.locator('[data-message-id="user-two"]');
+   await latest.waitFor();
+   assert.equal(await latest.evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(255, 241, 191)');
+   await latest.locator('summary').click();
+   await latest.getByText('Lida',{exact:true}).waitFor();
+   assert.equal(await latest.evaluate(node=>getComputedStyle(node).backgroundColor),'rgb(227, 244, 230)');
+   await open('VOLTAR PARA HOME');
+   await page.locator('.comm-inbox-shortcut[data-unread="true"]').waitFor();
+   await shortcut.click();
+   await older.locator('summary').click();
+   await older.getByText('Lida',{exact:true}).waitFor();
+   await open('VOLTAR PARA HOME');
+   await page.locator('.comm-inbox-shortcut[data-unread="false"]').waitFor();
   });
   assert.deepEqual(errors,[]);
  }finally{await page.close();await browser.close();await server.close();}
