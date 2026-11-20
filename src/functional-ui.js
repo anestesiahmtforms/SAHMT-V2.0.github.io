@@ -94,7 +94,8 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   let detailDialog, openSource = '', visibleSources = null, topicsOpen = false;
   let resultRequest=0,cleanupDosimetry=()=>{};
   let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = 'Sua dedicação e seu trabalho fazem a diferença na nossa equipe.', ownPerformance = {state:'PREPARING'};
-  const header=root.closest('.functional-dialog')?.querySelector('[data-fk-header]');
+  const functionalDialog=root.closest('.functional-dialog');
+  const header=functionalDialog?.querySelector('[data-fk-header]');
   const owner=header?.querySelector('[data-fk-owner]');
   const recognition=header?.querySelector('[data-fk-recognition]');
   const tenure=header?.querySelector('[data-fk-tenure]');
@@ -109,6 +110,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     if(detailDialog?.open)detailDialog.close();
     showOwner('');
     showRecognition('');
+    showEntryHeader(true);
     ownJoinedOn=undefined;
     showTenure();
     stopAuth();
@@ -163,7 +165,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     showOwner(displayName||'Meu perfil');
     showRecognition(ownRecognition);
     paint('<div class="functional-intro-actions" data-fk-intro><button class="secondary-button" type="button" data-fk-open-topics>Entrar nos tópicos funcionais</button></div>'
-      + '<section class="functional-page" data-fk-topics hidden><h2 data-fk-topics-title tabindex="-1">Tópicos funcionais</h2>'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
+      + '<section class="functional-page" data-fk-topics hidden><h2 id="fk-topics-title" tabindex="-1">Tópicos funcionais</h2>'+selector+'<div data-fk-sources>'+sourceCards(ownSources)+'</div>'
       + '<p class="functional-status" data-fk-refresh-status role="status">'+ownStatus+'</p>'
       + '<button class="secondary-button" type="button" data-fk-back-intro>Voltar ao Funcional</button>'
       + '</section><dialog class="functional-detail" id="fk-detail" aria-labelledby="fk-detail-title">'
@@ -291,6 +293,11 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     tenure.hidden=!elapsed;
   }
 
+  function showEntryHeader(show) {
+    if(header)header.hidden=!show;
+    functionalDialog?.setAttribute('aria-labelledby',show?'functional-title':'fk-topics-title');
+  }
+
   function showTopics(open) {
     const intro=root.querySelector('[data-fk-intro]');
     const topics=root.querySelector('[data-fk-topics]');
@@ -298,8 +305,9 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     topicsOpen=open;
     intro.hidden=open;
     topics.hidden=!open;
+    showEntryHeader(!open);
     showTenure();
-    if(open){root.querySelector('[data-fk-topics-title]')?.focus();return;}
+    if(open){root.querySelector('#fk-topics-title')?.focus();return;}
     const subject=root.querySelector('[data-fk-subject]');
     if(selection&&subject){subject.value='';void selectSubject('');}
     root.querySelector('[data-fk-open-topics]')?.focus();
@@ -342,6 +350,8 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     selection=value;
     if(detailDialog?.open)detailDialog.close();
     showOwner(member?.name||displayName||'Meu perfil');
+    const pickerButton=root.querySelector('[data-fk-team]');
+    if(pickerButton)pickerButton.textContent=member?member.name+' · Trocar integrante':'Selecionar integrante da Equipe';
     showRecognition(member?'':ownRecognition);
     if(!member){renderOverview(ownSources,ownStatus);return;}
     renderOverview(null,'Carregando perfil funcional…');

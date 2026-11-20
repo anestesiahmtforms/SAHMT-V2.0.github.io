@@ -21,6 +21,7 @@
 .functional-dialog::backdrop { background: #0c2f49b8; }
 body:has(.functional-dialog[open]) { overflow: hidden; }
 .functional-dialog-content {
+  grid-row: 2;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -28,6 +29,7 @@ body:has(.functional-dialog[open]) { overflow: hidden; }
   padding: 10px clamp(12px, 3vw, 22px) 16px;
 }
 .functional-dialog > footer {
+  grid-row: 3;
   padding: 10px 16px max(10px, env(safe-area-inset-bottom));
   border-top: 1px solid #cfdfd6;
   background: #f6faf7;

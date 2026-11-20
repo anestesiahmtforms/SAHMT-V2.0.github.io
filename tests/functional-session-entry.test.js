@@ -131,10 +131,11 @@ function ui({folderAllowed=()=>true,connected=true,fkState={status:'pending',cod
   querySelector:key=>({'[data-fk-detail-body]':detailBody,'#fk-detail-title':detailTitle,'[data-fk-detail-icon]':detailIcon})[key]};
  const openSource=key=>listeners.get('click')({target:{closest:s=>s==='[data-fk-source]'?{dataset:{fkSource:key}}:null}});
  const retryButton={addEventListener:(_event,listener)=>{retryButton.click=listener;}};
- const hosts={'#fk-detail':detail,'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker,'[data-fk-retry]':retryButton,'[data-fk-intro]':intro,'[data-fk-topics]':topics,'[data-fk-topics-title]':topicsTitle,
+ const hosts={'#fk-detail':detail,'[data-fk-sources]':sources,'[data-fk-refresh-status]':status,'[data-fk-owner]':owner,'[data-fk-recognition]':recognition,'[data-fk-picker]':picker,'[data-fk-retry]':retryButton,'[data-fk-intro]':intro,'[data-fk-topics]':topics,'#fk-topics-title':topicsTitle,'[data-fk-team]':button,
   '[data-fk-tenure]':tenure,'[data-fk-duration]':duration,'[data-fk-open-topics]':button};
- const header={querySelector:s=>hosts[s]};
- const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s],closest:()=>({querySelector:()=>header})};
+ const header={querySelector:s=>hosts[s],hidden:false};
+ const shell={querySelector:()=>header,setAttribute(_name,value){this.labelledBy=value;}};
+ const root={isConnected:true,innerHTML:'',addEventListener:(key,fn)=>listeners.set(key,fn),removeEventListener:key=>listeners.delete(key),querySelector:s=>hosts[s],closest:()=>shell};
  const openPicker=()=>listeners.get('click')({target:{closest:s=>s==='[data-fk-team]'?button:null}});
  const choose=value=>listeners.get('change')({target:{value,matches:s=>s==='[data-fk-subject]'}});
  const show=key=>listeners.get('click')({target:{closest:selector=>selector==='[data-fk-'+key+']'?button:null}});
@@ -146,7 +147,7 @@ function ui({folderAllowed=()=>true,connected=true,fkState={status:'pending',cod
   refreshFunctionalOverview:refresh,operationalContentAllowed:folderAllowed,operationalFolderNotice:()=>'',doc:(_db,...path)=>path.join('/'),
   getDocFromServer:async path=>{if(path.startsWith('functionalRecognition'))return {exists:()=>true,data:()=>({uid:person.uid,message:'Mensagem própria',teamJoinedOn:'2019-09-01'})};reads++;if(initialReadFails&&reads===1)throw Error('permission-denied');return {exists:()=>path.startsWith('functionalProfiles'),data:()=>({uid:profileUid,sources:{professionalRegistration:{state:'READY',data:{record:true}},biosafetyManual:{state:'READY'}}})};}});
  vm.runInContext(source,context);
- return {root,sources,status,owner,recognition,intro,topics,tenure,duration,topicsTitle,show,select,openPicker,choose,detail,detailBody,detailTitle,openSource,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++,onRetry:()=>retries++}),recovery:()=>recovery,retries:()=>retries,retryButton,changeFkUser:uid=>authChanged({uid})};
+ return {root,shell,header,button,sources,status,owner,recognition,intro,topics,tenure,duration,topicsTitle,show,select,openPicker,choose,detail,detailBody,detailTitle,openSource,updates,run:()=>context.mountFunctionalModule(root,{uid:person.uid,faAuth:auth,administrator,displayName:'Pessoa autenticada',onSessionRequired:()=>recovery++,onRetry:()=>retries++}),recovery:()=>recovery,retries:()=>retries,retryButton,changeFkUser:uid=>authChanged({uid})};
 }
 
 test('a temporary FK recovery failure stays in the module and retries instead of requesting a Google login',async()=>{
@@ -176,8 +177,12 @@ test('FK renders its profile before a slow refresh resolves',async()=>{
  assert.equal(f.intro.hidden,true);
  assert.equal(f.tenure.hidden,true);
  assert.equal(f.topicsTitle.focused,true);
+ assert.equal(f.header.hidden,true);
+ assert.equal(f.shell.labelledBy,'fk-topics-title');
  f.show('back-intro');
  assert.equal(f.topics.hidden,true);
+ assert.equal(f.header.hidden,false);
+ assert.equal(f.shell.labelledBy,'functional-title');
  assert.equal(f.tenure.hidden,false);
  assert.doesNotMatch(f.root.innerHTML,/ACESSO INDIVIDUAL|SAHMT/);
  const loaded=f.sources.innerHTML;
@@ -201,7 +206,7 @@ test('administrator selection clears the previous profile and ignores responses 
   assert.equal(f.sources.innerHTML,'');
   assert.equal(f.recognition.hidden,true);
   await f.choose('bia');assert.deepEqual(calls,['ana','bia']);
-  assert.equal(f.owner.textContent,'Bia');assert.equal(f.recognition.textContent,'Mensagem da Bia');assert.match(f.sources.innerHTML,/Histórico Vacinal/);
+  assert.equal(f.owner.textContent,'Bia');assert.equal(f.button.textContent,'Bia · Trocar integrante');assert.equal(f.recognition.textContent,'Mensagem da Bia');assert.match(f.sources.innerHTML,/Histórico Vacinal/);
   ana.resolve({snapshot:{uid:'ana',sources:{dosimetry:{state:'READY'}}},recognition:'Mensagem da Ana'});
   own.resolve();await first;await turn();
   f.openSource('performance');
