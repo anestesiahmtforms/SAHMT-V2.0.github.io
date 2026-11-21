@@ -4,12 +4,16 @@ import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
  const stubs={
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
-   hospitalAccess:async()=>false,listFollowups:async({formId})=>({entries:formId==='F03'&&window.followupPublished?
-    [{id:'gr-1',formId,origin:'hospital',hospitalNumber:'1',title:'Evento externo',occurredOn:'2026-11-20',description:'Relato completo aqui',classification:{},details:{}}]
-    :formId==='F08'?[
-     {id:'49de5878-28c7-40b5-81e6-f416d58b2433',formId,origin:'app',sequence:1,title:'Enquete de teste',description:'Relato com questionário',classification:{},details:{}},
-     {id:'ethical-test',formId,origin:'app',sequence:2,title:'Dilema de teste',description:'Relato do dilema',classification:{},details:{}}
-    ]:[],next:null}),
+   hospitalAccess:async()=>window.canRegisterHospital===true,
+   listFollowups:async({after})=>after?{entries:[
+      {id:'49de5878-28c7-40b5-81e6-f416d58b2433',formId:'F08',origin:'app',sequence:1,title:'Enquete de teste',
+      description:'Relato com questionário',classification:{},details:{},analysisClosed:!!window.pollResult},
+      {id:'ethical-test',formId:'F08',origin:'app',sequence:2,title:'Dilema de teste',
+      description:'Relato do dilema',classification:{},details:{},analysisClosed:!!window.closedOther}
+    ],next:null}:{entries:window.followupPublished?
+    [{id:'gr-1',formId:'F03',origin:'hospital',hospitalNumber:'1',title:'Evento externo',
+      occurredOn:'2026-11-20',description:window.descriptionEdit?.description??'Relato completo aqui',classification:{},details:{}}]
+    :[],next:'next'},
    readAnalysis:async()=>null,listAnalyses:async({id})=>({entries:id==='gr-1'?
      [{analysis:{problem:'Linha um.\\nLinha dois.',cause:'Causa',review:'Revisão',correction:'Correção',plan:'Plano'}}]:[],next:null}),
    descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;},
@@ -40,7 +44,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   browser=await(engine==='edge'?chromium.launch({channel:'msedge',headless:true}):webkit.launch({headless:true}));
   const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.route('**/*',r=>new URL(r.request().url()).origin===origin?r.continue():r.abort());await page.goto(origin+'/fixture');
-  await page.getByRole('button',{name:'ACOMPANHAR REGISTROS'}).waitFor();
+  await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).waitFor();
   assert.equal(await page.getByText(/Auditoria restrita|Registro autenticado/).count(),0);
   assert.equal(await page.evaluate(()=>window.auditReads),0);
   for (const viewport of [{width:320,height:568},{width:390,height:844},{width:568,height:320},{width:1440,height:900}]) {
@@ -81,7 +85,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.locator('[data-occurrence-cancel]').click();await page.locator('[data-occurrence-group-cancel]').click();
   assert.equal(await page.getByRole('heading',{name:'Registros recentes'}).count(),0);
   assert.equal(await page.evaluate(()=>window.recentReads),0);
-  await page.getByRole('button',{name:'ACOMPANHAR REGISTROS'}).click();
+  await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).click();
   const followup=page.getByRole('dialog',{name:'OCORRÊNCIAS - SAHMT'});
   await followup.waitFor();
   const followupBanner=page.locator('.occurrence-followup[open]');
@@ -96,12 +100,25 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   }
   for (const viewport of [{width:320,height:568},{width:568,height:320},{width:1440,height:900}]) {
    await page.setViewportSize(viewport);
-   await checkFollowupBanner({compact:true});
+   await checkFollowupBanner();
   }
   await page.setViewportSize({width:390,height:844});
   assert.equal(await followup.locator('[data-hospital-new]').count(),0);
+  const appThemes=followup.locator('[data-followup-origin="app"]');
+  const hospitalThemes=followup.locator('[data-followup-origin="hospital"]');
+  assert.equal(await appThemes.locator('[data-occurrence-group]').count(),4);
+  assert.equal(await hospitalThemes.locator('[data-occurrence-group]').count(),4);
+  const hospitalToggle=followup.getByRole('button',{name:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'});
+  await hospitalToggle.click();
+  assert.equal(await hospitalThemes.isVisible(),false);
+  await hospitalToggle.click();
+  assert.equal(await hospitalThemes.isVisible(),true);
+  const appEthics=appThemes.locator('[data-occurrence-group="B"]');
+  await appEthics.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
+  const hospitalCare=hospitalThemes.locator('[data-occurrence-group="A"]');
+  await hospitalCare.locator('xpath=self::*[@data-analysis-state="clear"]').waitFor();
   for(const group of ['A','C','D']){
-   await followup.locator('[data-occurrence-group="'+group+'"]').click();
+   await appThemes.locator('[data-occurrence-group="'+group+'"]').click();
    await checkFollowupBanner();
    if(group==='A'){
     await followupBanner.locator('[data-followup-form="F01"]').click();
@@ -112,12 +129,15 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    await back.click();
    await followup.waitFor();
   }
-  await followup.locator('[data-occurrence-group="A"]').click();
+  await hospitalCare.click();
   await followupBanner.locator('[data-followup-form="F03"]').click();
   await page.getByText('Nenhuma ocorrência registrada neste tema.').waitFor();
   await page.evaluate(()=>window.followupPublished=true);
   await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click({timeout:2000});
-  await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
+  const grRecord=page.getByRole('button',{name:'GR 001 · Evento externo'});
+  await grRecord.locator('xpath=self::*[@data-analysis-state="open"]').waitFor();
+  assert.match(await grRecord.evaluate(element=>getComputedStyle(element).backgroundImage),/249, 218, 134/);
+  await grRecord.click();
   await page.getByText('Relato completo aqui').waitFor();
   assert.equal(await followupBanner.getByRole('button',{name:'EDITAR DESCRIÇÃO'}).count(),0);
   await checkFollowupBanner();
@@ -192,12 +212,14 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await back.click();
   await back.click();
   await back.click();
-  await followup.locator('[data-occurrence-group="B"]').click();
+  await hospitalCare.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
+  await appEthics.click();
   await followupBanner.getByRole('button',{name:'GRA 002 · Dilema de teste'}).click();
   await followupBanner.getByText('Questionário ainda não publicado.',{exact:true}).waitFor();
   assert.equal(await followupBanner.getByRole('radio').count(),0);
   await back.click();
   const pollRecord=followupBanner.getByRole('button',{name:'GRA 001 · Enquete de teste'});
+  await pollRecord.locator('xpath=self::*[@data-analysis-state="open"]').waitFor();
   await pollRecord.click();
   const poll=followupBanner.locator('[data-ethical-poll]');
   for(const [index,count] of [5,5,4,4].entries()){
@@ -254,6 +276,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    {uid:'synthetic',id:GRA_001_RECORD_ID,text:'Primeiro parágrafo.\nSegundo parágrafo.',expectedText:''});
   await back.click();
   await page.evaluate(()=>window.canEditDescription=false);
+  await pollRecord.locator('xpath=self::*[@data-analysis-state="closed"]').waitFor();
   await pollRecord.click();
   await resultButton.click();
   assert.equal(await followupBanner.locator('.occurrence-poll-final-text').textContent(),'Primeiro parágrafo.\nSegundo parágrafo.');
@@ -261,8 +284,23 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await back.click();
   await back.click();
   await followup.waitFor();
+  await appEthics.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
+  await appEthics.click();
+  await page.evaluate(()=>window.closedOther=true);
+  await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click();
+  await followupBanner.getByRole('button',{name:'GRA 002 · Dilema de teste'})
+    .locator('xpath=self::*[@data-analysis-state="closed"]').waitFor();
+  await back.click();
+  await appEthics.locator('xpath=self::*[@data-analysis-state="closed"]').waitFor();
+  await hospitalCare.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
   await back.click();
   await followup.waitFor({state:'hidden'});
+  await page.evaluate(()=>window.canRegisterHospital=true);
+  await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).click();
+  await followup.getByRole('button',{name:'NOVO RELATO DO NÚCLEO'}).click();
+  await followupBanner.getByRole('heading',{name:'RELATO DO NÚCLEO DE SEGURANÇA'}).waitFor();
+  await back.click();
+  await back.click();
   assert.deepEqual(errors,[]);
  }finally{await browser?.close();await server.close();}
 });

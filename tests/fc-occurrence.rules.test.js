@@ -274,13 +274,18 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  const editor=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:delegate}},
   firestore:{doc:(_, ...path)=>doc(delegateDb,...path),getDocFromServer,runTransaction:(_,callback)=>runTransaction(delegateDb,callback)}});
  await assertFails(setDoc(result(ordinaryDb),{text:'Sem autorização',updatedAt:serverTimestamp()}));
+ const caseRow=(db,record=caseId)=>doc(db,'occurrenceFollowups',record);
+ await assertFails(updateDoc(caseRow(delegateDb),{analysisClosed:true}));
+ await assertFails(setDoc(result(delegateDb),{text:'Resultado sem fechamento',updatedAt:serverTimestamp()}));
  await assertFails(getDocFromServer(result(otherDb)));
  const text='Resultado do serviço.\nSegunda linha.';
  assert.equal(await editor.saveOccurrenceResult({uid:delegate,id:caseId,text,expectedText:''}),text);
  assert.equal(await repository.readOccurrenceResult({uid:ordinary,id:caseId}),text);
+ assert.equal((await getDocFromServer(caseRow(otherDb))).data().analysisClosed,true);
+ await assertFails(updateDoc(caseRow(delegateDb),{analysisClosed:false}));
  await assert.rejects(editor.saveOccurrenceResult({uid:delegate,id:caseId,text:'Conflito',expectedText:''}),{message:'OCCURRENCE_ETHICAL_REVIEW_CHANGED'});
  await assertFails(getDocFromServer(result(otherDb)));
- await assertSucceeds(setDoc(result(delegateDb,id),{text:'Outro caso',updatedAt:serverTimestamp()}));
+ assert.equal(await editor.saveOccurrenceResult({uid:delegate,id,text:'Outro caso',expectedText:''}),'Outro caso');
  await assertFails(getDocFromServer(result(ordinaryDb,id)));
  assert.equal((await assertSucceeds(getDocFromServer(result(otherDb,id)))).data().text,'Outro caso');
  await assertFails(updateDoc(result(delegateDb),{text:'   ',updatedAt:serverTimestamp()}));

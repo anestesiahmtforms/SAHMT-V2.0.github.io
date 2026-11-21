@@ -110,6 +110,9 @@ service cloud.firestore {
     function occurrenceFollowupPath(id) {
       return /databases/$(database)/documents/occurrenceFollowups/$(id);
     }
+    function occurrenceResultPath(id) {
+      return /databases/$(database)/documents/occurrenceFollowups/$(id)/ethicalPollResult/current;
+    }
     function occurrenceHospitalAuditPath(id) {
       return /databases/$(database)/documents/occurrenceHospitalAudit/$(id);
     }
@@ -281,9 +284,13 @@ service cloud.firestore {
       allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && validOccurrenceFollowup(id,request.resource.data) &&
         ((request.resource.data.origin == 'app' && canWrite() && validAppOccurrenceFollowup(id,request.resource.data)) ||
           (request.resource.data.origin == 'hospital' && canRegisterHospitalOccurrence() && validHospitalOccurrenceFollowup(id,request.resource.data)));
-      allow update: if canEditOccurrenceDescription() &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description']) &&
-        occurrenceText(request.resource.data.description,5000);
+      allow update: if canEditOccurrenceDescription() && (
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description']) &&
+          occurrenceText(request.resource.data.description,5000)) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['analysisClosed']) &&
+          request.resource.data.analysisClosed == true &&
+          getAfter(occurrenceResultPath(id)).data.updatedAt == request.time)
+      );
       allow delete: if false;
       match /analyses/{uid} {
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
@@ -318,6 +325,7 @@ service cloud.firestore {
           exists(/databases/$(database)/documents/occurrenceFollowups/$(id)/ethicalPollResponses/$(request.auth.uid)) ||
           exists(/databases/$(database)/documents/occurrenceFollowups/$(id)/analyses/$(request.auth.uid)));
         allow create, update: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+          getAfter(occurrenceFollowupPath(id)).data.analysisClosed == true &&
           request.resource.data.keys().hasOnly(['text','updatedAt']) &&
           occurrenceText(request.resource.data.text,20000) && request.resource.data.updatedAt == request.time;
         allow delete: if false;

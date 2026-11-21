@@ -124,7 +124,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(activeCatalogDialog!==dialog)return;
     catalogLoadSequence++;loading=false;activeCatalogDialog=null;
   };
-  const followupButton=followupAllowed?'<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup>ACOMPANHAR REGISTROS</button>':'';
+  const followupButton=followupAllowed?'<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup>ANÁLISE DE OCORRÊNCIAS - SAHMT</button>':'';
   root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}${followupButton}</div><div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]');
   const moduleStatus=root.querySelector('.occurrence-module-status');

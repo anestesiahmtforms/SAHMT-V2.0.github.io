@@ -164,7 +164,7 @@ function bindOccurrenceResponses(panel,{repository,uid,id,label,questions,isCurr
   });
 }
 
-function bindOccurrenceResult(panel,{repository,uid,id,isCurrent,canEdit,isWriting,setWriting}) {
+function bindOccurrenceResult(panel,{repository,uid,id,isCurrent,canEdit,isWriting,setWriting,onResultPublished}) {
   panel.innerHTML='<button type="button" class="secondary-button" aria-expanded="false">RESULTADO DA ANÁLISE PELO SERVIÇO</button>'+
     '<div data-poll-result-body hidden></div><p role="status"></p>';
   const toggle=panel.querySelector('button'),body=panel.querySelector('[data-poll-result-body]'),status=panel.querySelector('[role="status"]');
@@ -194,6 +194,7 @@ function bindOccurrenceResult(panel,{repository,uid,id,isCurrent,canEdit,isWriti
         if(isCurrent()){
           input.value=published=result;
           status.textContent='Resultado publicado para os participantes.';
+          onResultPublished?.();
         }
       } catch(error) {
         if(isCurrent())status.textContent=error.message==='OCCURRENCE_ETHICAL_REVIEW_CHANGED'

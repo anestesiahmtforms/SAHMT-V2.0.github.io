@@ -226,7 +226,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     return row.exists() ? row.data().text : '';
   };
-  const saveEthicalText = async ({uid,ref,text,expectedText,allowEmpty=false}) => {
+  const saveEthicalText = async ({uid,ref,text,expectedText,allowEmpty=false,completedRecord}) => {
     if (typeof text !== 'string' || text.trim().length > OCCURRENCE_ETHICAL_REVIEW_LIMIT ||
       (!allowEmpty&&!text.trim()) || typeof expectedText !== 'string') throw new Error('OCCURRENCE_INPUT_INVALID');
     const {user} = await requirePermission(uid);
@@ -238,6 +238,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       if (previous === next) return;
       if (previous !== expectedText) throw new Error('OCCURRENCE_ETHICAL_REVIEW_CHANGED');
       tx.set(ref,{text:next,updatedAt:api.serverTimestamp()});
+      if (completedRecord) tx.update(completedRecord,{analysisClosed:true});
     });
     return next;
   };
@@ -268,7 +269,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
   const readOccurrenceResult = ({uid,id} = {}) => readEthicalText(uid,analysisRef(id,'ethicalPollResult'));
   const saveOccurrenceResult = ({uid,id,text,expectedText} = {}) =>
-    saveEthicalText({uid,ref:analysisRef(id,'ethicalPollResult'),text,expectedText});
+    saveEthicalText({uid,ref:analysisRef(id,'ethicalPollResult'),text,expectedText,completedRecord:api.doc(db,FOLLOWUPS,id)});
   const saveDescription = async ({uid,id,description,expectedDescription} = {}) => {
     if (!followupId(id) || !boundedText(description,5000) ||
       (expectedDescription !== null && typeof expectedDescription !== 'string')) throw new Error('OCCURRENCE_INPUT_INVALID');
@@ -286,12 +287,14 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     return next;
   };
   const listFollowups = async ({uid,formId,after} = {}) => {
-    await requirePermission(uid);
-    if (!getOccurrenceForm(formId)) throw new Error('OCCURRENCE_INPUT_INVALID');
+    const {user} = await requirePermission(uid);
+    if (formId !== undefined && !getOccurrenceForm(formId)) throw new Error('OCCURRENCE_INPUT_INVALID');
     const pageSize = 30;
-    const criteria = [api.where('formId','==',formId),api.orderBy(api.documentId()),api.limit(pageSize)];
+    const criteria = [api.orderBy(api.documentId()),api.limit(pageSize)];
+    if (formId !== undefined) criteria.unshift(api.where('formId','==',formId));
     if (after) criteria.push(api.startAfter(after));
     const page = await api.getDocsFromServer(api.query(api.collection(db,FOLLOWUPS),...criteria));
+    if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     return {entries:page.docs.map(doc => doc.data()),next:page.docs.length === pageSize ? page.docs.at(-1) : null};
   };
   const readOccurrenceResponse = async ({uid,id} = {}) => {

@@ -9,6 +9,25 @@ import {bindOccurrencePromptActions} from './occurrence-ai-ui.js';
 
 const dateLabel = (value,kind) => kind === 'date' ? formatDisplayDate(value) : value;
 const labelFor = entry => entry.title || getOccurrenceForm(entry.formId)?.title || 'Ocorrência';
+const hospitalTitle = 'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA';
+const pageSize = 30;
+const stateLabels = {
+  pending:'Ocorrências em análise',
+  clear:'Sem pendências em análise',
+  open:'Análise em aberto',
+  closed:'Análise concluída'
+};
+
+function setAnalysisState(button,state) {
+  button.dataset.analysisState=state;
+  button.setAttribute('aria-description',stateLabels[state]);
+}
+
+function themeState(records) {
+  if(records.some(entry=>entry.analysisClosed!==true))return 'pending';
+  return records.length?'closed':'clear';
+}
+
 const privacyNote = 'O relato será disponibilizado à equipe. Retire nomes e outros dados que identifiquem pessoas.';
 
 function descriptionMarkup(entry) {
@@ -34,7 +53,8 @@ export function mountOccurrenceFollowup(host,{
     '<footer class="occurrence-dialog__footer occurrence-dialog__footer--single"><div class="occurrence-ai-actions" data-occurrence-ai-actions hidden></div><button type="button" class="secondary-button" data-followup-back>VOLTAR</button></footer></div></dialog>';
   const dialog=host.querySelector('dialog'),body=host.querySelector('[data-followup-body]'),heading=host.querySelector('h3');
   const promptActions=host.querySelector('[data-occurrence-ai-actions]');
-  let revision=0,group='',formId='',entries=new Map(),after=null,back=()=>dialog.close(),writing=false;
+  let revision=0,group='',origin='app',formId='',shown=pageSize,back=()=>dialog.close(),writing=false;
+  let overview=null,overviewRequest=null,hospitalExpanded=true;
   const groupForms=()=>OCCURRENCE_FORMS.filter(form=>form.group===group);
   function render(title,markup,nextBack) {
     const version=++revision;
@@ -48,38 +68,95 @@ export function mountOccurrenceFollowup(host,{
     return ()=>isCurrent()&&dialog.open&&version===revision;
   }
 
+  async function fetchOverview() {
+    const records=[];
+    let after=null;
+    do {
+      const page=await repository.listFollowups({uid,after});
+      if (!isCurrent()||!dialog.open) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      records.push(...page.entries);
+      after=page.next;
+    } while(after);
+    return records;
+  }
+
+  function getOverview(refresh=false) {
+    if (overviewRequest) return overviewRequest;
+    if (overview&&!refresh) return Promise.resolve(overview);
+    const request=fetchOverview().then(records=>{
+      if(overviewRequest===request)overview=records;
+      return records;
+    }).finally(()=>{
+      if(overviewRequest===request)overviewRequest=null;
+    });
+    overviewRequest=request;
+    return request;
+  }
+
   function groups() {
-    const current=render('OCORRÊNCIAS - SAHMT','<div class="occurrence-followup-list">'+groupsMarkup()+'</div>'+
-      '<div data-hospital-entry></div>',()=>dialog.close());
-    body.querySelectorAll('[data-occurrence-group]').forEach(button=>button.addEventListener('click',()=>{
+    const current=render('OCORRÊNCIAS - SAHMT',
+      '<div class="occurrence-followup-list" data-followup-origin="app">'+groupsMarkup()+'</div>'+
+      '<button type="button" class="secondary-button occurrence-hospital-toggle" aria-controls="occurrence-hospital-topics" '+
+      'aria-expanded="'+hospitalExpanded+'">'+hospitalTitle+'</button>'+
+      '<div id="occurrence-hospital-topics" data-followup-origin="hospital"'+(hospitalExpanded?'':' hidden')+'>'+
+      '<div class="occurrence-followup-list">'+groupsMarkup()+'</div><div data-hospital-entry></div></div>'+
+      '<p role="status" data-followup-status></p>',()=>dialog.close());
+    const toggle=body.querySelector('.occurrence-hospital-toggle');
+    const hospitalTopics=body.querySelector('#occurrence-hospital-topics');
+    const buttons=[...body.querySelectorAll('[data-occurrence-group]')];
+    toggle.addEventListener('click',()=>{
+      hospitalExpanded=!hospitalExpanded;
+      hospitalTopics.hidden=!hospitalExpanded;
+      toggle.setAttribute('aria-expanded',String(hospitalExpanded));
+    });
+    function buttonOrigin(button) {return button.closest('[data-followup-origin]').dataset.followupOrigin;}
+    for(const button of buttons)button.addEventListener('click',()=>{
+      origin=buttonOrigin(button);
       group=button.dataset.occurrenceGroup;
       const forms=groupForms();
       if (forms.length!==1) {categories();return;}
       formId=forms[0].id;
       records();
-    }));
+    });
+    void getOverview().then(items=>{
+      if(!current())return;
+      for(const button of buttons) {
+        const source=buttonOrigin(button);
+        const theme=button.dataset.occurrenceGroup;
+        setAnalysisState(button,themeState(items.filter(entry=>entry.origin===source&&getOccurrenceForm(entry.formId)?.group===theme)));
+      }
+      setAnalysisState(toggle,themeState(items.filter(entry=>entry.origin==='hospital')));
+    }).catch(()=>{
+      if(current())body.querySelector('[data-followup-status]').textContent='Não foi possível consultar a situação das análises.';
+    });
     if (canInteract() && canShowHospital()) void repository.hospitalAccess({uid}).then(allowed=>{
       if (!allowed || !current()) return;
       const admin=body.querySelector('[data-hospital-entry]');
-      admin.innerHTML='<button type="button" class="primary-button" data-hospital-new>REGISTRAR RELATO DO NÚCLEO DE SEGURANÇA</button>';
+      admin.innerHTML='<button type="button" class="primary-button" data-hospital-new>NOVO RELATO DO NÚCLEO</button>';
       admin.querySelector('button').addEventListener('click',hospital);
     }).catch(()=>{});
   }
 
   function categories() {
     const title=OCCURRENCE_GROUPS.find(item=>item.id===group).title;
-    const forms=groupForms();
-    render(title,'<div class="occurrence-followup-list">'+forms.map(form=>
+    const current=render(title,'<div class="occurrence-followup-list">'+groupForms().map(form=>
       '<button type="button" class="occurrence-form-launch" data-followup-form="'+form.id+'">'+escape(form.title)+'</button>'
     ).join('')+'</div>',groups);
-    body.querySelectorAll('[data-followup-form]').forEach(button=>button.addEventListener('click',()=>{
+    const buttons=[...body.querySelectorAll('[data-followup-form]')];
+    for(const button of buttons)button.addEventListener('click',()=>{
       formId=button.dataset.followupForm;
       records();
-    }));
+    });
+    void getOverview().then(items=>{
+      if(!current())return;
+      for(const button of buttons) {
+        setAnalysisState(button,themeState(items.filter(entry=>entry.origin===origin&&entry.formId===button.dataset.followupForm)));
+      }
+    }).catch(()=>{});
   }
 
   function records(resume=false) {
-    if (!resume) {entries=new Map();after=null;}
+    if (!resume) shown=pageSize;
     const current=render(getOccurrenceForm(formId).title,
       '<div class="occurrence-followup-list" data-followup-entries></div>'+
       '<p role="status" data-followup-status></p><div class="occurrence-followup-list">'+
@@ -87,42 +164,38 @@ export function mountOccurrenceFollowup(host,{
       '<button type="button" class="secondary-button" data-followup-refresh>ATUALIZAR REGISTROS</button></div>',groupForms().length===1?groups:categories);
     const list=body.querySelector('[data-followup-entries]'),status=body.querySelector('[data-followup-status]'),
       more=body.querySelector('[data-followup-more]'),refresh=body.querySelector('[data-followup-refresh]');
-    let loading=false;
+    let found=[],loading=false;
     function showEntries() {
-      list.innerHTML=[...entries.values()].map(entry=>
-        '<button type="button" class="occurrence-form-launch" data-followup-record="'+escape(entry.id)+'">'+
+      list.innerHTML=found.slice(0,shown).map(entry=>
+        '<button type="button" class="occurrence-form-launch" data-followup-record="'+escape(entry.id)+'"'+
+        ' data-analysis-state="'+(entry.analysisClosed===true?'closed':'open')+'" aria-description="'+
+        (entry.analysisClosed===true?stateLabels.closed:stateLabels.open)+'">'+
         '<span class="'+(entry.origin==='hospital'?'occurrence-hospital-title':'')+'"><strong>'+escape(occurrenceProtocol(entry))+
         '</strong> · '+escape(labelFor(entry))+'</span></button>').join('');
-      status.textContent=entries.size?'':'Nenhuma ocorrência registrada neste tema.';
-      more.hidden=!after;
-      more.textContent='CARREGAR MAIS';
+      status.textContent=found.length?'':'Nenhuma ocorrência registrada neste tema.';
+      more.hidden=shown>=found.length;
     }
-    async function load(fromStart=false) {
+    async function load(force=false) {
       if (loading || !current()) return;
-      loading=true;more.disabled=refresh.disabled=true;
+      loading=true;refresh.disabled=true;
       status.textContent='Carregando ocorrências…';
       try {
-        const page=await repository.listFollowups({uid,formId,after:fromStart?null:after});
+        const items=await getOverview(force);
         if (!current()) return;
-        if(fromStart)entries.clear();
-        for (const entry of page.entries) entries.set(entry.id,entry);
-        after=page.next;
+        found=items.filter(entry=>entry.origin===origin&&entry.formId===formId);
+        if(force)shown=pageSize;
         showEntries();
       } catch {
-        if (current()) {
-          status.textContent='Não foi possível consultar as ocorrências.';
-          if(!fromStart&&after)more.textContent='TENTAR NOVAMENTE';
-        }
-      } finally {loading=false;more.disabled=refresh.disabled=false;}
+        if(current())status.textContent='Não foi possível consultar as ocorrências.';
+      } finally {loading=false;refresh.disabled=false;}
     }
     list.addEventListener('click',event=>{
       const button=event.target.closest('[data-followup-record]');
-      if (button&&current()) detail(entries.get(button.dataset.followupRecord));
+      if (button&&current()) detail(found.find(entry=>entry.id===button.dataset.followupRecord));
     });
-    more.addEventListener('click',()=>void load());
+    more.addEventListener('click',()=>{shown+=pageSize;showEntries();});
     refresh.addEventListener('click',()=>void load(true));
-    if(resume)showEntries();
-    else void load();
+    void load();
   }
 
   function detail(entry) {
@@ -142,6 +215,7 @@ export function mountOccurrenceFollowup(host,{
     mountOccurrenceQuestionnaire(body.querySelector('[data-occurrence-questionnaire]'),{
       repository,uid,id:entry.id,label:label+' · '+labelFor(entry),editor,
       isCurrent:current,canInteract,isWriting,setWriting:value=>{writing=value;},
+      onResultPublished:()=>{entry.analysisClosed=true;},
       onEditorReady:options=>bindOccurrencePromptActions(promptActions,promptPanel,{
         ...options,entry,isCurrent:current,isWriting,stageDescription
       })
@@ -213,7 +287,7 @@ export function mountOccurrenceFollowup(host,{
       writing=true;container.disabled=true;status.textContent='Publicando relato…';
       try {
         const protocol=await repository.saveHospital({uid,...input});
-        if (current()) {form.reset();status.textContent=protocol+' · Relato publicado para análise.';}
+        if (current()) {overview=null;form.reset();status.textContent=protocol+' · Relato publicado para análise.';}
       } catch(error) {
         if(current())status.textContent=error.message==='OCCURRENCE_HOSPITAL_DUPLICATE'?'Já existe um relato com esse protocolo.':
           error.message==='OCCURRENCE_INPUT_INVALID'?'Confira o protocolo GR, a data e os campos do relato.':'Não foi possível publicar o relato.';
@@ -228,5 +302,5 @@ export function mountOccurrenceFollowup(host,{
   }
   host.querySelector('[data-followup-back]').addEventListener('click',goBack);
   dialog.addEventListener('cancel',event=>{event.preventDefault();goBack();});
-  return ()=>{if(isCurrent()&&!dialog.open){dialog.showModal();groups();}};
+  return ()=>{if(isCurrent()&&!dialog.open){overview=null;overviewRequest=null;hospitalExpanded=true;dialog.showModal();groups();}};
 }
