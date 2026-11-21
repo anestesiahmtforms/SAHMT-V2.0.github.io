@@ -78,6 +78,26 @@ function mountOccurrenceResponse(section,{repository,uid,id,questions,isCurrent,
   void load();
 }
 
+async function readOccurrenceResponses({repository,uid,id,questions,isCurrent}) {
+  async function readAll(list) {
+    const entries=[];
+    let cursor=null;
+    do {
+      const page=await list({uid,id,after:cursor});
+      if(!isCurrent())throw new Error('OCCURRENCE_SESSION_CHANGED');
+      entries.push(...page.entries);
+      cursor=page.next;
+    } while(cursor);
+    return entries;
+  }
+  const [entries,legacy]=await Promise.all([
+    questions.length?readAll(repository.listOccurrenceResponses):[],
+    readAll(repository.listAnalyses)
+  ]);
+  if(!entries.length&&!legacy.length)throw new Error('OCCURRENCE_POLL_EMPTY');
+  return {questions,entries,legacy};
+}
+
 function bindOccurrenceResponses(panel,{repository,uid,id,label,questions,isCurrent}) {
   panel.innerHTML='<summary>RESPOSTAS DA ABORDAGEM</summary><p role="status"></p><div data-ethical-poll-totals></div>'+
     '<ul class="occurrence-poll-comments" aria-label="Comentários"></ul>'+
@@ -114,30 +134,12 @@ function bindOccurrenceResponses(panel,{repository,uid,id,label,questions,isCurr
   more.addEventListener('click',()=>void load());
   const copy=panel.querySelector('[data-poll-copy]'),copyStatus=panel.querySelector('[data-poll-copy-status]');
   const fallback=panel.querySelector('[data-poll-copy-fallback]'),copyText=fallback.querySelector('textarea');
-  async function readAll(list) {
-    const entries=[];
-    let cursor=null;
-    do {
-      const page=await list({uid,id,after:cursor});
-      if(!isCurrent())throw new Error('OCCURRENCE_SESSION_CHANGED');
-      entries.push(...page.entries);
-      cursor=page.next;
-    } while(cursor);
-    return entries;
-  }
-  async function readExport() {
-    const [entries,legacy]=await Promise.all([
-      questions.length?readAll(repository.listOccurrenceResponses):[],
-      readAll(repository.listAnalyses)
-    ]);
-    if(!entries.length&&!legacy.length)throw new Error('OCCURRENCE_POLL_EMPTY');
-    return formatOccurrenceAnalysisExport({label,questions,entries,legacy});
-  }
   copy.addEventListener('click',async()=>{
     if(copy.disabled||!isCurrent())return;
     copy.disabled=true;fallback.hidden=true;copyText.value='';
     copyStatus.textContent='Preparando a cópia de todas as respostas…';
-    const exported=readExport();
+    const exported=readOccurrenceResponses({repository,uid,id,questions,isCurrent}).then(data=>
+      formatOccurrenceAnalysisExport({label,...data}));
     const clipboard=navigator.clipboard;
     try {
       let copied=false;
@@ -200,23 +202,39 @@ function bindOccurrenceResult(panel,{repository,uid,id,isCurrent,canEdit,isWriti
       } finally {setWriting(false);if(isCurrent()){controls.disabled=false;toggle.disabled=false;}}
     });
   }
-  toggle.addEventListener('click',async()=>{
-    if(!isCurrent()||isWriting())return;
-    body.hidden=!body.hidden;
-    toggle.setAttribute('aria-expanded',String(!body.hidden));
-    if(body.hidden)return;
+  async function open() {
+    if(!isCurrent()||isWriting()||toggle.disabled)return false;
     if(!loaded) {
       toggle.disabled=true;
       try {await load();}
       catch {
-        if(isCurrent()){body.hidden=true;toggle.setAttribute('aria-expanded','false');status.textContent='Não foi possível abrir o resultado.';}
-        return;
+        if(isCurrent())status.textContent='Não foi possível abrir o resultado.';
+        return false;
       } finally {toggle.disabled=false;}
     }
-    if(isCurrent())render();
+    if(!isCurrent()||isWriting())return false;
+    body.hidden=false;
+    toggle.setAttribute('aria-expanded','true');
+    if(!body.childElementCount)render();
+    return true;
+  }
+  toggle.addEventListener('click',()=>{
+    if(!isCurrent()||isWriting())return;
+    if(body.hidden)void open();
+    else {
+      body.hidden=true;
+      toggle.setAttribute('aria-expanded','false');
+    }
   });
   if(canEdit)panel.hidden=false;
   else void load().catch(()=>{});
+  return async text=>{
+    if(!canEdit||!await open())return false;
+    const input=body.querySelector('textarea');
+    input.value=text;
+    input.focus();
+    return true;
+  };
 }
 
 function bindQuestionnaireEditor(panel,{repository,uid,id,isCurrent,isWriting,setWriting},onPublished) {
@@ -253,10 +271,20 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,isCurrent,isWriting,se
         :'Não foi possível publicar o questionário. Tente novamente.';
     } finally {setWriting(false);controls.disabled=false;}
   });
+  return draft=>{
+    for(const [index,{prompt,options}] of draft.entries()){
+      form.elements['prompt-'+index].value=prompt;
+      for(let option=0;option<OCCURRENCE_OPTION_LIMIT;option++) {
+        form.elements['option-'+index+'-'+option].value=options[option]??'';
+      }
+    }
+    panel.querySelector('details').open=true;
+    status.textContent='Revise as perguntas e publique quando estiverem prontas.';
+  };
 }
 
 export function mountOccurrenceQuestionnaire(host,options) {
-  const {repository,uid,id,editor,isCurrent}=options;
+  const {repository,uid,id,editor,isCurrent,onEditorReady}=options;
   host.innerHTML='<div data-questionnaire-editor></div>'+
     '<section class="occurrence-followup-analysis" data-ethical-poll></section>'+
     '<details data-ethical-poll-results hidden></details>'+
@@ -265,11 +293,11 @@ export function mountOccurrenceQuestionnaire(host,options) {
   const response=host.querySelector('[data-ethical-poll]');
   const exportPanel=host.querySelector('[data-ethical-poll-results]');
   const result=host.querySelector('[data-ethical-poll-result]');
-  let resultBound=false;
+  let resultBound=false,publishedQuestions=null,stageResult,stageQuestions;
   function showResult(canEdit) {
     if(!isCurrent()||resultBound)return;
     resultBound=true;
-    bindOccurrenceResult(result,{...options,canEdit});
+    stageResult=bindOccurrenceResult(result,{...options,canEdit});
   }
   function showQuestions(questions,canEdit) {
     if(canEdit)bindOccurrenceResponses(exportPanel,{...options,questions});
@@ -283,10 +311,13 @@ export function mountOccurrenceQuestionnaire(host,options) {
       response.replaceChildren();
       if(canEdit)showResult(true);
       else void repository.readAnalysis({uid,id}).then(analysis=>{if(analysis)showResult(false);}).catch(()=>{});
-      if(questions){showQuestions(questions,canEdit);return;}
-      if(canEdit) {
+      publishedQuestions=questions;
+      if(questions)showQuestions(questions,canEdit);
+      else if(canEdit) {
         bindOccurrenceResponses(exportPanel,{...options,questions:[]});
-        bindQuestionnaireEditor(config,options,published=>{
+        stageQuestions=bindQuestionnaireEditor(config,options,published=>{
+          publishedQuestions=published;
+          stageQuestions=null;
           // Replace the archive panel so its listeners only refer to the published questions.
           const panel=exportPanel.cloneNode(false);
           exportPanel.replaceWith(panel);
@@ -294,6 +325,11 @@ export function mountOccurrenceQuestionnaire(host,options) {
           mountOccurrenceResponse(response,{...options,questions:published,onSubmitted:()=>showResult(true)});
         });
       } else response.innerHTML='<p>Questionário ainda não publicado.</p>';
+      if(canEdit)onEditorReady?.({
+        hasQuestionnaire:()=>Boolean(publishedQuestions),
+        readResponses:()=>readOccurrenceResponses({...options,questions:publishedQuestions??[]}),
+        stageQuestions:draft=>stageQuestions?.(draft),stageResult
+      });
     } catch {
       if(!isCurrent())return;
       response.innerHTML='<p role="status">Não foi possível consultar o questionário.</p>'+

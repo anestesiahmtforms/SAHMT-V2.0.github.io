@@ -126,13 +126,29 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   assert.equal(await hospitalTitle.evaluate(element=>getComputedStyle(element).color),'rgb(7, 83, 161)');
   await followupBanner.getByText('Questionário ainda não publicado.',{exact:true}).waitFor();
   assert.equal(await followupBanner.getByText('CONFIGURAR QUESTIONÁRIO',{exact:true}).count(),0);
+  assert.equal(await followupBanner.locator('[data-occurrence-ai-actions] button').count(),0);
   await back.click();
   await page.evaluate(()=>window.canEditDescription=true);
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
-  await followupBanner.getByRole('button',{name:'EDITAR DESCRIÇÃO'}).click();
+  const actionFooter=followupBanner.locator('footer');
+  await actionFooter.getByRole('button',{name:'PREPARAR OCORRÊNCIA COM IA'}).click();
+  const prep=followupBanner.locator('.occurrence-ai-pane:visible');
+  await prep.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
+  const prepText=await prep.getByRole('textbox',{name:'Prompt para a IA'}).inputValue();
+  assert.match(prepText,/"protocolo": "GR 001"[\s\S]*"relato": "Relato completo aqui"/);
+  const draft={protocolo:'GR 999',descricao:'Texto revisado',perguntas:Array.from({length:4},(_,index)=>({
+   prompt:'Pergunta do Núcleo '+(index+1),options:['Resposta 1','Resposta 2']
+  }))};
+  const aiResponse=prep.getByRole('textbox',{name:'Resposta da IA em JSON'});
+  await aiResponse.fill(JSON.stringify(draft));
+  await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
+  await prep.getByText('O protocolo do rascunho deve ser GR 001.',{exact:true}).waitFor();
+  await aiResponse.fill(JSON.stringify({...draft,protocolo:'GR 001'}));
+  await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
+  await prep.getByText(/Rascunho carregado/).waitFor();
+  assert.equal(await page.evaluate(()=>window.descriptionEdit),undefined);
   const editor=followupBanner.getByRole('textbox',{name:'Descrição da ocorrência'});
-  assert.equal(await editor.inputValue(),'Relato completo aqui');
-  await editor.fill('Texto revisado');
+  assert.equal(await editor.inputValue(),'Texto revisado');
   await followupBanner.getByRole('button',{name:'SALVAR DESCRIÇÃO'}).click();
   await followupBanner.getByText('Descrição atualizada.',{exact:true}).waitFor();
   assert.equal(await followupBanner.locator('[data-occurrence-description]').textContent(),'Texto revisado');
@@ -150,7 +166,6 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await results.getByRole('button',{name:'COPIAR TODAS AS RESPOSTAS'}).click();
   await results.getByText('Todas as respostas foram copiadas.',{exact:true}).waitFor();
   assert.match(await page.evaluate(()=>window.copiedPoll),/GR 001[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
-  await followupBanner.getByText('CONFIGURAR QUESTIONÁRIO',{exact:true}).click();
   const config=followupBanner.locator('[data-questionnaire-editor]');
   const scroll=await followupBanner.evaluate(dialog=>{
    const body=dialog.querySelector('[data-followup-body]'),back=dialog.querySelector('[data-followup-back]');
@@ -161,9 +176,9 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   });
   assert.ok(scroll.scrolled>0&&scroll.outer===0&&scroll.after===scroll.before,JSON.stringify(scroll));
   for(let index=0;index<4;index++){
-   await config.locator('[name=prompt-'+index+']').fill('Pergunta do Núcleo '+(index+1));
+   assert.equal(await config.locator('[name=prompt-'+index+']').inputValue(),'Pergunta do Núcleo '+(index+1));
    for(let option=0;option<2;option++){
-    await config.locator('[name=option-'+index+'-'+option+']').fill('Resposta '+(option+1));
+    assert.equal(await config.locator('[name=option-'+index+'-'+option+']').inputValue(),'Resposta '+(option+1));
    }
   }
   await config.getByRole('button',{name:'PUBLICAR QUESTIONÁRIO'}).click();
@@ -219,8 +234,20 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   assert.match(copied,/RESPOSTA 1[\s\S]*Outra posição\.[\s\S]*Comentário de teste\./);
   assert.match(copied,/RESPOSTA 2[\s\S]*A condição clínica atual, os riscos e a necessidade de suporte intensivo\.[\s\S]*Segunda resposta\.\nComentário em duas linhas\./);
   assert.doesNotMatch(copied,/synthetic/);
-  await resultButton.click();
-  await followupBanner.getByRole('textbox',{name:'Resultado final'}).fill('Primeiro parágrafo.\nSegundo parágrafo.');
+  await actionFooter.getByRole('button',{name:'ANALISAR RESPOSTAS COM IA'}).click();
+  const analysis=followupBanner.locator('.occurrence-ai-pane:visible');
+  await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
+  await analysis.getByRole('button',{name:'COPIAR PROMPT'}).click();
+  await analysis.getByText('Prompt copiado.',{exact:true}).waitFor();
+  const analysisPrompt=await page.evaluate(()=>window.copiedPoll);
+  assert.match(analysisPrompt,/"protocolo": "GRA 001"[\s\S]*CONTAGEM POR ALTERNATIVA[\s\S]*Comentário de teste/);
+  await analysis.getByRole('textbox',{name:'Resposta da IA em JSON'}).fill(JSON.stringify({
+   protocolo:'GRA 001',resultado:'Primeiro parágrafo.\nSegundo parágrafo.'
+  }));
+  await analysis.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
+  await analysis.getByText(/Rascunho carregado em Resultado/).waitFor();
+  assert.equal(await page.evaluate(()=>window.pollResult),undefined);
+  assert.equal(await followupBanner.getByRole('textbox',{name:'Resultado final'}).inputValue(),'Primeiro parágrafo.\nSegundo parágrafo.');
   await followupBanner.getByRole('button',{name:'PUBLICAR RESULTADO'}).click();
   await followupBanner.getByText('Resultado publicado para os participantes.',{exact:true}).waitFor();
   assert.deepEqual(await page.evaluate(()=>window.pollResult),

@@ -5,6 +5,7 @@ import {
 } from './occurrence-schema.js';
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
 import {mountOccurrenceQuestionnaire} from './occurrence-questionnaire-ui.js';
+import {bindOccurrencePromptActions} from './occurrence-ai-ui.js';
 
 const dateLabel = (value,kind) => kind === 'date' ? formatDisplayDate(value) : value;
 const labelFor = entry => entry.title || getOccurrenceForm(entry.formId)?.title || 'Ocorrência';
@@ -30,14 +31,17 @@ export function mountOccurrenceFollowup(host,{
     '<div class="occurrence-dialog__form"><header class="occurrence-dialog__header">'+
     '<h3 id="occurrence-followup-title" tabindex="-1">OCORRÊNCIAS - SAHMT</h3></header>'+
     '<div class="occurrence-dialog__body" data-followup-body></div>'+
-    '<footer class="occurrence-dialog__footer occurrence-dialog__footer--single"><button type="button" class="secondary-button" data-followup-back>VOLTAR</button></footer></div></dialog>';
+    '<footer class="occurrence-dialog__footer occurrence-dialog__footer--single"><div class="occurrence-ai-actions" data-occurrence-ai-actions hidden></div><button type="button" class="secondary-button" data-followup-back>VOLTAR</button></footer></div></dialog>';
   const dialog=host.querySelector('dialog'),body=host.querySelector('[data-followup-body]'),heading=host.querySelector('h3');
+  const promptActions=host.querySelector('[data-occurrence-ai-actions]');
   let revision=0,group='',formId='',entries=new Map(),after=null,back=()=>dialog.close(),writing=false;
   const groupForms=()=>OCCURRENCE_FORMS.filter(form=>form.group===group);
   function render(title,markup,nextBack) {
     const version=++revision;
     heading.textContent=title;
     body.innerHTML=markup;
+    promptActions.replaceChildren();
+    promptActions.hidden=true;
     body.scrollTop=0;
     back=nextBack;
     heading.focus({preventScroll:true});
@@ -124,16 +128,23 @@ export function mountOccurrenceFollowup(host,{
   function detail(entry) {
     const label=occurrenceProtocol(entry);
     const current=render(label,descriptionMarkup(entry)+
-      '<div data-occurrence-description-tools hidden></div><div data-occurrence-questionnaire></div>',()=>records(true));
+      '<div data-occurrence-description-tools hidden></div><div data-occurrence-questionnaire></div>'+
+      '<div data-occurrence-ai-panel></div>',()=>records(true));
     heading.classList.toggle('occurrence-hospital-heading',entry.origin==='hospital');
-    const editor=canShowHospital()?repository.descriptionAccess({uid}).catch(()=>false):Promise.resolve(false);
     const descriptionTools=body.querySelector('[data-occurrence-description-tools]');
-    void editor.then(allowed=>{
-      if (allowed&&current()) bindDescriptionEditor(descriptionTools,entry,current);
-    });
+    const promptPanel=body.querySelector('[data-occurrence-ai-panel]');
+    let stageDescription;
+    const editor=canShowHospital()?repository.descriptionAccess({uid}).then(allowed=>{
+      if (allowed&&current())stageDescription=bindDescriptionEditor(descriptionTools,entry,current);
+      return Boolean(stageDescription);
+    }).catch(()=>false):Promise.resolve(false);
+    const isWriting=()=>writing;
     mountOccurrenceQuestionnaire(body.querySelector('[data-occurrence-questionnaire]'),{
       repository,uid,id:entry.id,label:label+' · '+labelFor(entry),editor,
-      isCurrent:current,canInteract,isWriting:()=>writing,setWriting:value=>{writing=value;}
+      isCurrent:current,canInteract,isWriting,setWriting:value=>{writing=value;},
+      onEditorReady:options=>bindOccurrencePromptActions(promptActions,promptPanel,{
+        ...options,entry,isCurrent:current,isWriting,stageDescription
+      })
     });
   }
 
@@ -147,14 +158,15 @@ export function mountOccurrenceFollowup(host,{
     const edit=panel.querySelector('[data-edit-occurrence-description]'),form=panel.querySelector('form'),
       inputs=form.querySelector('fieldset'),input=form.elements.description,status=panel.querySelector('[role="status"]');
     function close() {form.hidden=true;edit.hidden=false;edit.focus({preventScroll:true});}
-    edit.addEventListener('click',()=>{
+    function open(description=entry.description||'') {
       if (!current()||writing||!canShowHospital()) return;
-      input.value=entry.description||'';
+      input.value=description;
       status.textContent='';
       edit.hidden=true;
       form.hidden=false;
       input.focus();
-    });
+    }
+    edit.addEventListener('click',()=>open());
     form.querySelector('[data-cancel-description]').addEventListener('click',()=>{status.textContent='';close();});
     form.addEventListener('submit',async event=>{
       event.preventDefault();
@@ -178,6 +190,7 @@ export function mountOccurrenceFollowup(host,{
           :'Não foi possível salvar a descrição. Confira o seu acesso e tente novamente.';
       } finally {writing=false;if(current())inputs.disabled=false;}
     });
+    return open;
   }
 
   function hospital() {

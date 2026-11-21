@@ -2125,6 +2125,11 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-poll-result{margin-top:16px}
 .occurrence-poll-result>button{width:100%;min-height:44px}
 .occurrence-poll-final-text{white-space:pre-wrap;overflow-wrap:anywhere}
+.occurrence-ai-actions:not([hidden]){display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.occurrence-ai-actions button{padding:6px;white-space:normal;font-size:clamp(.62rem,2.5vw,.8rem);line-height:1.15}
+.occurrence-ai-pane button{min-height:44px}
+.occurrence-ai-pane form{margin-top:10px}
+.occurrence-ai-pane textarea{font-size:16px}
 .occurrence-followup [data-admin-analyses] dl{padding:10px;border:1px solid #bfd0d9;border-radius:10px}
 .occurrence-privacy-note{margin:0 0 14px}
 .people-occurrence-grant{display:grid;justify-items:start;gap:8px;margin-top:16px}
