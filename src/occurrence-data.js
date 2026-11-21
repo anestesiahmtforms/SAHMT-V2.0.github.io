@@ -3,12 +3,14 @@ import {FIREBASE_PROJECTS} from './firebase-projects.js';
 import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PRIVATE_FIELDS, getOccurrenceForm, occurrenceAppProtocol,
   occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues} from './occurrence-schema.js';
 import {isValidDateKey} from './schedule-date.js';
+import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIMIT,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
 
 const REPORTS = 'occurrenceReports';
 const AUDIT = 'occurrenceAudit';
 const SCORE_CLAIMS = 'occurrenceScoreClaims';
 const CATALOGS = 'occurrenceCatalogs';
 const FOLLOWUPS = 'occurrenceFollowups';
+const QUESTIONNAIRE_RESPONSES = 'ethicalPollResponses';
 const GRANTS = new Map([
   ['hospital','occurrenceHospitalGrants'],
   ['descriptions','occurrenceDescriptionGrants']
@@ -218,17 +220,17 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (!followupId(id)) throw new Error('OCCURRENCE_INPUT_INVALID');
     return api.doc(db,FOLLOWUPS,id,'ethicalReview','current');
   };
-  const readEthicalReview = async ({uid,id} = {}) => {
+  const readEthicalText = async (uid,ref) => {
     const {user} = await requirePermission(uid);
-    const row = await api.getDocFromServer(ethicalReviewRef(id));
+    const row = await api.getDocFromServer(ref);
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     return row.exists() ? row.data().text : '';
   };
-  const saveEthicalReview = async ({uid,id,text,expectedText} = {}) => {
+  const saveEthicalText = async ({uid,ref,text,expectedText,allowEmpty=false}) => {
     if (typeof text !== 'string' || text.trim().length > OCCURRENCE_ETHICAL_REVIEW_LIMIT ||
-      typeof expectedText !== 'string') throw new Error('OCCURRENCE_INPUT_INVALID');
+      (!allowEmpty&&!text.trim()) || typeof expectedText !== 'string') throw new Error('OCCURRENCE_INPUT_INVALID');
     const {user} = await requirePermission(uid);
-    const next = text.trim(),ref = ethicalReviewRef(id);
+    const next = text.trim();
     await api.runTransaction(db,async tx => {
       const row = await tx.get(ref);
       if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
@@ -239,6 +241,34 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     });
     return next;
   };
+  const readEthicalReview = ({uid,id} = {}) => readEthicalText(uid,ethicalReviewRef(id));
+  const saveEthicalReview = ({uid,id,text,expectedText} = {}) =>
+    saveEthicalText({uid,ref:ethicalReviewRef(id),text,expectedText,allowEmpty:true});
+  const analysisRef = (id,collection,document='current') => {
+    if (!followupId(id)) throw new Error('OCCURRENCE_INPUT_INVALID');
+    return api.doc(db,FOLLOWUPS,id,collection,document);
+  };
+  const readOccurrenceQuestionnaire = async ({uid,id} = {}) => {
+    const {user} = await requirePermission(uid);
+    const row = await api.getDocFromServer(analysisRef(id,'analysisQuestionnaire'));
+    if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+    return row.exists() ? normalizeOccurrenceQuestions(row.data().questions) : null;
+  };
+  const publishOccurrenceQuestionnaire = async ({uid,id,questions} = {}) => {
+    const next=normalizeOccurrenceQuestions(questions);
+    if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const ref=analysisRef(id,'analysisQuestionnaire');
+    await api.runTransaction(db,async tx => {
+      const row=await tx.get(ref);
+      if (!isCurrent() || auth.currentUser?.uid !== uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      if (row.exists()) throw new Error('OCCURRENCE_QUESTIONNAIRE_PUBLISHED');
+      tx.set(ref,{questions:next,publishedAt:api.serverTimestamp()});
+    });
+    return next;
+  };
+  const readOccurrenceResult = ({uid,id} = {}) => readEthicalText(uid,analysisRef(id,'ethicalPollResult'));
+  const saveOccurrenceResult = ({uid,id,text,expectedText} = {}) =>
+    saveEthicalText({uid,ref:analysisRef(id,'ethicalPollResult'),text,expectedText});
   const saveDescription = async ({uid,id,description,expectedDescription} = {}) => {
     if (!followupId(id) || !boundedText(description,5000) ||
       (expectedDescription !== null && typeof expectedDescription !== 'string')) throw new Error('OCCURRENCE_INPUT_INVALID');
@@ -264,6 +294,35 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const page = await api.getDocsFromServer(api.query(api.collection(db,FOLLOWUPS),...criteria));
     return {entries:page.docs.map(doc => doc.data()),next:page.docs.length === pageSize ? page.docs.at(-1) : null};
   };
+  const readOccurrenceResponse = async ({uid,id} = {}) => {
+    const {user} = await requirePermission(uid);
+    const row = await api.getDocFromServer(analysisRef(id,QUESTIONNAIRE_RESPONSES,uid));
+    if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+    return row.exists();
+  };
+  const submitOccurrenceResponse = async ({uid,id,answers,comment=''} = {}) => {
+    if (!Array.isArray(answers) || answers.length !== OCCURRENCE_QUESTION_COUNT ||
+      answers.some(answer=>!Number.isInteger(answer)||answer<1||answer>OCCURRENCE_OPTION_LIMIT) ||
+      typeof comment !== 'string' || comment.length>OCCURRENCE_COMMENT_LIMIT) throw new Error('OCCURRENCE_INPUT_INVALID');
+    const {user} = await requirePermission(uid);
+    const ref=analysisRef(id,QUESTIONNAIRE_RESPONSES,uid);
+    return api.runTransaction(db,async tx => {
+      const row=await tx.get(ref);
+      if(!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      if(row.exists()) return 'already-submitted';
+      tx.set(ref,{answers:[...answers],comment,submittedAt:api.serverTimestamp()});
+      return 'submitted';
+    });
+  };
+  const listOccurrenceResponses = async ({uid,id,after} = {}) => {
+    if(!followupId(id)||!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const pageSize=30;
+    const criteria=[api.orderBy(api.documentId()),api.limit(pageSize)];
+    if(after)criteria.push(api.startAfter(after));
+    const page=await api.getDocsFromServer(api.query(api.collection(db,FOLLOWUPS,id,QUESTIONNAIRE_RESPONSES),...criteria));
+    if(!isCurrent()||auth.currentUser?.uid!==uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
+    return {entries:page.docs.map(row=>row.data()),next:page.docs.length===pageSize?page.docs.at(-1):null};
+  };
   const readAnalysis = async ({uid,id} = {}) => {
     await requirePermission(uid);
     if (!followupId(id)) throw new Error('OCCURRENCE_INPUT_INVALID');
@@ -281,12 +340,12 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     return true;
   };
   const listAnalyses = async ({uid,id,after} = {}) => {
-    const {profile} = await requirePermission(uid);
-    if (!fcAdministrator(profile) || !followupId(id)) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if (!followupId(id) || !await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const pageSize = 30;
     const criteria = [api.orderBy(api.documentId()),api.limit(pageSize)];
     if (after) criteria.push(api.startAfter(after));
     const page = await api.getDocsFromServer(api.query(api.collection(db,FOLLOWUPS,id,'analyses'),...criteria));
+    if (!isCurrent() || auth.currentUser?.uid !== uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
     return {entries:page.docs.map(doc => doc.data()),next:page.docs.length === pageSize ? page.docs.at(-1) : null};
   };
   const saveHospital = async ({uid,formId,number,occurredOn,title,description} = {}) => {
@@ -330,6 +389,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
-    hospitalAccess,saveHospital,descriptionAccess,saveDescription,readEthicalReview,saveEthicalReview,getGrant,saveGrant,
+    hospitalAccess,saveHospital,descriptionAccess,saveDescription,readEthicalReview,saveEthicalReview,
+    readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,getGrant,saveGrant,
     clear:()=>{catalogCache=null;}});
 }

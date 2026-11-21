@@ -1,13 +1,13 @@
 import {formatDisplayDate} from './date-format.js';
 import {
-  OCCURRENCE_ANALYSIS_FIELDS, OCCURRENCE_ANALYSIS_LIMIT, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_FORMS, OCCURRENCE_GROUPS,
-  getOccurrenceForm, occurrenceProtocol, readOccurrenceAnalysis
+  OCCURRENCE_FORMS, OCCURRENCE_GROUPS,
+  getOccurrenceForm, occurrenceProtocol
 } from './occurrence-schema.js';
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
+import {mountOccurrenceQuestionnaire} from './occurrence-questionnaire-ui.js';
 
 const dateLabel = (value,kind) => kind === 'date' ? formatDisplayDate(value) : value;
 const labelFor = entry => entry.title || getOccurrenceForm(entry.formId)?.title || 'Ocorrência';
-const fields = Object.entries(OCCURRENCE_ANALYSIS_FIELDS);
 const privacyNote = 'O relato será disponibilizado à equipe. Retire nomes, números de atendimento e outros dados que identifiquem pessoas.';
 
 function descriptionMarkup(entry) {
@@ -24,7 +24,7 @@ function descriptionMarkup(entry) {
 }
 
 export function mountOccurrenceFollowup(host,{
-  repository,uid,isCurrent,groupsMarkup,canInteract,canShowHospital,isAdministrator=false
+  repository,uid,isCurrent,groupsMarkup,canInteract,canShowHospital
 }) {
   host.innerHTML='<dialog class="occurrence-dialog occurrence-followup" aria-labelledby="occurrence-followup-title">'+
     '<div class="occurrence-dialog__form"><header class="occurrence-dialog__header">'+
@@ -122,98 +122,18 @@ export function mountOccurrenceFollowup(host,{
   }
 
   function detail(entry) {
-    const ethical = entry.formId==='F08';
-    const current=render(occurrenceProtocol(entry),descriptionMarkup(entry)+
-      '<div data-occurrence-description-tools hidden></div>'+
-      (ethical?'<div data-occurrence-ethical-review hidden></div>':analysisMarkup()),()=>records(true));
+    const label=occurrenceProtocol(entry);
+    const current=render(label,descriptionMarkup(entry)+
+      '<div data-occurrence-description-tools hidden></div><div data-occurrence-questionnaire></div>',()=>records(true));
     heading.classList.toggle('occurrence-hospital-heading',entry.origin==='hospital');
-    if (!ethical) {
-      bindAnalysis(entry,current);
-      if (isAdministrator) bindAnalyses(body.querySelector('[data-admin-analyses]'),entry.id,current);
-    }
-    if (canShowHospital()) void repository.descriptionAccess({uid}).then(allowed=>{
-      if (!allowed||!current()) return;
-      bindDescriptionEditor(body.querySelector('[data-occurrence-description-tools]'),entry,current);
-      if (ethical) bindEthicalReview(body.querySelector('[data-occurrence-ethical-review]'),entry.id,current);
-    }).catch(()=>{});
-  }
-
-  function analysisMarkup() {
-    return (
-      '<form class="occurrence-followup-analysis" data-followup-analysis><h4>ANÁLISE DO PROBLEMA</h4>'+
-      '<p>Ao preencher um campo, preencha os cinco para salvar a análise.</p><fieldset disabled>'+
-      fields.map(([key,label])=>'<label class="occurrence-field"><span>'+label+'</span><textarea rows="3" name="'+key+
-        '" maxlength="'+OCCURRENCE_ANALYSIS_LIMIT+'"></textarea></label>').join('')+
-      '<button class="primary-button" type="submit">SALVAR ANÁLISE</button></fieldset><p role="status" data-analysis-status>Carregando análise…</p></form>'+
-      (isAdministrator?'<details data-admin-analyses><summary>ANÁLISES ENVIADAS</summary><div data-analyses-list></div>'+
-        '<p role="status"></p><button type="button" class="secondary-button" hidden>CARREGAR MAIS</button></details>':''));
-  }
-
-  function bindAnalysis(entry,current) {
-    const form=body.querySelector('[data-followup-analysis]'),container=form.querySelector('fieldset'),status=form.querySelector('[data-analysis-status]');
-    function values() {return Object.fromEntries(fields.map(([key])=>[key,form.elements[key].value]));}
-    function requireTogether() {
-      const started=Object.values(values()).some(value=>value.trim());
-      for (const [key] of fields) form.elements[key].required=started;
-    }
-    form.addEventListener('input',requireTogether);
-    void repository.readAnalysis({uid,id:entry.id}).then(analysis=>{
-      if (!current()) return;
-      for (const [key] of fields) form.elements[key].value=analysis?.[key]||'';
-      requireTogether();
-      container.disabled=!canInteract();
-      status.textContent=canInteract()?'':'A edição da análise está indisponível.';
-    }).catch(()=>{if(current())status.textContent='Não foi possível carregar a análise. Volte e abra novamente.';});
-    form.addEventListener('submit',async event=>{
-      event.preventDefault();
-      if (!current()||writing||container.disabled||!canInteract()) return;
-      const input=values();
-      try {
-        if (!readOccurrenceAnalysis(input)) {status.textContent='Preencha os cinco campos para salvar uma análise.';return;}
-      } catch {status.textContent='Preencha os cinco campos para salvar uma análise.';return;}
-      writing=true;container.disabled=true;
-      try {
-        await repository.saveAnalysis({uid,id:entry.id,values:input});
-        if (current()) status.textContent='Análise salva.';
-      } catch {if(current())status.textContent='Não foi possível confirmar a análise. Tente novamente.';}
-      finally {writing=false;if(current()) container.disabled=!canInteract();}
+    const editor=canShowHospital()?repository.descriptionAccess({uid}).catch(()=>false):Promise.resolve(false);
+    const descriptionTools=body.querySelector('[data-occurrence-description-tools]');
+    void editor.then(allowed=>{
+      if (allowed&&current()) bindDescriptionEditor(descriptionTools,entry,current);
     });
-  }
-
-  function bindEthicalReview(panel,id,current) {
-    panel.innerHTML='<form class="occurrence-followup-analysis"><fieldset disabled>'+
-      '<label class="occurrence-field"><span>ABORDAGEM</span><textarea name="approach" rows="8" maxlength="'+OCCURRENCE_ETHICAL_REVIEW_LIMIT+'"></textarea></label>'+
-      '<button type="submit" class="primary-button">SALVAR ABORDAGEM</button></fieldset>'+
-      '<p role="status">Carregando abordagem…</p></form>';
-    panel.hidden=false;
-    const form=panel.querySelector('form'),container=form.querySelector('fieldset'),input=form.elements.approach,status=form.querySelector('[role="status"]');
-    let expectedText='';
-    void repository.readEthicalReview({uid,id}).then(text=>{
-      if (!current()) return;
-      input.value=expectedText=text;
-      container.disabled=false;
-      status.textContent='';
-    }).catch(()=>{if(current())status.textContent='Não foi possível carregar a abordagem. Volte e reabra o registro.';});
-    form.addEventListener('submit',async event=>{
-      event.preventDefault();
-      if (writing||container.disabled||!current()||!canShowHospital()) return;
-      writing=true;
-      container.disabled=true;
-      status.textContent='Salvando abordagem…';
-      try {
-        const saved=await repository.saveEthicalReview({uid,id,text:input.value,expectedText});
-        if (!current()) return;
-        input.value=expectedText=saved;
-        status.textContent='Abordagem salva.';
-      } catch(error) {
-        if (!current()) return;
-        status.textContent=error.message==='OCCURRENCE_ETHICAL_REVIEW_CHANGED'
-          ?'A abordagem foi alterada por outra pessoa. Volte e reabra o registro para ler a versão atual.'
-          :'Não foi possível salvar a abordagem. Confira seu acesso e tente novamente.';
-      } finally {
-        writing=false;
-        if(current())container.disabled=false;
-      }
+    mountOccurrenceQuestionnaire(body.querySelector('[data-occurrence-questionnaire]'),{
+      repository,uid,id:entry.id,label:label+' · '+labelFor(entry),editor,
+      isCurrent:current,canInteract,isWriting:()=>writing,setWriting:value=>{writing=value;}
     });
   }
 
@@ -258,29 +178,6 @@ export function mountOccurrenceFollowup(host,{
           :'Não foi possível salvar a descrição. Confira o seu acesso e tente novamente.';
       } finally {writing=false;if(current())inputs.disabled=false;}
     });
-  }
-
-  function bindAnalyses(panel,id,current) {
-    const list=panel.querySelector('[data-analyses-list]'),status=panel.querySelector('p'),button=panel.querySelector('button');
-    let after=null,loading=false,loaded=false;
-    async function load() {
-      if (!current()||loading) return;
-      loading=true;button.disabled=true;status.textContent='Carregando análises…';
-      try {
-        const page=await repository.listAnalyses({uid,id,after});
-        if (!current()) return;
-        for(const item of page.entries) {
-          list.insertAdjacentHTML('beforeend','<dl>'+fields.map(([key,label])=>
-            '<div><dt>'+label+'</dt><dd>'+escape(item.analysis[key])+'</dd></div>').join('')+'</dl>');
-        }
-        after=page.next;loaded=true;button.hidden=!after;button.textContent='CARREGAR MAIS';
-        status.textContent=list.children.length?'':'Nenhuma análise enviada.';
-      } catch {
-        if(current()){status.textContent='Não foi possível consultar as análises.';button.hidden=false;button.textContent='TENTAR NOVAMENTE';}
-      } finally {loading=false;button.disabled=false;}
-    }
-    panel.addEventListener('toggle',()=>{if(panel.open&&!loaded)void load();});
-    button.addEventListener('click',()=>void load());
   }
 
   function hospital() {

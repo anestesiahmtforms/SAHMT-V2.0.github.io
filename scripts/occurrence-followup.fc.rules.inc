@@ -91,9 +91,9 @@
       allow delete: if false;
       match /analyses/{uid} {
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
-        allow list: if occurrenceAdministrator() && request.query.limit != null && request.query.limit <= 30;
+        allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
         allow create, update: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
-          get(occurrenceFollowupPath(id)).data.formId != 'F08' && validOccurrenceAnalysis(request.resource.data);
+          get(occurrenceFollowupPath(id)).data.formId != 'F08' && !exists(occurrenceQuestionnairePath(id)) && validOccurrenceAnalysis(request.resource.data);
         allow delete: if false;
       }
       match /ethicalReview/current {
@@ -104,6 +104,53 @@
           request.resource.data.updatedAt == request.time;
         allow delete: if false;
       }
+      match /analysisQuestionnaire/current {
+        allow get: if activeUser() && exists(occurrenceFollowupPath(id));
+        allow create: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+          validOccurrenceQuestionnaire(request.resource.data);
+        allow update, delete: if false;
+      }
+      match /ethicalPollResponses/{uid} {
+        allow get: if activeUser() && request.auth.uid == uid && exists(occurrenceFollowupPath(id));
+        allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
+          exists(occurrenceFollowupPath(id)) && validOccurrenceResponse(id,request.resource.data);
+        allow update, delete: if false;
+      }
+      match /ethicalPollResult/current {
+        allow get: if activeUser() && (canEditOccurrenceDescription() ||
+          exists(/databases/$(database)/documents/occurrenceFollowups/$(id)/ethicalPollResponses/$(request.auth.uid)) ||
+          exists(/databases/$(database)/documents/occurrenceFollowups/$(id)/analyses/$(request.auth.uid)));
+        allow create, update: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+          request.resource.data.keys().hasOnly(['text','updatedAt']) &&
+          occurrenceText(request.resource.data.text,20000) && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+    }
+    function occurrenceQuestionnairePath(id) {
+      return /databases/$(database)/documents/occurrenceFollowups/$(id)/analysisQuestionnaire/current;
+    }
+    function validOccurrenceQuestion(question) {
+      let options = question.options;
+      return question is map && question.keys().hasOnly(['prompt','options']) &&
+        occurrenceText(question.prompt,OCCURRENCE_PROMPT_LIMIT) &&
+        options is list && options.size() >= 2 && options.size() <= OCCURRENCE_OPTION_LIMIT &&
+        OCCURRENCE_OPTION_CHECKS;
+    }
+    function validOccurrenceQuestionnaire(data) {
+      let questions = data.questions;
+      return data.keys().hasOnly(['questions','publishedAt']) && data.publishedAt == request.time &&
+        questions is list && questions.size() == OCCURRENCE_QUESTION_COUNT &&
+        OCCURRENCE_QUESTION_CHECKS;
+    }
+    function validOccurrenceResponse(id,data) {
+      let answers = data.answers;
+      let questions = get(occurrenceQuestionnairePath(id)).data.questions;
+      return data.keys().hasOnly(['answers','comment','submittedAt']) &&
+        answers is list && answers.size() == OCCURRENCE_QUESTION_COUNT &&
+        OCCURRENCE_ANSWER_CHECKS &&
+        data.comment is string && data.comment.size() <= OCCURRENCE_COMMENT_LIMIT &&
+        data.submittedAt == request.time;
     }
     match /occurrenceHospitalAudit/{id} {
       allow get: if canAudit() || occurrenceAdministrator();

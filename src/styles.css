@@ -2113,6 +2113,18 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-followup dd{margin:2px 0 0}
 .occurrence-followup-analysis{margin-top:16px;padding-top:12px;border-top:1px solid #bfd0d9}
 .occurrence-followup-analysis fieldset{display:grid;gap:12px;min-width:0;margin:0;padding:0;border:0}
+.occurrence-poll-question legend{padding:0;margin-bottom:12px}
+.occurrence-poll-question legend>*{display:block}
+.occurrence-poll-question legend small{margin-bottom:5px;color:#1762a1;font-weight:800}
+.occurrence-poll-option{display:flex;align-items:center;gap:10px;min-height:44px;padding:8px 10px;border:1px solid #bdcfdc;border-radius:10px;background:#fff}
+.occurrence-poll-option:has(:checked){border-color:#1762a1;background:#e2f0ff}
+.occurrence-poll-option input{flex:0 0 auto;accent-color:#1762a1}
+.occurrence-poll-actions{display:flex;flex-wrap:wrap;gap:8px}
+.occurrence-poll-actions button{flex:1;min-height:44px}
+.occurrence-poll-comments li{white-space:pre-wrap;overflow-wrap:anywhere}
+.occurrence-poll-result{margin-top:16px}
+.occurrence-poll-result>button{width:100%;min-height:44px}
+.occurrence-poll-final-text{white-space:pre-wrap;overflow-wrap:anywhere}
 .occurrence-followup [data-admin-analyses] dl{padding:10px;border:1px solid #bfd0d9;border-radius:10px}
 .occurrence-privacy-note{margin:0 0 14px}
 .people-occurrence-grant{display:grid;justify-items:start;gap:8px;margin-top:16px}

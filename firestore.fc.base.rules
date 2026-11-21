@@ -287,9 +287,9 @@ service cloud.firestore {
       allow delete: if false;
       match /analyses/{uid} {
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
-        allow list: if occurrenceAdministrator() && request.query.limit != null && request.query.limit <= 30;
+        allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
         allow create, update: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
-          get(occurrenceFollowupPath(id)).data.formId != 'F08' && validOccurrenceAnalysis(request.resource.data);
+          get(occurrenceFollowupPath(id)).data.formId != 'F08' && !exists(occurrenceQuestionnairePath(id)) && validOccurrenceAnalysis(request.resource.data);
         allow delete: if false;
       }
       match /ethicalReview/current {
@@ -300,6 +300,63 @@ service cloud.firestore {
           request.resource.data.updatedAt == request.time;
         allow delete: if false;
       }
+      match /analysisQuestionnaire/current {
+        allow get: if activeUser() && exists(occurrenceFollowupPath(id));
+        allow create: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+          validOccurrenceQuestionnaire(request.resource.data);
+        allow update, delete: if false;
+      }
+      match /ethicalPollResponses/{uid} {
+        allow get: if activeUser() && request.auth.uid == uid && exists(occurrenceFollowupPath(id));
+        allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
+        allow create: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
+          exists(occurrenceFollowupPath(id)) && validOccurrenceResponse(id,request.resource.data);
+        allow update, delete: if false;
+      }
+      match /ethicalPollResult/current {
+        allow get: if activeUser() && (canEditOccurrenceDescription() ||
+          exists(/databases/$(database)/documents/occurrenceFollowups/$(id)/ethicalPollResponses/$(request.auth.uid)) ||
+          exists(/databases/$(database)/documents/occurrenceFollowups/$(id)/analyses/$(request.auth.uid)));
+        allow create, update: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+          request.resource.data.keys().hasOnly(['text','updatedAt']) &&
+          occurrenceText(request.resource.data.text,20000) && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
+      }
+    }
+    function occurrenceQuestionnairePath(id) {
+      return /databases/$(database)/documents/occurrenceFollowups/$(id)/analysisQuestionnaire/current;
+    }
+    function validOccurrenceQuestion(question) {
+      let options = question.options;
+      return question is map && question.keys().hasOnly(['prompt','options']) &&
+        occurrenceText(question.prompt,500) &&
+        options is list && options.size() >= 2 && options.size() <= 5 &&
+        occurrenceText(options[0],300) &&
+        occurrenceText(options[1],300) &&
+        (options.size() <= 2 || occurrenceText(options[2],300)) &&
+        (options.size() <= 3 || occurrenceText(options[3],300)) &&
+        (options.size() <= 4 || occurrenceText(options[4],300));
+    }
+    function validOccurrenceQuestionnaire(data) {
+      let questions = data.questions;
+      return data.keys().hasOnly(['questions','publishedAt']) && data.publishedAt == request.time &&
+        questions is list && questions.size() == 4 &&
+        validOccurrenceQuestion(questions[0]) &&
+        validOccurrenceQuestion(questions[1]) &&
+        validOccurrenceQuestion(questions[2]) &&
+        validOccurrenceQuestion(questions[3]);
+    }
+    function validOccurrenceResponse(id,data) {
+      let answers = data.answers;
+      let questions = get(occurrenceQuestionnairePath(id)).data.questions;
+      return data.keys().hasOnly(['answers','comment','submittedAt']) &&
+        answers is list && answers.size() == 4 &&
+        answers[0] is int && answers[0] >= 1 && answers[0] <= questions[0].options.size() &&
+        answers[1] is int && answers[1] >= 1 && answers[1] <= questions[1].options.size() &&
+        answers[2] is int && answers[2] >= 1 && answers[2] <= questions[2].options.size() &&
+        answers[3] is int && answers[3] >= 1 && answers[3] <= questions[3].options.size() &&
+        data.comment is string && data.comment.size() <= 2000 &&
+        data.submittedAt == request.time;
     }
     match /occurrenceHospitalAudit/{id} {
       allow get: if canAudit() || occurrenceAdministrator();

@@ -1,14 +1,27 @@
 import test from 'node:test';import assert from 'node:assert/strict';
+import {GRA_001_QUESTIONS,GRA_001_RECORD_ID} from '../src/occurrence-questionnaire.js';
 import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
  const stubs={
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
    hospitalAccess:async()=>false,listFollowups:async({formId})=>({entries:formId==='F03'&&window.followupPublished?
     [{id:'gr-1',formId,origin:'hospital',hospitalNumber:'1',title:'Evento externo',occurredOn:'2026-11-20',description:'Relato completo aqui',classification:{},details:{}}]
-    :formId==='F08'?[{id:'ethical-test',formId,origin:'app',sequence:1,title:'Dilema de teste',description:'Relato do dilema',classification:{},details:{}}]:[],next:null}),
-   readAnalysis:async()=>null,saveAnalysis:async({values})=>{window.analysis=values;return true;},
+    :formId==='F08'?[
+     {id:'49de5878-28c7-40b5-81e6-f416d58b2433',formId,origin:'app',sequence:1,title:'Enquete de teste',description:'Relato com questionário',classification:{},details:{}},
+     {id:'ethical-test',formId,origin:'app',sequence:2,title:'Dilema de teste',description:'Relato do dilema',classification:{},details:{}}
+    ]:[],next:null}),
+   readAnalysis:async()=>null,listAnalyses:async({id})=>({entries:id==='gr-1'?
+     [{analysis:{problem:'Linha um.\\nLinha dois.',cause:'Causa',review:'Revisão',correction:'Correção',plan:'Plano'}}]:[],next:null}),
    descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;},
-   readEthicalReview:async()=>window.ethicalReview?.text||'',saveEthicalReview:async input=>{window.ethicalReview=input;return input.text;}};}`,
+   readOccurrenceQuestionnaire:async({id})=>id===${JSON.stringify(GRA_001_RECORD_ID)}?${JSON.stringify(GRA_001_QUESTIONS)}:window.questionnaires?.[id]??null,
+   publishOccurrenceQuestionnaire:async({id,questions})=>{(window.questionnaires??={})[id]=questions;return questions;},
+   readOccurrenceResponse:async({id})=>!!window.responses?.[id],
+   submitOccurrenceResponse:async input=>{(window.responses??={})[input.id]=input;return 'submitted';},
+   readOccurrenceResult:async({id})=>window.pollResult?.id===id?window.pollResult.text:'',
+   saveOccurrenceResult:async input=>{window.pollResult=input;return input.text;},
+   listOccurrenceResponses:async({id,after})=>after?
+     {entries:[{answers:[1,2,3,4],comment:'Segunda resposta.\\nComentário em duas linhas.'}],next:null}:
+     {entries:window.responses?.[id]?[window.responses[id]]:[],next:window.exportPollPages?'next':null}};}`,
   'outbox.js':`export async function enqueueOccurrenceSubmission(){throw Error('No writes in this fixture');}export async function listUnsettledOperations(){return [];}`
  };
  const fixture=`import {mountOccurrenceModule} from '/src/occurrences-ui.js';window.calls=0;window.recentReads=0;window.auditReads=0;window.hang=false;const uid='synthetic';window.dispose=mountOccurrenceModule(document.querySelector('#root'),{uid,displayName:'Teste',auth:{currentUser:{uid}},db:{},permissions:{occurrencesRead:true,occurrencesWrite:true,occurrencesAuditRead:true},isCurrent:()=>true,followupAllowed:true});`;
@@ -111,25 +124,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   const hospitalTitle=page.locator('.occurrence-followup-report .occurrence-hospital-title');
   assert.equal(await hospitalTitle.textContent(),'Evento externo');
   assert.equal(await hospitalTitle.evaluate(element=>getComputedStyle(element).color),'rgb(7, 83, 161)');
-  const analysis=page.locator('[data-followup-analysis]');
-  const scroll=await page.locator('.occurrence-followup').evaluate(dialog=>{
-   const body=dialog.querySelector('[data-followup-body]'),back=dialog.querySelector('[data-followup-back]');
-   const before=back.getBoundingClientRect().top;
-   body.scrollTop=body.scrollHeight;
-   const after=back.getBoundingClientRect().top;
-   return {before,after,scrolled:body.scrollTop,outer:dialog.scrollTop};
-  });
-  assert.ok(scroll.scrolled>0,JSON.stringify(scroll));
-  assert.equal(scroll.outer,0);
-  assert.equal(scroll.after,scroll.before);
-  await analysis.locator('[name=problem]').fill('A');
-  assert.equal(await analysis.locator('textarea[required]').count(),5);
-  await analysis.getByRole('button',{name:'SALVAR ANÁLISE'}).click();
-  assert.equal(await page.evaluate(()=>window.analysis),undefined);
-  for(const key of ['cause','review','correction','plan']) await analysis.locator('[name='+key+']').fill(key);
-  await analysis.getByRole('button',{name:'SALVAR ANÁLISE'}).click();
-  await page.getByText('Análise salva.',{exact:true}).waitFor();
-  assert.deepEqual(await page.evaluate(()=>window.analysis),{problem:'A',cause:'cause',review:'review',correction:'correction',plan:'plan'});
+  await followupBanner.getByText('Questionário ainda não publicado.',{exact:true}).waitFor();
+  assert.equal(await followupBanner.getByText('CONFIGURAR QUESTIONÁRIO',{exact:true}).count(),0);
   await back.click();
   await page.evaluate(()=>window.canEditDescription=true);
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
@@ -143,33 +139,98 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   assert.deepEqual(await page.evaluate(()=>window.descriptionEdit),{
    uid:'synthetic',id:'gr-1',description:'Texto revisado',expectedDescription:'Relato completo aqui'
   });
+  await page.evaluate(()=>{
+   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
+    write:async items=>{window.copiedPoll=await(await items[0].getType('text/plain')).text();},
+    writeText:async text=>{window.copiedPoll=text;}
+   }});
+  });
+  const results=followupBanner.locator('[data-ethical-poll-results]');
+  await results.getByText('RESPOSTAS DA ABORDAGEM').click();
+  await results.getByRole('button',{name:'COPIAR TODAS AS RESPOSTAS'}).click();
+  await results.getByText('Todas as respostas foram copiadas.',{exact:true}).waitFor();
+  assert.match(await page.evaluate(()=>window.copiedPoll),/GR 001[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
+  await followupBanner.getByText('CONFIGURAR QUESTIONÁRIO',{exact:true}).click();
+  const config=followupBanner.locator('[data-questionnaire-editor]');
+  const scroll=await followupBanner.evaluate(dialog=>{
+   const body=dialog.querySelector('[data-followup-body]'),back=dialog.querySelector('[data-followup-back]');
+   const before=back.getBoundingClientRect().top;
+   body.scrollTop=body.scrollHeight;
+   const after=back.getBoundingClientRect().top;
+   return {before,after,scrolled:body.scrollTop,outer:dialog.scrollTop};
+  });
+  assert.ok(scroll.scrolled>0&&scroll.outer===0&&scroll.after===scroll.before,JSON.stringify(scroll));
+  for(let index=0;index<4;index++){
+   await config.locator('[name=prompt-'+index+']').fill('Pergunta do Núcleo '+(index+1));
+   for(let option=0;option<2;option++){
+    await config.locator('[name=option-'+index+'-'+option+']').fill('Resposta '+(option+1));
+   }
+  }
+  await config.getByRole('button',{name:'PUBLICAR QUESTIONÁRIO'}).click();
+  await followupBanner.getByText('Pergunta do Núcleo 1',{exact:true}).waitFor();
+  assert.equal(await followupBanner.getByRole('radio').count(),2);
   await back.click();
+  await page.evaluate(()=>window.canEditDescription=false);
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
   await followupBanner.getByText('Texto revisado',{exact:true}).waitFor();
+  await followupBanner.getByText('Pergunta do Núcleo 1',{exact:true}).waitFor();
   await back.click();
   await back.click();
   await back.click();
-  await followup.waitFor();
-  await page.evaluate(()=>window.canEditDescription=false);
   await followup.locator('[data-occurrence-group="B"]').click();
-  const ethicalRecord=followupBanner.getByRole('button',{name:'GRA 001 · Dilema de teste'});
-  await ethicalRecord.click();
-  await followupBanner.getByText('Relato do dilema',{exact:true}).waitFor();
-  assert.equal(await followupBanner.locator('textarea').count(),0);
+  await followupBanner.getByRole('button',{name:'GRA 002 · Dilema de teste'}).click();
+  await followupBanner.getByText('Questionário ainda não publicado.',{exact:true}).waitFor();
+  assert.equal(await followupBanner.getByRole('radio').count(),0);
+  await back.click();
+  const pollRecord=followupBanner.getByRole('button',{name:'GRA 001 · Enquete de teste'});
+  await pollRecord.click();
+  const poll=followupBanner.locator('[data-ethical-poll]');
+  for(const [index,count] of [5,5,4,4].entries()){
+   await poll.getByText('PERGUNTA '+(index+1)+' DE 4',{exact:true}).waitFor();
+   assert.equal(await poll.getByRole('radio').count(),count);
+   if(index===0){
+    await poll.getByRole('button',{name:'PRÓXIMA'}).click();
+    assert.equal(await poll.getByText('PERGUNTA 1 DE 4',{exact:true}).count(),1);
+   }
+   await poll.getByRole('radio').last().check();
+   if(index<3)await poll.getByRole('button',{name:'PRÓXIMA'}).click();
+   else {
+    await poll.getByRole('textbox',{name:'Comentário opcional'}).fill('Comentário de teste.');
+    await poll.getByRole('button',{name:'ENVIAR RESPOSTA'}).click();
+   }
+  }
+  await poll.getByText('Sua resposta foi registrada.').waitFor();
+  const resultButton=followupBanner.getByRole('button',{name:'RESULTADO DA ANÁLISE PELO SERVIÇO'});
+  assert.equal(await resultButton.count(),0);
+  assert.deepEqual(await page.evaluate(id=>window.responses[id],GRA_001_RECORD_ID),
+   {uid:'synthetic',id:GRA_001_RECORD_ID,answers:[5,5,4,4],comment:'Comentário de teste.'});
+  assert.equal(await followupBanner.getByText('RESPOSTAS DA ABORDAGEM').count(),0);
   await back.click();
   await page.evaluate(()=>window.canEditDescription=true);
-  await ethicalRecord.click();
-  const approach=followupBanner.getByRole('textbox',{name:'ABORDAGEM',exact:true});
-  await approach.fill('Primeira linha\nSegunda linha');
-  assert.equal(await followupBanner.locator('[data-followup-analysis],input[type="file"]').count(),0);
-  await followupBanner.getByRole('button',{name:'SALVAR ABORDAGEM'}).click();
-  await followupBanner.getByText('Abordagem salva.',{exact:true}).waitFor();
-  assert.deepEqual(await page.evaluate(()=>window.ethicalReview),{uid:'synthetic',id:'ethical-test',text:'Primeira linha\nSegunda linha',expectedText:''});
+  await pollRecord.click();
+  await poll.getByText('Sua resposta foi registrada.').waitFor();
+  await results.getByText('RESPOSTAS DA ABORDAGEM').click();
+  await results.getByText('Total de respostas: 1',{exact:true}).waitFor();
+  await page.evaluate(()=>window.exportPollPages=true);
+  await results.getByRole('button',{name:'COPIAR TODAS AS RESPOSTAS'}).click();
+  await results.getByText('Todas as respostas foram copiadas.',{exact:true}).waitFor();
+  const copied=await page.evaluate(()=>window.copiedPoll);
+  assert.match(copied,/Total de respostas: 2/);
+  assert.match(copied,/RESPOSTA 1[\s\S]*Outra posição\.[\s\S]*Comentário de teste\./);
+  assert.match(copied,/RESPOSTA 2[\s\S]*A condição clínica atual, os riscos e a necessidade de suporte intensivo\.[\s\S]*Segunda resposta\.\nComentário em duas linhas\./);
+  assert.doesNotMatch(copied,/synthetic/);
+  await resultButton.click();
+  await followupBanner.getByRole('textbox',{name:'Resultado final'}).fill('Primeiro parágrafo.\nSegundo parágrafo.');
+  await followupBanner.getByRole('button',{name:'PUBLICAR RESULTADO'}).click();
+  await followupBanner.getByText('Resultado publicado para os participantes.',{exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.pollResult),
+   {uid:'synthetic',id:GRA_001_RECORD_ID,text:'Primeiro parágrafo.\nSegundo parágrafo.',expectedText:''});
   await back.click();
-  await ethicalRecord.click();
-  await approach.waitFor();
-  await followupBanner.getByText('Carregando abordagem…',{exact:true}).waitFor({state:'hidden'});
-  assert.equal(await approach.inputValue(),'Primeira linha\nSegunda linha');
+  await page.evaluate(()=>window.canEditDescription=false);
+  await pollRecord.click();
+  await resultButton.click();
+  assert.equal(await followupBanner.locator('.occurrence-poll-final-text').textContent(),'Primeiro parágrafo.\nSegundo parágrafo.');
+  assert.equal(await followupBanner.getByRole('button',{name:'PUBLICAR RESULTADO'}).count(),0);
   await back.click();
   await back.click();
   await followup.waitFor();

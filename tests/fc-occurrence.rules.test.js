@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
 import {collection,doc,getDoc,getDocFromServer,getDocs,limit,query,runTransaction,serverTimestamp,setDoc,updateDoc,writeBatch} from 'firebase/firestore';
 import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
+import {GRA_001_QUESTIONS} from '../src/occurrence-questionnaire.js';
 import {createOccurrenceRepository} from '../src/occurrence-data.js';
 
 const emulatorHost=process.env.FIRESTORE_EMULATOR_HOST||'127.0.0.1:18493';
@@ -212,6 +213,77 @@ test('Dilema Ético tem abordagem livre restrita aos editores e preserva as aná
  assert.deepEqual((await getDocFromServer(previous)).data().analysis,legacy);
  await assertFails(setDoc(previous,{analysis:legacy,updatedAt:serverTimestamp()}));
  await assertSucceeds(setDoc(doc(ordinaryDb,'occurrenceFollowups',other,'analyses',ordinary),{analysis:legacy,updatedAt:serverTimestamp()}));
+});
+
+test('cada ocorrência tem questionário próprio, uma resposta por conta e resultado restrito aos participantes',async()=>{
+ const caseId='49de5878-28c7-40b5-81e6-f416d58b2433',ordinary='reader-synthetic',admin='gra-admin',delegate='gra-delegate';
+ const other='unauthorized-synthetic';
+ const responses='ethicalPollResponses';
+ const ref=(db,person=ordinary,recordId=caseId)=>doc(db,'occurrenceFollowups',recordId,responses,person);
+ await env.withSecurityRulesDisabled(async context=>{
+  const db=context.firestore();
+  await Promise.all([
+   setDoc(doc(db,'users',admin),{uid:admin,active:true,access:true,role:'administrador_app'}),
+   setDoc(doc(db,'users',delegate),{uid:delegate,active:true,access:true,permissions:{}}),
+   setDoc(doc(db,'occurrenceDescriptionGrants',delegate),{enabled:true}),
+   setDoc(doc(db,'occurrenceFollowups',caseId),{id:caseId,formId:'F08',sequence:1,origin:'app'}),
+   setDoc(doc(db,'occurrenceFollowups',id),{id,formId:'F03',hospitalNumber:'1',origin:'hospital'})
+  ]);
+ });
+ const ordinaryDb=google(ordinary),otherDb=google(other),adminDb=google(admin),delegateDb=google(delegate);
+ const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:ordinary}},
+  firestore:{doc:(_, ...path)=>doc(ordinaryDb,...path),getDocFromServer,runTransaction:(_,callback)=>runTransaction(ordinaryDb,callback)}});
+ const config=(db,recordId=caseId)=>doc(db,'occurrenceFollowups',recordId,'analysisQuestionnaire','current');
+ const published={questions:GRA_001_QUESTIONS,publishedAt:serverTimestamp()};
+ const shorter=GRA_001_QUESTIONS.map(({prompt,options})=>({prompt,options:options.slice(0,2)}));
+ const valid={answers:[5,2,4,4],comment:'',submittedAt:serverTimestamp()};
+ await assertFails(setDoc(ref(ordinaryDb),valid));
+ await assertFails(setDoc(config(ordinaryDb),published));
+ await assertFails(setDoc(config(adminDb,'missing'),published));
+ await assertFails(setDoc(config(adminDb),{...published,questions:shorter.slice(0,3)}));
+ await assertSucceeds(setDoc(config(adminDb),published));
+ await assertFails(updateDoc(config(adminDb),{questions:shorter,publishedAt:serverTimestamp()}));
+ assert.equal((await repository.readOccurrenceQuestionnaire({uid:ordinary,id:caseId})).length,4);
+ await assertFails(setDoc(ref(ordinaryDb,other),valid));
+ await assertFails(setDoc(ref(ordinaryDb,ordinary,id),valid));
+ await assertSucceeds(setDoc(config(delegateDb,id),{...published,questions:shorter}));
+ await assertFails(setDoc(ref(ordinaryDb,ordinary,id),valid));
+ await assertSucceeds(setDoc(ref(otherDb,other,id),{...valid,answers:[1,2,1,2],comment:'  Preservar\n  espaços.  '}));
+ assert.equal((await getDocFromServer(ref(otherDb,other,id))).data().comment,'  Preservar\n  espaços.  ');
+ await assertFails(setDoc(ref(ordinaryDb),{...valid,answers:[5,2,5,4]}));
+ await assertFails(setDoc(ref(ordinaryDb),{...valid,answers:[5,2,4]}));
+ await assertFails(setDoc(ref(ordinaryDb),{...valid,comment:'a'.repeat(2001)}));
+ assert.equal(await repository.readOccurrenceResponse({uid:ordinary,id:caseId}),false);
+ assert.equal(await repository.submitOccurrenceResponse({uid:ordinary,id:caseId,answers:valid.answers}),'submitted');
+ assert.equal(await repository.submitOccurrenceResponse({uid:ordinary,id:caseId,answers:[1,1,1,1],comment:'Nova resposta'}),'already-submitted');
+ assert.equal(await repository.readOccurrenceResponse({uid:ordinary,id:caseId}),true);
+ assert.deepEqual((await getDocFromServer(ref(ordinaryDb))).data().answers,valid.answers);
+ await assertFails(updateDoc(ref(ordinaryDb),{comment:'Tentativa de sobrescrita'}));
+ await assertSucceeds(getDocFromServer(ref(ordinaryDb)));
+ await assertFails(getDocFromServer(ref(otherDb)));
+ const listing=db=>getDocs(query(collection(db,'occurrenceFollowups',caseId,responses),limit(30)));
+ await assertFails(listing(ordinaryDb));
+ assert.equal((await assertSucceeds(listing(adminDb))).size,1);
+ assert.equal((await assertSucceeds(listing(delegateDb))).size,1);
+ await env.withSecurityRulesDisabled(context=>setDoc(doc(context.firestore(),'runtimePolicy','folders'),{
+  schemaVersion:1,revision:2,disabled:['registros']
+ }));
+ await assertFails(setDoc(ref(otherDb,other),valid));
+ await assertSucceeds(setDoc(ref(adminDb,admin),{...valid,comment:'Comentário opcional'}));
+ const result=(db,record=caseId)=>doc(db,'occurrenceFollowups',record,'ethicalPollResult','current');
+ const editor=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:delegate}},
+  firestore:{doc:(_, ...path)=>doc(delegateDb,...path),getDocFromServer,runTransaction:(_,callback)=>runTransaction(delegateDb,callback)}});
+ await assertFails(setDoc(result(ordinaryDb),{text:'Sem autorização',updatedAt:serverTimestamp()}));
+ await assertFails(getDocFromServer(result(otherDb)));
+ const text='Resultado do serviço.\nSegunda linha.';
+ assert.equal(await editor.saveOccurrenceResult({uid:delegate,id:caseId,text,expectedText:''}),text);
+ assert.equal(await repository.readOccurrenceResult({uid:ordinary,id:caseId}),text);
+ await assert.rejects(editor.saveOccurrenceResult({uid:delegate,id:caseId,text:'Conflito',expectedText:''}),{message:'OCCURRENCE_ETHICAL_REVIEW_CHANGED'});
+ await assertFails(getDocFromServer(result(otherDb)));
+ await assertSucceeds(setDoc(result(delegateDb,id),{text:'Outro caso',updatedAt:serverTimestamp()}));
+ await assertFails(getDocFromServer(result(ordinaryDb,id)));
+ assert.equal((await assertSucceeds(getDocFromServer(result(otherDb,id)))).data().text,'Outro caso');
+ await assertFails(updateDoc(result(delegateDb),{text:'   ',updatedAt:serverTimestamp()}));
 });
 
 test('catalog access follows registration authorization and rejects blocked or read-only profiles',async()=>{
