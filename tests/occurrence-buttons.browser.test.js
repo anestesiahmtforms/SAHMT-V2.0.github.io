@@ -50,16 +50,29 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    await page.setViewportSize(viewport);
    const layout=await page.evaluate(()=>{
     const bounds=element=>{const {left,right,top,bottom,width,height}=element.getBoundingClientRect();return {left,right,top,bottom,width,height};};
-    const banner=document.querySelector('.app-shell--occurrences'),menu=banner.querySelector('.occurrence-groups');
+    const banner=document.querySelector('.app-shell--occurrences'),menu=banner.querySelector('.occurrence-menu');
+    const registration=menu.querySelector('.occurrence-groups'),analysis=menu.querySelector('.occurrence-analysis-menu');
+    const title=banner.querySelector('.occurrences-title');
+    const titleText=document.createRange();
+    titleText.selectNodeContents(title);
+    const titleRect=titleText.getBoundingClientRect();
     return {banner:bounds(banner),menu:bounds(menu),home:bounds(banner.querySelector('.occurrences-home-button')),
-     buttons:[...menu.querySelectorAll(':scope > button')].map(bounds)};
+     title:bounds(title),titleText:{left:titleRect.left,right:titleRect.right,lines:titleText.getClientRects().length},
+     registration:bounds(registration),analysis:bounds(analysis),
+     registrationButtons:[...registration.querySelectorAll(':scope > button')].map(bounds),
+     analysisButtons:[...analysis.querySelectorAll(':scope > button')].map(bounds)};
    });
    const hint=JSON.stringify({viewport,layout});
    assert.ok(Math.abs((layout.banner.left+layout.banner.right)/2-viewport.width/2)<=1,hint);
    assert.ok(Math.abs((layout.banner.top+layout.banner.bottom)/2-viewport.height/2)<=1,hint);
-   assert.equal(layout.buttons.length,6,hint);
-   assert.ok(layout.buttons.every(button=>button.height>=44&&button.top>=layout.menu.top&&button.bottom<=layout.home.top),hint);
-   assert.ok(layout.buttons.at(-2).bottom<=layout.buttons.at(-1).top,hint);
+   assert.equal(layout.titleText.lines,1,hint);
+   assert.ok(layout.titleText.left>=layout.title.left&&layout.titleText.right<=layout.title.right,hint);
+   assert.equal(layout.registrationButtons.length,4,hint);
+   assert.equal(layout.analysisButtons.length,2,hint);
+   assert.ok(layout.registration.bottom<layout.analysis.top||layout.registration.right<layout.analysis.left,hint);
+   assert.ok([...layout.registrationButtons,...layout.analysisButtons].every(
+    button=>button.height>=44&&button.top>=layout.menu.top&&button.bottom<=layout.home.top),hint);
+   assert.ok(layout.analysisButtons[0].bottom<=layout.analysisButtons[1].top,hint);
    assert.ok(layout.home.bottom<=layout.banner.bottom&&layout.home.height>=44,hint);
    assert.ok(layout.banner.width<=672,hint);
   }

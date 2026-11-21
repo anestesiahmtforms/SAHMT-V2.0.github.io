@@ -124,10 +124,12 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(activeCatalogDialog!==dialog)return;
     catalogLoadSequence++;loading=false;activeCatalogDialog=null;
   };
-  const followupButtons=followupAllowed?
+  const followupBlock=followupAllowed?
+    '<section class="occurrence-menu-block occurrence-analysis-menu" aria-labelledby="occurrence-analysis-heading">'+
+    '<h3 id="occurrence-analysis-heading">ANÁLISE DE OCORRÊNCIAS</h3>'+
     '<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup="app">ANÁLISE DE OCORRÊNCIAS - SAHMT</button>'+
-    '<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup="hospital">ANÁLISE DE OCORRÊNCIAS - NSP</button>':'';
-  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências -SAHMT"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}${followupButtons}</div><div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
+    '<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup="hospital">ANÁLISE DE OCORRÊNCIAS - NSP</button></section>':'';
+  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências -SAHMT"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-menu"><section class="occurrence-menu-block occurrence-groups" aria-label="Categorias de registro">${occurrenceGroupMarkup()}</section>${followupBlock}</div><div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]');
   const moduleStatus=root.querySelector('.occurrence-module-status');
   if (followupAllowed) {

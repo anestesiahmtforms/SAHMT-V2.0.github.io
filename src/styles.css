@@ -2090,7 +2090,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .app-shell--occurrences .identity-card .brand img{width:30px;height:30px;border-radius:6px}
 .app-shell--occurrences .identity-card__user-row{grid-column:2;grid-row:1;justify-content:flex-end;gap:6px;min-height:0;width:100%}
 .app-shell--occurrences .identity-card__user{max-width:calc(100% - 36px);font-size:clamp(.62rem,2.3vw,.78rem);line-height:1.15;overflow-wrap:anywhere}
-.app-shell--occurrences .occurrences-title{position:static;grid-column:1/-1;grid-row:2;width:100%;max-width:none;height:auto;min-height:clamp(46px,8dvh,62px);display:grid;place-items:center;margin:0;padding:5px 8px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 #081f346b,inset 0 1px 0 #ffffff80;color:#fff;font-size:clamp(1.04rem,5vw,1.65rem);line-height:1.15;font-weight:950;letter-spacing:.045em;text-align:center}
+.app-shell--occurrences .occurrences-title{position:static;grid-column:1/-1;grid-row:2;width:100%;max-width:none;height:auto;min-height:clamp(46px,8dvh,62px);display:grid;place-items:center;margin:0;padding:5px 8px;border:2px solid #fff;border-radius:12px;background:linear-gradient(145deg,#2777ad,#0d3257);box-shadow:0 3px 0 #081f346b,inset 0 1px 0 #ffffff80;color:#fff;font-size:clamp(.7rem,3.65vw,1.45rem);line-height:1.15;font-weight:950;letter-spacing:.035em;text-align:center;white-space:nowrap}
 .app-shell--occurrences>.main-content{display:flex;flex-direction:column;flex:1 1 0;width:100%!important;min-height:0;margin:0;padding:0;overflow:hidden}
 .app-shell--occurrences>.main-content>.notice{flex:0 0 auto;margin:0 0 6px}
 .app-shell--occurrences .module-view--occurrences{display:flex;flex-direction:column;flex:1 1 0;width:100%;min-width:0;min-height:0;margin:0;padding:0;border:0;background:transparent;box-shadow:none;overflow:hidden}
@@ -2100,7 +2100,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-module{display:flex;flex-direction:column;gap:10px;height:100%;min-height:0;min-width:0}
 .occurrence-module>[data-occurrence-category-host],.occurrence-module>[data-occurrence-dialog-host]{display:contents}
 .occurrence-module>[data-occurrence-followup-host]{display:contents}
-.occurrence-followup-launch{grid-column:1/-1;width:100%;min-height:44px;margin:0;border-radius:14px}
+.occurrence-followup-launch{width:100%;min-height:44px;margin:0;padding:6px 8px;border-radius:14px;font-size:clamp(.72rem,2.8vw,.95rem);line-height:1.15}
 .occurrence-followup-list{display:grid;gap:12px;padding:2px 2px 8px}
 .occurrence-followup-list>button{width:100%;min-height:46px}
 .occurrence-followup [data-followup-more]{width:100%;margin-top:12px}
@@ -2136,7 +2136,11 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .people-occurrence-grant h4,.people-occurrence-grant p{margin:0}
 .occurrence-module-status{flex:0 0 auto;margin:0;color:#1762a1;font-size:.85rem}
 .occurrence-module-status:empty,.occurrence-category-status:empty{display:none}
-.occurrence-groups{display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:minmax(44px,1fr);gap:var(--occurrences-gap,8px);flex:1 1 auto;min-height:0;padding:2px 3px 6px;overflow:auto;overscroll-behavior:contain}
+.occurrence-menu{display:grid;grid-template-rows:minmax(min-content,1fr) auto;gap:var(--occurrences-gap,8px);flex:1 1 auto;min-height:0;padding:2px 3px 6px;overflow:auto;overscroll-behavior:contain}
+.occurrence-menu-block{display:grid;align-content:start;gap:var(--occurrences-gap,8px);min-width:0;padding:7px;border:1px solid #b5c9d5;border-radius:15px;background:#edf5f8}
+.occurrence-groups{grid-template-columns:minmax(0,1fr);grid-auto-rows:minmax(44px,1fr);align-content:stretch}
+.occurrence-analysis-menu{background:#dcecf6;border-color:#9ebfd3}
+.occurrence-analysis-menu h3{margin:0;color:#143254;text-align:center;font-size:clamp(.67rem,2.7vw,.86rem);line-height:1.15}
 .occurrence-group,.occurrence-form-launch{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0;min-height:44px;padding:clamp(10px,2vw,18px);border:2px solid #fff;border-radius:18px;background:linear-gradient(155deg,#fff 0%,#edf6fb 42%,#c7e0ed 100%);color:#143254;text-align:left;box-shadow:0 4px 0 #7898a8,0 8px 15px #14325424,inset 0 2px 1px #fff;font-weight:850;font-size:clamp(.85rem,2.8vw,1.05rem);line-height:1.25;overflow-wrap:anywhere}
 .occurrence-group:nth-child(2){background:linear-gradient(155deg,#fff,#e0f3ed 48%,#b3dace)}
 .occurrence-group:nth-child(3){background:linear-gradient(155deg,#fff,#f7eed9 48%,#e7d3aa)}
@@ -2180,6 +2184,10 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 #occurrence-author-note{display:block;color:#526578;line-height:1.4;font-size:.85rem}
 .occurrence-form-status{min-height:1.4em;margin:12px 0 0;color:#526578}
 @media(max-width:600px){.occurrence-form-grid{grid-template-columns:1fr}.occurrence-field--textarea{grid-column:auto}}
+@media(max-width:360px){
+  .app-shell--occurrences{--occurrences-gap:6px;--occurrences-banner-height:min(94dvh,calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px))}
+  .occurrence-menu-block{padding:5px}
+}
 @media(max-height:500px){
   .app-shell--occurrences,.occurrence-dialog.occurrence-followup{
     --occurrences-gap:6px;
@@ -2189,15 +2197,14 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
   .occurrence-followup .occurrence-dialog__header{min-height:36px;padding:5px 8px}
   .app-shell--occurrences .identity-card{grid-template-columns:40px minmax(0,1fr);grid-template-rows:28px auto;gap:3px}
   .app-shell--occurrences .identity-card .brand img{width:20px;height:20px}
-  .app-shell--occurrences .occurrences-title{min-height:36px;padding:3px 6px;font-size:1rem}
+  .app-shell--occurrences .occurrences-title{min-height:36px;padding:3px 6px}
   .occurrence-groups{grid-template-columns:repeat(2,minmax(0,1fr))}
   :is(.occurrence-groups,.occurrence-followup-list)>.occurrence-group{font-size:.75rem;padding:6px 7px}
   :is(.occurrence-groups,.occurrence-followup-list) .occurrence-icon{flex-basis:24px;width:24px;height:24px;padding:3px}
 }
 @media(max-height:500px) and (min-width:520px) and (orientation:landscape){
-  .occurrence-groups:has([data-occurrence-followup="hospital"]){grid-template-columns:repeat(3,minmax(0,1fr))}
-  .occurrence-followup-launch[data-occurrence-followup="app"]{grid-area:1/3;font-size:.75rem;padding:6px}
-  .occurrence-followup-launch[data-occurrence-followup="hospital"]{grid-area:2/3;font-size:.75rem;padding:6px}
+  .occurrence-menu:has(.occurrence-analysis-menu){grid-template-columns:minmax(0,2fr) minmax(0,1fr);grid-template-rows:minmax(min-content,1fr)}
+  .occurrence-analysis-menu .occurrence-followup-launch{font-size:.75rem;padding:6px}
 }
 @media(max-height:500px) and (orientation:landscape){
   .occurrence-followup-list:has(> .occurrence-group){grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
