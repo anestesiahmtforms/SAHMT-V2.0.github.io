@@ -4,7 +4,6 @@ import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
  const stubs={
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
-   hospitalAccess:async()=>window.canRegisterHospital===true,
    listFollowups:async({after})=>after?{entries:[
       {id:'49de5878-28c7-40b5-81e6-f416d58b2433',formId:'F08',origin:'app',sequence:1,title:'Enquete de teste',
       description:'Relato com questionário',classification:{},details:{},analysisClosed:!!window.pollResult},
@@ -32,7 +31,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
  const fixtureMarkup='<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
   '<link rel="stylesheet" href="/src/styles.css"><div class="app-shell app-shell--occurrences"><header class="topbar">'+
   '<div class="identity-card"><button class="brand">SAHMT</button><div class="identity-card__user-row"><div class="identity-card__user">Pessoa de teste</div></div>'+
-  '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS</h2></div></header>'+
+  '<h2 class="events-header-operational occurrences-title">REGISTRO DE OCORRÊNCIAS -SAHMT</h2></div></header>'+
   '<main class="main-content"><section class="module-view panel module-view--occurrences"><div id="root" class="module-content"></div></section></main>'+
   '<footer class="app-footer"><button type="button" class="secondary-button occurrences-home-button">HOME</button><span>SAHMT</span></footer>'+
   '</div><script type="module" src="/fixture.js"></script>';
@@ -58,8 +57,9 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    const hint=JSON.stringify({viewport,layout});
    assert.ok(Math.abs((layout.banner.left+layout.banner.right)/2-viewport.width/2)<=1,hint);
    assert.ok(Math.abs((layout.banner.top+layout.banner.bottom)/2-viewport.height/2)<=1,hint);
-   assert.equal(layout.buttons.length,5,hint);
+   assert.equal(layout.buttons.length,6,hint);
    assert.ok(layout.buttons.every(button=>button.height>=44&&button.top>=layout.menu.top&&button.bottom<=layout.home.top),hint);
+   assert.ok(layout.buttons.at(-2).bottom<=layout.buttons.at(-1).top,hint);
    assert.ok(layout.home.bottom<=layout.banner.bottom&&layout.home.height>=44,hint);
    assert.ok(layout.banner.width<=672,hint);
   }
@@ -85,8 +85,11 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.locator('[data-occurrence-cancel]').click();await page.locator('[data-occurrence-group-cancel]').click();
   assert.equal(await page.getByRole('heading',{name:'Registros recentes'}).count(),0);
   assert.equal(await page.evaluate(()=>window.recentReads),0);
-  await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).click();
+  const appLaunch=page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'});
+  const hospitalLaunch=page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - NSP'});
+  await appLaunch.click();
   const followup=page.getByRole('dialog',{name:'OCORRÊNCIAS - SAHMT'});
+  const hospitalFollowup=page.getByRole('dialog',{name:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'});
   await followup.waitFor();
   const followupBanner=page.locator('.occurrence-followup[open]');
   const back=followupBanner.locator('[data-followup-back]');
@@ -103,22 +106,12 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    await checkFollowupBanner();
   }
   await page.setViewportSize({width:390,height:844});
-  assert.equal(await followup.locator('[data-hospital-new]').count(),0);
-  const appThemes=followup.locator('[data-followup-origin="app"]');
-  const hospitalThemes=followup.locator('[data-followup-origin="hospital"]');
-  assert.equal(await appThemes.locator('[data-occurrence-group]').count(),4);
-  assert.equal(await hospitalThemes.locator('[data-occurrence-group]').count(),4);
-  const hospitalToggle=followup.getByRole('button',{name:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'});
-  await hospitalToggle.click();
-  assert.equal(await hospitalThemes.isVisible(),false);
-  await hospitalToggle.click();
-  assert.equal(await hospitalThemes.isVisible(),true);
-  const appEthics=appThemes.locator('[data-occurrence-group="B"]');
+  assert.equal(await followup.locator('[data-occurrence-group]').count(),4);
+  assert.equal(await followup.getByRole('button',{name:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'}).count(),0);
+  const appEthics=followup.locator('[data-occurrence-group="B"]');
   await appEthics.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
-  const hospitalCare=hospitalThemes.locator('[data-occurrence-group="A"]');
-  await hospitalCare.locator('xpath=self::*[@data-analysis-state="clear"]').waitFor();
   for(const group of ['A','C','D']){
-   await appThemes.locator('[data-occurrence-group="'+group+'"]').click();
+   await followup.locator('[data-occurrence-group="'+group+'"]').click();
    await checkFollowupBanner();
    if(group==='A'){
     await followupBanner.locator('[data-followup-form="F01"]').click();
@@ -129,6 +122,14 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    await back.click();
    await followup.waitFor();
   }
+  await back.click();
+  await hospitalLaunch.click();
+  await hospitalFollowup.waitFor();
+  await checkFollowupBanner({compact:true});
+  assert.equal(await hospitalFollowup.locator('[data-occurrence-group]').count(),4);
+  assert.equal(await hospitalFollowup.getByRole('button',{name:'NOVO RELATO DO NÚCLEO'}).count(),0);
+  const hospitalCare=hospitalFollowup.locator('[data-occurrence-group="A"]');
+  await hospitalCare.locator('xpath=self::*[@data-analysis-state="clear"]').waitFor();
   await hospitalCare.click();
   await followupBanner.locator('[data-followup-form="F03"]').click();
   await page.getByText('Nenhuma ocorrência registrada neste tema.').waitFor();
@@ -213,6 +214,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await back.click();
   await back.click();
   await hospitalCare.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
+  await back.click();
+  await appLaunch.click();
   await appEthics.click();
   await followupBanner.getByRole('button',{name:'GRA 002 · Dilema de teste'}).click();
   await followupBanner.getByText('Questionário ainda não publicado.',{exact:true}).waitFor();
@@ -292,15 +295,12 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
     .locator('xpath=self::*[@data-analysis-state="closed"]').waitFor();
   await back.click();
   await appEthics.locator('xpath=self::*[@data-analysis-state="closed"]').waitFor();
-  await hospitalCare.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
   await back.click();
   await followup.waitFor({state:'hidden'});
-  await page.evaluate(()=>window.canRegisterHospital=true);
-  await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).click();
-  await followup.getByRole('button',{name:'NOVO RELATO DO NÚCLEO'}).click();
-  await followupBanner.getByRole('heading',{name:'RELATO DO NÚCLEO DE SEGURANÇA'}).waitFor();
+  await hospitalLaunch.click();
+  await hospitalCare.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
   await back.click();
-  await back.click();
+  await hospitalFollowup.waitFor({state:'hidden'});
   assert.deepEqual(errors,[]);
  }finally{await browser?.close();await server.close();}
 });

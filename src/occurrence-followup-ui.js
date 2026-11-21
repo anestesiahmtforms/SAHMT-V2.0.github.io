@@ -9,7 +9,7 @@ import {bindOccurrencePromptActions} from './occurrence-ai-ui.js';
 
 const dateLabel = (value,kind) => kind === 'date' ? formatDisplayDate(value) : value;
 const labelFor = entry => entry.title || getOccurrenceForm(entry.formId)?.title || 'Ocorrência';
-const hospitalTitle = 'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA';
+const originTitles = {app:'OCORRÊNCIAS - SAHMT',hospital:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'};
 const pageSize = 30;
 const stateLabels = {
   pending:'Ocorrências em análise',
@@ -54,7 +54,7 @@ export function mountOccurrenceFollowup(host,{
   const dialog=host.querySelector('dialog'),body=host.querySelector('[data-followup-body]'),heading=host.querySelector('h3');
   const promptActions=host.querySelector('[data-occurrence-ai-actions]');
   let revision=0,group='',origin='app',formId='',shown=pageSize,back=()=>dialog.close(),writing=false;
-  let overview=null,overviewRequest=null,hospitalExpanded=true;
+  let overview=null,overviewRequest=null;
   const groupForms=()=>OCCURRENCE_FORMS.filter(form=>form.group===group);
   function render(title,markup,nextBack) {
     const version=++revision;
@@ -74,7 +74,7 @@ export function mountOccurrenceFollowup(host,{
     do {
       const page=await repository.listFollowups({uid,after});
       if (!isCurrent()||!dialog.open) throw new Error('OCCURRENCE_SESSION_CHANGED');
-      records.push(...page.entries);
+      records.push(...page.entries.filter(entry=>entry.origin===origin));
       after=page.next;
     } while(after);
     return records;
@@ -94,24 +94,12 @@ export function mountOccurrenceFollowup(host,{
   }
 
   function groups() {
-    const current=render('OCORRÊNCIAS - SAHMT',
-      '<div class="occurrence-followup-list" data-followup-origin="app">'+groupsMarkup()+'</div>'+
-      '<button type="button" class="secondary-button occurrence-hospital-toggle" aria-controls="occurrence-hospital-topics" '+
-      'aria-expanded="'+hospitalExpanded+'">'+hospitalTitle+'</button>'+
-      '<div id="occurrence-hospital-topics" data-followup-origin="hospital"'+(hospitalExpanded?'':' hidden')+'>'+
-      '<div class="occurrence-followup-list">'+groupsMarkup()+'</div><div data-hospital-entry></div></div>'+
-      '<p role="status" data-followup-status></p>',()=>dialog.close());
-    const toggle=body.querySelector('.occurrence-hospital-toggle');
-    const hospitalTopics=body.querySelector('#occurrence-hospital-topics');
+    const current=render(originTitles[origin],
+      '<div class="occurrence-followup-list">'+groupsMarkup()+'</div><p role="status" data-followup-status></p>',
+      ()=>dialog.close());
+    heading.classList.toggle('occurrence-hospital-heading',origin==='hospital');
     const buttons=[...body.querySelectorAll('[data-occurrence-group]')];
-    toggle.addEventListener('click',()=>{
-      hospitalExpanded=!hospitalExpanded;
-      hospitalTopics.hidden=!hospitalExpanded;
-      toggle.setAttribute('aria-expanded',String(hospitalExpanded));
-    });
-    function buttonOrigin(button) {return button.closest('[data-followup-origin]').dataset.followupOrigin;}
     for(const button of buttons)button.addEventListener('click',()=>{
-      origin=buttonOrigin(button);
       group=button.dataset.occurrenceGroup;
       const forms=groupForms();
       if (forms.length!==1) {categories();return;}
@@ -121,20 +109,12 @@ export function mountOccurrenceFollowup(host,{
     void getOverview().then(items=>{
       if(!current())return;
       for(const button of buttons) {
-        const source=buttonOrigin(button);
         const theme=button.dataset.occurrenceGroup;
-        setAnalysisState(button,themeState(items.filter(entry=>entry.origin===source&&getOccurrenceForm(entry.formId)?.group===theme)));
+        setAnalysisState(button,themeState(items.filter(entry=>getOccurrenceForm(entry.formId)?.group===theme)));
       }
-      setAnalysisState(toggle,themeState(items.filter(entry=>entry.origin==='hospital')));
     }).catch(()=>{
       if(current())body.querySelector('[data-followup-status]').textContent='Não foi possível consultar a situação das análises.';
     });
-    if (canInteract() && canShowHospital()) void repository.hospitalAccess({uid}).then(allowed=>{
-      if (!allowed || !current()) return;
-      const admin=body.querySelector('[data-hospital-entry]');
-      admin.innerHTML='<button type="button" class="primary-button" data-hospital-new>NOVO RELATO DO NÚCLEO</button>';
-      admin.querySelector('button').addEventListener('click',hospital);
-    }).catch(()=>{});
   }
 
   function categories() {
@@ -150,7 +130,7 @@ export function mountOccurrenceFollowup(host,{
     void getOverview().then(items=>{
       if(!current())return;
       for(const button of buttons) {
-        setAnalysisState(button,themeState(items.filter(entry=>entry.origin===origin&&entry.formId===button.dataset.followupForm)));
+        setAnalysisState(button,themeState(items.filter(entry=>entry.formId===button.dataset.followupForm)));
       }
     }).catch(()=>{});
   }
@@ -182,7 +162,7 @@ export function mountOccurrenceFollowup(host,{
       try {
         const items=await getOverview(force);
         if (!current()) return;
-        found=items.filter(entry=>entry.origin===origin&&entry.formId===formId);
+        found=items.filter(entry=>entry.formId===formId);
         if(force)shown=pageSize;
         showEntries();
       } catch {
@@ -267,34 +247,6 @@ export function mountOccurrenceFollowup(host,{
     return open;
   }
 
-  function hospital() {
-    const options=OCCURRENCE_GROUPS.map(group=>'<optgroup label="'+escape(group.title)+'">'+
-      OCCURRENCE_FORMS.filter(form=>form.group===group.id).map(form=>
-        '<option value="'+form.id+'">'+escape(form.title)+'</option>').join('')+'</optgroup>').join('');
-    const current=render('RELATO DO NÚCLEO DE SEGURANÇA','<form class="occurrence-followup-analysis" data-hospital-form>'+
-      '<p>'+privacyNote+'</p><fieldset><label class="occurrence-field"><span>Protocolo do Núcleo</span>'+
-      '<input name="number" placeholder="GR 001" maxlength="16" required></label>'+
-      '<label class="occurrence-field"><span>Tema</span><select name="formId" required><option value="">Selecione</option>'+options+'</select></label>'+
-      '<label class="occurrence-field"><span>Data da ocorrência</span><input type="date" name="occurredOn" required></label>'+
-      '<label class="occurrence-field"><span>Título</span><input name="title" maxlength="180" required></label>'+
-      '<label class="occurrence-field"><span>Descrição</span><textarea name="description" rows="5" maxlength="5000" required></textarea></label>'+
-      '<button class="primary-button" type="submit">REGISTRAR E PUBLICAR</button></fieldset><p role="status"></p></form>',groups);
-    const form=body.querySelector('form'),status=form.querySelector('[role="status"]'),container=form.querySelector('fieldset');
-    form.addEventListener('submit',async event=>{
-      event.preventDefault();
-      if (writing||!current()||!canInteract()||!canShowHospital()) return;
-      const input=Object.fromEntries(new FormData(form));
-      writing=true;container.disabled=true;status.textContent='Publicando relato…';
-      try {
-        const protocol=await repository.saveHospital({uid,...input});
-        if (current()) {overview=null;form.reset();status.textContent=protocol+' · Relato publicado para análise.';}
-      } catch(error) {
-        if(current())status.textContent=error.message==='OCCURRENCE_HOSPITAL_DUPLICATE'?'Já existe um relato com esse protocolo.':
-          error.message==='OCCURRENCE_INPUT_INVALID'?'Confira o protocolo GR, a data e os campos do relato.':'Não foi possível publicar o relato.';
-      } finally {writing=false;if(current())container.disabled=false;}
-    });
-  }
-
   function goBack() {
     if (writing) return;
     heading.classList.remove('occurrence-hospital-heading');
@@ -302,5 +254,12 @@ export function mountOccurrenceFollowup(host,{
   }
   host.querySelector('[data-followup-back]').addEventListener('click',goBack);
   dialog.addEventListener('cancel',event=>{event.preventDefault();goBack();});
-  return ()=>{if(isCurrent()&&!dialog.open){overview=null;overviewRequest=null;hospitalExpanded=true;dialog.showModal();groups();}};
+  return source=>{
+    if(!isCurrent()||dialog.open)return;
+    origin=source==='hospital'?'hospital':'app';
+    overview=null;
+    overviewRequest=null;
+    dialog.showModal();
+    groups();
+  };
 }

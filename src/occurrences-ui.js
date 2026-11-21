@@ -124,8 +124,10 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(activeCatalogDialog!==dialog)return;
     catalogLoadSequence++;loading=false;activeCatalogDialog=null;
   };
-  const followupButton=followupAllowed?'<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup>ANÁLISE DE OCORRÊNCIAS - SAHMT</button>':'';
-  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}${followupButton}</div><div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
+  const followupButtons=followupAllowed?
+    '<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup="app">ANÁLISE DE OCORRÊNCIAS - SAHMT</button>'+
+    '<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup="hospital">ANÁLISE DE OCORRÊNCIAS - NSP</button>':'';
+  root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências -SAHMT"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-groups">${occurrenceGroupMarkup()}${followupButtons}</div><div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]');
   const moduleStatus=root.querySelector('.occurrence-module-status');
   if (followupAllowed) {
@@ -133,7 +135,9 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     module.insertAdjacentHTML('beforeend','<div data-occurrence-followup-host></div>');
     const openFollowup=mountOccurrenceFollowup(module.querySelector('[data-occurrence-followup-host]'),
       {repository,uid,isCurrent,groupsMarkup:occurrenceGroupMarkup,canInteract,canShowHospital,isAdministrator});
-    module.querySelector('[data-occurrence-followup]').addEventListener('click',openFollowup);
+    for(const button of module.querySelectorAll('[data-occurrence-followup]')) {
+      button.addEventListener('click',()=>openFollowup(button.dataset.occurrenceFollowup));
+    }
   }
   const categoryHost=root.querySelector('[data-occurrence-category-host]');
   const showCategory=groupId=>{
