@@ -3,10 +3,12 @@ import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
  const stubs={
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
-   hospitalAccess:async()=>false,listFollowups:async({formId})=>({entries:formId==='F08'&&window.followupPublished?
-    [{id:'gr-1',formId,origin:'hospital',hospitalNumber:'1',title:'Evento externo',occurredOn:'2026-11-20',description:'Relato completo aqui',classification:{},details:{}}]:[],next:null}),
+   hospitalAccess:async()=>false,listFollowups:async({formId})=>({entries:formId==='F03'&&window.followupPublished?
+    [{id:'gr-1',formId,origin:'hospital',hospitalNumber:'1',title:'Evento externo',occurredOn:'2026-11-20',description:'Relato completo aqui',classification:{},details:{}}]
+    :formId==='F08'?[{id:'ethical-test',formId,origin:'app',sequence:1,title:'Dilema de teste',description:'Relato do dilema',classification:{},details:{}}]:[],next:null}),
    readAnalysis:async()=>null,saveAnalysis:async({values})=>{window.analysis=values;return true;},
-   descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;}};}`,
+   descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;},
+   readEthicalReview:async()=>window.ethicalReview?.text||'',saveEthicalReview:async input=>{window.ethicalReview=input;return input.text;}};}`,
   'outbox.js':`export async function enqueueOccurrenceSubmission(){throw Error('No writes in this fixture');}export async function listUnsettledOperations(){return [];}`
  };
  const fixture=`import {mountOccurrenceModule} from '/src/occurrences-ui.js';window.calls=0;window.recentReads=0;window.auditReads=0;window.hang=false;const uid='synthetic';window.dispose=mountOccurrenceModule(document.querySelector('#root'),{uid,displayName:'Teste',auth:{currentUser:{uid}},db:{},permissions:{occurrencesRead:true,occurrencesWrite:true,occurrencesAuditRead:true},isCurrent:()=>true,followupAllowed:true});`;
@@ -97,7 +99,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    await back.click();
    await followup.waitFor();
   }
-  await followup.locator('[data-occurrence-group="B"]').click();
+  await followup.locator('[data-occurrence-group="A"]').click();
+  await followupBanner.locator('[data-followup-form="F03"]').click();
   await page.getByText('Nenhuma ocorrência registrada neste tema.').waitFor();
   await page.evaluate(()=>window.followupPublished=true);
   await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click({timeout:2000});
@@ -143,6 +146,30 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await back.click();
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
   await followupBanner.getByText('Texto revisado',{exact:true}).waitFor();
+  await back.click();
+  await back.click();
+  await back.click();
+  await followup.waitFor();
+  await page.evaluate(()=>window.canEditDescription=false);
+  await followup.locator('[data-occurrence-group="B"]').click();
+  const ethicalRecord=followupBanner.getByRole('button',{name:'GRA 001 · Dilema de teste'});
+  await ethicalRecord.click();
+  await followupBanner.getByText('Relato do dilema',{exact:true}).waitFor();
+  assert.equal(await followupBanner.locator('textarea').count(),0);
+  await back.click();
+  await page.evaluate(()=>window.canEditDescription=true);
+  await ethicalRecord.click();
+  const approach=followupBanner.getByRole('textbox',{name:'ABORDAGEM',exact:true});
+  await approach.fill('Primeira linha\nSegunda linha');
+  assert.equal(await followupBanner.locator('[data-followup-analysis],input[type="file"]').count(),0);
+  await followupBanner.getByRole('button',{name:'SALVAR ABORDAGEM'}).click();
+  await followupBanner.getByText('Abordagem salva.',{exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.ethicalReview),{uid:'synthetic',id:'ethical-test',text:'Primeira linha\nSegunda linha',expectedText:''});
+  await back.click();
+  await ethicalRecord.click();
+  await approach.waitFor();
+  await followupBanner.getByText('Carregando abordagem…',{exact:true}).waitFor({state:'hidden'});
+  assert.equal(await approach.inputValue(),'Primeira linha\nSegunda linha');
   await back.click();
   await back.click();
   await followup.waitFor();

@@ -119,6 +119,7 @@ export const OCCURRENCE_ANALYSIS_FIELDS = Object.freeze({
   plan: 'PLANO E AÇÃO'
 });
 export const OCCURRENCE_ANALYSIS_LIMIT = 3000;
+export const OCCURRENCE_ETHICAL_REVIEW_LIMIT = 20000;
 export const OCCURRENCE_PRIVATE_FIELDS = Object.freeze(['attendance','patientOrAttendance','prescriptionNumber','othersInformed','eventDiscovery']);
 
 export function occurrenceHospitalNumber(value) {

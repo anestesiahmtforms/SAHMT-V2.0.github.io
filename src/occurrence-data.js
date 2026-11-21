@@ -1,6 +1,6 @@
 import {collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query, runTransaction, serverTimestamp, startAfter, where} from 'firebase/firestore';
 import {FIREBASE_PROJECTS} from './firebase-projects.js';
-import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_PRIVATE_FIELDS, getOccurrenceForm, occurrenceAppProtocol,
+import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PRIVATE_FIELDS, getOccurrenceForm, occurrenceAppProtocol,
   occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues} from './occurrence-schema.js';
 import {isValidDateKey} from './schedule-date.js';
 
@@ -214,6 +214,31 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
   const hospitalAccess = ({uid} = {}) => hasGrant(uid,'hospital');
   const descriptionAccess = ({uid} = {}) => hasGrant(uid,'descriptions');
+  const ethicalReviewRef = id => {
+    if (!followupId(id)) throw new Error('OCCURRENCE_INPUT_INVALID');
+    return api.doc(db,FOLLOWUPS,id,'ethicalReview','current');
+  };
+  const readEthicalReview = async ({uid,id} = {}) => {
+    const {user} = await requirePermission(uid);
+    const row = await api.getDocFromServer(ethicalReviewRef(id));
+    if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+    return row.exists() ? row.data().text : '';
+  };
+  const saveEthicalReview = async ({uid,id,text,expectedText} = {}) => {
+    if (typeof text !== 'string' || text.trim().length > OCCURRENCE_ETHICAL_REVIEW_LIMIT ||
+      typeof expectedText !== 'string') throw new Error('OCCURRENCE_INPUT_INVALID');
+    const {user} = await requirePermission(uid);
+    const next = text.trim(),ref = ethicalReviewRef(id);
+    await api.runTransaction(db,async tx => {
+      const row = await tx.get(ref);
+      if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      const previous = row.exists() ? row.data().text : '';
+      if (previous === next) return;
+      if (previous !== expectedText) throw new Error('OCCURRENCE_ETHICAL_REVIEW_CHANGED');
+      tx.set(ref,{text:next,updatedAt:api.serverTimestamp()});
+    });
+    return next;
+  };
   const saveDescription = async ({uid,id,description,expectedDescription} = {}) => {
     if (!followupId(id) || !boundedText(description,5000) ||
       (expectedDescription !== null && typeof expectedDescription !== 'string')) throw new Error('OCCURRENCE_INPUT_INVALID');
@@ -305,5 +330,6 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
-    hospitalAccess,saveHospital,descriptionAccess,saveDescription,getGrant,saveGrant,clear:()=>{catalogCache=null;}});
+    hospitalAccess,saveHospital,descriptionAccess,saveDescription,readEthicalReview,saveEthicalReview,getGrant,saveGrant,
+    clear:()=>{catalogCache=null;}});
 }

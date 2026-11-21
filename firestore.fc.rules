@@ -289,7 +289,15 @@ service cloud.firestore {
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
         allow list: if occurrenceAdministrator() && request.query.limit != null && request.query.limit <= 30;
         allow create, update: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
-          exists(occurrenceFollowupPath(id)) && validOccurrenceAnalysis(request.resource.data);
+          get(occurrenceFollowupPath(id)).data.formId != 'F08' && validOccurrenceAnalysis(request.resource.data);
+        allow delete: if false;
+      }
+      match /ethicalReview/current {
+        allow get: if canEditOccurrenceDescription() && get(occurrenceFollowupPath(id)).data.formId == 'F08';
+        allow create, update: if canEditOccurrenceDescription() && get(occurrenceFollowupPath(id)).data.formId == 'F08' &&
+          request.resource.data.keys().hasOnly(['text','updatedAt']) &&
+          request.resource.data.text is string && request.resource.data.text.size() <= 20000 &&
+          request.resource.data.updatedAt == request.time;
         allow delete: if false;
       }
     }

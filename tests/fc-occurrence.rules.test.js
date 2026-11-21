@@ -181,6 +181,39 @@ test('administrador e gestor designado podem editar apenas a descrição de ocor
  await assertFails(updateDoc(followup(delegateDb,id),{description:'Permissão revogada'}));
 });
 
+test('Dilema Ético tem abordagem livre restrita aos editores e preserva as análises legadas',async()=>{
+ const admin='ethical-admin',delegate='ethical-delegate',ordinary='reader-synthetic',other='gr-2';
+ const legacy={problem:'Problema anterior',cause:'Causa',review:'Análise',correction:'Correção',plan:'Plano'};
+ await env.withSecurityRulesDisabled(async context=>{
+  const db=context.firestore();
+  await Promise.all([
+   setDoc(doc(db,'users',admin),{uid:admin,active:true,access:true,role:'administrador_app'}),
+   setDoc(doc(db,'users',delegate),{uid:delegate,active:true,access:true,role:'gestor',permissions:{}}),
+   setDoc(doc(db,'occurrenceDescriptionGrants',delegate),{enabled:true}),
+   setDoc(doc(db,'occurrenceFollowups',id),{id,formId:'F08',description:'Relato existente'}),
+   setDoc(doc(db,'occurrenceFollowups',other),{id:other,formId:'F03'}),
+   setDoc(doc(db,'occurrenceFollowups',id,'analyses',ordinary),{analysis:legacy})
+  ]);
+ });
+ const adminDb=google(admin),delegateDb=google(delegate),ordinaryDb=google(ordinary);
+ const draftRef=(db,key=id)=>doc(db,'occurrenceFollowups',key,'ethicalReview','current');
+ const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:delegate}},
+  firestore:{doc:(_, ...path)=>doc(delegateDb,...path),getDocFromServer,runTransaction:(_,callback)=>runTransaction(delegateDb,callback)}});
+ await assertFails(getDocFromServer(draftRef(ordinaryDb)));
+ await assertFails(setDoc(draftRef(ordinaryDb),{text:'Sem permissão',updatedAt:serverTimestamp()}));
+ await assertFails(setDoc(draftRef(adminDb,other),{text:'Tema diferente',updatedAt:serverTimestamp()}));
+ assert.equal(await repository.readEthicalReview({uid:delegate,id}),'');
+ const text='Abordagem escolhida.\nSegundo parágrafo.';
+ await repository.saveEthicalReview({uid:delegate,id,text,expectedText:''});
+ assert.equal((await getDocFromServer(draftRef(adminDb))).data().text,text);
+ await assertFails(getDocFromServer(draftRef(ordinaryDb)));
+ await assert.rejects(repository.saveEthicalReview({uid:delegate,id,text:'Versão antiga',expectedText:''}),{message:'OCCURRENCE_ETHICAL_REVIEW_CHANGED'});
+ const previous=doc(ordinaryDb,'occurrenceFollowups',id,'analyses',ordinary);
+ assert.deepEqual((await getDocFromServer(previous)).data().analysis,legacy);
+ await assertFails(setDoc(previous,{analysis:legacy,updatedAt:serverTimestamp()}));
+ await assertSucceeds(setDoc(doc(ordinaryDb,'occurrenceFollowups',other,'analyses',ordinary),{analysis:legacy,updatedAt:serverTimestamp()}));
+});
+
 test('catalog access follows registration authorization and rejects blocked or read-only profiles',async()=>{
  await env.withSecurityRulesDisabled(async c=>{
   await setDoc(doc(c.firestore(),'users','writer-without-catalog'),{uid:'writer-without-catalog',active:true,access:true,permissions:{occurrencesWrite:true}});
