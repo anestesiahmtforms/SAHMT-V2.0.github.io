@@ -9,7 +9,7 @@ import {bindOccurrencePromptActions} from './occurrence-ai-ui.js';
 
 const dateLabel = (value,kind) => kind === 'date' ? formatDisplayDate(value) : value;
 const labelFor = entry => entry.title || getOccurrenceForm(entry.formId)?.title || 'Ocorrência';
-const privacyNote = 'O relato será disponibilizado à equipe. Retire nomes, números de atendimento e outros dados que identifiquem pessoas.';
+const privacyNote = 'O relato será disponibilizado à equipe. Retire nomes e outros dados que identifiquem pessoas.';
 
 function descriptionMarkup(entry) {
   const form = getOccurrenceForm(entry.formId);
