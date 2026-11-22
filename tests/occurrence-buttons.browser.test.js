@@ -16,7 +16,9 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    readAnalysis:async()=>null,listAnalyses:async({id})=>({entries:id==='gr-1'?
      [{analysis:{problem:'Linha um.\\nLinha dois.',cause:'Causa',review:'Revisão',correction:'Correção',plan:'Plano'}}]:[],next:null}),
    descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;},
-   readOccurrenceQuestionnaire:async({id})=>id===${JSON.stringify(GRA_001_RECORD_ID)}?${JSON.stringify(GRA_001_QUESTIONS)}:window.questionnaires?.[id]??null,
+   readOccurrenceQuestionnaire:async({id})=>id===${JSON.stringify(GRA_001_RECORD_ID)}?
+    {questions:${JSON.stringify(GRA_001_QUESTIONS)},revision:2}:
+    window.questionnaires?.[id]?{questions:window.questionnaires[id],revision:0}:null,
    publishOccurrenceQuestionnaire:async({id,description,questions})=>{
      (window.preparations??={})[id]=description;(window.questionnaires??={})[id]=questions;return questions;
    },
@@ -272,7 +274,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   const resultButton=followupBanner.getByRole('button',{name:'RESULTADO DA ANÁLISE PELO SERVIÇO'});
   assert.equal(await resultButton.count(),0);
   assert.deepEqual(await page.evaluate(id=>window.responses[id],GRA_001_RECORD_ID),
-   {uid:'synthetic',id:GRA_001_RECORD_ID,answers:[5,5,4,4],comment:'Comentário de teste.'});
+   {uid:'synthetic',id:GRA_001_RECORD_ID,answers:[5,5,4,4],comment:'Comentário de teste.',questionnaireRevision:2});
   assert.equal(await followupBanner.getByText('RESPOSTAS DA ABORDAGEM').count(),0);
   await back.click();
   await page.evaluate(()=>window.canEditDescription=true);
@@ -291,8 +293,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   const analysisPrompt=await page.evaluate(()=>window.copiedPoll);
   assert.match(analysisPrompt,/"protocolo": "GRA 001"[\s\S]*CONTAGEM POR ALTERNATIVA[\s\S]*Comentário de teste/);
   assert.match(analysisPrompt,/Total de respostas: 2/);
-  assert.match(analysisPrompt,/RESPOSTA 1[\s\S]*Outra posição\.[\s\S]*Comentário de teste\./);
-  assert.match(analysisPrompt,/RESPOSTA 2[\s\S]*A condição clínica atual, os riscos e a necessidade de suporte intensivo\.[\s\S]*Segunda resposta\.\nComentário em duas linhas\./);
+  assert.match(analysisPrompt,/RESPOSTA 1[\s\S]*Ponderação conjunta desses princípios[\s\S]*Comentário de teste\./);
+  assert.match(analysisPrompt,/RESPOSTA 2[\s\S]*Motivo da reserva prévia e o que mudou desde o planejamento\.[\s\S]*Segunda resposta\.\nComentário em duas linhas\./);
   assert.doesNotMatch(analysisPrompt,/synthetic/);
   await analysis.getByRole('textbox',{name:'Resposta da IA em JSON'}).fill(JSON.stringify({
    protocolo:'GRA 001',resultado:'Primeiro parágrafo.\nSegundo parágrafo.'

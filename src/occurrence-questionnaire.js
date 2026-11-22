@@ -9,41 +9,41 @@ export const OCCURRENCE_COMMENT_LIMIT = 2000;
 
 export const GRA_001_QUESTIONS = [
   {
-    prompt: 'Na sua avaliação, quem deve participar da decisão final sobre o destino do paciente?',
+    prompt: 'Quais valores ou princípios você considera mais relevantes para deliberar sobre o destino pós-operatório neste caso?',
     options: [
-      'Anestesiologista, por avaliar a condição clínica ao término da anestesia.',
-      'Cirurgião, por ser responsável pelo procedimento e pelo planejamento pós-operatório.',
-      'Decisão compartilhada entre anestesiologista e cirurgião, considerando as responsabilidades de cada um.',
-      'Profissional responsável pela avaliação clínica, seguindo critérios institucionais e ouvindo a equipe envolvida.',
-      'Outra posição.'
+      'Beneficência, considerando o benefício esperado para o paciente.',
+      'Não maleficência, ponderando os riscos de cada destino possível.',
+      'Autonomia, considerando as preferências do paciente quando conhecidas.',
+      'Justiça, considerando critérios consistentes de acesso ao CTI.',
+      'Ponderação conjunta desses princípios, explicitando os conflitos entre eles.'
     ]
   },
   {
-    prompt: 'Qual fator deve ter maior peso na decisão de encaminhar o paciente ao CTI?',
+    prompt: 'Qual informação ou fator adicional você priorizaria para esclarecer a decisão sobre o CTI neste caso?',
     options: [
-      'A reserva prévia do leito.',
-      'A condição clínica atual, os riscos e a necessidade de suporte intensivo.',
-      'A indicação do cirurgião.',
-      'A avaliação do anestesiologista.',
-      'A avaliação clínica integrada aos critérios institucionais de admissão.'
+      'Condição clínica ao término da anestesia e necessidade de suporte.',
+      'Motivo da reserva prévia e o que mudou desde o planejamento.',
+      'Preferências do paciente ou de seu representante, quando aplicável.',
+      'Capacidade de acompanhamento e suporte nos destinos disponíveis.',
+      'Critérios institucionais de admissão e avaliação da equipe do CTI.'
     ]
   },
   {
-    prompt: 'Se houver discordância entre anestesiologista e cirurgião, qual deve ser o próximo passo?',
+    prompt: 'Como você organizaria a participação das partes interessadas na deliberação sobre o destino pós-operatório?',
     options: [
-      'Prevalece a decisão do profissional mais experiente.',
-      'Reavaliar conjuntamente o paciente, discutir os riscos e documentar a decisão.',
-      'Acionar a coordenação médica imediatamente em todos os casos.',
-      'Aplicar o protocolo institucional e escalar o caso se o impasse persistir.'
+      'Anestesiologista e cirurgião discutem o caso e registram os fundamentos da decisão.',
+      'Anestesiologista, cirurgião e equipe do CTI deliberam juntos quando a indicação é incerta.',
+      'O responsável previsto no fluxo do serviço coordena a deliberação e ouve as equipes envolvidas.',
+      'A equipe envolvida incorpora as preferências do paciente ou do representante, conforme aplicável.'
     ]
   },
   {
-    prompt: 'Qual solução você considera mais adequada para evitar novos conflitos?',
+    prompt: 'Qual abordagem você considera eticamente mais justificável diante dos fatos e das lacunas do relato?',
     options: [
-      'Criar um protocolo com critérios claros de admissão e alta do CTI.',
-      'Definir previamente as responsabilidades do anestesiologista e do cirurgião.',
-      'Estabelecer decisão compartilhada e fluxo de escalonamento em caso de divergência.',
-      'Integrar as três medidas.'
+      'Reavaliar as alternativas em conjunto e justificar a decisão com os dados atuais e critérios institucionais.',
+      'Manter o planejamento inicial se a avaliação atual sustentar os motivos da reserva.',
+      'Solicitar avaliação da equipe do CTI para esclarecer a indicação diante da incerteza.',
+      'Seguir o fluxo institucional de deliberação e escalar a decisão se persistir divergência.'
     ]
   }
 ];

@@ -249,6 +249,12 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
   firestore:{doc:(_, ...path)=>doc(delegateDb,...path),getDocFromServer,runTransaction:(_,callback)=>runTransaction(delegateDb,callback)}});
  assert.deepEqual(await managerPublisher.publishOccurrenceQuestionnaire({uid:delegate,id:maxOptionsCase,description:'Preparação do caso',questions:maxOptions}),maxOptions);
  const valid={answers:[5,2,4,4],comment:'',submittedAt:serverTimestamp()};
+ await env.withSecurityRulesDisabled(context=>updateDoc(config(context.firestore(),maxOptionsCase),{revision:2}));
+ const revisedRef=ref(ordinaryDb,ordinary,maxOptionsCase);
+ await assertFails(setDoc(revisedRef,{...valid,answers:[1,2,3,4]}));
+ await assertFails(setDoc(revisedRef,{...valid,answers:[1,2,3,4],questionnaireRevision:1}));
+ await assertSucceeds(setDoc(revisedRef,{...valid,answers:[1,2,3,4],questionnaireRevision:2}));
+ assert.equal((await repository.readOccurrenceQuestionnaire({uid:ordinary,id:maxOptionsCase})).revision,2);
  await assertFails(setDoc(ref(ordinaryDb),valid));
  await assertFails(setDoc(config(ordinaryDb),published));
  await assertFails(setDoc(config(adminDb,'missing'),published));
@@ -260,7 +266,7 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  adminBatch.update(caseRow(adminDb),{analysisStarted:true,preparedDescription:'Relato preparado'});
  await assertSucceeds(adminBatch.commit());
  await assertFails(updateDoc(config(adminDb),{questions:shorter,publishedAt:serverTimestamp()}));
- assert.equal((await repository.readOccurrenceQuestionnaire({uid:ordinary,id:caseId})).length,4);
+ assert.equal((await repository.readOccurrenceQuestionnaire({uid:ordinary,id:caseId})).questions.length,4);
  await assertFails(setDoc(ref(ordinaryDb,other),valid));
  await assertFails(setDoc(ref(ordinaryDb,ordinary,id),valid));
  const managerBatch=writeBatch(delegateDb);

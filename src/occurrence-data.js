@@ -253,7 +253,9 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const {user} = await requirePermission(uid);
     const row = await api.getDocFromServer(analysisRef(id,'analysisQuestionnaire'));
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
-    return row.exists() ? normalizeOccurrenceQuestions(row.data().questions) : null;
+    if(!row.exists())return null;
+    const {questions,revision=0}=row.data();
+    return {questions:normalizeOccurrenceQuestions(questions),revision};
   };
   const publishOccurrenceQuestionnaire = async ({uid,id,description,questions} = {}) => {
     if(!boundedText(description,5000))throw new Error('OCCURRENCE_INPUT_INVALID');
@@ -351,9 +353,10 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     return row.exists();
   };
-  const submitOccurrenceResponse = async ({uid,id,answers,comment=''} = {}) => {
+  const submitOccurrenceResponse = async ({uid,id,answers,comment='',questionnaireRevision=0} = {}) => {
     if (!Array.isArray(answers) || answers.length !== OCCURRENCE_QUESTION_COUNT ||
       answers.some(answer=>!Number.isInteger(answer)||answer<1||answer>OCCURRENCE_OPTION_LIMIT) ||
+      !Number.isSafeInteger(questionnaireRevision)||questionnaireRevision<0||
       typeof comment !== 'string' || comment.length>OCCURRENCE_COMMENT_LIMIT) throw new Error('OCCURRENCE_INPUT_INVALID');
     const {user} = await requirePermission(uid);
     const ref=analysisRef(id,QUESTIONNAIRE_RESPONSES,uid);
@@ -361,7 +364,8 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       const row=await tx.get(ref);
       if(!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
       if(row.exists()) return 'already-submitted';
-      tx.set(ref,{answers:[...answers],comment,submittedAt:api.serverTimestamp()});
+      tx.set(ref,{answers:[...answers],comment,submittedAt:api.serverTimestamp(),
+        ...(questionnaireRevision?{questionnaireRevision}:{})});
       return 'submitted';
     });
   };

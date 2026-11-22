@@ -3,7 +3,7 @@ import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIM
   OCCURRENCE_OPTION_TEXT_LIMIT,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
 import {OCCURRENCE_ETHICAL_REVIEW_LIMIT} from './occurrence-schema.js';
 
-function mountOccurrenceResponse(section,{repository,uid,id,questions,isCurrent,canInteract,isWriting,setWriting}) {
+function mountOccurrenceResponse(section,{repository,uid,id,questions,isCurrent,canInteract,isWriting,setWriting,questionnaireRevision}) {
   const total=questions.length;
   const answers=Array(total).fill(0);
   let step=0,comment='';
@@ -64,7 +64,7 @@ function mountOccurrenceResponse(section,{repository,uid,id,questions,isCurrent,
       controls.disabled=true;
       status.textContent='Enviando resposta…';
       try {
-        await repository.submitOccurrenceResponse({uid,id,answers:[...answers],comment});
+        await repository.submitOccurrenceResponse({uid,id,answers:[...answers],comment,questionnaireRevision});
         if(isCurrent())confirmed();
       } catch {
         if(isCurrent())status.textContent='Não foi possível confirmar a resposta. Tente novamente.';
@@ -281,22 +281,23 @@ export function mountOccurrenceQuestionnaire(host,options) {
       options.onResultPublished?.();
     }});
   }
-  function showResponse(questions) {
+  function showResponse(questions,questionnaireRevision=0) {
     if(entry.analysisClosed!==true){
       if(entry.responsesClosedAt)response.innerHTML='<p role="status">Respostas da equipe encerradas.</p>';
-      else mountOccurrenceResponse(response,{...options,questions,isCurrent:()=>isCurrent()&&!entry.responsesClosedAt&&!entry.analysisClosed});
+      else mountOccurrenceResponse(response,{...options,questions,questionnaireRevision,isCurrent:()=>isCurrent()&&!entry.responsesClosedAt&&!entry.analysisClosed});
     }
   }
   async function load() {
     response.innerHTML='<p role="status">Consultando questionário…</p>';
     try {
-      const [questions,canEdit]=await Promise.all([repository.readOccurrenceQuestionnaire({uid,id}),editor]);
+      const [questionnaire,canEdit]=await Promise.all([repository.readOccurrenceQuestionnaire({uid,id}),editor]);
+      const {questions=null,revision=0}=questionnaire??{};
       if(!isCurrent())return;
       response.replaceChildren();
       if(canEdit)showResult(true);
       else if(entry.analysisClosed===true)showResult(false);
       publishedQuestions=questions;
-      if(questions)showResponse(questions);
+      if(questions)showResponse(questions,revision);
       else if(canEdit&&entry.analysisClosed!==true) {
         stagePreparation=bindQuestionnaireEditor(config,options,(published,description)=>{
           entry.analysisStarted=true;

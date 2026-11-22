@@ -183,8 +183,10 @@
     }
     function validOccurrenceResponse(id,data) {
       let answers = data.answers;
-      let questions = get(occurrenceQuestionnairePath(id)).data.questions;
-      return data.keys().hasOnly(['answers','comment','submittedAt']) &&
+      let questionnaire = get(occurrenceQuestionnairePath(id)).data;
+      let questions = questionnaire.questions;
+      return data.keys().hasOnly(['answers','comment','submittedAt','questionnaireRevision']) &&
+        data.get('questionnaireRevision',0) == questionnaire.get('revision',0) &&
         answers is list && answers.size() == OCCURRENCE_QUESTION_COUNT &&
         OCCURRENCE_ANSWER_CHECKS &&
         data.comment is string && data.comment.size() <= OCCURRENCE_COMMENT_LIMIT &&
