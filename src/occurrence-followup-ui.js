@@ -6,28 +6,12 @@ import {
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
 import {mountOccurrenceQuestionnaire} from './occurrence-questionnaire-ui.js';
 import {bindOccurrencePromptActions} from './occurrence-ai-ui.js';
+import {occurrenceAnalysisState,occurrenceChainState,setOccurrenceAnalysisState} from './occurrence-analysis-state.js';
 
 const dateLabel = (value,kind) => kind === 'date' ? formatDisplayDate(value) : value;
 const labelFor = entry => entry.title || getOccurrenceForm(entry.formId)?.title || 'Ocorrência';
 const originTitles = {app:'OCORRÊNCIAS - SAHMT',hospital:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'};
 const pageSize = 30;
-const stateLabels = {
-  pending:'Ocorrências em análise',
-  clear:'Sem pendências em análise',
-  open:'Análise em aberto',
-  closed:'Análise concluída'
-};
-
-function setAnalysisState(button,state) {
-  button.dataset.analysisState=state;
-  button.setAttribute('aria-description',stateLabels[state]);
-}
-
-function themeState(records) {
-  if(records.some(entry=>entry.analysisClosed!==true))return 'pending';
-  return records.length?'closed':'clear';
-}
-
 const privacyNote = 'O relato será disponibilizado à equipe. Retire nomes e outros dados que identifiquem pessoas.';
 
 function descriptionMarkup(entry) {
@@ -44,7 +28,7 @@ function descriptionMarkup(entry) {
 }
 
 export function mountOccurrenceFollowup(host,{
-  repository,uid,isCurrent,groupsMarkup,canInteract,canShowHospital
+  repository,uid,isCurrent,groupsMarkup,canInteract,canShowHospital,onChainChanged
 }) {
   host.innerHTML='<dialog class="occurrence-dialog occurrence-followup" aria-labelledby="occurrence-followup-title">'+
     '<div class="occurrence-dialog__form"><header class="occurrence-dialog__header">'+
@@ -68,13 +52,13 @@ export function mountOccurrenceFollowup(host,{
     return ()=>isCurrent()&&dialog.open&&version===revision;
   }
 
-  async function fetchOverview() {
+  async function fetchOverview(source) {
     const records=[];
     let after=null;
     do {
-      const page=await repository.listFollowups({uid,after});
+      const page=await repository.listFollowups({uid,origin:source,after});
       if (!isCurrent()||!dialog.open) throw new Error('OCCURRENCE_SESSION_CHANGED');
-      records.push(...page.entries.filter(entry=>entry.origin===origin));
+      records.push(...page.entries.filter(entry=>entry.origin===source));
       after=page.next;
     } while(after);
     return records;
@@ -83,7 +67,7 @@ export function mountOccurrenceFollowup(host,{
   function getOverview(refresh=false) {
     if (overviewRequest) return overviewRequest;
     if (overview&&!refresh) return Promise.resolve(overview);
-    const request=fetchOverview().then(records=>{
+    const request=fetchOverview(origin).then(records=>{
       if(overviewRequest===request)overview=records;
       return records;
     }).finally(()=>{
@@ -110,7 +94,7 @@ export function mountOccurrenceFollowup(host,{
       if(!current())return;
       for(const button of buttons) {
         const theme=button.dataset.occurrenceGroup;
-        setAnalysisState(button,themeState(items.filter(entry=>getOccurrenceForm(entry.formId)?.group===theme)));
+        setOccurrenceAnalysisState(button,occurrenceChainState(items.filter(entry=>getOccurrenceForm(entry.formId)?.group===theme)));
       }
     }).catch(()=>{
       if(current())body.querySelector('[data-followup-status]').textContent='Não foi possível consultar a situação das análises.';
@@ -130,7 +114,7 @@ export function mountOccurrenceFollowup(host,{
     void getOverview().then(items=>{
       if(!current())return;
       for(const button of buttons) {
-        setAnalysisState(button,themeState(items.filter(entry=>entry.formId===button.dataset.followupForm)));
+        setOccurrenceAnalysisState(button,occurrenceChainState(items.filter(entry=>entry.formId===button.dataset.followupForm)));
       }
     }).catch(()=>{});
   }
@@ -145,57 +129,65 @@ export function mountOccurrenceFollowup(host,{
     const list=body.querySelector('[data-followup-entries]'),status=body.querySelector('[data-followup-status]'),
       more=body.querySelector('[data-followup-more]'),refresh=body.querySelector('[data-followup-refresh]');
     let found=[],loading=false;
-    function showEntries() {
+    const editorAccess=()=>canShowHospital()?repository.descriptionAccess({uid}).catch(()=>false):Promise.resolve(false);
+    let editor=editorAccess();
+    function showEntries(canEdit=false) {
       list.innerHTML=found.slice(0,shown).map(entry=>
-        '<button type="button" class="occurrence-form-launch" data-followup-record="'+escape(entry.id)+'"'+
-        ' data-analysis-state="'+(entry.analysisClosed===true?'closed':'open')+'" aria-description="'+
-        (entry.analysisClosed===true?stateLabels.closed:stateLabels.open)+'">'+
+        '<button type="button" class="occurrence-form-launch" data-followup-record="'+escape(entry.id)+'">'+
         '<span class="'+(entry.origin==='hospital'?'occurrence-hospital-title':'')+'"><strong>'+escape(occurrenceProtocol(entry))+
         '</strong> · '+escape(labelFor(entry))+'</span></button>').join('');
+      for(const [index,button] of [...list.querySelectorAll('button')].entries()) {
+        const state=occurrenceAnalysisState(found[index]);
+        setOccurrenceAnalysisState(button,state);
+        button.disabled=state==='preparing'&&!canEdit;
+      }
       status.textContent=found.length?'':'Nenhuma ocorrência registrada neste tema.';
       more.hidden=shown>=found.length;
     }
     async function load(force=false) {
       if (loading || !current()) return;
       loading=true;refresh.disabled=true;
+      if(force)editor=editorAccess();
       status.textContent='Carregando ocorrências…';
       try {
-        const items=await getOverview(force);
+        const [items,canEdit]=await Promise.all([getOverview(force),editor]);
         if (!current()) return;
         found=items.filter(entry=>entry.formId===formId);
         if(force)shown=pageSize;
-        showEntries();
+        showEntries(canEdit);
       } catch {
         if(current())status.textContent='Não foi possível consultar as ocorrências.';
       } finally {loading=false;refresh.disabled=false;}
     }
     list.addEventListener('click',event=>{
       const button=event.target.closest('[data-followup-record]');
-      if (button&&current()) detail(found.find(entry=>entry.id===button.dataset.followupRecord));
+      if (button&&!button.disabled&&current()) detail(found.find(entry=>entry.id===button.dataset.followupRecord),editor);
     });
-    more.addEventListener('click',()=>{shown+=pageSize;showEntries();});
+    more.addEventListener('click',()=>void editor.then(canEdit=>{if(current()){shown+=pageSize;showEntries(canEdit);}}));
     refresh.addEventListener('click',()=>void load(true));
     void load();
   }
 
-  function detail(entry) {
+  function detail(entry,canEdit) {
     const label=occurrenceProtocol(entry);
-    const current=render(label,descriptionMarkup(entry)+
-      '<div data-occurrence-description-tools hidden></div><div data-occurrence-questionnaire></div>'+
+    const report=descriptionMarkup(entry)+'<div data-occurrence-description-tools hidden></div>';
+    const questionnaire='<div data-occurrence-questionnaire></div>';
+    const current=render(label,(entry.analysisClosed===true?questionnaire+report:report+questionnaire)+
       '<div data-occurrence-ai-panel></div>',()=>records(true));
     heading.classList.toggle('occurrence-hospital-heading',entry.origin==='hospital');
     const descriptionTools=body.querySelector('[data-occurrence-description-tools]');
     const promptPanel=body.querySelector('[data-occurrence-ai-panel]');
     let stageDescription;
-    const editor=canShowHospital()?repository.descriptionAccess({uid}).then(allowed=>{
-      if (allowed&&current())stageDescription=bindDescriptionEditor(descriptionTools,entry,current);
-      return Boolean(stageDescription);
-    }).catch(()=>false):Promise.resolve(false);
+    const editor=canEdit.then(allowed=>{
+      if (allowed&&current()&&entry.analysisClosed!==true)stageDescription=bindDescriptionEditor(descriptionTools,entry,current);
+      return allowed&&current();
+    });
     const isWriting=()=>writing;
     mountOccurrenceQuestionnaire(body.querySelector('[data-occurrence-questionnaire]'),{
-      repository,uid,id:entry.id,label:label+' · '+labelFor(entry),editor,
+      repository,uid,id:entry.id,entry,label:label+' · '+labelFor(entry),editor,
       isCurrent:current,canInteract,isWriting,setWriting:value=>{writing=value;},
-      onResultPublished:()=>{entry.analysisClosed=true;},
+      onResultPublished:()=>{descriptionTools.hidden=true;promptActions.hidden=true;promptPanel.replaceChildren();},
+      onEventFinalized:()=>onChainChanged?.(),
       onEditorReady:options=>bindOccurrencePromptActions(promptActions,promptPanel,{
         ...options,entry,isCurrent:current,isWriting,stageDescription
       })

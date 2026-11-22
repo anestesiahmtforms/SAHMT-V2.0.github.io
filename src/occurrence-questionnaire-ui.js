@@ -1,9 +1,9 @@
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
 import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIMIT,OCCURRENCE_PROMPT_LIMIT,
-  OCCURRENCE_OPTION_TEXT_LIMIT,formatOccurrenceAnalysisExport,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
+  OCCURRENCE_OPTION_TEXT_LIMIT,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
 import {OCCURRENCE_ETHICAL_REVIEW_LIMIT} from './occurrence-schema.js';
 
-function mountOccurrenceResponse(section,{repository,uid,id,questions,isCurrent,canInteract,isWriting,setWriting,onSubmitted}) {
+function mountOccurrenceResponse(section,{repository,uid,id,questions,isCurrent,canInteract,isWriting,setWriting}) {
   const total=questions.length;
   const answers=Array(total).fill(0);
   let step=0,comment='';
@@ -13,7 +13,6 @@ function mountOccurrenceResponse(section,{repository,uid,id,questions,isCurrent,
   function confirmed() {
     content.replaceChildren();
     status.textContent='Sua resposta foi registrada.';
-    onSubmitted();
   }
   async function load() {
     content.replaceChildren();
@@ -98,144 +97,119 @@ async function readOccurrenceResponses({repository,uid,id,questions,isCurrent}) 
   return {questions,entries,legacy};
 }
 
-function bindOccurrenceResponses(panel,{repository,uid,id,label,questions,isCurrent}) {
-  panel.innerHTML='<summary>RESPOSTAS DA ABORDAGEM</summary><p role="status"></p><div data-ethical-poll-totals></div>'+
-    '<ul class="occurrence-poll-comments" aria-label="Comentários"></ul>'+
-    '<button type="button" class="secondary-button" data-poll-more hidden>CARREGAR MAIS</button>'+
-    '<button type="button" class="secondary-button" data-poll-copy>COPIAR TODAS AS RESPOSTAS</button>'+
-    '<p role="status" data-poll-copy-status></p><label class="occurrence-field" data-poll-copy-fallback hidden>'+
-    '<span>Texto para copiar</span><textarea rows="8" readonly></textarea></label>';
-  panel.hidden=false;
-  const status=panel.querySelector('[role="status"]'),more=panel.querySelector('[data-poll-more]');
-  const results=panel.querySelector('[data-ethical-poll-totals]'),comments=panel.querySelector('ul');
-  const counts=questions.map(({options})=>options.map(()=>0));
-  let after=null,total=0,loading=false,loaded=false;
-  async function load(){
-    if (!isCurrent()||loading) return;
-    loading=true;more.disabled=true;status.textContent='Carregando respostas…';
-    try {
-      const page=questions.length?await repository.listOccurrenceResponses({uid,id,after}):{entries:[],next:null};
-      if(!isCurrent())return;
-      for(const {answers,comment} of page.entries){
-        total++;
-        answers.forEach((answer,index)=>counts[index][answer-1]++);
-        if(comment)comments.insertAdjacentHTML('beforeend','<li>'+escape(comment)+'</li>');
-      }
-      after=page.next;loaded=true;more.hidden=!after;more.textContent='CARREGAR MAIS';
-      status.textContent=!questions.length?'A cópia inclui as análises já registradas.':total?(after?'Respostas carregadas: ':'Total de respostas: ')+total:'Nenhuma resposta recebida.';
-      results.innerHTML=total?questions.map(({prompt,options},index)=>
-        '<details><summary>'+escape(prompt)+'</summary><ul>'+options.map((text,option)=>
-          '<li><strong>'+counts[index][option]+'</strong> · '+escape(text)+'</li>').join('')+'</ul></details>').join(''):'';
-    } catch {
-      if(isCurrent()){status.textContent='Não foi possível consultar as respostas.';more.hidden=false;more.textContent='TENTAR NOVAMENTE';}
-    } finally {loading=false;more.disabled=false;}
-  }
-  panel.addEventListener('toggle',()=>{if(panel.open&&!loaded)void load();});
-  more.addEventListener('click',()=>void load());
-  const copy=panel.querySelector('[data-poll-copy]'),copyStatus=panel.querySelector('[data-poll-copy-status]');
-  const fallback=panel.querySelector('[data-poll-copy-fallback]'),copyText=fallback.querySelector('textarea');
-  copy.addEventListener('click',async()=>{
-    if(copy.disabled||!isCurrent())return;
-    copy.disabled=true;fallback.hidden=true;copyText.value='';
-    copyStatus.textContent='Preparando a cópia de todas as respostas…';
-    const exported=readOccurrenceResponses({repository,uid,id,questions,isCurrent}).then(data=>
-      formatOccurrenceAnalysisExport({label,...data}));
-    const clipboard=navigator.clipboard;
-    try {
-      let copied=false;
-      if (clipboard?.write&&typeof ClipboardItem==='function') {
-        const data=exported.then(text=>new Blob([text],{type:'text/plain'}));
-        void data.catch(()=>{});
-        try {await clipboard.write([new ClipboardItem({'text/plain':data})]);copied=true;} catch {}
-      }
-      const text=await exported;
-      if(!isCurrent())return;
-      if(!copied&&clipboard?.writeText) {
-        try {await clipboard.writeText(text);copied=true;} catch {}
-      }
-      if(!isCurrent())return;
-      if(copied){copyStatus.textContent='Todas as respostas foram copiadas.';return;}
-      copyStatus.textContent='Selecione e copie o texto abaixo.';
-      copyText.value=text;fallback.hidden=false;copyText.focus();copyText.select();
-    } catch(error) {
-      if(isCurrent())copyStatus.textContent=error.message==='OCCURRENCE_POLL_EMPTY'?'Nenhuma resposta recebida.':
-        'Não foi possível preparar a cópia. Tente novamente.';
-    } finally {copy.disabled=false;}
-  });
-}
+function bindOccurrenceResult(panel,{
+  repository,uid,id,entry,isCurrent,canEdit,isWriting,setWriting,onResultPublished,onEventFinalized
+}) {
+  panel.innerHTML='<div data-poll-result-body></div><p role="status"></p>';
+  const body=panel.querySelector('[data-poll-result-body]'),status=panel.querySelector('[role="status"]');
+  let published=null,loading=false;
 
-function bindOccurrenceResult(panel,{repository,uid,id,isCurrent,canEdit,isWriting,setWriting,onResultPublished}) {
-  panel.innerHTML='<button type="button" class="secondary-button" aria-expanded="false">RESULTADO DA ANÁLISE PELO SERVIÇO</button>'+
-    '<div data-poll-result-body hidden></div><p role="status"></p>';
-  const toggle=panel.querySelector('button'),body=panel.querySelector('[data-poll-result-body]'),status=panel.querySelector('[role="status"]');
-  let published='',loaded=false;
-  async function load() {
-    const text=await repository.readOccurrenceResult({uid,id});
-    if (!isCurrent()) return;
-    published=text;loaded=true;
-    if (canEdit||published) panel.hidden=false;
+  async function run(button,progress,action) {
+    if(!isCurrent()||isWriting()||button.disabled)return;
+    setWriting(true);button.disabled=true;status.textContent=progress;
+    try {await action();}
+    catch(error) {
+      if(isCurrent())status.textContent=['OCCURRENCE_ETHICAL_REVIEW_CHANGED','OCCURRENCE_RESULT_CHANGED'].includes(error.message)
+        ?'O resultado mudou. Volte e abra novamente para consultar a versão atual.'
+        :'Não foi possível confirmar esta ação. Tente novamente.';
+    } finally {setWriting(false);if(isCurrent())button.disabled=false;}
   }
-  function render() {
-    status.textContent='';
-    if(!canEdit){body.innerHTML='<p class="occurrence-poll-final-text">'+escape(published)+'</p>';return;}
+
+  function renderPublished() {
+    body.innerHTML='<h4>RESULTADO DA ANÁLISE PELO SERVIÇO</h4><p class="occurrence-poll-final-text">'+escape(published.text)+'</p>'+
+      '<div class="occurrence-result-actions"><button type="button" class="primary-button" disabled data-occurrence-ack>CIÊNCIA</button>'+
+      (canEdit&&!entry.eventClosed?
+        '<button type="button" class="secondary-button" data-occurrence-result-edit>EDITAR ANÁLISE FINAL</button>'+
+        '<button type="button" class="secondary-button" data-occurrence-finalize>FINALIZAR EVENTO</button>':'')+'</div>';
+    const ack=body.querySelector('[data-occurrence-ack]');
+    const resultAt=published.updatedAt;
+    function showAcknowledged() {
+      ack.textContent='CIÊNCIA REGISTRADA';
+      ack.disabled=true;
+    }
+    void repository.readOccurrenceAcknowledgement({uid,id,resultAt}).then(acknowledged=>{
+      if(!isCurrent()||!ack.isConnected)return;
+      if(acknowledged)showAcknowledged();
+      else ack.disabled=false;
+    }).catch(()=>{if(isCurrent()&&ack.isConnected)ack.disabled=false;});
+    ack.addEventListener('click',async()=>{
+      let confirmed=false;
+      await run(ack,'Registrando ciência…',async()=>{
+        await repository.acknowledgeOccurrence({uid,id,resultAt});
+        if(isCurrent()){confirmed=true;status.textContent='Ciência registrada.';}
+      });
+      if(confirmed&&isCurrent())showAcknowledged();
+    });
+    body.querySelector('[data-occurrence-result-edit]')?.addEventListener('click',()=>{if(!isWriting())renderEditor(published.text);});
+    const finalize=body.querySelector('[data-occurrence-finalize]');
+    finalize?.addEventListener('click',()=>void run(finalize,'Finalizando evento…',async()=>{
+      await repository.finalizeOccurrence({uid,id,resultAt});
+      if(!isCurrent())return;
+      entry.eventClosed=true;
+      onEventFinalized?.();
+      renderPublished();
+      status.textContent='Evento finalizado.';
+    }));
+  }
+
+  function renderEditor(text) {
     body.innerHTML='<form class="occurrence-followup-analysis"><fieldset>'+
       '<label class="occurrence-field"><span>Resultado final</span><textarea name="result" rows="8" required maxlength="'+
-      OCCURRENCE_ETHICAL_REVIEW_LIMIT+'"></textarea></label><button type="submit" class="primary-button">PUBLICAR RESULTADO</button></fieldset></form>';
+      OCCURRENCE_ETHICAL_REVIEW_LIMIT+'"></textarea></label><button type="submit" class="primary-button">PUBLICAR RESULTADO</button>'+
+      (published?'<button type="button" class="secondary-button" data-result-cancel>CANCELAR</button>':'')+'</fieldset></form>';
     const form=body.querySelector('form'),input=form.elements.result,controls=form.querySelector('fieldset');
-    input.value=published;
-    form.addEventListener('submit',async event=>{
-      event.preventDefault();
-      if (!isCurrent()||isWriting()) return;
-      const text=input.value.trim();
-      if(!text){status.textContent='Preencha o resultado final.';return;}
-      setWriting(true);controls.disabled=true;toggle.disabled=true;status.textContent='Publicando resultado…';
-      try {
-        const result=await repository.saveOccurrenceResult({uid,id,text,expectedText:published});
-        if(isCurrent()){
-          input.value=published=result;
-          status.textContent='Resultado publicado para os participantes.';
-          onResultPublished?.();
-        }
-      } catch(error) {
-        if(isCurrent())status.textContent=error.message==='OCCURRENCE_ETHICAL_REVIEW_CHANGED'
-          ?'O resultado mudou desde que você abriu o registro. Volte e reabra para ler a versão atual.'
-          :'Não foi possível publicar o resultado. Tente novamente.';
-      } finally {setWriting(false);if(isCurrent()){controls.disabled=false;toggle.disabled=false;}}
-    });
-  }
-  async function open() {
-    if(!isCurrent()||isWriting()||toggle.disabled)return false;
-    if(!loaded) {
-      toggle.disabled=true;
-      try {await load();}
-      catch {
-        if(isCurrent())status.textContent='Não foi possível abrir o resultado.';
-        return false;
-      } finally {toggle.disabled=false;}
-    }
-    if(!isCurrent()||isWriting())return false;
-    body.hidden=false;
-    toggle.setAttribute('aria-expanded','true');
-    if(!body.childElementCount)render();
-    return true;
-  }
-  toggle.addEventListener('click',()=>{
-    if(!isCurrent()||isWriting())return;
-    if(body.hidden)void open();
-    else {
-      body.hidden=true;
-      toggle.setAttribute('aria-expanded','false');
-    }
-  });
-  if(canEdit)panel.hidden=false;
-  else void load().catch(()=>{});
-  return async text=>{
-    if(!canEdit||!await open())return false;
-    const input=body.querySelector('textarea');
+    const submit=form.querySelector('[type="submit"]');
     input.value=text;
-    input.focus();
-    return true;
-  };
+    input.focus({preventScroll:true});
+    form.querySelector('[data-result-cancel]')?.addEventListener('click',()=>{if(!isWriting())renderPublished();});
+    form.addEventListener('submit',event=>{
+      event.preventDefault();
+      const next=input.value.trim();
+      if(!next){status.textContent='Preencha o resultado final.';return;}
+      void run(submit,'Publicando resultado…',async()=>{
+        controls.disabled=true;
+        try {
+          await repository.saveOccurrenceResult({uid,id,text:next,expectedText:published?.text??''});
+          if(!isCurrent())return;
+          entry.analysisClosed=true;
+          onResultPublished?.();
+          published=await repository.readOccurrenceResult({uid,id});
+          if(!isCurrent())return;
+          renderPublished();
+          status.textContent='Resultado publicado. A equipe já pode registrar ciência.';
+        } finally {controls.disabled=false;}
+      });
+    });
+    return input;
+  }
+
+  async function open(draft) {
+    if(!isCurrent()||isWriting()||loading)return false;
+    loading=true;panel.hidden=false;status.textContent='Carregando resultado…';
+    try {
+      const result=await repository.readOccurrenceResult({uid,id});
+      if(!isCurrent()||isWriting())return false;
+      if(entry.analysisClosed===true&&!result)throw Error('OCCURRENCE_RESULT_MISSING');
+      published=result;
+      status.textContent='';
+      if(typeof draft==='string'&&canEdit&&!entry.eventClosed){
+        renderEditor(draft).focus();
+      } else if(published)renderPublished();
+      else if(canEdit&&!entry.eventClosed)renderEditor('');
+      return true;
+    } catch {
+      if(isCurrent()){
+        status.textContent='Não foi possível abrir o resultado.';
+        if(entry.analysisClosed===true){
+          body.innerHTML='<button type="button" class="secondary-button">TENTAR NOVAMENTE</button>';
+          body.querySelector('button').addEventListener('click',()=>void open());
+        }
+      }
+      return false;
+    } finally {loading=false;}
+  }
+  if(entry.analysisClosed===true)void open();
+  return text=>open(text);
 }
 
 function bindQuestionnaireEditor(panel,{repository,uid,id,isCurrent,isWriting,setWriting},onPublished) {
@@ -285,24 +259,25 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,isCurrent,isWriting,se
 }
 
 export function mountOccurrenceQuestionnaire(host,options) {
-  const {repository,uid,id,editor,isCurrent,onEditorReady}=options;
+  const {repository,uid,id,entry,editor,isCurrent,onEditorReady}=options;
   host.innerHTML='<div data-questionnaire-editor></div>'+
     '<section class="occurrence-followup-analysis" data-ethical-poll></section>'+
-    '<details data-ethical-poll-results hidden></details>'+
     '<section class="occurrence-poll-result" data-ethical-poll-result hidden></section>';
   const config=host.querySelector('[data-questionnaire-editor]');
   const response=host.querySelector('[data-ethical-poll]');
-  const exportPanel=host.querySelector('[data-ethical-poll-results]');
   const result=host.querySelector('[data-ethical-poll-result]');
   let resultBound=false,publishedQuestions=null,stageResult,stageQuestions;
   function showResult(canEdit) {
     if(!isCurrent()||resultBound)return;
     resultBound=true;
-    stageResult=bindOccurrenceResult(result,{...options,canEdit});
+    stageResult=bindOccurrenceResult(result,{...options,canEdit,onResultPublished:()=>{
+      response.replaceChildren();
+      options.onResultPublished?.();
+    }});
   }
   function showQuestions(questions,canEdit) {
-    if(canEdit)bindOccurrenceResponses(exportPanel,{...options,questions});
-    mountOccurrenceResponse(response,{...options,questions,onSubmitted:()=>showResult(canEdit)});
+    if(entry.analysisClosed!==true)mountOccurrenceResponse(response,{...options,questions});
+    if(entry.analysisClosed===true||canEdit)showResult(canEdit);
   }
   async function load() {
     response.innerHTML='<p role="status">Consultando questionário…</p>';
@@ -311,22 +286,18 @@ export function mountOccurrenceQuestionnaire(host,options) {
       if(!isCurrent())return;
       response.replaceChildren();
       if(canEdit)showResult(true);
-      else void repository.readAnalysis({uid,id}).then(analysis=>{if(analysis)showResult(false);}).catch(()=>{});
+      else if(entry.analysisClosed===true)showResult(false);
       publishedQuestions=questions;
       if(questions)showQuestions(questions,canEdit);
-      else if(canEdit) {
-        bindOccurrenceResponses(exportPanel,{...options,questions:[]});
+      else if(canEdit&&entry.analysisClosed!==true) {
         stageQuestions=bindQuestionnaireEditor(config,options,published=>{
+          entry.analysisStarted=true;
           publishedQuestions=published;
           stageQuestions=null;
-          // Replace the archive panel so its listeners only refer to the published questions.
-          const panel=exportPanel.cloneNode(false);
-          exportPanel.replaceWith(panel);
-          bindOccurrenceResponses(panel,{...options,questions:published});
-          mountOccurrenceResponse(response,{...options,questions:published,onSubmitted:()=>showResult(true)});
+          mountOccurrenceResponse(response,{...options,questions:published});
         });
-      } else response.innerHTML='<p>Questionário ainda não publicado.</p>';
-      if(canEdit)onEditorReady?.({
+      } else if(entry.analysisClosed!==true)response.innerHTML='<p>Questionário ainda não publicado.</p>';
+      if(canEdit&&entry.analysisClosed!==true)onEditorReady?.({
         hasQuestionnaire:()=>Boolean(publishedQuestions),
         readResponses:()=>readOccurrenceResponses({...options,questions:publishedQuestions??[]}),
         stageQuestions:draft=>stageQuestions?.(draft),stageResult

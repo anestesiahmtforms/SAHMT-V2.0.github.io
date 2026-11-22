@@ -8,7 +8,7 @@ export function bindOccurrencePromptActions(footer,host,{
   const protocol=occurrenceProtocol(entry);
   const modes={
     preparation:{
-      label:'PREPARAR OCORRÊNCIA COM IA',
+      label:'PREPARAR OCORRÊNCIA',
       prepare:()=>buildPreparationPrompt(entry,hasQuestionnaire()),
       async stage(text) {
         const draft=readPreparationDraft(text,protocol,hasQuestionnaire());
@@ -19,7 +19,7 @@ export function bindOccurrencePromptActions(footer,host,{
       success:'Rascunho carregado. Revise a descrição e, se houver perguntas novas, revise o questionário antes de publicar.'
     },
     analysis:{
-      label:'ANALISAR RESPOSTAS COM IA',
+      label:'ANALISAR RESPOSTAS',
       prepare:async()=>buildAnalysisPrompt(entry,await readResponses()),
       stage:text=>stageResult(readAnalysisDraft(text,protocol)),
       success:'Rascunho carregado em Resultado da análise pelo serviço. Revise antes de publicar.'

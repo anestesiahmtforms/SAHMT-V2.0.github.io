@@ -128,7 +128,10 @@ service cloud.firestore {
     }
     function canEditOccurrenceDescription() {
       let grant = /databases/$(database)/documents/occurrenceDescriptionGrants/$(request.auth.uid);
-      return occurrenceAdministrator() || (activeUser() && exists(grant) && get(grant).data.enabled == true);
+      let permissions = profile().get('permissions',{});
+      return activeUser() && (profile().get('role','') == 'administrador_app' ||
+        (permissions is map && permissions.get('admin',false) == true) ||
+        (exists(grant) && get(grant).data.enabled == true));
     }
     function validOccurrenceNumber(id, data) {
       let counter = getAfter(occurrenceCounterPath()).data;
@@ -149,7 +152,7 @@ service cloud.firestore {
       allow list, delete: if false;
     }
     function occurrenceText(value,max) {
-      return value is string && value.size() > 0 && value.size() <= max && value.matches('(?s).*\\S.*');
+      return value is string && value.size() <= max && value.matches('(?s).*\\S.*');
     }
     function validOccurrenceAppFields(data) {
       let fields = data.details;
@@ -286,16 +289,23 @@ service cloud.firestore {
           (request.resource.data.origin == 'hospital' && canRegisterHospitalOccurrence() && validHospitalOccurrenceFollowup(id,request.resource.data)));
       allow update: if canEditOccurrenceDescription() && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description']) &&
-          occurrenceText(request.resource.data.description,5000)) ||
+          !resource.data.get('eventClosed',false) && occurrenceText(request.resource.data.description,5000)) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['analysisStarted']) &&
+          request.resource.data.analysisStarted == true && !resource.data.get('analysisClosed',false) &&
+          getAfter(occurrenceQuestionnairePath(id)).data.publishedAt == request.time) ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['analysisClosed']) &&
           request.resource.data.analysisClosed == true &&
-          getAfter(occurrenceResultPath(id)).data.updatedAt == request.time)
+          !resource.data.get('eventClosed',false) && getAfter(occurrenceResultPath(id)).data.updatedAt == request.time) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['eventClosed']) &&
+          request.resource.data.eventClosed == true && resource.data.get('analysisClosed',false) &&
+          exists(occurrenceResultPath(id)))
       );
       allow delete: if false;
       match /analyses/{uid} {
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
         allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
         allow create, update: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
+          !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
           get(occurrenceFollowupPath(id)).data.formId != 'F08' && !exists(occurrenceQuestionnairePath(id)) && validOccurrenceAnalysis(request.resource.data);
         allow delete: if false;
       }
@@ -310,25 +320,37 @@ service cloud.firestore {
       match /analysisQuestionnaire/current {
         allow get: if activeUser() && exists(occurrenceFollowupPath(id));
         allow create: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
-          validOccurrenceQuestionnaire(request.resource.data);
+          !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
+          getAfter(occurrenceFollowupPath(id)).data.get('analysisStarted',false) && validOccurrenceQuestionnaire(request.resource.data);
         allow update, delete: if false;
       }
       match /ethicalPollResponses/{uid} {
         allow get: if activeUser() && request.auth.uid == uid && exists(occurrenceFollowupPath(id));
         allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
         allow create: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
-          exists(occurrenceFollowupPath(id)) && validOccurrenceResponse(id,request.resource.data);
+          exists(occurrenceFollowupPath(id)) && !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
+          validOccurrenceResponse(id,request.resource.data);
         allow update, delete: if false;
       }
       match /ethicalPollResult/current {
         allow get: if activeUser() && (canEditOccurrenceDescription() ||
-          exists(/databases/$(database)/documents/occurrenceFollowups/$(id)/ethicalPollResponses/$(request.auth.uid)) ||
-          exists(/databases/$(database)/documents/occurrenceFollowups/$(id)/analyses/$(request.auth.uid)));
+          get(occurrenceFollowupPath(id)).data.get('analysisClosed',false));
         allow create, update: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+          !get(occurrenceFollowupPath(id)).data.get('eventClosed',false) &&
           getAfter(occurrenceFollowupPath(id)).data.analysisClosed == true &&
           request.resource.data.keys().hasOnly(['text','updatedAt']) &&
           occurrenceText(request.resource.data.text,20000) && request.resource.data.updatedAt == request.time;
         allow delete: if false;
+      }
+      match /analysisAcknowledgements/{uid} {
+        allow get: if activeUser() && request.auth.uid == uid && exists(occurrenceFollowupPath(id));
+        allow create, update: if activeUser() && request.auth.uid == uid &&
+          get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
+          request.resource.data.keys().hasOnly(['resultAt','acknowledgedAt']) &&
+          request.resource.data.resultAt == get(occurrenceResultPath(id)).data.updatedAt &&
+          request.resource.data.acknowledgedAt == request.time &&
+          (resource == null || resource.data.resultAt != request.resource.data.resultAt);
+        allow list, delete: if false;
       }
     }
     function occurrenceQuestionnairePath(id) {

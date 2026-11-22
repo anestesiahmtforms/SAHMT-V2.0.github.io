@@ -258,16 +258,50 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   const publishOccurrenceQuestionnaire = async ({uid,id,questions} = {}) => {
     const next=normalizeOccurrenceQuestions(questions);
     if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
-    const ref=analysisRef(id,'analysisQuestionnaire');
+    const ref=analysisRef(id,'analysisQuestionnaire'),record=api.doc(db,FOLLOWUPS,id);
     await api.runTransaction(db,async tx => {
       const row=await tx.get(ref);
       if (!isCurrent() || auth.currentUser?.uid !== uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
       if (row.exists()) throw new Error('OCCURRENCE_QUESTIONNAIRE_PUBLISHED');
       tx.set(ref,{questions:next,publishedAt:api.serverTimestamp()});
+      tx.update(record,{analysisStarted:true});
     });
     return next;
   };
-  const readOccurrenceResult = ({uid,id} = {}) => readEthicalText(uid,analysisRef(id,'ethicalPollResult'));
+  const readOccurrenceResult = async ({uid,id} = {}) => {
+    const {user} = await requirePermission(uid);
+    const snapshot=await api.getDocFromServer(analysisRef(id,'ethicalPollResult'));
+    if (!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+    const row=snapshot.data();
+    return row ? {text:row.text,updatedAt:row.updatedAt} : null;
+  };
+  const readOccurrenceAcknowledgement = async ({uid,id,resultAt} = {}) => {
+    const {user}=await requirePermission(uid);
+    const snapshot=await api.getDocFromServer(analysisRef(id,'analysisAcknowledgements',uid));
+    if (!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+    return snapshot.data()?.resultAt?.isEqual(resultAt)===true;
+  };
+  const acknowledgeOccurrence = async ({uid,id,resultAt} = {}) => {
+    const {user}=await requirePermission(uid);
+    const result=analysisRef(id,'ethicalPollResult'),receipt=analysisRef(id,'analysisAcknowledgements',uid);
+    await api.runTransaction(db,async tx=>{
+      const resultRow=await tx.get(result),receiptRow=await tx.get(receipt);
+      if (!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      if(!resultRow.data()?.updatedAt?.isEqual(resultAt))throw new Error('OCCURRENCE_RESULT_CHANGED');
+      if(receiptRow.data()?.resultAt?.isEqual(resultAt))return;
+      tx.set(receipt,{resultAt,acknowledgedAt:api.serverTimestamp()});
+    });
+  };
+  const finalizeOccurrence = async ({uid,id,resultAt} = {}) => {
+    if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const result=analysisRef(id,'ethicalPollResult'),record=api.doc(db,FOLLOWUPS,id);
+    await api.runTransaction(db,async tx=>{
+      const parent=await tx.get(record),published=await tx.get(result);
+      if (!isCurrent()||auth.currentUser?.uid!==uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
+      if(!published.data()?.updatedAt?.isEqual(resultAt))throw new Error('OCCURRENCE_RESULT_CHANGED');
+      if(parent.data()?.eventClosed!==true)tx.update(record,{eventClosed:true});
+    });
+  };
   const saveOccurrenceResult = ({uid,id,text,expectedText} = {}) =>
     saveEthicalText({uid,ref:analysisRef(id,'ethicalPollResult'),text,expectedText,completedRecord:api.doc(db,FOLLOWUPS,id)});
   const saveDescription = async ({uid,id,description,expectedDescription} = {}) => {
@@ -286,12 +320,13 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     });
     return next;
   };
-  const listFollowups = async ({uid,formId,after} = {}) => {
+  const listFollowups = async ({uid,formId,origin,after} = {}) => {
     const {user} = await requirePermission(uid);
-    if (formId !== undefined && !getOccurrenceForm(formId)) throw new Error('OCCURRENCE_INPUT_INVALID');
+    if ((origin!==undefined&&!['app','hospital'].includes(origin)) || (formId !== undefined && !getOccurrenceForm(formId))) throw new Error('OCCURRENCE_INPUT_INVALID');
     const pageSize = 30;
     const criteria = [api.orderBy(api.documentId()),api.limit(pageSize)];
     if (formId !== undefined) criteria.unshift(api.where('formId','==',formId));
+    if (origin !== undefined) criteria.unshift(api.where('origin','==',origin));
     if (after) criteria.push(api.startAfter(after));
     const page = await api.getDocsFromServer(api.query(api.collection(db,FOLLOWUPS),...criteria));
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
@@ -393,6 +428,6 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
     hospitalAccess,saveHospital,descriptionAccess,saveDescription,readEthicalReview,saveEthicalReview,
-    readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,getGrant,saveGrant,
+    readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,readOccurrenceAcknowledgement,acknowledgeOccurrence,finalizeOccurrence,getGrant,saveGrant,
     clear:()=>{catalogCache=null;}});
 }

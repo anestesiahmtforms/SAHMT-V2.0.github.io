@@ -5536,6 +5536,21 @@ function syncObligationBanner(){
   }).catch(()=>{if(isCurrent())obligationBannerUid='';});
 }
 
+async function updateHomeOccurrenceState(isCurrent) {
+  const button=document.querySelector('.app-shell--home [data-route="occurrences"]'),uid=session.user?.uid;
+  if(!button||!uid)return;
+  const current=()=>button.isConnected&&isCurrent()&&currentRoute()==='home'&&session.status==='signed-in'&&session.user?.uid===uid;
+  try {
+    const [fc,{createOccurrenceRepository},{readOccurrenceChain,setOccurrenceAnalysisState}]=await Promise.all([
+      import('./fc-module-firebase.js'),import('./occurrence-data.js'),import('./occurrence-analysis-state.js')
+    ]);
+    if(!current()||!await fc.waitForIndicatorsSession({isCurrent:current})||!current())return;
+    const repository=createOccurrenceRepository({db:fc.getIndicatorsFirestore(),auth:fc.getIndicatorsAuth(),isCurrent:current});
+    const state=await readOccurrenceChain(repository,uid,'app');
+    if(current())setOccurrenceAnalysisState(button,state);
+  } catch {}
+}
+
 async function render() {
   if(typeof syncObligationBanner==='function')syncObligationBanner();
   globalThis.communicationHomeBannerCleanup?.();
@@ -5758,6 +5773,7 @@ async function render() {
   void updateOutboxStatus();
   if (['home','schedule'].includes(currentRoute())) {
     if(currentRoute()==='home'){
+      if(typeof updateHomeOccurrenceState==='function')void updateHomeOccurrenceState(current);
       await loadHome();
       if(!current())return;
       const bannerRoot=document.querySelector('[data-comm-home-notices]');

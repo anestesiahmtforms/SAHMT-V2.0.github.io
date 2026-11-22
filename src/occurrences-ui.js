@@ -3,6 +3,7 @@ import {OCCURRENCE_GROUPS, getOccurrenceForm, validateOccurrenceValues} from './
 import {createOccurrenceRepository} from './occurrence-data.js';
 import {withinDeadline} from './async-deadline.js';
 import {mountOccurrenceFollowup} from './occurrence-followup-ui.js';
+import {readOccurrenceChain,setOccurrenceAnalysisState} from './occurrence-analysis-state.js';
 
 const FORM_ORDER = Object.freeze({A:['F01','F02','F03','F04','F05','F06','F07'],B:['F08'],C:['F09'],D:['F10']});
 const ICONS = Object.freeze({
@@ -111,7 +112,7 @@ export function createOccurrenceSessionGate({auth,uid,isCurrent}={}) {
 }
 
 export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID(),
-  followupAllowed=false,canInteract=()=>true,canShowHospital=()=>true,isAdministrator=false}={}) {
+  followupAllowed=false,canInteract=()=>true,canShowHospital=()=>true}={}) {
   const pageCurrent=isCurrent;
   let disposed=false;
   isCurrent=()=>!disposed&&root.isConnected&&pageCurrent();
@@ -132,14 +133,25 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
   root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências -SAHMT"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-menu"><section class="occurrence-menu-block occurrence-groups" aria-label="Categorias de registro">${occurrenceGroupMarkup()}</section>${followupBlock}</div><div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
   const host=root.querySelector('[data-occurrence-dialog-host]');
   const moduleStatus=root.querySelector('.occurrence-module-status');
+  const analysisButtons=[...root.querySelectorAll('[data-occurrence-followup]')];
+  let analysisRefresh=0;
+  function refreshAnalysisButtons() {
+    const refresh=++analysisRefresh;
+    for(const button of analysisButtons) {
+      void readOccurrenceChain(repository,uid,button.dataset.occurrenceFollowup).then(state=>{
+        if(isCurrent()&&refresh===analysisRefresh)setOccurrenceAnalysisState(button,state);
+      }).catch(()=>{});
+    }
+  }
   if (followupAllowed) {
     const module=root.querySelector('.occurrence-module');
     module.insertAdjacentHTML('beforeend','<div data-occurrence-followup-host></div>');
     const openFollowup=mountOccurrenceFollowup(module.querySelector('[data-occurrence-followup-host]'),
-      {repository,uid,isCurrent,groupsMarkup:occurrenceGroupMarkup,canInteract,canShowHospital,isAdministrator});
-    for(const button of module.querySelectorAll('[data-occurrence-followup]')) {
+      {repository,uid,isCurrent,groupsMarkup:occurrenceGroupMarkup,canInteract,canShowHospital,onChainChanged:refreshAnalysisButtons});
+    for(const button of analysisButtons) {
       button.addEventListener('click',()=>openFollowup(button.dataset.occurrenceFollowup));
     }
+    refreshAnalysisButtons();
   }
   const categoryHost=root.querySelector('[data-occurrence-category-host]');
   const showCategory=groupId=>{
@@ -199,6 +211,8 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
         if(!isCurrent())return;pendingRecordId=null;
         const reference=result.protocol?` ${result.protocol}.`:'';
         moduleStatus.textContent=result.status==='already-saved'?`Este envio já havia sido confirmado.${reference}`:`Registro confirmado pelo servidor.${reference} Pontuação aguardando validação.`;
+        const appAnalysis=analysisButtons.find(button=>button.dataset.occurrenceFollowup==='app');
+        if(appAnalysis){++analysisRefresh;setOccurrenceAnalysisState(appAnalysis,'pending');}
         status.textContent='';
         dialog.close('saved');formElement.reset();formElement.dataset.dirty='false';
       } catch(error) {if(isCurrent())status.textContent=occurrenceWriteFailureMessage(error);}
