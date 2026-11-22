@@ -255,7 +255,8 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     return row.exists() ? normalizeOccurrenceQuestions(row.data().questions) : null;
   };
-  const publishOccurrenceQuestionnaire = async ({uid,id,questions} = {}) => {
+  const publishOccurrenceQuestionnaire = async ({uid,id,description,questions} = {}) => {
+    if(!boundedText(description,5000))throw new Error('OCCURRENCE_INPUT_INVALID');
     const next=normalizeOccurrenceQuestions(questions);
     if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const ref=analysisRef(id,'analysisQuestionnaire'),record=api.doc(db,FOLLOWUPS,id);
@@ -264,9 +265,21 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       if (!isCurrent() || auth.currentUser?.uid !== uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
       if (row.exists()) throw new Error('OCCURRENCE_QUESTIONNAIRE_PUBLISHED');
       tx.set(ref,{questions:next,publishedAt:api.serverTimestamp()});
-      tx.update(record,{analysisStarted:true});
+      tx.update(record,{analysisStarted:true,preparedDescription:description.trim()});
     });
     return next;
+  };
+  const closeOccurrenceResponses = async ({uid,id} = {}) => {
+    if(!followupId(id)||!await descriptionAccess({uid}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const ref=api.doc(db,FOLLOWUPS,id);
+    await api.runTransaction(db,async tx=>{
+      const snapshot=await tx.get(ref);
+      if(!isCurrent()||auth.currentUser?.uid!==uid)throw new Error('OCCURRENCE_SESSION_CHANGED');
+      const record=snapshot.data();
+      if(record?.responsesClosedAt)return;
+      if(record?.analysisStarted!==true||record.analysisClosed===true)throw new Error('OCCURRENCE_RESPONSES_UNAVAILABLE');
+      tx.update(ref,{responsesClosedAt:api.serverTimestamp()});
+    });
   };
   const readOccurrenceResult = async ({uid,id} = {}) => {
     const {user} = await requirePermission(uid);
@@ -313,10 +326,10 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       const snapshot = await tx.get(ref);
       if (!isCurrent() || auth.currentUser?.uid !== uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
       if (!snapshot.exists()) throw new Error('OCCURRENCE_RECORD_NOT_FOUND');
-      const previous = snapshot.data().description ?? null;
+      const previous = snapshot.data().preparedDescription ?? snapshot.data().description ?? null;
       if (previous === next) return;
       if (previous !== expectedDescription) throw new Error('OCCURRENCE_DESCRIPTION_CHANGED');
-      tx.update(ref,{description:next});
+      tx.update(ref,{preparedDescription:next});
     });
     return next;
   };
@@ -428,6 +441,6 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
     hospitalAccess,saveHospital,descriptionAccess,saveDescription,readEthicalReview,saveEthicalReview,
-    readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,readOccurrenceAcknowledgement,acknowledgeOccurrence,finalizeOccurrence,getGrant,saveGrant,
+    readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,readOccurrenceAcknowledgement,acknowledgeOccurrence,finalizeOccurrence,closeOccurrenceResponses,getGrant,saveGrant,
     clear:()=>{catalogCache=null;}});
 }

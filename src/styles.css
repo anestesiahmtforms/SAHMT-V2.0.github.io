@@ -2148,7 +2148,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-followup [data-occurrence-group]:not([data-analysis-state]){background:linear-gradient(155deg,#fff,#e8eff4)}
 .app-shell--home .module-card[data-route="occurrences"][data-analysis-state="pending"],.occurrence-analysis-menu [data-analysis-state="pending"],.occurrence-followup [data-analysis-state="pending"]{background:linear-gradient(155deg,#fff4f3,#f4b9b4)!important;border-color:#d99089;color:#6e2621!important}
 .app-shell--home .module-card[data-route="occurrences"][data-analysis-state="clear"],.occurrence-analysis-menu [data-analysis-state="clear"],.occurrence-followup :is([data-analysis-state="clear"],[data-analysis-state="finalized"]){background:linear-gradient(155deg,#f4fff8,#b7ddc6)!important;border-color:#9ac8ad;color:#174c35!important}
-.occurrence-followup [data-analysis-state="open"]{background:linear-gradient(155deg,#fff9e6,#f9da86);border-color:#d8b55d;color:#5e410d}
+.occurrence-followup :is([data-analysis-state="open"],[data-analysis-state="responses-closed"]){background:linear-gradient(155deg,#fff9e6,#f9da86);border-color:#d8b55d;color:#5e410d}
 .occurrence-followup [data-analysis-state="preparing"]:disabled{opacity:.64;cursor:not-allowed}
 .occurrence-followup [data-analysis-state="published"]{background:linear-gradient(155deg,#f0f8ff,#a8d0f4);border-color:#88b7e3;color:#143f69}
 .occurrence-result-actions{display:flex;flex-wrap:wrap;gap:8px}

@@ -22,8 +22,9 @@ function descriptionMarkup(entry) {
     return typeof value === 'string' && value ? [[field.label,dateLabel(value,field.type)]] : [];
   });
   if (entry.occurredOn) details.unshift(['Data da ocorrência',formatDisplayDate(entry.occurredOn)]);
+  const description=entry.analysisStarted===true?(entry.preparedDescription??entry.description):entry.description;
   return '<article class="occurrence-followup-report"><h4'+(entry.origin==='hospital'?' class="occurrence-hospital-title"':'')+'>'+
-    escape(labelFor(entry))+'</h4><p data-occurrence-description'+(entry.description?'':' hidden')+'>'+escape(entry.description)+'</p>'+
+    escape(labelFor(entry))+'</h4><p data-occurrence-description'+(description?'':' hidden')+'>'+escape(description)+'</p>'+
     '<dl>'+details.map(([label,value])=>'<div><dt>'+escape(label)+'</dt><dd>'+escape(value)+'</dd></div>').join('')+'</dl></article>';
 }
 
@@ -178,24 +179,36 @@ export function mountOccurrenceFollowup(host,{
     const descriptionTools=body.querySelector('[data-occurrence-description-tools]');
     const promptPanel=body.querySelector('[data-occurrence-ai-panel]');
     let stageDescription;
+    function allowPreparedEdits() {
+      if(!entry.analysisStarted||entry.responsesClosedAt||entry.analysisClosed||stageDescription)return;
+      stageDescription=bindDescriptionEditor(descriptionTools,entry,current);
+    }
     const editor=canEdit.then(allowed=>{
-      if (allowed&&current()&&entry.analysisClosed!==true)stageDescription=bindDescriptionEditor(descriptionTools,entry,current);
+      if(allowed&&current())allowPreparedEdits();
       return allowed&&current();
     });
     const isWriting=()=>writing;
     mountOccurrenceQuestionnaire(body.querySelector('[data-occurrence-questionnaire]'),{
       repository,uid,id:entry.id,entry,label:label+' · '+labelFor(entry),editor,
       isCurrent:current,canInteract,isWriting,setWriting:value=>{writing=value;},
+      onPrepared:()=>{
+        const description=body.querySelector('[data-occurrence-description]');
+        description.textContent=entry.preparedDescription;
+        description.hidden=false;
+        allowPreparedEdits();
+      },
+      onResponsesClosed:()=>{descriptionTools.hidden=true;},
       onResultPublished:()=>{descriptionTools.hidden=true;promptActions.hidden=true;promptPanel.replaceChildren();},
       onEventFinalized:()=>onChainChanged?.(),
       onEditorReady:options=>bindOccurrencePromptActions(promptActions,promptPanel,{
-        ...options,entry,isCurrent:current,isWriting,stageDescription
+        ...options,entry,isCurrent:current,isWriting,setWriting:value=>{writing=value;},
+        stageDescription:text=>stageDescription?.(text)
       })
     });
   }
 
   function bindDescriptionEditor(panel,entry,current) {
-    panel.innerHTML='<button type="button" class="secondary-button" data-edit-occurrence-description>EDITAR DESCRIÇÃO</button>'+
+    panel.innerHTML='<button type="button" class="secondary-button" data-edit-occurrence-description>EDITAR DESCRIÇÃO PARA ANÁLISE</button>'+
       '<form class="occurrence-followup-analysis" hidden><p>'+privacyNote+'</p><fieldset>'+
       '<label class="occurrence-field"><span>Descrição da ocorrência</span><textarea name="description" rows="5" maxlength="5000" required></textarea></label>'+
       '<button type="submit" class="primary-button">SALVAR DESCRIÇÃO</button>'+
@@ -204,26 +217,27 @@ export function mountOccurrenceFollowup(host,{
     const edit=panel.querySelector('[data-edit-occurrence-description]'),form=panel.querySelector('form'),
       inputs=form.querySelector('fieldset'),input=form.elements.description,status=panel.querySelector('[role="status"]');
     function close() {form.hidden=true;edit.hidden=false;edit.focus({preventScroll:true});}
-    function open(description=entry.description||'') {
-      if (!current()||writing||!canShowHospital()) return;
+    function open(description=entry.preparedDescription??entry.description??'') {
+      if (!current()||writing||entry.responsesClosedAt||!canShowHospital()) return false;
       input.value=description;
       status.textContent='';
       edit.hidden=true;
       form.hidden=false;
       input.focus();
+      return true;
     }
     edit.addEventListener('click',()=>open());
     form.querySelector('[data-cancel-description]').addEventListener('click',()=>{status.textContent='';close();});
     form.addEventListener('submit',async event=>{
       event.preventDefault();
-      if (!current()||writing||!canShowHospital()) return;
+      if (!current()||writing||entry.responsesClosedAt||!canShowHospital()) return;
       const description=input.value.trim();
       if (!description) {status.textContent='Preencha a descrição da ocorrência.';return;}
       writing=true;inputs.disabled=true;status.textContent='Salvando descrição…';
       try {
-        const saved=await repository.saveDescription({uid,id:entry.id,description,expectedDescription:entry.description??null});
+        const saved=await repository.saveDescription({uid,id:entry.id,description,expectedDescription:entry.preparedDescription??entry.description??null});
         if (!current()) return;
-        entry.description=saved;
+        entry.preparedDescription=saved;
         const published=body.querySelector('[data-occurrence-description]');
         published.textContent=saved;
         published.hidden=false;

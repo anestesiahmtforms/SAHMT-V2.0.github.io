@@ -92,11 +92,16 @@
         ((request.resource.data.origin == 'app' && canWrite() && validAppOccurrenceFollowup(id,request.resource.data)) ||
           (request.resource.data.origin == 'hospital' && canRegisterHospitalOccurrence() && validHospitalOccurrenceFollowup(id,request.resource.data)));
       allow update: if canEditOccurrenceDescription() && (
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['description']) &&
-          !resource.data.get('eventClosed',false) && occurrenceText(request.resource.data.description,5000)) ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['analysisStarted']) &&
-          request.resource.data.analysisStarted == true && !resource.data.get('analysisClosed',false) &&
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preparedDescription']) &&
+          resource.data.get('analysisStarted',false) && !resource.data.get('analysisClosed',false) &&
+          resource.data.get('responsesClosedAt',null) == null && occurrenceText(request.resource.data.preparedDescription,5000)) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['analysisStarted','preparedDescription']) &&
+          !resource.data.get('analysisStarted',false) && request.resource.data.analysisStarted == true &&
+          !resource.data.get('analysisClosed',false) && occurrenceText(request.resource.data.preparedDescription,5000) &&
           getAfter(occurrenceQuestionnairePath(id)).data.publishedAt == request.time) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['responsesClosedAt']) &&
+          resource.data.get('analysisStarted',false) && !resource.data.get('analysisClosed',false) &&
+          resource.data.get('responsesClosedAt',null) == null && request.resource.data.responsesClosedAt == request.time) ||
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['analysisClosed']) &&
           request.resource.data.analysisClosed == true &&
           !resource.data.get('eventClosed',false) && getAfter(occurrenceResultPath(id)).data.updatedAt == request.time) ||
@@ -109,6 +114,7 @@
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
         allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
         allow create, update: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
+          get(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) == null &&
           !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
           get(occurrenceFollowupPath(id)).data.formId != 'F08' && !exists(occurrenceQuestionnairePath(id)) && validOccurrenceAnalysis(request.resource.data);
         allow delete: if false;
@@ -132,14 +138,16 @@
         allow get: if activeUser() && request.auth.uid == uid && exists(occurrenceFollowupPath(id));
         allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
         allow create: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
-          exists(occurrenceFollowupPath(id)) && !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
-          validOccurrenceResponse(id,request.resource.data);
+          exists(occurrenceFollowupPath(id)) && !getAfter(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
+          getAfter(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) == null && validOccurrenceResponse(id,request.resource.data);
         allow update, delete: if false;
       }
       match /ethicalPollResult/current {
         allow get: if activeUser() && (canEditOccurrenceDescription() ||
           get(occurrenceFollowupPath(id)).data.get('analysisClosed',false));
         allow create, update: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+          (get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) ||
+            get(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) is timestamp) &&
           !get(occurrenceFollowupPath(id)).data.get('eventClosed',false) &&
           getAfter(occurrenceFollowupPath(id)).data.analysisClosed == true &&
           request.resource.data.keys().hasOnly(['text','updatedAt']) &&

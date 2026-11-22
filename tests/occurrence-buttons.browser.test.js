@@ -6,18 +6,21 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
    listFollowups:async({after,origin})=>after?{entries:origin==='app'?[
       {id:'49de5878-28c7-40b5-81e6-f416d58b2433',formId:'F08',origin:'app',sequence:1,title:'Enquete de teste',
-      description:'Relato com questionário',classification:{},details:{},analysisStarted:true,analysisClosed:!!window.pollResult,eventClosed:!!window.eventClosed},
+      description:'Relato com questionário',classification:{},details:{},analysisStarted:true,responsesClosedAt:window.closedReplies?.['49de5878-28c7-40b5-81e6-f416d58b2433'],analysisClosed:!!window.pollResult,eventClosed:!!window.eventClosed},
       {id:'ethical-test',formId:'F08',origin:'app',sequence:2,title:'Dilema de teste',
       description:'Relato do dilema',classification:{},details:{},analysisClosed:!!window.closedOther,eventClosed:!!window.closedOther}
     ]:[],next:null}:{entries:origin==='hospital'&&window.followupPublished?
     [{id:'gr-1',formId:'F03',origin:'hospital',hospitalNumber:'1',title:'Evento externo',
-      occurredOn:'2026-11-20',description:window.descriptionEdit?.description??'Relato completo aqui',classification:{},details:{},analysisStarted:!!window.questionnaires?.['gr-1']}]
+      occurredOn:'2026-11-20',description:'Relato completo aqui',preparedDescription:window.preparations?.['gr-1'],classification:{},details:{},analysisStarted:!!window.questionnaires?.['gr-1'],responsesClosedAt:window.closedReplies?.['gr-1']}]
     :[],next:'next'},
    readAnalysis:async()=>null,listAnalyses:async({id})=>({entries:id==='gr-1'?
      [{analysis:{problem:'Linha um.\\nLinha dois.',cause:'Causa',review:'Revisão',correction:'Correção',plan:'Plano'}}]:[],next:null}),
    descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;},
    readOccurrenceQuestionnaire:async({id})=>id===${JSON.stringify(GRA_001_RECORD_ID)}?${JSON.stringify(GRA_001_QUESTIONS)}:window.questionnaires?.[id]??null,
-   publishOccurrenceQuestionnaire:async({id,questions})=>{(window.questionnaires??={})[id]=questions;return questions;},
+   publishOccurrenceQuestionnaire:async({id,description,questions})=>{
+     (window.preparations??={})[id]=description;(window.questionnaires??={})[id]=questions;return questions;
+   },
+   closeOccurrenceResponses:async({id})=>{(window.closedReplies??={})[id]=true;},
    readOccurrenceResponse:async({id})=>!!window.responses?.[id],
    submitOccurrenceResponse:async input=>{(window.responses??={})[input.id]=input;return 'submitted';},
    readOccurrenceResult:async({id})=>window.pollResult?.id===id?{text:window.pollResult.text,updatedAt:window.resultGeneration}:null,
@@ -187,14 +190,10 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
   await prep.getByText(/Rascunho carregado/).waitFor();
   assert.equal(await page.evaluate(()=>window.descriptionEdit),undefined);
-  const editor=followupBanner.getByRole('textbox',{name:'Descrição da ocorrência'});
+  const editor=followupBanner.getByRole('textbox',{name:'Descrição para análise da equipe'});
   assert.equal(await editor.inputValue(),'Texto revisado');
-  await followupBanner.getByRole('button',{name:'SALVAR DESCRIÇÃO'}).click();
-  await followupBanner.getByText('Descrição atualizada.',{exact:true}).waitFor();
-  assert.equal(await followupBanner.locator('[data-occurrence-description]').textContent(),'Texto revisado');
-  assert.deepEqual(await page.evaluate(()=>window.descriptionEdit),{
-   uid:'synthetic',id:'gr-1',description:'Texto revisado',expectedDescription:'Relato completo aqui'
-  });
+  assert.equal(await followupBanner.locator('[data-occurrence-description]').textContent(),'Relato completo aqui');
+  assert.equal(await page.evaluate(()=>window.preparations),undefined);
   await page.evaluate(()=>{
    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
     write:async items=>{window.copiedPoll=await(await items[0].getType('text/plain')).text();},
@@ -204,9 +203,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   const analyzeButton=actionFooter.getByRole('button',{name:'ANALISAR RESPOSTAS'});
   await analyzeButton.click();
   const analysis=followupBanner.locator('.occurrence-ai-pane:visible');
-  await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
-  const archivePrompt=await analysis.getByRole('textbox',{name:'Prompt para a IA'}).inputValue();
-  assert.match(archivePrompt,/GR 001[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
+  await analysis.getByText('Publique a preparação para abrir as respostas da equipe.',{exact:true}).waitFor();
+  assert.equal(await analysis.getByRole('button',{name:'ENCERRAR RESPOSTAS DA EQUIPE'}).isVisible(),false);
   await analyzeButton.click();
   const config=followupBanner.locator('[data-questionnaire-editor]');
   const scroll=await followupBanner.evaluate(dialog=>{
@@ -223,14 +221,25 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
     assert.equal(await config.locator('[name=option-'+index+'-'+option+']').inputValue(),'Resposta '+(option+1));
    }
   }
-  await config.getByRole('button',{name:'PUBLICAR QUESTIONÁRIO'}).click();
+  await config.getByRole('button',{name:'PUBLICAR OCORRÊNCIA E QUESTIONÁRIO'}).click();
   await followupBanner.getByText('Pergunta do Núcleo 1',{exact:true}).waitFor();
   assert.equal(await followupBanner.getByRole('radio').count(),2);
+  assert.equal(await followupBanner.locator('[data-occurrence-description]').textContent(),'Texto revisado');
+  assert.equal(await page.evaluate(()=>window.preparations['gr-1']),'Texto revisado');
+  await analyzeButton.click();
+  const closeReplies=analysis.getByRole('button',{name:'ENCERRAR RESPOSTAS DA EQUIPE'});
+  await closeReplies.waitFor();
+  assert.equal(await analysis.getByRole('textbox',{name:'Prompt para a IA'}).count(),0);
+  await closeReplies.click();
+  await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
+  const archivePrompt=await analysis.getByRole('textbox',{name:'Prompt para a IA'}).inputValue();
+  assert.match(archivePrompt,/GR 001[\s\S]*"relato": "Texto revisado"[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
   await back.click();
   await page.evaluate(()=>window.canEditDescription=false);
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
   await followupBanner.getByText('Texto revisado',{exact:true}).waitFor();
-  await followupBanner.getByText('Pergunta do Núcleo 1',{exact:true}).waitFor();
+  await followupBanner.getByText('Respostas da equipe encerradas.',{exact:true}).waitFor();
+  assert.equal(await followupBanner.getByRole('radio').count(),0);
   await back.click();
   await back.click();
   await back.click();
@@ -274,7 +283,9 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   assert.equal(await resultButton.count(),0);
   await page.evaluate(()=>window.exportPollPages=true);
   await analyzeButton.click();
+  await closeReplies.click();
   await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
+  assert.equal(await page.evaluate(id=>window.closedReplies[id],GRA_001_RECORD_ID),true);
   await analysis.getByRole('button',{name:'COPIAR PROMPT'}).click();
   await analysis.getByText('Prompt copiado.',{exact:true}).waitFor();
   const analysisPrompt=await page.evaluate(()=>window.copiedPoll);

@@ -3,6 +3,7 @@ const labels={
   clear:'Sem pendências em análise',
   preparing:'Aguardando preparação',
   open:'Em análise',
+  'responses-closed':'Respostas encerradas',
   published:'Resultado publicado',
   finalized:'Evento finalizado'
 };
@@ -15,6 +16,7 @@ export function setOccurrenceAnalysisState(button,state) {
 export function occurrenceAnalysisState(entry) {
   if(entry.eventClosed===true)return 'finalized';
   if(entry.analysisClosed===true)return 'published';
+  if(entry.responsesClosedAt)return 'responses-closed';
   return entry.analysisStarted===true?'open':'preparing';
 }
 

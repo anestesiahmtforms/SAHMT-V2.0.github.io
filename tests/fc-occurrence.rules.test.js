@@ -142,7 +142,7 @@ test('somente administrador delega registros GR, cujo protocolo preserva unicida
  await assert.rejects(repository.saveHospital({...payload,number:'GR 005'}),{message:'OCCURRENCE_PERMISSION_DENIED'});
 });
 
-test('administrador e gestor designado podem editar apenas a descrição de ocorrências GRA e GR',async()=>{
+test('administrador e gestor editam somente a versão de análise e preservam os relatos GRA, GR e original',async()=>{
  const admin='occurrence-admin',delegate='occurrence-delegate',ordinary='reader-synthetic';
  const hospitalId='gr-4',records=[id,hospitalId];
  await env.withSecurityRulesDisabled(async context=>{
@@ -152,8 +152,9 @@ test('administrador e gestor designado podem editar apenas a descrição de ocor
    setDoc(doc(db,'users',delegate),{uid:delegate,active:true,access:true,role:'gestor'}),
    setDoc(doc(db,'occurrenceHospitalGrants',delegate),{enabled:true}),
    setDoc(doc(db,'runtimePolicy','folders'),{schemaVersion:1,revision:2,disabled:['registros']}),
-   setDoc(doc(db,'occurrenceFollowups',id),{id,origin:'app',formId:'F10',sequence:1,description:null}),
-   setDoc(doc(db,'occurrenceFollowups',hospitalId),{id:hospitalId,origin:'hospital',formId:'F08',hospitalNumber:'4',description:'Original'})
+   setDoc(doc(db,'occurrenceFollowups',id),{id,origin:'app',formId:'F10',sequence:1,description:null,analysisStarted:true}),
+   setDoc(doc(db,'occurrenceFollowups',hospitalId),{id:hospitalId,origin:'hospital',formId:'F08',hospitalNumber:'4',description:'Original',analysisStarted:true}),
+   setDoc(doc(db,'occurrenceReports',id),{description:'Original da equipe'})
   ]);
  });
  const adminDb=google(admin),delegateDb=google(delegate),memberDb=google(ordinary);
@@ -169,17 +170,21 @@ test('administrador e gestor designado podem editar apenas a descrição de ocor
  assert.equal(await adminRepository.getGrant({uid:admin,subjectUid:delegate,kind:'descriptions'}),true);
  await assertFails(updateDoc(followup(delegateDb,id),{description:'Mudança',sequence:2}));
  await assertFails(updateDoc(followup(adminDb,id),{description:' \n '}));
- await assertSucceeds(updateDoc(followup(adminDb,hospitalId),{description:'Revisto pela administração'}));
+ await assertFails(updateDoc(followup(adminDb,hospitalId),{description:'Tentativa de editar original'}));
+ await assertFails(updateDoc(doc(adminDb,'occurrenceReports',id),{description:'Tentativa de editar original'}));
+ await assertSucceeds(updateDoc(followup(adminDb,hospitalId),{preparedDescription:'Revisto pela administração'}));
  for(const key of records){
-  const previous=(await getDocFromServer(followup(memberDb,key))).data().description;
-  const input={uid:delegate,id:key,expectedDescription:previous,description:'Descrição revisada'};
+  const saved=(await getDocFromServer(followup(memberDb,key))).data();
+  const input={uid:delegate,id:key,expectedDescription:saved.preparedDescription??saved.description,description:'Descrição revisada'};
   assert.equal(await repository.saveDescription(input),'Descrição revisada');
   assert.equal(await repository.saveDescription(input),'Descrição revisada');
-  assert.equal((await getDocFromServer(followup(memberDb,key))).data().description,'Descrição revisada');
+  const current=(await getDocFromServer(followup(memberDb,key))).data();
+  assert.equal(current.preparedDescription,'Descrição revisada');
+  assert.equal(current.description,saved.description);
   await assert.rejects(repository.saveDescription({...input,description:'Sobrescrita desatualizada'}),{message:'OCCURRENCE_DESCRIPTION_CHANGED'});
  }
  await adminRepository.saveGrant({uid:admin,subjectUid:delegate,kind:'descriptions',enabled:false});
- await assertFails(updateDoc(followup(delegateDb,id),{description:'Permissão revogada'}));
+ await assertFails(updateDoc(followup(delegateDb,id),{preparedDescription:'Permissão revogada'}));
 });
 
 test('Dilema Ético tem abordagem livre restrita aos editores e preserva as análises legadas',async()=>{
@@ -242,7 +247,7 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  const maxOptions=GRA_001_QUESTIONS.map(({prompt})=>({prompt,options:['Um','Dois','Três','Quatro','Cinco']}));
  const managerPublisher=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:delegate}},
   firestore:{doc:(_, ...path)=>doc(delegateDb,...path),getDocFromServer,runTransaction:(_,callback)=>runTransaction(delegateDb,callback)}});
- assert.deepEqual(await managerPublisher.publishOccurrenceQuestionnaire({uid:delegate,id:maxOptionsCase,questions:maxOptions}),maxOptions);
+ assert.deepEqual(await managerPublisher.publishOccurrenceQuestionnaire({uid:delegate,id:maxOptionsCase,description:'Preparação do caso',questions:maxOptions}),maxOptions);
  const valid={answers:[5,2,4,4],comment:'',submittedAt:serverTimestamp()};
  await assertFails(setDoc(ref(ordinaryDb),valid));
  await assertFails(setDoc(config(ordinaryDb),published));
@@ -252,7 +257,7 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  await assertFails(updateDoc(caseRow(adminDb),{analysisStarted:true}));
  const adminBatch=writeBatch(adminDb);
  adminBatch.set(config(adminDb),published);
- adminBatch.update(caseRow(adminDb),{analysisStarted:true});
+ adminBatch.update(caseRow(adminDb),{analysisStarted:true,preparedDescription:'Relato preparado'});
  await assertSucceeds(adminBatch.commit());
  await assertFails(updateDoc(config(adminDb),{questions:shorter,publishedAt:serverTimestamp()}));
  assert.equal((await repository.readOccurrenceQuestionnaire({uid:ordinary,id:caseId})).length,4);
@@ -260,7 +265,7 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  await assertFails(setDoc(ref(ordinaryDb,ordinary,id),valid));
  const managerBatch=writeBatch(delegateDb);
  managerBatch.set(config(delegateDb,id),{...published,questions:shorter});
- managerBatch.update(caseRow(delegateDb,id),{analysisStarted:true});
+ managerBatch.update(caseRow(delegateDb,id),{analysisStarted:true,preparedDescription:'Relato do Núcleo preparado'});
  await assertSucceeds(managerBatch.commit());
  await assertFails(setDoc(ref(ordinaryDb,ordinary,id),valid));
  await assertSucceeds(setDoc(ref(otherDb,other,id),{...valid,answers:[1,2,1,2],comment:'  Preservar\n  espaços.  '}));
@@ -292,6 +297,15 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  await assertFails(updateDoc(caseRow(delegateDb),{analysisClosed:true}));
  await assertFails(setDoc(result(delegateDb),{text:'Resultado sem fechamento',updatedAt:serverTimestamp()}));
  await assertFails(getDocFromServer(result(otherDb)));
+ await assert.rejects(editor.saveOccurrenceResult({uid:delegate,id:caseId,text:'Resultado antecipado',expectedText:''}),{code:'permission-denied'});
+ await assertFails(updateDoc(caseRow(ordinaryDb),{responsesClosedAt:serverTimestamp()}));
+ await assert.rejects(managerPublisher.closeOccurrenceResponses({uid:delegate,id:caseId+'-inválido'}),{message:'OCCURRENCE_PERMISSION_DENIED'});
+ await editor.closeOccurrenceResponses({uid:delegate,id:caseId});
+ await editor.closeOccurrenceResponses({uid:delegate,id:caseId});
+ assert.ok((await getDocFromServer(caseRow(ordinaryDb))).data().responsesClosedAt);
+ await assertFails(setDoc(ref(otherDb,other),valid));
+ await assertFails(updateDoc(caseRow(delegateDb),{preparedDescription:'Alteração após fechamento'}));
+ await assertFails(updateDoc(caseRow(delegateDb),{responsesClosedAt:null}));
  const text='Resultado do serviço.\nSegunda linha.';
  assert.equal(await editor.saveOccurrenceResult({uid:delegate,id:caseId,text,expectedText:''}),text);
  const publication=await repository.readOccurrenceResult({uid:ordinary,id:caseId});
@@ -320,6 +334,7 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  assert.equal((await getDocFromServer(caseRow(otherDb))).data().analysisClosed,true);
  await assertFails(updateDoc(caseRow(delegateDb),{analysisClosed:false}));
  await assert.rejects(editor.saveOccurrenceResult({uid:delegate,id:caseId,text:'Conflito',expectedText:''}),{message:'OCCURRENCE_ETHICAL_REVIEW_CHANGED'});
+ await editor.closeOccurrenceResponses({uid:delegate,id});
  assert.equal(await editor.saveOccurrenceResult({uid:delegate,id,text:'Outro caso',expectedText:''}),'Outro caso');
  assert.equal((await assertSucceeds(getDocFromServer(result(ordinaryDb,id)))).data().text,'Outro caso');
  assert.equal((await assertSucceeds(getDocFromServer(result(otherDb,id)))).data().text,'Outro caso');

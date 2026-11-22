@@ -93,7 +93,6 @@ async function readOccurrenceResponses({repository,uid,id,questions,isCurrent}) 
     questions.length?readAll(repository.listOccurrenceResponses):[],
     readAll(repository.listAnalyses)
   ]);
-  if(!entries.length&&!legacy.length)throw new Error('OCCURRENCE_POLL_EMPTY');
   return {questions,entries,legacy};
 }
 
@@ -221,10 +220,12 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,isCurrent,isWriting,se
       '<label class="occurrence-field"><span>Alternativa '+(option+1)+(option<2?'':' (opcional)')+'</span>'+
       '<input name="option-'+index+'-'+option+'" maxlength="'+OCCURRENCE_OPTION_TEXT_LIMIT+'" '+(option<2?'required':'')+'></label>').join('')+
     '</fieldset>').join('');
-  panel.innerHTML='<details><summary>CONFIGURAR QUESTIONÁRIO</summary>'+
-    '<form class="occurrence-followup-analysis"><p>Inclua pelo menos duas alternativas por pergunta. As perguntas ficam fixas depois de publicadas.</p>'+
-    '<fieldset>'+questions+'<button type="submit" class="primary-button">PUBLICAR QUESTIONÁRIO</button></fieldset>'+
-    '</form></details><p role="status"></p>';
+  panel.innerHTML='<form class="occurrence-followup-analysis"><h4>REVISAR PREPARAÇÃO</h4>'+
+    '<fieldset><label class="occurrence-field"><span>Descrição para análise da equipe</span>'+
+    '<textarea name="description" rows="5" maxlength="5000" required></textarea></label>'+
+    questions+'<button type="submit" class="primary-button">PUBLICAR OCORRÊNCIA E QUESTIONÁRIO</button></fieldset>'+
+    '</form><p role="status"></p>';
+  panel.hidden=true;
   const form=panel.querySelector('form'),controls=form.querySelector('fieldset'),status=panel.querySelector('[role="status"]');
   form.addEventListener('submit',async event=>{
     event.preventDefault();
@@ -233,40 +234,45 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,isCurrent,isWriting,se
       prompt:form.elements['prompt-'+index].value,
       options:Array.from({length:OCCURRENCE_OPTION_LIMIT},(_,option)=>form.elements['option-'+index+'-'+option].value.trim()).filter(Boolean)
     }));
+    const description=form.elements.description.value.trim();
+    if(!description){status.textContent='Preencha a descrição para análise.';return;}
     let normalized;
     try {normalized=normalizeOccurrenceQuestions(draft);}
     catch {status.textContent='Preencha as quatro perguntas e pelo menos duas alternativas de cada uma.';return;}
-    setWriting(true);controls.disabled=true;status.textContent='Publicando questionário…';
+    setWriting(true);controls.disabled=true;status.textContent='Publicando ocorrência e questionário…';
     try {
-      const published=await repository.publishOccurrenceQuestionnaire({uid,id,questions:normalized});
-      if(isCurrent()){panel.replaceChildren();onPublished(published);}
+      const published=await repository.publishOccurrenceQuestionnaire({uid,id,description,questions:normalized});
+      if(isCurrent()){panel.replaceChildren();panel.hidden=true;onPublished(published,description);}
     } catch(error) {
       if(isCurrent())status.textContent=error.message==='OCCURRENCE_QUESTIONNAIRE_PUBLISHED'
         ?'O questionário já foi publicado. Volte e reabra a ocorrência.'
         :'Não foi possível publicar o questionário. Tente novamente.';
     } finally {setWriting(false);controls.disabled=false;}
   });
-  return draft=>{
-    for(const [index,{prompt,options}] of draft.entries()){
+  return ({description,questions})=>{
+    form.elements.description.value=description;
+    for(const [index,{prompt,options}] of questions.entries()){
       form.elements['prompt-'+index].value=prompt;
       for(let option=0;option<OCCURRENCE_OPTION_LIMIT;option++) {
         form.elements['option-'+index+'-'+option].value=options[option]??'';
       }
     }
-    panel.querySelector('details').open=true;
-    status.textContent='Revise as perguntas e publique quando estiverem prontas.';
+    panel.hidden=false;
+    status.textContent='Revise a descrição e as perguntas antes de publicar.';
+    form.elements.description.focus();
+    return true;
   };
 }
 
 export function mountOccurrenceQuestionnaire(host,options) {
-  const {repository,uid,id,entry,editor,isCurrent,onEditorReady}=options;
+  const {repository,uid,id,entry,editor,isCurrent,onEditorReady,onPrepared}=options;
   host.innerHTML='<div data-questionnaire-editor></div>'+
     '<section class="occurrence-followup-analysis" data-ethical-poll></section>'+
     '<section class="occurrence-poll-result" data-ethical-poll-result hidden></section>';
   const config=host.querySelector('[data-questionnaire-editor]');
   const response=host.querySelector('[data-ethical-poll]');
   const result=host.querySelector('[data-ethical-poll-result]');
-  let resultBound=false,publishedQuestions=null,stageResult,stageQuestions;
+  let resultBound=false,publishedQuestions=null,stageResult,stagePreparation;
   function showResult(canEdit) {
     if(!isCurrent()||resultBound)return;
     resultBound=true;
@@ -275,9 +281,11 @@ export function mountOccurrenceQuestionnaire(host,options) {
       options.onResultPublished?.();
     }});
   }
-  function showQuestions(questions,canEdit) {
-    if(entry.analysisClosed!==true)mountOccurrenceResponse(response,{...options,questions});
-    if(entry.analysisClosed===true||canEdit)showResult(canEdit);
+  function showResponse(questions) {
+    if(entry.analysisClosed!==true){
+      if(entry.responsesClosedAt)response.innerHTML='<p role="status">Respostas da equipe encerradas.</p>';
+      else mountOccurrenceResponse(response,{...options,questions,isCurrent:()=>isCurrent()&&!entry.responsesClosedAt&&!entry.analysisClosed});
+    }
   }
   async function load() {
     response.innerHTML='<p role="status">Consultando questionário…</p>';
@@ -288,19 +296,29 @@ export function mountOccurrenceQuestionnaire(host,options) {
       if(canEdit)showResult(true);
       else if(entry.analysisClosed===true)showResult(false);
       publishedQuestions=questions;
-      if(questions)showQuestions(questions,canEdit);
+      if(questions)showResponse(questions);
       else if(canEdit&&entry.analysisClosed!==true) {
-        stageQuestions=bindQuestionnaireEditor(config,options,published=>{
+        stagePreparation=bindQuestionnaireEditor(config,options,(published,description)=>{
           entry.analysisStarted=true;
           publishedQuestions=published;
-          stageQuestions=null;
-          mountOccurrenceResponse(response,{...options,questions:published});
+          stagePreparation=null;
+          entry.preparedDescription=description;
+          onPrepared?.();
+          showResponse(published);
         });
       } else if(entry.analysisClosed!==true)response.innerHTML='<p>Questionário ainda não publicado.</p>';
       if(canEdit&&entry.analysisClosed!==true)onEditorReady?.({
         hasQuestionnaire:()=>Boolean(publishedQuestions),
         readResponses:()=>readOccurrenceResponses({...options,questions:publishedQuestions??[]}),
-        stageQuestions:draft=>stageQuestions?.(draft),stageResult
+        closeResponses:async()=>{
+          await repository.closeOccurrenceResponses({uid,id});
+          if(!isCurrent())return false;
+          entry.responsesClosedAt=true;
+          response.innerHTML='<p role="status">Respostas da equipe encerradas.</p>';
+          options.onResponsesClosed?.();
+          return true;
+        },
+        stagePreparation:draft=>stagePreparation?.(draft),stageResult
       });
     } catch {
       if(!isCurrent())return;
