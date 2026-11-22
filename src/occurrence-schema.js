@@ -86,9 +86,9 @@ const forms = [
     long('incidentEffect', 'Efeito do incidente'), field('eventDiscovery', 'Como o evento foi descoberto'),
     select('securityIncidentType', 'Tipo de incidente', 'TIPO_SEGURANCA'), field('othersInformed', 'Quem mais foi informado')
   ]},
-  {id: 'F10', group: 'D', title: 'Não Conformidade de Processo 2024', classification: [
+  {id: 'F10', group: 'D', title: 'Não Conformidade de Processo', classification: [
     select('sourceSector', 'Setor de Origem', 'SETORES_55'), select('destinationSector', 'Setor de Destino', 'SETORES_55'),
-    field('patientOrAttendance', 'Atendimento ou nome paciente, se houver', 'text', false, {maxLength: 160}),
+    field('patientOrAttendance', 'Atendimento', 'text', false, {maxLength: 160}),
     long('immediateAction', 'Disposição/ação imediata', false)
   ], fields: [], noGeneralInformation: true}
 ].map(form => Object.freeze({...form, classification: Object.freeze(form.classification || []),

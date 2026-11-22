@@ -56,12 +56,14 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
     const banner=document.querySelector('.app-shell--occurrences'),menu=banner.querySelector('.occurrence-menu');
     const registration=menu.querySelector('.occurrence-groups'),analysis=menu.querySelector('.occurrence-analysis-menu');
     const title=banner.querySelector('.occurrences-title');
+    const analysisTitle=analysis.querySelector('.occurrence-analysis-title');
     const titleText=document.createRange();
     titleText.selectNodeContents(title);
     const titleRect=titleText.getBoundingClientRect();
     return {banner:bounds(banner),menu:bounds(menu),home:bounds(banner.querySelector('.occurrences-home-button')),
      title:bounds(title),titleText:{left:titleRect.left,right:titleRect.right,lines:titleText.getClientRects().length},
      registration:bounds(registration),analysis:bounds(analysis),
+     titleBackground:getComputedStyle(title).backgroundImage,analysisTitleBackground:getComputedStyle(analysisTitle).backgroundImage,
      registrationButtons:[...registration.querySelectorAll(':scope > button')].map(bounds),
      analysisButtons:[...analysis.querySelectorAll(':scope > button')].map(bounds)};
    });
@@ -69,6 +71,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    assert.ok(Math.abs((layout.banner.left+layout.banner.right)/2-viewport.width/2)<=1,hint);
    assert.ok(Math.abs((layout.banner.top+layout.banner.bottom)/2-viewport.height/2)<=1,hint);
    assert.equal(layout.titleText.lines,1,hint);
+   assert.equal(layout.analysisTitleBackground,layout.titleBackground,hint);
    assert.ok(layout.titleText.left>=layout.title.left&&layout.titleText.right<=layout.title.right,hint);
    assert.equal(layout.registrationButtons.length,4,hint);
    assert.equal(layout.analysisButtons.length,2,hint);
@@ -86,6 +89,11 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    if(group==='A')await page.locator(`[data-occurrence-form="${id}"]`).click();
    await page.locator('[data-occurrence-dialog-host] dialog[open]').waitFor();
    assert.ok(await page.locator('[data-occurrence-dialog-host] input, [data-occurrence-dialog-host] textarea').count());
+   assert.equal(await page.getByText('A identidade é mantida para auditoria restrita.').count(),0);
+   if(id==='F10'){
+    assert.equal(await page.getByRole('heading',{name:'NÃO CONFORMIDADE DE PROCESSO',exact:true}).count(),1);
+    assert.equal(await page.getByRole('textbox',{name:'Atendimento',exact:true}).count(),1);
+   }
    await page.locator('[data-occurrence-cancel]').click();
    if(group==='A')await page.locator('[data-occurrence-group-cancel]').click();
   }

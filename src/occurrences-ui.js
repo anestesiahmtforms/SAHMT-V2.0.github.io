@@ -58,7 +58,7 @@ export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
     <label class="occurrence-field"><span>Autor</span><input value="${escape(displayName)}" readonly aria-describedby="occurrence-author-note"></label>
     ${form.fields.filter(item=>['eventDate','occurrence','description'].includes(item.id)).map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}
     </div></section>`;
-  const privacy=`<section class="occurrence-privacy"><label class="occurrence-anonymous"><input type="checkbox" name="anonymous"><span>Realizar registro anônimo</span></label><small id="occurrence-author-note">O nome do autor fica oculto no acompanhamento. O modo anônimo também oculta o nome no registro original. A identidade é mantida para auditoria restrita.</small></section>`;
+  const privacy=`<section class="occurrence-privacy"><label class="occurrence-anonymous"><input type="checkbox" name="anonymous"><span>Realizar registro anônimo</span></label><small id="occurrence-author-note">O nome do autor fica oculto no acompanhamento. O modo anônimo também oculta o nome no registro original.</small></section>`;
   const generalIds=new Set(['eventDate','occurrence','description']);
   const classification=form.classification.length?`<section class="occurrence-form-section"><h4>Classificação</h4><div class="occurrence-form-grid">${form.classification.map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}</div></section>`:'';
   const details=form.fields.filter(item=>!generalIds.has(item.id));
@@ -127,7 +127,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
   };
   const followupBlock=followupAllowed?
     '<section class="occurrence-menu-block occurrence-analysis-menu" aria-labelledby="occurrence-analysis-heading">'+
-    '<h3 id="occurrence-analysis-heading">ANÁLISE DE OCORRÊNCIAS</h3>'+
+    '<h3 id="occurrence-analysis-heading" class="occurrences-title occurrence-analysis-title">ANÁLISE DE OCORRÊNCIAS</h3>'+
     '<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup="app">ANÁLISE DE OCORRÊNCIAS - SAHMT</button>'+
     '<button type="button" class="primary-button occurrence-followup-launch" data-occurrence-followup="hospital">ANÁLISE DE OCORRÊNCIAS - NSP</button></section>':'';
   root.innerHTML=`<section class="occurrence-module" aria-label="Registro de Ocorrências -SAHMT"><p class="occurrence-module-status" role="status" aria-live="polite"></p><div class="occurrence-menu"><section class="occurrence-menu-block occurrence-groups" aria-label="Categorias de registro">${occurrenceGroupMarkup()}</section>${followupBlock}</div><div data-occurrence-category-host></div><div data-occurrence-dialog-host></div></section>`;
