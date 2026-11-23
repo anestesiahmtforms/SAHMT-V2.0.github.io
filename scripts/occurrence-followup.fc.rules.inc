@@ -165,6 +165,25 @@
         allow list, delete: if false;
       }
     }
+    function newOccurrenceScoreEvidence(id, subcollection, timeField) {
+      let event = /databases/$(database)/documents/occurrenceFollowups/$(id)/$(subcollection)/$(request.auth.uid);
+      return !exists(event) && getAfter(event).data[timeField] == request.time;
+    }
+    function validParticipationScore(claimId, data) {
+      return data.keys().hasOnly(['schemaVersion','id','source','sourceId','uid','points','status','createdAt']) &&
+        data.schemaVersion == 1 && data.id == claimId && data.uid == request.auth.uid &&
+        data.sourceId is string && data.sourceId.matches('^([A-Fa-f0-9-]{36}|gr-[1-9][0-9]{0,11})$') &&
+        data.points == 1 && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time &&
+        ((data.source == 'ANALISE_OCORRENCIA' && claimId == 'analysis-'+data.sourceId+'_'+request.auth.uid &&
+          newOccurrenceScoreEvidence(data.sourceId,'ethicalPollResponses','submittedAt')) ||
+         (data.source == 'CIENCIA_OCORRENCIA' && claimId == 'ack-'+data.sourceId+'_'+request.auth.uid &&
+          newOccurrenceScoreEvidence(data.sourceId,'analysisAcknowledgements','acknowledgedAt')));
+    }
+    match /occurrenceScoreClaims/{claimId} {
+      allow get: if activeUser() && resource.data.uid == request.auth.uid &&
+        resource.data.source in ['ANALISE_OCORRENCIA','CIENCIA_OCORRENCIA'];
+      allow create: if activeUser() && validParticipationScore(claimId,request.resource.data);
+    }
     function occurrenceQuestionnairePath(id) {
       return /databases/$(database)/documents/occurrenceFollowups/$(id)/analysisQuestionnaire/current;
     }

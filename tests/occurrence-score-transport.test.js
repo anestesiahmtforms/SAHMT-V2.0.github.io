@@ -38,6 +38,23 @@ test('tampering, expiry and wrong audience fail before scoring',()=>{
 test('same nonce replay rejected; new nonce retry delegates idempotency to durable ledger',()=>{const h=receiver(),e=envelope();assert.equal(code(h.invoke(e)),'OCCURRENCE_SCORE_ACCEPTED');assert.equal(code(h.invoke(e)),'OCCURRENCE_SCORE_REPLAY_DENIED');assert.equal(code(h.invoke(envelope({nonce:'b'.repeat(32)}))),'OCCURRENCE_SCORE_ACCEPTED');assert.equal(h.calls.length,2);});
 test('Firestore denial never reaches Apps Script',async()=>{let n=0;const out=await relayOccurrenceScore(request(),env,{fetchImpl:async()=>{n++;return new Response(null,{status:403});}});assert.equal(out.status,403);assert.equal(n,1);});
 
+test('participant score transport uses the exact FC claim with the matching owner and no client amount',async()=>{
+ const claimId='analysis-'+id+'_fixture',h=receiver();
+ const send=uid=>relayOccurrenceScore(new Request(worker,{method:'POST',
+  headers:{Origin:origin,Authorization:'Bearer '+token},body:JSON.stringify({id:claimId})}),env,
+  {fetchImpl:async(url,options)=>{
+   if(url.startsWith('https://firestore.googleapis.com/'))return Response.json({
+    name:'projects/indicadores---sahmt/databases/(default)/documents/occurrenceScoreClaims/'+claimId,
+    fields:{uid:{stringValue:uid},sourceId:{stringValue:id}}
+   });
+   return Response.json(h.invoke(JSON.parse(options.body)));
+  }});
+ assert.equal((await send('wrong-owner')).status,403);
+ assert.equal(h.calls.length,0);
+ assert.equal((await send('fixture')).status,200);
+ assert.deepEqual([...h.calls[0]],[claimId,'fixture']);
+});
+
 test('admission failure performs no external reads and a settled denial releases its slot',async()=>{
  let calls=0,released=0;const fetchImpl=async()=>{calls++;return new Response(null,{status:403});};
  assert.equal((await relayActual(request(),env,{fetchImpl})).status,503);

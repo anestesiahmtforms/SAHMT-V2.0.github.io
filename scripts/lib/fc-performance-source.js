@@ -7,7 +7,13 @@ export function adaptFcPerformanceDeclaration(name,source){
  }
  if(name==='evaluationRunTransaction_')replace('const planned = callback(started.transaction);','fcPerformanceAssertRuntimeTransaction_(started.transaction);\n      const planned = callback(started.transaction);');
  if(name==='firestoreRequest_')replace('function firestoreRequest_(url, options) {','function firestoreRequest_(url, options) {\n  fcAssertFirestoreDestination_(url, options);\n  fcAssertPerformanceFolder_(url, options);');
- if(name==='evaluationDeliverOccurrence_')replace("const claim = evaluationGet_('occurrenceScoreClaims', reportId, transaction);\r\n    if (expectedUid", "const claim = evaluationGet_('occurrenceScoreClaims', reportId, transaction);\r\n    fcPerformanceAssertNewSource_(claim, transaction);\r\n    if (expectedUid");
+ if(name==='evaluationDeliverOccurrence_'){
+  source=source.replaceAll('\r\n','\n');
+  const claimRead="const claim = evaluationGet_('occurrenceScoreClaims', claimId, transaction);\n";
+  replace(claimRead+'    if (expectedUid',claimRead+'    fcPerformanceAssertNewSource_(claim, transaction);\n    if (expectedUid');
+  replace('function evaluationDeliverOccurrence_(', 'function fcDeliverOccurrenceClaim_(');
+  source+='\nfunction evaluationDeliverOccurrence_(claimId, expectedUid) {\n  return fcRunOccurrenceScoring_(function () { return fcDeliverOccurrenceClaim_(claimId, expectedUid); });\n}\n';
+ }
  if(name==='qmProcessParticipation_')replace("if(id!==p.analysisId+", "fcPerformanceAssertNewSource_(p,tx);\n    if(id!==p.analysisId+");
  if(name==='evaluationApplyAwards_')replace('changes.forEach(function (input) {','changes.forEach(function (input) {\n    fcPerformanceAssertAward_(input);');
  return source;

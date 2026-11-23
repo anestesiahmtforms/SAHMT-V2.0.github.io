@@ -75,6 +75,9 @@ const occurrenceRules=output.slice(begin,end).replace('validReport(reportId, req
 output=output.slice(0,begin)+folderRules+occurrenceRules+output.slice(end);
 output=output.replace("'anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&",
   "'anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt','sequence']) &&");
+output=output.replace('data.pointsClaimed == 2','data.pointsClaimed in [2, 3]')
+  .replace('data.points == 2 && data.status','data.points in [2, 3] && data.status')
+  .replace('claim.points == 2 && claim.status','claim.points == report.pointsClaimed && claim.status');
 const commonKeys=new Set(['eventDate','occurrence','description',...OCCURRENCE_PRIVATE_FIELDS]);
 function followupFields(fields,name){
   const keys=fields.map(field=>field.id).filter(key=>!commonKeys.has(key));

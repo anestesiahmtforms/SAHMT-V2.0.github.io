@@ -17,7 +17,7 @@ function evaluationOccurrenceHttp_(event) {
     if(typeof envelope.payload!=='string'||!/^[A-Za-z0-9_-]+$/.test(envelope.payload)||!ospEqual_(evaluationOccurrenceMac_(envelope.payload,secret),envelope.mac))throw Error('MAC');
     request=JSON.parse(Utilities.newBlob(Utilities.base64DecodeWebSafe(envelope.payload)).getDataAsString('UTF-8'));
     if(Object.keys(request).sort().join(',')!=='aud,expiresAt,id,issuedAt,nonce,uid,v'||request.v!==1||request.aud!=='sahmt-occurrence-score'||
-      !/^[a-f0-9]{32}$/.test(request.nonce||'')||!/^[A-Fa-f0-9-]{36}$/.test(request.id||'')||typeof request.uid!=='string'||!/^[^/\s]{1,128}$/.test(request.uid)||
+      !/^[a-f0-9]{32}$/.test(request.nonce||'')||!/^(?:[A-Fa-f0-9-]{36}|(?:analysis|ack)-(?:[A-Fa-f0-9-]{36}|gr-[1-9]\d{0,11})_[A-Za-z0-9_-]{1,128})$/.test(request.id||'')||typeof request.uid!=='string'||!/^[^/\s]{1,128}$/.test(request.uid)||
       !Number.isSafeInteger(request.issuedAt)||!Number.isSafeInteger(request.expiresAt)||request.expiresAt-request.issuedAt!==60000||request.issuedAt>Date.now()+5000||request.expiresAt<=Date.now())throw Error('EXPIRED');
     lock=LockService.getScriptLock();if(!lock.tryLock(1000)){lock=null;return evaluationOccurrenceReply_(request.nonce,'OCCURRENCE_SCORE_BUSY',secret);}
     if(request.expiresAt<=Date.now())throw Error('EXPIRED');

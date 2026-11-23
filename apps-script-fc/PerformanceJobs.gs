@@ -28,18 +28,30 @@ function processarParticipacoesQmentumV1(){
     reviews:fcPerformancePendingPage_('qmentumParticipationReviews','PENDING','reviewScanCursor',function(row){qmProcessParticipation_(row.id,true);})};
 }
 function recuperarPontuacoesOcorrenciasFcV1(){
-  evaluationOccurrenceAssertOperator_();
-  return {code:'FC_OCCURRENCE_SCORE_RECOVERY',result:fcPerformancePendingPage_('occurrenceScoreClaims','PENDING_VALIDATION','occurrenceScanCursor',function(row){evaluationDeliverOccurrence_(row.id);})};
+  return fcRunOccurrenceScoring_(function(){
+    evaluationOccurrenceAssertOperator_();
+    return {code:'FC_OCCURRENCE_SCORE_RECOVERY',result:fcPerformancePendingPage_('occurrenceScoreClaims','PENDING_VALIDATION','occurrenceScanCursor',function(row){evaluationDeliverOccurrence_(row.id);})};
+  });
 }
 function executarDesempenhoFcV1(){
   if(fcRuntimeCode_()||sahmtV2Properties_().getProperty('FC_PERFORMANCE_ENABLED')!=='true')return {code:'FC_PERFORMANCE_DISABLED'};
-  evaluationAssertOperator_();
-  const analysisReviews=validarRevisoesQmentumV1();
   const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return {code:'FC_PERFORMANCE_BUSY'};
+  let occurrences,analysisReviews;
+  try{occurrences=recuperarPontuacoesOcorrenciasFcV1();}
+  catch(error){if(error.message!=='FC_PERFORMANCE_FOLDER_DISABLED')throw error;occurrences={code:error.message};}
+  finally{lock.releaseLock();}
+  try{
+    evaluationAssertOperator_();
+    analysisReviews=validarRevisoesQmentumV1();
+  }catch(error){
+    if(error.message!=='FC_PERFORMANCE_FOLDER_DISABLED')throw error;
+    return {code:'FC_PERFORMANCE_CYCLE',occurrences:occurrences,qmentum:{code:error.message}};
+  }
+  if(!lock.tryLock(1000))return {code:'FC_PERFORMANCE_BUSY',occurrences:occurrences};
   let result;
   try{
     evaluationAssertOperator_();
-    result={code:'FC_PERFORMANCE_CYCLE',analysisReviews:analysisReviews,occurrences:recuperarPontuacoesOcorrenciasFcV1(),
+    result={code:'FC_PERFORMANCE_CYCLE',analysisReviews:analysisReviews,occurrences:occurrences,
       qmentum:processarParticipacoesQmentumV1(),summary:evaluationPublishCategorySummary_('PERFORMANCE')};
   }finally{lock.releaseLock();}
   console.log(JSON.stringify(result));return result;

@@ -10,6 +10,13 @@ const FC_PERFORMANCE_SOURCES_ = Object.freeze(['users', 'occurrenceReports', 'oc
   'occurrenceCatalogs', 'occurrenceRuntime', 'qmentumAccess', 'qmentumConfig', 'qmentumDefinitions', 'qmentumUnits',
   'qmentumParticipations', 'qmentumParticipationReviews', 'qmentumQuarterlyJobs', 'qmentumEvidence',
   'qmentumImprovementActions', 'qmentumAnalysisReviewRequests', 'qmentumQuarterlyQuota', 'qmentumWriteRequests']);
+let fcOccurrenceScoring_ = false;
+
+function fcRunOccurrenceScoring_(work) {
+  const previous = fcOccurrenceScoring_;
+  fcOccurrenceScoring_ = true;
+  try { return work(); } finally { fcOccurrenceScoring_ = previous; }
+}
 
 function fcPerformanceCollection_(name) {
   if (name === 'qmentumScoreOutbox') throw Error('FC_PERFORMANCE_FB_DELIVERY_DISABLED');
@@ -34,7 +41,8 @@ function fcAssertPerformanceFolder_(url, options) {
   }));
   const folders = [];
   if (paths.some(path => /\/fcPerformance[A-Za-z]+(?:\/|$)/.test(path))) {
-    folders.push('desempenho/fc', 'registros/ocorrencias', 'registros/qmentum');
+    folders.push('registros/ocorrencias');
+    if (!fcOccurrenceScoring_) folders.push('desempenho/fc', 'registros/qmentum');
   }
   if (paths.some(path => /\/qmentum[A-Za-z]+(?:\/|$)/.test(path))) folders.push('registros/qmentum');
   if (paths.some(path => /\/occurrence[A-Za-z]+(?:\/|$)/.test(path))) folders.push('registros/ocorrencias');
@@ -119,7 +127,7 @@ function fcPerformanceAssertNewSource_(record, transaction) {
 }
 function fcPerformanceAssertAward_(input){
   if(!input||input.category!=='PERFORMANCE'||
-    !(input.sourceType==='FC_OCCURRENCE_VERIFIED'&&input.modality==='OCCURRENCE'&&input.evidence&&input.evidence.sourceProjectId===FC_PERFORMANCE_PROJECT_||
+    !(['FC_OCCURRENCE_VERIFIED','FC_OCCURRENCE_ANALYSIS','FC_OCCURRENCE_ACKNOWLEDGEMENT'].includes(input.sourceType)&&input.modality==='OCCURRENCE'&&input.evidence&&input.evidence.sourceProjectId===FC_PERFORMANCE_PROJECT_||
       input.sourceType==='QMENTUM_PARTICIPATION'&&['ACKNOWLEDGEMENT','SUGGESTION'].includes(input.modality)))throw Error('FC_PERFORMANCE_SOURCE_DENIED');
 }
 

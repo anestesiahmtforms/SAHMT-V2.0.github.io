@@ -111,6 +111,9 @@ export function occurrenceAppProtocol(sequence) {
   return Number.isSafeInteger(sequence) && sequence > 0 ? `GRA ${String(sequence).padStart(3,'0')}` : '';
 }
 
+export const OCCURRENCE_REGISTRATION_POINTS = 3;
+export const OCCURRENCE_SCORE_ID = /^(?:[A-Fa-f0-9-]{36}|(?:analysis|ack)-(?:[A-Fa-f0-9-]{36}|gr-[1-9]\d{0,11})_[A-Za-z0-9_-]{1,128})$/;
+
 export const OCCURRENCE_ANALYSIS_FIELDS = Object.freeze({
   problem: 'IDENTIFICAÇÃO DO PROBLEMA',
   cause: 'IDENTIFICAÇÃO DA CAUSA',

@@ -1,6 +1,6 @@
 import {collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query, runTransaction, serverTimestamp, startAfter, where} from 'firebase/firestore';
 import {FIREBASE_PROJECTS} from './firebase-projects.js';
-import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PRIVATE_FIELDS, getOccurrenceForm, occurrenceAppProtocol,
+import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PRIVATE_FIELDS, OCCURRENCE_REGISTRATION_POINTS, getOccurrenceForm, occurrenceAppProtocol,
   occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues} from './occurrence-schema.js';
 import {isValidDateKey} from './schedule-date.js';
 import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIMIT,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
@@ -70,6 +70,17 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     startAfter: firestore.startAfter || startAfter
   };
   let catalogCache = null;
+  const sendScore = (id, uid) => {
+    void Promise.resolve().then(() => notifyScore({id,uid,auth,isCurrent})).catch(() => {});
+  };
+
+  function saveParticipationClaim(transaction, id, uid, stage) {
+    const claimId = stage+'-'+id+'_'+uid;
+    transaction.set(api.doc(db,SCORE_CLAIMS,claimId),{
+      schemaVersion:1,id:claimId,source:stage==='analysis'?'ANALISE_OCORRENCIA':'CIENCIA_OCORRENCIA',
+      sourceId:id,uid,points:1,status:'PENDING_VALIDATION',createdAt:api.serverTimestamp()
+    });
+  }
 
   const requirePermission = async (uid, claimName) => {
     if (db?.app?.options?.projectId !== SOURCE_PROJECT || !auth || !boundedText(uid, 128) || typeof isCurrent !== 'function' || !isCurrent()) throw new Error('OCCURRENCE_SESSION_INVALID');
@@ -129,10 +140,10 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       occurrence:form.noGeneralInformation ? null : values.occurrence.trim(),
       description:form.noGeneralInformation ? null : values.description.trim(),
       classification,details,anonymous,authorLabel:anonymous ? 'Anônimo' : displayName.trim(),
-      pointsClaimed:2,pointsStatus:'PENDING_VALIDATION',createdAt:api.serverTimestamp()});
+      pointsClaimed:OCCURRENCE_REGISTRATION_POINTS,pointsStatus:'PENDING_VALIDATION',createdAt:api.serverTimestamp()});
     const audit = Object.freeze({schemaVersion:1,reportId:recordId,uid,formId,anonymous,createdAt:api.serverTimestamp()});
     const scoreClaim = Object.freeze({schemaVersion:1,id:recordId,source:'REGISTRO_OCORRENCIA',sourceId:recordId,originProjectId:SOURCE_PROJECT,
-      uid,formId,points:2,status:'PENDING_VALIDATION',createdAt:api.serverTimestamp()});
+      uid,formId,points:OCCURRENCE_REGISTRATION_POINTS,status:'PENDING_VALIDATION',createdAt:api.serverTimestamp()});
     if (jsonBytes({...report,createdAt:'timestamp'}) > MAX_RECORD_BYTES) throw new Error('OCCURRENCE_RECORD_TOO_LARGE');
 
     const reportRef = api.doc(db, REPORTS, recordId);
@@ -169,7 +180,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
       // A confirmed FC record is not undone by FB unavailability. Its existing
       // pending claim supports recovery; no point amount is sent by the browser.
-      Promise.resolve().then(()=>notifyScore({id:recordId,uid,auth,isCurrent})).catch(()=>{});
+      sendScore(recordId,uid);
       return Object.freeze({status:result.status,id:recordId,protocol:occurrenceAppProtocol(result.sequence),pointsStatus:'PENDING_VALIDATION'});
     } catch (error) {
       if (['OCCURRENCE_SESSION_CHANGED','OCCURRENCE_RECONCILIATION_REQUIRED'].includes(error?.message)) throw error;
@@ -305,7 +316,9 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       if(!resultRow.data()?.updatedAt?.isEqual(resultAt))throw new Error('OCCURRENCE_RESULT_CHANGED');
       if(receiptRow.data()?.resultAt?.isEqual(resultAt))return;
       tx.set(receipt,{resultAt,acknowledgedAt:api.serverTimestamp()});
+      if(!receiptRow.exists())saveParticipationClaim(tx,id,uid,'ack');
     });
+    sendScore('ack-'+id+'_'+uid,uid);
   };
   const finalizeOccurrence = async ({uid,id,resultAt} = {}) => {
     if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
@@ -360,14 +373,17 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       typeof comment !== 'string' || comment.length>OCCURRENCE_COMMENT_LIMIT) throw new Error('OCCURRENCE_INPUT_INVALID');
     const {user} = await requirePermission(uid);
     const ref=analysisRef(id,QUESTIONNAIRE_RESPONSES,uid);
-    return api.runTransaction(db,async tx => {
+    const status = await api.runTransaction(db,async tx => {
       const row=await tx.get(ref);
       if(!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
       if(row.exists()) return 'already-submitted';
       tx.set(ref,{answers:[...answers],comment,submittedAt:api.serverTimestamp(),
         ...(questionnaireRevision?{questionnaireRevision}:{})});
+      saveParticipationClaim(tx,id,uid,'analysis');
       return 'submitted';
     });
+    sendScore('analysis-'+id+'_'+uid,uid);
+    return status;
   };
   const listOccurrenceResponses = async ({uid,id,after} = {}) => {
     if(!followupId(id)||!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');

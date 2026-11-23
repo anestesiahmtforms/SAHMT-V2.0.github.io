@@ -115,7 +115,8 @@ function evaluationPlanAward_(previous, input, options) {
   if (!options.correction && ['TRAINING_ACCESS','TRAINING_COMPLETION','MANAGEMENT_TASK'].includes(input.modality) &&
       (options.legacyVerified !== true || input.points < 0 || input.points > 1000)) throw new Error('LEGACY_SCORE_VERIFICATION_REQUIRED');
   if (!options.correction) {
-    const defaults = {ACKNOWLEDGEMENT: [0, 1], SUGGESTION: [0, 2], MATERIAL: [0, 1], QUESTIONS: [0, 1], CHECKLIST: [-1, 0, 1], OCCURRENCE: [2]};
+    const occurrencePoints = ['FC_OCCURRENCE_ANALYSIS','FC_OCCURRENCE_ACKNOWLEDGEMENT'].includes(input.sourceType) ? [1] : [2,3];
+    const defaults = {ACKNOWLEDGEMENT: [0, 1], SUGGESTION: [0, 2], MATERIAL: [0, 1], QUESTIONS: [0, 1], CHECKLIST: [-1, 0, 1], OCCURRENCE: occurrencePoints};
     if (defaults[input.modality] && !defaults[input.modality].includes(input.points)) throw new Error('Pontuação fora da regra da modalidade.');
     if (input.modality === 'TEST' && (input.points < 0 || !Number.isFinite(input.maxTestScore) || input.maxTestScore < input.points)) throw new Error('Nota corrigida ou máximo não confirmado.');
   }

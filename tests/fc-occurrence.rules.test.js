@@ -283,6 +283,15 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  assert.equal(await repository.submitOccurrenceResponse({uid:ordinary,id:caseId,answers:valid.answers}),'submitted');
  assert.equal(await repository.submitOccurrenceResponse({uid:ordinary,id:caseId,answers:[1,1,1,1],comment:'Nova resposta'}),'already-submitted');
  assert.equal(await repository.readOccurrenceResponse({uid:ordinary,id:caseId}),true);
+ const analysisClaim=doc(ordinaryDb,'occurrenceScoreClaims','analysis-'+caseId+'_'+ordinary);
+ assert.equal((await assertSucceeds(getDocFromServer(analysisClaim))).data().points,1);
+ await assertFails(getDocFromServer(doc(otherDb,analysisClaim.path)));
+ await assertFails(updateDoc(analysisClaim,{points:2}));
+ const forgedClaimId='analysis-'+caseId+'_'+other;
+ await assertFails(setDoc(doc(otherDb,'occurrenceScoreClaims',forgedClaimId),{
+  schemaVersion:1,id:forgedClaimId,source:'ANALISE_OCORRENCIA',sourceId:caseId,uid:other,
+  points:1,status:'PENDING_VALIDATION',createdAt:serverTimestamp()
+ }));
  assert.deepEqual((await getDocFromServer(ref(ordinaryDb))).data().answers,valid.answers);
  await assertFails(updateDoc(ref(ordinaryDb),{comment:'Tentativa de sobrescrita'}));
  await assertSucceeds(getDocFromServer(ref(ordinaryDb)));
@@ -324,6 +333,9 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  await assertFails(setDoc(ref(otherDb,other),valid));
  await repository.acknowledgeOccurrence({uid:ordinary,id:caseId,resultAt:publication.updatedAt});
  await repository.acknowledgeOccurrence({uid:ordinary,id:caseId,resultAt:publication.updatedAt});
+ const ackClaim=doc(ordinaryDb,'occurrenceScoreClaims','ack-'+caseId+'_'+ordinary);
+ const firstAckClaim=(await assertSucceeds(getDocFromServer(ackClaim))).data();
+ assert.equal(firstAckClaim.points,1);
  assert.equal(await repository.readOccurrenceAcknowledgement({uid:ordinary,id:caseId,resultAt:publication.updatedAt}),true);
  await assertFails(getDocFromServer(receipt(otherDb)));
  const update='Versão revisada';
@@ -337,6 +349,7 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  assert.equal((await getDocFromServer(caseRow(ordinaryDb))).data().eventClosed,true);
  await assert.rejects(editor.saveOccurrenceResult({uid:delegate,id:caseId,text:'Mudança tardia',expectedText:update}),{code:'permission-denied'});
  await repository.acknowledgeOccurrence({uid:ordinary,id:caseId,resultAt:revised.updatedAt});
+ assert.ok((await getDocFromServer(ackClaim)).data().createdAt.isEqual(firstAckClaim.createdAt));
  assert.equal((await getDocFromServer(caseRow(otherDb))).data().analysisClosed,true);
  await assertFails(updateDoc(caseRow(delegateDb),{analysisClosed:false}));
  await assert.rejects(editor.saveOccurrenceResult({uid:delegate,id:caseId,text:'Conflito',expectedText:''}),{message:'OCCURRENCE_ETHICAL_REVIEW_CHANGED'});

@@ -59,7 +59,7 @@ service cloud.firestore {
         data.details is map && data.details.keys().size() <= 20 &&
         data.anonymous is bool && data.authorLabel is string && data.authorLabel.size() > 0 && data.authorLabel.size() <= 120 &&
         (data.anonymous == true ? data.authorLabel == 'Anônimo' : data.authorLabel != 'Anônimo') &&
-        data.pointsClaimed == 2 && data.pointsStatus == 'PENDING_VALIDATION' && data.createdAt == request.time &&
+        data.pointsClaimed in [2, 3] && data.pointsStatus == 'PENDING_VALIDATION' && data.createdAt == request.time &&
         (data.formId == 'F10' ? data.occurredOn == null && data.occurrence == null && data.description == null :
           data.occurredOn is string && data.occurredOn.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
           data.occurrence is string && data.occurrence.size() > 0 && data.occurrence.size() <= 180 &&
@@ -79,7 +79,7 @@ service cloud.firestore {
         data.sourceId == reportId && data.uid == request.auth.uid &&
         data.get('originProjectId', 'indicadores---sahmt') == 'indicadores---sahmt' &&
         data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
-        data.points == 2 && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
+        data.points in [2, 3] && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time;
     }
     function pairedAfter(reportId) {
       let report = getAfter(reportPath(reportId)).data;
@@ -89,7 +89,7 @@ service cloud.firestore {
         audit.reportId == reportId && audit.uid == request.auth.uid && audit.formId == report.formId &&
         audit.anonymous == report.anonymous && audit.createdAt == request.time &&
         claim.id == reportId && claim.sourceId == reportId && claim.uid == request.auth.uid &&
-        claim.formId == report.formId && claim.points == 2 && claim.status == 'PENDING_VALIDATION' &&
+        claim.formId == report.formId && claim.points == report.pointsClaimed && claim.status == 'PENDING_VALIDATION' &&
         claim.createdAt == request.time;
     }
 
@@ -360,6 +360,25 @@ service cloud.firestore {
           (resource == null || resource.data.resultAt != request.resource.data.resultAt);
         allow list, delete: if false;
       }
+    }
+    function newOccurrenceScoreEvidence(id, subcollection, timeField) {
+      let event = /databases/$(database)/documents/occurrenceFollowups/$(id)/$(subcollection)/$(request.auth.uid);
+      return !exists(event) && getAfter(event).data[timeField] == request.time;
+    }
+    function validParticipationScore(claimId, data) {
+      return data.keys().hasOnly(['schemaVersion','id','source','sourceId','uid','points','status','createdAt']) &&
+        data.schemaVersion == 1 && data.id == claimId && data.uid == request.auth.uid &&
+        data.sourceId is string && data.sourceId.matches('^([A-Fa-f0-9-]{36}|gr-[1-9][0-9]{0,11})$') &&
+        data.points == 1 && data.status == 'PENDING_VALIDATION' && data.createdAt == request.time &&
+        ((data.source == 'ANALISE_OCORRENCIA' && claimId == 'analysis-'+data.sourceId+'_'+request.auth.uid &&
+          newOccurrenceScoreEvidence(data.sourceId,'ethicalPollResponses','submittedAt')) ||
+         (data.source == 'CIENCIA_OCORRENCIA' && claimId == 'ack-'+data.sourceId+'_'+request.auth.uid &&
+          newOccurrenceScoreEvidence(data.sourceId,'analysisAcknowledgements','acknowledgedAt')));
+    }
+    match /occurrenceScoreClaims/{claimId} {
+      allow get: if activeUser() && resource.data.uid == request.auth.uid &&
+        resource.data.source in ['ANALISE_OCORRENCIA','CIENCIA_OCORRENCIA'];
+      allow create: if activeUser() && validParticipationScore(claimId,request.resource.data);
     }
     function occurrenceQuestionnairePath(id) {
       return /databases/$(database)/documents/occurrenceFollowups/$(id)/analysisQuestionnaire/current;

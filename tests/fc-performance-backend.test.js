@@ -69,6 +69,18 @@ test('FC Apps Script pauses performance queries before content and preserves the
  assert.doesNotThrow(()=>ctx.fcAssertPerformanceFolder_(root+'/fcPerformanceRuntime/state'));
 });
 
+test('the trusted occurrence scorer does not depend on the visibility of performance or QMENTUM',()=>{
+ let disabled=['desempenho','registros/qmentum'];
+ const ctx=vm.createContext({firestoreFieldsToJs_:fields=>fields,firestoreRequest_:()=>({fields:{schemaVersion:1,revision:2,disabled}})});
+ vm.runInContext(source,ctx);
+ const base='https://firestore.googleapis.com/v1/projects/'+project+'/databases/(default)/documents';
+ const ledger=()=>ctx.fcAssertPerformanceFolder_(base+'/fcPerformanceAwards/award-id');
+ assert.doesNotThrow(()=>ctx.fcRunOccurrenceScoring_(ledger));
+ assert.throws(ledger,/FC_PERFORMANCE_FOLDER_DISABLED/);
+ disabled=['registros/ocorrencias'];
+ assert.throws(()=>ctx.fcRunOccurrenceScoring_(ledger),/FC_PERFORMANCE_FOLDER_DISABLED/);
+});
+
 test('FC transport adapter inserts the folder check before fetching performance content',()=>{
  const calls=[];
  const ctx=vm.createContext({
@@ -80,4 +92,46 @@ test('FC transport adapter inserts the folder check before fetching performance 
  vm.runInContext(adaptFcPerformanceDeclaration('firestoreRequest_',declaration),ctx);
  assert.throws(()=>ctx.firestoreRequest_('synthetic'),/FC_PERFORMANCE_FOLDER_DISABLED/);
  assert.deepEqual(calls,['destination','policy']);
+});
+
+test('analysis and acknowledgement each award one independent point per occurrence and member',async()=>{
+ const script=await readFile(new URL('../apps-script-v2/EvaluationOccurrenceDelivery.gs',import.meta.url),'utf8');
+ const claims=new Map(),awards=[],receipts=new Map();
+ const {context}=setup();
+ Object.assign(context,{
+  SAHMT_EVALUATION_FC:project,
+  evaluationOccurrenceAssertOperator_:()=>{},
+  evaluationRunTransaction_:work=>{
+   const planned=work('fc-transaction');
+   for(const write of planned.writes){
+    if(write.collection==='evaluationSourceReceipts')receipts.set(write.id,write.fields);
+    else if(write.collection==='occurrenceScoreClaims')Object.assign(claims.get(write.id),write.fields);
+   }
+   return planned.result;
+  },
+  evaluationGet_:(name,id)=>name==='occurrenceScoreClaims'?claims.get(id):receipts.get(id),
+  evaluationDeliveryCanonical_:JSON.stringify,sha256Hex_:text=>text,
+  evaluationApplyAwards_:([award])=>{
+   context.fcPerformanceAssertAward_(award);
+   awards.push(award);
+   return {status:'APPLIED',awards:[{awardId:award.creditScopeId}],writes:[]};
+  },
+  evaluationWrite_:(collection,id,fields)=>({collection,id,fields}),
+  evaluationPublishCategorySummary_:()=>({status:'CONFIRMED'})
+ });
+ vm.runInContext(script,context);
+ context.evaluationOccurrenceAssertOperator_=()=>{};
+ const sourceId='gr-123',uid='test-user';
+ for(const [stage,source] of [['analysis','ANALISE_OCORRENCIA'],['ack','CIENCIA_OCORRENCIA']]){
+  const id=stage+'-'+sourceId+'_'+uid;
+  claims.set(id,{id,sourceId,source,uid,points:1,createdAt:start,schemaVersion:1,status:'PENDING_VALIDATION'});
+  assert.throws(()=>context.evaluationDeliverOccurrence_(id,'other'),/AUTHOR_MISMATCH/);
+  context.evaluationDeliverOccurrence_(id,uid);
+  context.evaluationDeliverOccurrence_(id,uid);
+  assert.equal(claims.get(id).status,'VALIDATED');
+ }
+ assert.deepEqual(awards.map(({points,sourceType})=>[points,sourceType]),[
+  [1,'FC_OCCURRENCE_ANALYSIS'],[1,'FC_OCCURRENCE_ACKNOWLEDGEMENT']
+ ]);
+ assert.notEqual(awards[0].creditScopeId,awards[1].creditScopeId);
 });

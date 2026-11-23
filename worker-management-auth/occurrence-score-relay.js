@@ -1,4 +1,5 @@
 import {createHmac, randomBytes, timingSafeEqual} from 'node:crypto';
+import {OCCURRENCE_SCORE_ID} from '../src/occurrence-schema.js';
 const FC='indicadores---sahmt';
 const mac=(payload,key)=>createHmac('sha256',key).update('SAHMT_OCCURRENCE_SCORE_V1\n'+payload).digest('hex');
 const result=(code,status,origin)=>new Response(JSON.stringify({code}),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store',...(origin?{'Access-Control-Allow-Origin':origin,Vary:'Origin'}:{})}});
@@ -28,12 +29,13 @@ export async function relayOccurrenceScore(request,env,{fetchImpl=fetch,now=Date
   admission=await admitRequest({origin,route:'/v1/evaluation/occurrence',method:'POST'},{signal:controller.signal});
   if(admission?.allowed!==true||typeof admission.release!=='function')return result('OCCURRENCE_SCORE_BUSY',429,origin);
   const input=await limited(request,512,controller.signal);
-  if(!input||Object.keys(input).join(',')!=='id'||!/^[A-Fa-f0-9-]{36}$/.test(input.id||''))return result('OCCURRENCE_SCORE_INPUT_INVALID',400,origin);
+  if(!input||Object.keys(input).join(',')!=='id'||!OCCURRENCE_SCORE_ID.test(input.id||''))return result('OCCURRENCE_SCORE_INPUT_INVALID',400,origin);
   const name=`projects/${FC}/databases/(default)/documents/occurrenceScoreClaims/${input.id}`;
   const read=await fetchImpl('https://firestore.googleapis.com/v1/'+name+'?mask.fieldPaths=uid&mask.fieldPaths=sourceId',{method:'GET',headers:{Authorization:authorization},redirect:'manual',signal:controller.signal,cache:'no-store'});
   if(read.status!==200){await read.body?.cancel().catch(()=>{});return result('OCCURRENCE_SCORE_CLAIM_UNAVAILABLE',[401,403,404].includes(read.status)?read.status:503,origin);}
   const doc=await limited(read,4096,controller.signal),claims=JSON.parse(Buffer.from(authorization.slice(7).split('.')[1],'base64url').toString('utf8'));
-  if(doc.name!==name||doc.fields?.sourceId?.stringValue!==input.id||claims.aud!==FC||claims.iss!==`https://securetoken.google.com/${FC}`||
+  const sourceId=doc.fields?.sourceId?.stringValue;
+  if(doc.name!==name||![sourceId,'analysis-'+sourceId+'_'+claims.sub,'ack-'+sourceId+'_'+claims.sub].includes(input.id)||claims.aud!==FC||claims.iss!==`https://securetoken.google.com/${FC}`||
     typeof claims.sub!=='string'||doc.fields.uid?.stringValue!==claims.sub)return result('OCCURRENCE_SCORE_AUTHOR_DENIED',403,origin);
   const nonce=randomBytes(16).toString('hex'),issuedAt=now(),payload=Buffer.from(JSON.stringify({v:1,aud:'sahmt-occurrence-score',nonce,issuedAt,expiresAt:issuedAt+60000,id:input.id,uid:claims.sub})).toString('base64url');
   remoteStarted=true;

@@ -24,6 +24,15 @@ test('anonymous occurrence retains its label/privacy and same private two-point 
  const h=setup({anonymous:true});h.ctx.evaluationDeliverOccurrence_(ID);assert.equal(h.values('evaluationAwards')[0].points,2);assert.equal(h.data('occurrenceReports',ID).anonymous,true);
  assert.equal('uid' in h.data('occurrenceReports',ID),false);
 });
+test('new matched registration claims are awarded three points exactly once',()=>{
+ const h=setup();
+ h.seed('occurrenceReports',ID,{...h.get('occurrenceReports',ID),pointsClaimed:3});
+ h.seed('occurrenceScoreClaims',ID,{...h.get('occurrenceScoreClaims',ID),points:3});
+ h.ctx.evaluationDeliverOccurrence_(ID,'fixture');
+ h.ctx.evaluationDeliverOccurrence_(ID,'fixture');
+ assert.deepEqual(h.values('evaluationLedger').map(row=>row.points),[3]);
+ assert.equal(h.data('evaluationSummaries','fixture').performanceTotal,3);
+});
 test('no scoring when flag is off',()=>{const h=setup();h.properties.delete('SAHMT_V2_OCCURRENCE_SCORING_ENABLED');const before=h.requests.length;assert.throws(()=>h.ctx.evaluationDeliverOccurrence_(ID),/DISABLED/);assert.equal(h.requests.length,before);});
 test('occurrence approval is independent of general Forms activation and fails closed without marker',()=>{
  const h=setup();h.properties.delete('SAHMT_V2_EVALUATION_ENABLED');h.properties.delete('SAHMT_V2_EVALUATION_HOMOLOGATED');

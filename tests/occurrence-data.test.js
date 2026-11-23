@@ -9,7 +9,7 @@ function harness({claims={}, active=true, failTransaction=false, failTransaction
   const user={uid:'uid-synthetic',async getIdTokenResult(force){calls.push(['token',force]);return {claims:{aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:'uid-synthetic',firebase:{sign_in_provider:'google.com'},...claims}};}};
   const auth={currentUser:user};
   const firestore={
-    doc:(_db,collection,id)=>({path:`${collection}/${id}`,collection,id}),
+    doc:(_db,collection,id,...segments)=>({path:[collection,id,...segments].join('/'),collection,id}),
     collection:(_db,name)=>({collection:name}),
     orderBy:(field,direction)=>({field,direction}), limit:value=>({limit:value}),
     query:(collection,...args)=>({collection,...Object.assign({},...args)}),
@@ -96,7 +96,29 @@ test('grava relatório anonimizado, auditoria restrita e claim pendente em um co
   assert.equal(Object.hasOwn(report,'uid'),false); assert.equal(Object.hasOwn(report,'createdByUid'),false);
   assert.equal(store.get(`occurrenceAudit/${input.recordId}`).uid,input.uid);
   const score=store.get(`occurrenceScoreClaims/${input.recordId}`);
-  assert.equal(score.points,2); assert.equal(score.status,'PENDING_VALIDATION');
+  assert.equal(report.pointsClaimed,3);
+  assert.equal(score.points,3); assert.equal(score.status,'PENDING_VALIDATION');
+});
+
+test('resposta e ciência enfileiram um ponto cada, sem duplicar ao rever o resultado',async()=>{
+ const {repository,store}=harness({claims:allClaims});
+ const {uid,recordId:id}=input;
+ const response={uid,id,answers:[1,1,1,1]};
+ assert.equal(await repository.submitOccurrenceResponse(response),'submitted');
+ assert.equal(await repository.submitOccurrenceResponse(response),'already-submitted');
+ const first={isEqual:other=>other===first};
+ const second={isEqual:other=>other===second};
+ const result='occurrenceFollowups/'+id+'/ethicalPollResult/current';
+ store.set(result,{updatedAt:first});
+ await repository.acknowledgeOccurrence({uid,id,resultAt:first});
+ await repository.acknowledgeOccurrence({uid,id,resultAt:first});
+ store.set(result,{updatedAt:second});
+ await repository.acknowledgeOccurrence({uid,id,resultAt:second});
+ const scores=[...store].filter(([path])=>path.startsWith('occurrenceScoreClaims/')).map(([,claim])=>claim);
+ assert.deepEqual(scores.map(({source,points,sourceId})=>({source,points,sourceId})),[
+  {source:'ANALISE_OCORRENCIA',points:1,sourceId:id},
+  {source:'CIENCIA_OCORRENCIA',points:1,sourceId:id}
+ ]);
 });
 
 test('publica somente o relato de acompanhamento sem o autor e o atendimento',async()=>{

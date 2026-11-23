@@ -1,11 +1,12 @@
 import {fcIntegrationEndpoint} from './fc-integration-config.js';
+import {OCCURRENCE_SCORE_ID} from './occurrence-schema.js';
 export async function notifyOccurrenceScore({id, uid, auth, isCurrent = () => true, enabled = false, endpoint, allowedOrigin, fetchImpl = globalThis.fetch}) {
   if (!enabled) return {code:'OCCURRENCE_SCORING_DISABLED'};
   let url;try{url=new URL(endpoint);}catch{return {code:'OCCURRENCE_SCORE_CONFIG_INVALID'};}
   if(url.protocol!=='https:'||url.origin!==allowedOrigin||url.pathname!=='/v1/evaluation/occurrence'||url.username||url.password||url.search||url.hash)
     return {code:'OCCURRENCE_SCORE_CONFIG_INVALID'};
   const user=auth?.currentUser;
-  if(!user||user.uid!==uid||!isCurrent()||!/^[A-Fa-f0-9-]{36}$/.test(id||''))return {code:'OCCURRENCE_SCORE_SESSION_INVALID'};
+  if(!user||user.uid!==uid||!isCurrent()||!OCCURRENCE_SCORE_ID.test(id||''))return {code:'OCCURRENCE_SCORE_SESSION_INVALID'};
   const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),60000);
   try{
     const token=await user.getIdToken();

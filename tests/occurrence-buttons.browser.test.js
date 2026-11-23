@@ -298,6 +298,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   const analysisPrompt=await page.evaluate(()=>window.copiedPoll);
   assert.match(analysisPrompt,/"protocolo": "GRA 001"[\s\S]*CONTAGEM POR ALTERNATIVA[\s\S]*Comentário de teste/);
   assert.match(analysisPrompt,/Total de respostas: 2/);
+  assert.match(analysisPrompt,/Fase 4 — Ação[\s\S]*Comunicação da decisão[\s\S]*Implementação do plano de ação/);
   assert.match(analysisPrompt,/RESPOSTA 1[\s\S]*Ponderação conjunta desses princípios[\s\S]*Comentário de teste\./);
   assert.match(analysisPrompt,/RESPOSTA 2[\s\S]*Motivo da reserva prévia e o que mudou desde o planejamento\.[\s\S]*Segunda resposta\.\nComentário em duas linhas\./);
   assert.doesNotMatch(analysisPrompt,/synthetic/);
