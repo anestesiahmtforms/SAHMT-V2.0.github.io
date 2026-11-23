@@ -62,6 +62,7 @@ export function mountOccurrenceFollowup(host,{
       records.push(...page.entries.filter(entry=>entry.origin===source));
       after=page.next;
     } while(after);
+    if (source==='app') records.sort((first,second)=>(second.sequence??0)-(first.sequence??0));
     return records;
   }
 

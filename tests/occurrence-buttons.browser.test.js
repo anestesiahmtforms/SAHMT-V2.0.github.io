@@ -7,9 +7,12 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    listFollowups:async({after,origin})=>after?{entries:origin==='app'?[
       {id:'49de5878-28c7-40b5-81e6-f416d58b2433',formId:'F08',origin:'app',sequence:1,title:'Enquete de teste',
       description:'Relato com questionário',classification:{},details:{},analysisStarted:true,responsesClosedAt:window.closedReplies?.['49de5878-28c7-40b5-81e6-f416d58b2433'],analysisClosed:!!window.pollResult,eventClosed:!!window.eventClosed},
-      {id:'ethical-test',formId:'F08',origin:'app',sequence:2,title:'Dilema de teste',
-      description:'Relato do dilema',classification:{},details:{},analysisClosed:!!window.closedOther,eventClosed:!!window.closedOther}
-    ]:[],next:null}:{entries:origin==='hospital'&&window.followupPublished?
+      {id:'ethical-finalized',formId:'F08',origin:'app',sequence:3,title:'Ocorrência finalizada',
+      description:'Relato finalizado',classification:{},details:{},analysisClosed:true,eventClosed:true}
+    ]:[],next:null}:{entries:origin==='app'?
+    [{id:'ethical-test',formId:'F08',origin:'app',sequence:2,title:'Dilema de teste',
+      description:'Relato do dilema',classification:{},details:{},analysisClosed:!!window.closedOther,eventClosed:!!window.closedOther}]
+    :origin==='hospital'&&window.followupPublished?
     [{id:'gr-1',formId:'F03',origin:'hospital',hospitalNumber:'1',title:'Evento externo',
       occurredOn:'2026-11-20',description:'Relato completo aqui',preparedDescription:window.preparations?.['gr-1'],classification:{},details:{},analysisStarted:!!window.questionnaires?.['gr-1'],responsesClosedAt:window.closedReplies?.['gr-1']}]
     :[],next:'next'},
@@ -253,6 +256,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
     .locator('xpath=self::*[@data-analysis-state="preparing"][@disabled]').waitFor();
   const pollRecord=followupBanner.getByRole('button',{name:'GRA 001 · Enquete de teste'});
   await pollRecord.locator('xpath=self::*[@data-analysis-state="open"]').waitFor();
+  assert.deepEqual(await followupBanner.locator('[data-followup-record] strong').allTextContents(),
+   ['GRA 003','GRA 002','GRA 001']);
   assert.match(await pollRecord.evaluate(element=>getComputedStyle(element).backgroundImage),/249, 218, 134/);
   await pollRecord.click();
   const poll=followupBanner.locator('[data-ethical-poll]');
