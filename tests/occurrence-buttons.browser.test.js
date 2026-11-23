@@ -57,7 +57,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).waitFor();
   assert.equal(await page.getByText(/Auditoria restrita|Registro autenticado/).count(),0);
   assert.equal(await page.evaluate(()=>window.auditReads),0);
-  for (const viewport of [{width:320,height:568},{width:390,height:844},{width:568,height:320},{width:1440,height:900}]) {
+  for (const viewport of [{width:320,height:440},{width:320,height:568},{width:390,height:540},
+     {width:390,height:844},{width:568,height:320},{width:1440,height:900}]) {
    await page.setViewportSize(viewport);
    const layout=await page.evaluate(()=>{
     const bounds=element=>{const {left,right,top,bottom,width,height}=element.getBoundingClientRect();return {left,right,top,bottom,width,height};};
@@ -68,12 +69,17 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
     const titleText=document.createRange();
     titleText.selectNodeContents(title);
     const titleRect=titleText.getBoundingClientRect();
+    const visibleButton=element=>{const box=bounds(element);return {
+      ...box,clickable:element.contains(document.elementFromPoint(box.left+box.width/2,box.top+box.height/2))
+    };};
+    const registrationButtons=[...registration.querySelectorAll(':scope > button')];
     return {banner:bounds(banner),menu:bounds(menu),home:bounds(banner.querySelector('.occurrences-home-button')),
      title:bounds(title),titleText:{left:titleRect.left,right:titleRect.right,lines:titleText.getClientRects().length},
      registration:bounds(registration),analysis:bounds(analysis),
      titleBackground:getComputedStyle(title).backgroundImage,analysisTitleBackground:getComputedStyle(analysisTitle).backgroundImage,
-     registrationButtons:[...registration.querySelectorAll(':scope > button')].map(bounds),
-     analysisButtons:[...analysis.querySelectorAll(':scope > button')].map(bounds)};
+     registrationColors:registrationButtons.map(button=>getComputedStyle(button).backgroundColor),
+     registrationButtons:registrationButtons.map(visibleButton),
+     analysisButtons:[...analysis.querySelectorAll(':scope > button')].map(visibleButton)};
    });
    const hint=JSON.stringify({viewport,layout});
    assert.ok(Math.abs((layout.banner.left+layout.banner.right)/2-viewport.width/2)<=1,hint);
@@ -83,13 +89,25 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    assert.ok(layout.titleText.left>=layout.title.left&&layout.titleText.right<=layout.title.right,hint);
    assert.equal(layout.registrationButtons.length,4,hint);
    assert.equal(layout.analysisButtons.length,2,hint);
+   assert.deepEqual([...new Set(layout.registrationColors)],['rgb(215, 237, 249)'],hint);
    assert.ok(layout.registration.bottom<layout.analysis.top||layout.registration.right<layout.analysis.left,hint);
    assert.ok([...layout.registrationButtons,...layout.analysisButtons].every(
-    button=>button.height>=44&&button.top>=layout.menu.top&&button.bottom<=layout.home.top),hint);
+    button=>button.clickable&&button.height>=44&&button.top>=layout.menu.top&&button.bottom<=layout.home.top),hint);
    assert.ok(layout.analysisButtons[0].bottom<=layout.analysisButtons[1].top,hint);
    assert.ok(layout.home.bottom<=layout.banner.bottom&&layout.home.height>=44,hint);
    assert.ok(layout.banner.width<=672,hint);
   }
+  await page.setViewportSize({width:320,height:300});
+  const content=page.locator('.app-shell--occurrences > .main-content');
+  await content.evaluate(element=>element.insertAdjacentHTML('afterbegin','<p class="notice">Confira a conexão antes de continuar.</p>'));
+  const homeButton=page.locator('.occurrences-home-button');
+  const homeBefore=await homeButton.boundingBox();
+  const lowerAction=page.locator('[data-occurrence-followup="hospital"]');
+  await lowerAction.scrollIntoViewIfNeeded();
+  await lowerAction.click({trial:true});
+  assert.deepEqual(await homeButton.boundingBox(),homeBefore);
+  assert.ok(await content.evaluate(element=>element.scrollTop>0));
+  await content.locator('.notice').evaluate(element=>element.remove());
   await page.setViewportSize({width:390,height:844});
   for(let i=1;i<=10;i++){
    const group=i<=7?'A':i===8?'B':i===9?'C':'D',id='F'+String(i).padStart(2,'0');
