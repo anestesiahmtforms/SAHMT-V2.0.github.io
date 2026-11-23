@@ -106,7 +106,7 @@ export function createCommunicationClient({isCurrent=()=>true}={}){
  }
  async function refreshPushRegistration(){
   const uid=auth.currentUser?.uid;
-  if(!uid||!current()||!vapidKey||!communicationDevicePushActive())return;
+  if(!uid||!current()||!vapidKey||window.Notification?.permission!=='granted'||!communicationDevicePushActive())return;
   try{
    const refreshed=Number(localStorage.getItem(pushRefreshKey(uid)));
    if(refreshed>0&&Date.now()-refreshed<pushRefreshPeriod)return;

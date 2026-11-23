@@ -1,7 +1,5 @@
 import {escapeNoticeHtml as escapeHtml, linkedNoticeText} from './communication-notice-text.js';
 import {inboxUnread,setInboxUnread} from './communication-inbox-state.js';
-import {activateCommunicationPush, isPushCampaignRecipient, pushActivationMessage} from './communication-push-activation.js';
-import {appDisplayMode} from './app-updates-targeted.js';
 
 const MAX_INBOX_PAGES = 18;
 const MAX_DISMISSED_IDS = 500;
@@ -44,12 +42,6 @@ export function mountCommunicationHomeBanners(root, {client, user, inboxShortcut
   let pushedItems = [];
   let loading = false;
   let lastLoadAt = 0;
-  const enrollmentKey = `sahmt-communication-push-request-v2:${appDisplayMode()}:${encodeURIComponent(user.uid)}`;
-  let enrollmentState;
-  try { enrollmentState = localStorage.getItem(enrollmentKey); } catch {}
-  let checkedEnrollment = false;
-  let enrolling = false;
-  let enrollmentError = '';
   let renderedMarkup = '';
   const acknowledging = new Set();
   const acknowledgementErrors = new Map();
@@ -91,24 +83,6 @@ export function mountCommunicationHomeBanners(root, {client, user, inboxShortcut
       if(checkAgain){checkAgain=false;void checkUnread(true);}
     }
   }
-  function saveEnrollment(state) {
-    enrollmentState = state;
-    try { localStorage.setItem(enrollmentKey, state); } catch {}
-  }
-
-  async function checkEnrollment() {
-    if (enrollmentState || checkedEnrollment) return;
-    checkedEnrollment = true;
-    try {
-      if (await isPushCampaignRecipient(user) && active()) {
-        saveEnrollment('pending');
-        render(visibleItems);
-      }
-    } catch {
-      checkedEnrollment = false;
-    }
-  }
-
   function render(items) {
     if (!active()) return;
     // Only the daily checklist is restored at startup. A release appears here
@@ -116,10 +90,7 @@ export function mountCommunicationHomeBanners(root, {client, user, inboxShortcut
     const merged = new Map(items.filter(isChecklistConference).map(item => [item.id, item]));
     for (const item of pushedItems) if (!merged.has(item.id)) merged.set(item.id, item);
     visibleItems = [...merged.values()].filter(item => !dismissed.has(item.id)).sort((a, b) => Number(b.publishAt || 0) - Number(a.publishAt || 0));
-    const enrollment = enrollmentState === 'pending'
-      ? `<article class="comm-home-notice comm-home-notice--push-enrollment" aria-labelledby="push-enrollment-title"><h2 id="push-enrollment-title">Ative para receber mensagens do SAHMT</h2><button type="button" data-activate-team-push ${enrolling ? 'disabled' : ''}>${enrolling ? 'Ativando…' : 'Ativar notificações neste aparelho'}</button><p role="status">${escapeHtml(enrollmentError)}</p></article>`
-      : '';
-    const notices = visibleItems.map(item => {
+    const markup = visibleItems.map(item => {
       const checklistConference = item.id.startsWith('event-checklist-conference-');
       return `<article class="comm-home-notice${item.priority === 'URGENT' ? ' comm-home-notice--urgent' : ''}${checklistConference ? ' comm-home-notice--checklist-conference' : ''}" role="status" aria-label="${checklistConference ? 'Conferência do Checklist' : 'Novo aviso institucional'}">
         <header><strong>${checklistConference ? '📋 CONFERÊNCIA DO CHECKLIST' : `🔔 NOVO AVISO · ${escapeHtml(item.category)}`}</strong>${checklistConference ? '' : `<button type="button" class="comm-home-notice__close" data-dismiss-comm="${escapeHtml(item.id)}" aria-label="Fechar aviso">×</button>`}</header>
@@ -128,9 +99,6 @@ export function mountCommunicationHomeBanners(root, {client, user, inboxShortcut
         ${checklistConference ? `<p class="comm-home-notice__ack-status" role="status">${escapeHtml(acknowledgementErrors.get(item.id) || '')}</p><button type="button" class="comm-home-notice__ack" data-ack-comm="${escapeHtml(item.id)}" ${acknowledging.has(item.id) ? 'disabled' : ''}>${acknowledging.has(item.id) ? 'REGISTRANDO…' : 'OK'}</button>` : `<a class="comm-home-notice__details" href="#/communications/message/${encodeURIComponent(item.id)}">ABRIR COMUNICAÇÃO</a>`}
       </article>`;
     }).join('');
-    const markup = enrollment && notices
-      ? enrollment + `<div class="comm-home-notice-list">${notices}</div>`
-      : enrollment + notices;
     if (markup !== renderedMarkup) {
       root.innerHTML = markup;
       renderedMarkup = markup;
@@ -186,25 +154,6 @@ export function mountCommunicationHomeBanners(root, {client, user, inboxShortcut
   }
 
   const onClick = event => {
-    const activation = event.target.closest('[data-activate-team-push]');
-    if (activation && root.contains(activation) && !enrolling && enrollmentState === 'pending') {
-      enrolling = true;
-      enrollmentError = '';
-      render(visibleItems);
-      void (async () => {
-        try {
-          const result = await activateCommunicationPush(client, window);
-          if (result?.registered !== true) throw Error('COMM_PUSH_UNCONFIRMED');
-          saveEnrollment('confirmed');
-        } catch (error) {
-          enrollmentError = pushActivationMessage(error);
-        } finally {
-          enrolling = false;
-          render(visibleItems);
-        }
-      })();
-      return;
-    }
     const acknowledge = event.target.closest('[data-ack-comm]');
     if (acknowledge && root.contains(acknowledge)) {
       const id = acknowledge.dataset.ackComm;
@@ -248,7 +197,6 @@ export function mountCommunicationHomeBanners(root, {client, user, inboxShortcut
 
   const onResume = () => {
     if (document.visibilityState === 'hidden' || !active()) return;
-    void checkEnrollment();
     void checkUnread(false);
     if (Date.now() - lastLoadAt > 2000) void load();
     void client.refreshPushRegistration?.().catch(() => {});
@@ -258,7 +206,6 @@ export function mountCommunicationHomeBanners(root, {client, user, inboxShortcut
   navigator.serviceWorker?.addEventListener('message', onServiceWorkerMessage);
   document.addEventListener('visibilitychange', onResume);
   window.addEventListener('focus', onResume);
-  if (enrollmentState === 'pending') render(visibleItems);
   const poll = inboxShortcut ? setInterval(()=>void checkUnread(false),90000) : null;
   const cached=inboxShortcut?inboxUnread(user.uid):undefined;
   if(cached!==undefined)unread(cached);

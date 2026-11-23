@@ -13,3 +13,32 @@ test('communication recovery returns to FA without another Google widget or requ
 });
 
 test('disabled communication refuses reads before token exchange or transport',async()=>{let requests=0;const context=vm.createContext({document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},operationalContentAllowed:()=>false,env:{VITE_COMMUNICATION_FF_ENABLED:'true'},fail:code=>Object.assign(Error(code),{code}),fetch:()=>{requests++;throw Error('unexpected request');}});const source=readFileSync(new URL('../src/communication-client.js',import.meta.url),'utf8').replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');vm.runInContext(source,context);const client=context.createCommunicationClient();await assert.rejects(client.request('INBOX'),{code:'COMM_CONFIG_REQUIRED'});assert.equal(requests,0);client.dispose();});
+
+test('a renovação automática só usa a sessão FF com permissão do navegador já concedida',async()=>{
+ let sessionChecks=0;
+ const Notification={permission:'default',requestPermission(){assert.fail('pedido automático de permissão');}};
+ const context=vm.createContext({
+  document:{visibilityState:'visible',addEventListener(){},removeEventListener(){}},
+  window:{Notification},navigator:{serviceWorker:{}},
+  env:{VITE_COMMUNICATION_FF_ENABLED:'true',VITE_COMMUNICATION_FF_VAPID_KEY:'test-key'},
+  auth:{currentUser:{uid:'test-user'}},
+  operationalContentAllowed:()=>true,
+  communicationDevicePushActive:()=>true,
+  localStorage:{getItem:()=>null},
+  waitForGoogleProjectSession:async()=>{sessionChecks++;return false;},
+  fail:code=>Object.assign(Error(code),{code})
+ });
+ const source=readFileSync(new URL('../src/communication-client.js',import.meta.url),'utf8')
+  .replace(/^import[^\n]*\n/gm,'').replace(/^export /gm,'').replaceAll('import.meta.env','env');
+ vm.runInContext(source,context);
+ const client=context.createCommunicationClient();
+ for(const permission of ['default','denied']){
+  Notification.permission=permission;
+  await client.refreshPushRegistration();
+  assert.equal(sessionChecks,0);
+ }
+ Notification.permission='granted';
+ await assert.rejects(client.refreshPushRegistration(),{code:'COMM_SESSION_INVALID'});
+ assert.equal(sessionChecks,1);
+ client.dispose();
+});
