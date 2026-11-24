@@ -12,7 +12,6 @@ const dateLabel = (value,kind) => kind === 'date' ? formatDisplayDate(value) : v
 const labelFor = entry => entry.title || getOccurrenceForm(entry.formId)?.title || 'Ocorrência';
 const originTitles = {app:'OCORRÊNCIAS - SAHMT',hospital:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'};
 const pageSize = 30;
-const privacyNote = 'O relato será disponibilizado à equipe. Retire nomes e outros dados que identifiquem pessoas.';
 
 function descriptionMarkup(entry) {
   const form = getOccurrenceForm(entry.formId);
@@ -172,22 +171,14 @@ export function mountOccurrenceFollowup(host,{
 
   function detail(entry,canEdit) {
     const label=occurrenceProtocol(entry);
-    const report=descriptionMarkup(entry)+'<div data-occurrence-description-tools hidden></div>';
+    const report=descriptionMarkup(entry);
     const questionnaire='<div data-occurrence-questionnaire></div>';
     const current=render(label,(entry.analysisClosed===true?questionnaire+report:report+questionnaire)+
       '<div data-occurrence-ai-panel></div>',()=>records(true));
     heading.classList.toggle('occurrence-hospital-heading',entry.origin==='hospital');
-    const descriptionTools=body.querySelector('[data-occurrence-description-tools]');
     const promptPanel=body.querySelector('[data-occurrence-ai-panel]');
-    let stageDescription;
-    function allowPreparedEdits() {
-      if(!entry.analysisStarted||entry.responsesClosedAt||entry.analysisClosed||stageDescription)return;
-      stageDescription=bindDescriptionEditor(descriptionTools,entry,current);
-    }
-    const editor=canEdit.then(allowed=>{
-      if(allowed&&current())allowPreparedEdits();
-      return allowed&&current();
-    });
+    let closePromptInteraction;
+    const editor=canEdit.then(allowed=>allowed&&current());
     const isWriting=()=>writing;
     mountOccurrenceQuestionnaire(body.querySelector('[data-occurrence-questionnaire]'),{
       repository,uid,id:entry.id,entry,label:label+' · '+labelFor(entry),editor,
@@ -196,64 +187,16 @@ export function mountOccurrenceFollowup(host,{
         const description=body.querySelector('[data-occurrence-description]');
         description.textContent=entry.preparedDescription;
         description.hidden=false;
-        allowPreparedEdits();
       },
-      onResponsesClosed:()=>{descriptionTools.hidden=true;},
-      onResultPublished:()=>{descriptionTools.hidden=true;promptActions.hidden=true;promptPanel.replaceChildren();},
+      onResponsesClosed:()=>closePromptInteraction?.(),
+      onResultPublished:()=>{promptActions.hidden=true;promptPanel.replaceChildren();},
       onEventFinalized:()=>onChainChanged?.(),
-      onEditorReady:options=>bindOccurrencePromptActions(promptActions,promptPanel,{
+      onEditorReady:options=>{closePromptInteraction=bindOccurrencePromptActions(promptActions,promptPanel,{
         ...options,entry,isCurrent:current,isWriting,setWriting:value=>{writing=value;},
         readPreparationContext:(includeClinical=false)=>entry.origin==='app'&&entry.formId!=='F08'
-          ? repository.readPreparationContext({uid,id:entry.id,formId:entry.formId,includeClinical}) : {},
-        stageDescription:text=>stageDescription?.(text)
-      })
+          ? repository.readPreparationContext({uid,id:entry.id,formId:entry.formId,includeClinical}) : {}
+      });}
     });
-  }
-
-  function bindDescriptionEditor(panel,entry,current) {
-    panel.innerHTML='<button type="button" class="secondary-button" data-edit-occurrence-description>EDITAR DESCRIÇÃO PARA ANÁLISE</button>'+
-      '<form class="occurrence-followup-analysis" hidden><p>'+privacyNote+'</p><fieldset>'+
-      '<label class="occurrence-field"><span>Descrição da ocorrência</span><textarea name="description" rows="5" maxlength="5000" required></textarea></label>'+
-      '<button type="submit" class="primary-button">SALVAR DESCRIÇÃO</button>'+
-      '<button type="button" class="secondary-button" data-cancel-description>CANCELAR</button></fieldset></form><p role="status"></p>';
-    panel.hidden=false;
-    const edit=panel.querySelector('[data-edit-occurrence-description]'),form=panel.querySelector('form'),
-      inputs=form.querySelector('fieldset'),input=form.elements.description,status=panel.querySelector('[role="status"]');
-    function close() {form.hidden=true;edit.hidden=false;edit.focus({preventScroll:true});}
-    function open(description=entry.preparedDescription??entry.description??'') {
-      if (!current()||writing||entry.responsesClosedAt||!canShowHospital()) return false;
-      input.value=description;
-      status.textContent='';
-      edit.hidden=true;
-      form.hidden=false;
-      input.focus();
-      return true;
-    }
-    edit.addEventListener('click',()=>open());
-    form.querySelector('[data-cancel-description]').addEventListener('click',()=>{status.textContent='';close();});
-    form.addEventListener('submit',async event=>{
-      event.preventDefault();
-      if (!current()||writing||entry.responsesClosedAt||!canShowHospital()) return;
-      const description=input.value.trim();
-      if (!description) {status.textContent='Preencha a descrição da ocorrência.';return;}
-      writing=true;inputs.disabled=true;status.textContent='Salvando descrição…';
-      try {
-        const saved=await repository.saveDescription({uid,id:entry.id,description,expectedDescription:entry.preparedDescription??entry.description??null});
-        if (!current()) return;
-        entry.preparedDescription=saved;
-        const published=body.querySelector('[data-occurrence-description]');
-        published.textContent=saved;
-        published.hidden=false;
-        status.textContent='Descrição atualizada.';
-        close();
-      } catch(error) {
-        if (!current()) return;
-        status.textContent=error.message==='OCCURRENCE_DESCRIPTION_CHANGED'
-          ?'A descrição mudou desde que você abriu o registro. Volte e atualize a lista antes de editar novamente.'
-          :'Não foi possível salvar a descrição. Confira o seu acesso e tente novamente.';
-      } finally {writing=false;if(current())inputs.disabled=false;}
-    });
-    return open;
   }
 
   function goBack() {

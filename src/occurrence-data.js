@@ -5,7 +5,7 @@ import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PR
   occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues, withOccurrencePatientFields} from './occurrence-schema.js';
 import {isValidDateKey} from './schedule-date.js';
 import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_SAFETY_MAX_QUESTIONS,OCCURRENCE_OPTION_LIMIT,
-  normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
+  normalizeOccurrencePreparationQuestions,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
 
 const REPORTS = 'occurrenceReports';
 const AUDIT = 'occurrenceAudit';
@@ -350,8 +350,8 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const row = await api.getDocFromServer(analysisRef(id,'analysisQuestionnaire'));
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     if(!row.exists())return null;
-    const {questions,revision=0}=row.data();
-    return {questions:normalizeOccurrenceQuestions(questions),revision};
+    const {questions,revision=0,canRevise,lockedAt}=row.data();
+    return {questions:normalizeOccurrenceQuestions(questions),revision,canReviseQuestions:canRevise===true&&!lockedAt};
   };
   const publishOccurrenceQuestionnaire = async ({uid,id,description,questions} = {}) => {
     if(!boundedText(description,5000))throw new Error('OCCURRENCE_INPUT_INVALID');
@@ -362,10 +362,32 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       const row=await tx.get(ref);
       if (!isCurrent() || auth.currentUser?.uid !== uid) throw new Error('OCCURRENCE_SESSION_CHANGED');
       if (row.exists()) throw new Error('OCCURRENCE_QUESTIONNAIRE_PUBLISHED');
-      tx.set(ref,{questions:next,publishedAt:api.serverTimestamp()});
+      tx.set(ref,{questions:next,publishedAt:api.serverTimestamp(),canRevise:true});
       tx.update(record,{analysisStarted:true,preparedDescription:description.trim()});
     });
     return next;
+  };
+  const updateOccurrenceInteraction = async ({uid,id,description,expectedDescription,questions,expectedRevision} = {}) => {
+    if(!boundedText(description,5000))throw new Error('OCCURRENCE_INPUT_INVALID');
+    if(!await descriptionAccess({uid}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const ref=analysisRef(id,'analysisQuestionnaire'),record=api.doc(db,FOLLOWUPS,id);
+    return api.runTransaction(db,async tx=>{
+      const [config,parent]=await Promise.all([tx.get(ref),tx.get(record)]);
+      if(!isCurrent()||auth.currentUser?.uid!==uid)throw new Error('OCCURRENCE_SESSION_CHANGED');
+      const current=config.data(),entry=parent.data(),revision=current?.revision??0;
+      if(!current||!entry?.analysisStarted||entry.responsesClosedAt||entry.analysisClosed)throw new Error('OCCURRENCE_RESPONSES_UNAVAILABLE');
+      if((entry.preparedDescription??entry.description??'')!==expectedDescription||revision!==expectedRevision) {
+        throw new Error('OCCURRENCE_INTERACTION_CHANGED');
+      }
+      const next=questions?normalizeOccurrencePreparationQuestions(questions,entry.formId):current.questions;
+      const changed=JSON.stringify(next)!==JSON.stringify(current.questions);
+      if(changed) {
+        if(current.canRevise!==true||current.lockedAt)throw new Error('OCCURRENCE_QUESTIONS_LOCKED');
+        tx.update(ref,{questions:next,revision:revision+1});
+      }
+      if(entry.preparedDescription!==description.trim())tx.update(record,{preparedDescription:description.trim()});
+      return {questions:next,revision:revision+Number(changed),canReviseQuestions:current.canRevise===true&&!current.lockedAt};
+    });
   };
   const closeOccurrenceResponses = async ({uid,id} = {}) => {
     if(!followupId(id)||!await descriptionAccess({uid}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
@@ -458,11 +480,15 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       !Number.isSafeInteger(questionnaireRevision)||questionnaireRevision<0||
       typeof comment !== 'string' || comment.length>OCCURRENCE_COMMENT_LIMIT) throw new Error('OCCURRENCE_INPUT_INVALID');
     const {user} = await requirePermission(uid);
-    const ref=analysisRef(id,QUESTIONNAIRE_RESPONSES,uid);
+    const ref=analysisRef(id,QUESTIONNAIRE_RESPONSES,uid),configRef=analysisRef(id,'analysisQuestionnaire');
     const status = await api.runTransaction(db,async tx => {
       const row=await tx.get(ref);
       if(!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
       if(row.exists()) return 'already-submitted';
+      const config=(await tx.get(configRef)).data();
+      if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
+      if(config&&(config.revision??0)!==questionnaireRevision)throw new Error('OCCURRENCE_INTERACTION_CHANGED');
+      if(config?.canRevise===true&&!config.lockedAt)tx.update(configRef,{lockedAt:api.serverTimestamp()});
       tx.set(ref,{answers:[...answers],comment,submittedAt:api.serverTimestamp(),
         ...(questionnaireRevision?{questionnaireRevision}:{})});
       saveParticipationClaim(tx,id,uid,'analysis');
@@ -547,6 +573,6 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
     hospitalAccess,saveHospital,descriptionAccess,readPreparationContext,readAnalysisAttendance,saveDescription,readEthicalReview,saveEthicalReview,
-    readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,readOccurrenceAcknowledgement,acknowledgeOccurrence,finalizeOccurrence,closeOccurrenceResponses,getGrant,saveGrant,
+    readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,updateOccurrenceInteraction,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,readOccurrenceAcknowledgement,acknowledgeOccurrence,finalizeOccurrence,closeOccurrenceResponses,getGrant,saveGrant,
     clear:()=>{catalogCache=null;}});
 }

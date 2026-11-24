@@ -151,7 +151,15 @@
         allow create: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
           !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
           getAfter(occurrenceFollowupPath(id)).data.get('analysisStarted',false) && validOccurrenceQuestionnaire(id,request.resource.data);
-        allow update, delete: if false;
+        allow update: if resource.data.get('canRevise',false) && resource.data.get('lockedAt',null) == null &&
+          (validOccurrenceQuestionLock(id) ||
+            (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['questions','revision']) &&
+              canEditOccurrenceDescription() && get(occurrenceFollowupPath(id)).data.get('analysisStarted',false) &&
+              !getAfter(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
+              getAfter(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) == null &&
+              request.resource.data.revision == resource.data.get('revision',0)+1 &&
+              validOccurrenceQuestionItems(id,request.resource.data.questions)));
+        allow delete: if false;
       }
       match /ethicalPollResponses/{uid} {
         allow get: if activeUser() && request.auth.uid == uid && exists(occurrenceFollowupPath(id));
@@ -235,11 +243,20 @@
         options is list && options.size() >= 2 && options.size() <= OCCURRENCE_OPTION_LIMIT;
     }
     function validOccurrenceQuestionnaire(id,data) {
-      let questions = data.questions;
+      return data.keys().hasOnly(['questions','publishedAt','canRevise']) && data.publishedAt == request.time &&
+        data.get('canRevise',false) is bool && validOccurrenceQuestionItems(id,data.questions);
+    }
+    function validOccurrenceQuestionItems(id,questions) {
       let ethical = getAfter(occurrenceFollowupPath(id)).data.formId == 'F08';
-      return data.keys().hasOnly(['questions','publishedAt']) && data.publishedAt == request.time && questions is list &&
+      return questions is list &&
         (ethical ? (questions.size() == OCCURRENCE_QUESTION_COUNT && OCCURRENCE_QUESTION_CHECKS) :
           validSafetyQuestionnaire(questions));
+    }
+    function validOccurrenceQuestionLock(id) {
+      let response = /databases/$(database)/documents/occurrenceFollowups/$(id)/ethicalPollResponses/$(request.auth.uid);
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lockedAt']) &&
+        activeUser() && request.resource.data.lockedAt == request.time &&
+        !exists(response) && getAfter(response).data.submittedAt == request.time;
     }
     function validSafetyQuestionnaire(questions) {
       return questions.size() >= OCCURRENCE_SAFETY_MIN_QUESTIONS && questions.size() <= OCCURRENCE_SAFETY_MAX_QUESTIONS &&
@@ -248,9 +265,10 @@
     }
     function validOccurrenceResponse(id,data) {
       let answers = data.answers;
-      let questionnaire = get(occurrenceQuestionnairePath(id)).data;
+      let questionnaire = getAfter(occurrenceQuestionnairePath(id)).data;
       let questions = questionnaire.questions;
       return data.keys().hasOnly(['answers','comment','submittedAt','questionnaireRevision']) &&
+        (!questionnaire.get('canRevise',false) || questionnaire.get('lockedAt',null) is timestamp) &&
         data.get('questionnaireRevision',0) == questionnaire.get('revision',0) &&
         answers is list && answers.size() == questions.size() &&
         answers.size() >= OCCURRENCE_QUESTION_COUNT && answers.size() <= OCCURRENCE_SAFETY_MAX_QUESTIONS &&

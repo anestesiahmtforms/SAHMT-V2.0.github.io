@@ -308,18 +308,33 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  const managerPublisher=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:delegate}},
   firestore:{doc:(_, ...path)=>doc(delegateDb,...path),getDocFromServer,runTransaction:(_,callback)=>runTransaction(delegateDb,callback)}});
  assert.deepEqual(await managerPublisher.publishOccurrenceQuestionnaire({uid:delegate,id:maxOptionsCase,description:'Preparação do caso',questions:maxOptions}),maxOptions);
+ const editedQuestions=[{...maxOptions[0],prompt:'Pergunta revisada'},...maxOptions.slice(1)];
+ const edited=await managerPublisher.updateOccurrenceInteraction({uid:delegate,id:maxOptionsCase,description:'Preparação revisada',
+   expectedDescription:'Preparação do caso',questions:editedQuestions,expectedRevision:0});
+ assert.equal(edited.revision,1);
+ assert.deepEqual(edited.questions,editedQuestions);
+ await assertFails(updateDoc(config(ordinaryDb,maxOptionsCase),{lockedAt:serverTimestamp()}));
  const valid={answers:[5,2,4,4],comment:'',submittedAt:serverTimestamp()};
- await env.withSecurityRulesDisabled(context=>updateDoc(config(context.firestore(),maxOptionsCase),{revision:2}));
  const revisedRef=ref(ordinaryDb,ordinary,maxOptionsCase);
  const tenAnswers=[1,2,3,4,5,1,2,3,4,3];
  await assertFails(setDoc(revisedRef,{...valid,answers:tenAnswers}));
  await assertFails(setDoc(revisedRef,{...valid,answers:tenAnswers,questionnaireRevision:1}));
- await assertFails(setDoc(revisedRef,{...valid,answers:tenAnswers.slice(0,9),questionnaireRevision:2}));
- await assertFails(setDoc(revisedRef,{...valid,answers:[...tenAnswers.slice(0,9),4],questionnaireRevision:2}));
- assert.equal(await repository.submitOccurrenceResponse({uid:ordinary,id:maxOptionsCase,answers:tenAnswers,comment:'',questionnaireRevision:2}),'submitted');
+ await assert.rejects(repository.submitOccurrenceResponse({uid:ordinary,id:maxOptionsCase,answers:tenAnswers}),
+   {message:'OCCURRENCE_INTERACTION_CHANGED'});
+ await assert.rejects(repository.submitOccurrenceResponse({uid:ordinary,id:maxOptionsCase,answers:tenAnswers.slice(0,9),questionnaireRevision:1}),
+   {code:'permission-denied'});
+ await assert.rejects(repository.submitOccurrenceResponse({uid:ordinary,id:maxOptionsCase,answers:[...tenAnswers.slice(0,9),4],questionnaireRevision:1}),
+   {code:'permission-denied'});
+ assert.equal(await repository.submitOccurrenceResponse({uid:ordinary,id:maxOptionsCase,answers:tenAnswers,questionnaireRevision:1}),'submitted');
  const expanded=await repository.readOccurrenceQuestionnaire({uid:ordinary,id:maxOptionsCase});
- assert.equal(expanded.revision,2);
+ assert.equal(expanded.revision,1);
+ assert.equal(expanded.canReviseQuestions,false);
  assert.equal(expanded.questions.length,10);
+ await assert.rejects(managerPublisher.updateOccurrenceInteraction({uid:delegate,id:maxOptionsCase,description:'Outra preparação',
+   expectedDescription:'Preparação revisada',questions:maxOptions,expectedRevision:1}),{message:'OCCURRENCE_QUESTIONS_LOCKED'});
+ await managerPublisher.updateOccurrenceInteraction({uid:delegate,id:maxOptionsCase,description:'Descrição corrigida',
+   expectedDescription:'Preparação revisada',expectedRevision:1});
+ assert.equal((await getDocFromServer(caseRow(ordinaryDb,maxOptionsCase))).data().preparedDescription,'Descrição corrigida');
  await assertFails(setDoc(ref(ordinaryDb),valid));
  await assertFails(setDoc(config(ordinaryDb),published));
  await assertFails(setDoc(config(adminDb,'missing'),published));

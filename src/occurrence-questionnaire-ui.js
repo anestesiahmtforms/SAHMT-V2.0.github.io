@@ -69,8 +69,10 @@ function mountOccurrenceResponse(section,{repository,uid,id,questions,isCurrent,
       try {
         await repository.submitOccurrenceResponse({uid,id,answers:[...answers],comment,questionnaireRevision});
         if(isCurrent())confirmed();
-      } catch {
-        if(isCurrent())status.textContent='Não foi possível confirmar a resposta. Tente novamente.';
+      } catch(error) {
+        if(isCurrent())status.textContent=error.message==='OCCURRENCE_INTERACTION_CHANGED'
+          ?'A página mudou. Reabra a ocorrência para responder à versão atual.'
+          :'Não foi possível confirmar a resposta. Tente novamente.';
       } finally {
         setWriting(false);
         if(isCurrent())controls.disabled=false;
@@ -125,7 +127,7 @@ function bindOccurrenceResult(panel,{
       '<div class="occurrence-result-actions"><button type="button" class="primary-button" disabled data-occurrence-ack>CIÊNCIA</button>'+
       (canEdit&&!entry.eventClosed?
         '<button type="button" class="secondary-button" data-occurrence-result-edit>EDITAR ANÁLISE FINAL</button>'+
-        '<button type="button" class="secondary-button" data-occurrence-finalize>FINALIZAR EVENTO</button>':'')+'</div>';
+        '<button type="button" class="secondary-button" data-occurrence-finalize>FINALIZAR ANÁLISE</button>':'')+'</div>';
     const ack=body.querySelector('[data-occurrence-ack]');
     const resultAt=published.updatedAt;
     function showAcknowledged() {
@@ -226,7 +228,7 @@ function bindOccurrenceResult(panel,{
   return draft=>open(draft);
 }
 
-function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWriting,setWriting},onPublished) {
+function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWriting,setWriting},onSaved,edit) {
   let questionCount=0;
   const improvementVote=index=>entry.formId!=='F08'&&index===questionCount-1;
   const optionLimit=index=>improvementVote(index)?OCCURRENCE_IMPROVEMENT_OPTION_LIMIT:OCCURRENCE_OPTION_LIMIT;
@@ -239,14 +241,16 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
       '<label class="occurrence-field"><span>Alternativa '+(option+1)+(option<2?'':' (opcional)')+'</span>'+
       '<input name="option-'+index+'-'+option+'" maxlength="'+OCCURRENCE_OPTION_TEXT_LIMIT+'" '+(option<2?'required':'')+'></label>').join('')+
     '</fieldset>';
-  panel.innerHTML='<form class="occurrence-followup-analysis"><h4>REVISAR PREPARAÇÃO</h4>'+
+  panel.innerHTML='<form class="occurrence-followup-analysis"><h4>'+(edit?'EDITAR PÁGINA DE INTERAÇÃO':'REVISAR PREPARAÇÃO')+'</h4>'+
     '<fieldset><label class="occurrence-field"><span>Descrição para análise da equipe</span>'+
     '<textarea name="description" rows="5" maxlength="5000" required></textarea></label>'+
     '<div class="occurrence-followup-analysis" data-occurrence-question-fields></div>'+
-    '<button type="submit" class="primary-button">PUBLICAR OCORRÊNCIA E QUESTIONÁRIO</button></fieldset>'+
+    '<button type="submit" class="primary-button">'+(edit?'SALVAR ALTERAÇÕES':'PUBLICAR OCORRÊNCIA E QUESTIONÁRIO')+'</button>'+
+    (edit?'<button type="button" class="secondary-button" data-cancel-interaction>CANCELAR</button>':'')+'</fieldset>'+
     '</form><p role="status"></p>';
   panel.hidden=true;
   const form=panel.querySelector('form'),controls=form.querySelector('fieldset'),status=panel.querySelector('[role="status"]');
+  form.querySelector('[data-cancel-interaction]')?.addEventListener('click',()=>{if(!isWriting())panel.hidden=true;});
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     if(!isCurrent()||isWriting())return;
@@ -257,24 +261,32 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
     const description=form.elements.description.value.trim();
     if(!description){status.textContent='Preencha a descrição para análise.';return;}
     let normalized;
-    try {normalized=normalizeOccurrencePreparationQuestions(draft,entry.formId);}
+    try {normalized=questionCount?normalizeOccurrencePreparationQuestions(draft,entry.formId):undefined;}
     catch(error) {
       status.textContent=error.message==='OCCURRENCE_IMPROVEMENT_VOTE_INVALID'
         ?'Use duas ou três ações distintas na última pergunta.'
         :'Preencha todas as perguntas e pelo menos duas alternativas de cada uma.';
       return;
     }
-    setWriting(true);controls.disabled=true;status.textContent='Publicando ocorrência e questionário…';
+    setWriting(true);controls.disabled=true;status.textContent=edit?'Salvando alterações…':'Publicando ocorrência e questionário…';
     try {
-      const published=await repository.publishOccurrenceQuestionnaire({uid,id,description,questions:normalized});
-      if(isCurrent()){panel.replaceChildren();panel.hidden=true;onPublished(published,description);}
+      const saved=edit ? await repository.updateOccurrenceInteraction({uid,id,description,questions:normalized,
+        expectedDescription:edit.description,expectedRevision:edit.revision})
+        : {questions:await repository.publishOccurrenceQuestionnaire({uid,id,description,questions:normalized}),
+          revision:0,canReviseQuestions:true};
+      if(isCurrent()){panel.replaceChildren();panel.hidden=true;onSaved(saved,description);}
     } catch(error) {
-      if(isCurrent())status.textContent=error.message==='OCCURRENCE_QUESTIONNAIRE_PUBLISHED'
-        ?'O questionário já foi publicado. Volte e reabra a ocorrência.'
-        :'Não foi possível publicar o questionário. Tente novamente.';
+      if(!isCurrent())return;
+      if(error.message==='OCCURRENCE_QUESTIONS_LOCKED'){
+        form.querySelector('[data-occurrence-question-fields]').replaceChildren();
+        questionCount=0;
+        status.textContent='A equipe já começou a responder. Agora você pode salvar a descrição.';
+      } else if(['OCCURRENCE_QUESTIONNAIRE_PUBLISHED','OCCURRENCE_INTERACTION_CHANGED'].includes(error.message)) {
+        status.textContent='A página foi atualizada. Reabra a ocorrência para editar a versão atual.';
+      } else status.textContent='Não foi possível salvar a página. Tente novamente.';
     } finally {setWriting(false);controls.disabled=false;}
   });
-  return ({description,questions})=>{
+  return ({description,questions=[]})=>{
     questionCount=questions.length;
     form.querySelector('[data-occurrence-question-fields]').innerHTML=questions.map((_,index)=>questionMarkup(index)).join('');
     form.elements.description.value=description;
@@ -285,21 +297,26 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
       }
     }
     panel.hidden=false;
-    status.textContent='Revise a descrição e as perguntas antes de publicar.';
+    status.textContent=edit?(questionCount?'':'As perguntas estão fixas. Você pode ajustar a descrição.')
+      :'Revise a descrição e as perguntas antes de publicar.';
     form.elements.description.focus();
     return true;
   };
 }
 
 export function mountOccurrenceQuestionnaire(host,options) {
-  const {repository,uid,id,entry,editor,isCurrent,onEditorReady,onPrepared}=options;
-  host.innerHTML='<div data-questionnaire-editor></div>'+
+  const {repository,uid,id,entry,editor,isCurrent,isWriting,setWriting,onEditorReady,onPrepared}=options;
+  host.innerHTML='<div data-interaction-actions hidden><div class="occurrence-result-actions">'+
+    '<button class="secondary-button" type="button" data-interaction-edit>EDITAR PÁGINA DE INTERAÇÃO</button>'+
+    '<button class="secondary-button" type="button" data-interaction-close>ENCERRAR INTERAÇÃO</button>'+
+    '</div><p role="status"></p></div><div data-questionnaire-editor></div>'+
     '<section class="occurrence-followup-analysis" data-ethical-poll></section>'+
     '<section class="occurrence-poll-result" data-ethical-poll-result hidden></section>';
   const config=host.querySelector('[data-questionnaire-editor]');
   const response=host.querySelector('[data-ethical-poll]');
   const result=host.querySelector('[data-ethical-poll-result]');
-  let resultBound=false,publishedQuestions=null,stageResult,stagePreparation;
+  const interaction=host.querySelector('[data-interaction-actions]'),interactionStatus=interaction.querySelector('[role="status"]');
+  let resultBound=false,published=null,stageResult,stagePreparation;
   function showResult(canEdit) {
     if(!isCurrent()||resultBound)return;
     resultBound=true;
@@ -314,6 +331,41 @@ export function mountOccurrenceQuestionnaire(host,options) {
       else mountOccurrenceResponse(response,{...options,questions,questionnaireRevision,isCurrent:()=>isCurrent()&&!entry.responsesClosedAt&&!entry.analysisClosed});
     }
   }
+  async function editInteraction(description) {
+    if(!published||!isCurrent()||isWriting()||entry.responsesClosedAt||entry.analysisClosed)return false;
+    const current=await repository.readOccurrenceQuestionnaire({uid,id});
+    if(!current||!isCurrent()||isWriting()||entry.responsesClosedAt)return false;
+    published=current;
+    const expected=entry.preparedDescription??entry.description??'';
+    const open=bindQuestionnaireEditor(config,options,(saved,text)=>{
+      const changed=saved.revision!==published.revision;
+      published=saved;
+      entry.preparedDescription=text;
+      onPrepared?.();
+      if(changed)showResponse(saved.questions,saved.revision);
+      interactionStatus.textContent='Página de interação atualizada.';
+    },{description:expected,revision:current.revision});
+    return open({description:description??expected,questions:current.canReviseQuestions?current.questions:[]});
+  }
+  interaction.querySelector('[data-interaction-edit]').addEventListener('click',()=>void editInteraction().catch(()=>{
+    if(isCurrent())interactionStatus.textContent='Não foi possível abrir o editor. Tente novamente.';
+  }));
+  interaction.querySelector('[data-interaction-close]').addEventListener('click',async()=>{
+    if(!isCurrent()||isWriting()||entry.responsesClosedAt)return;
+    setWriting(true);
+    interactionStatus.textContent='Encerrando interação…';
+    try {
+      await repository.closeOccurrenceResponses({uid,id});
+      if(!isCurrent())return;
+      entry.responsesClosedAt=true;
+      config.hidden=true;
+      interaction.hidden=true;
+      response.innerHTML='<p role="status">Respostas da equipe encerradas.</p>';
+      options.onResponsesClosed?.();
+    } catch {
+      if(isCurrent())interactionStatus.textContent='Não foi possível encerrar a interação. Tente novamente.';
+    } finally {setWriting(false);}
+  });
   async function load() {
     response.innerHTML='<p role="status">Consultando questionário…</p>';
     try {
@@ -323,29 +375,26 @@ export function mountOccurrenceQuestionnaire(host,options) {
       response.replaceChildren();
       if(canEdit)showResult(true);
       else if(entry.analysisClosed===true)showResult(false);
-      publishedQuestions=questions;
-      if(questions)showResponse(questions,revision);
+      published=questionnaire;
+      if(questions) {
+        interaction.hidden=!canEdit||!!entry.responsesClosedAt||entry.analysisClosed===true;
+        showResponse(questions,revision);
+      }
       else if(canEdit&&entry.analysisClosed!==true) {
-        stagePreparation=bindQuestionnaireEditor(config,options,(published,description)=>{
+        stagePreparation=bindQuestionnaireEditor(config,options,(saved,description)=>{
           entry.analysisStarted=true;
-          publishedQuestions=published;
+          published=saved;
           stagePreparation=null;
           entry.preparedDescription=description;
           onPrepared?.();
-          showResponse(published);
+          interaction.hidden=false;
+          showResponse(saved.questions,saved.revision);
         });
       } else if(entry.analysisClosed!==true)response.innerHTML='<p>Questionário ainda não publicado.</p>';
       if(canEdit&&entry.analysisClosed!==true)onEditorReady?.({
-        hasQuestionnaire:()=>Boolean(publishedQuestions),
-        readResponses:()=>readOccurrenceResponses({...options,questions:publishedQuestions??[]}),
-        closeResponses:async()=>{
-          await repository.closeOccurrenceResponses({uid,id});
-          if(!isCurrent())return false;
-          entry.responsesClosedAt=true;
-          response.innerHTML='<p role="status">Respostas da equipe encerradas.</p>';
-          options.onResponsesClosed?.();
-          return true;
-        },
+        hasQuestionnaire:()=>Boolean(published),
+        readResponses:()=>readOccurrenceResponses({...options,questions:published?.questions??[]}),
+        stageDescription:editInteraction,
         stagePreparation:draft=>stagePreparation?.(draft),stageResult
       });
     } catch {

@@ -25,9 +25,14 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;},
    readOccurrenceQuestionnaire:async({id})=>id===${JSON.stringify(GRA_001_RECORD_ID)}?
     {questions:${JSON.stringify(GRA_001_QUESTIONS)},revision:2}:
-    window.questionnaires?.[id]?{questions:window.questionnaires[id],revision:0}:null,
+    window.questionnaires?.[id]?{questions:window.questionnaires[id],revision:window.questionnaireRevision??0,canReviseQuestions:true}:null,
    publishOccurrenceQuestionnaire:async({id,description,questions})=>{
      (window.preparations??={})[id]=description;(window.questionnaires??={})[id]=questions;return questions;
+   },
+   updateOccurrenceInteraction:async({id,description,questions})=>{
+     window.preparations[id]=description;
+     if(questions){window.questionnaires[id]=questions;window.questionnaireRevision=(window.questionnaireRevision??0)+1;}
+     return {questions:window.questionnaires[id],revision:window.questionnaireRevision??0,canReviseQuestions:true};
    },
    closeOccurrenceResponses:async({id})=>{(window.closedReplies??={})[id]=true;},
    readOccurrenceResponse:async({id})=>!!window.responses?.[id],
@@ -57,6 +62,10 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await server.listen();const origin='http://127.0.0.1:'+server.httpServer.address().port;
   browser=await(engine==='edge'?chromium.launch({channel:'msedge',headless:true}):webkit.launch({headless:true}));
   const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
+  if(engine==='webkit')await page.addInitScript(()=>{
+   Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)'});
+   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{readText:async()=>window.shortcutOutput}});
+  });
   await page.route('**/*',r=>new URL(r.request().url()).origin===origin?r.continue():r.abort());await page.goto(origin+'/fixture');
   await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).waitFor();
   assert.equal(await page.getByText(/Auditoria restrita|Registro autenticado/).count(),0);
@@ -278,8 +287,16 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await aiResponse.fill(JSON.stringify(draft));
   await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
   await prep.getByText('O protocolo do rascunho deve ser GR 001.',{exact:true}).waitFor();
-  await aiResponse.fill(JSON.stringify({...draft,protocolo:'GR 001'}));
-  await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
+  const preparedJson=JSON.stringify({...draft,protocolo:'GR 001'});
+  if(engine==='webkit'){
+   assert.equal(await prep.getByRole('button',{name:'EXECUTAR NO CHATGPT'}).count(),1);
+   assert.equal(await prep.locator('[data-ai-shortcut]').getAttribute('href'),'shortcuts://run-shortcut?name=SAHMT%20Ocorr%C3%AAncias&input=clipboard');
+   await page.evaluate(text=>{window.shortcutOutput=text;},preparedJson);
+   await prep.getByRole('button',{name:'IMPORTAR RESPOSTA DO IPHONE'}).click();
+  } else {
+   await aiResponse.fill(preparedJson);
+   await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
+  }
   await prep.getByText(/Rascunho carregado/).waitFor();
   assert.equal(await page.evaluate(()=>window.descriptionEdit),undefined);
   const editor=followupBanner.getByRole('textbox',{name:'Descrição para análise da equipe'});
@@ -296,7 +313,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await analyzeButton.click();
   const analysis=followupBanner.locator('.occurrence-ai-pane:visible');
   await analysis.getByText('Publique a preparação para abrir as respostas da equipe.',{exact:true}).waitFor();
-  assert.equal(await analysis.getByRole('button',{name:'ENCERRAR RESPOSTAS DA EQUIPE'}).isVisible(),false);
+  assert.equal(await followupBanner.getByRole('button',{name:'ENCERRAR INTERAÇÃO'}).isVisible(),false);
   await analyzeButton.click();
   const config=followupBanner.locator('[data-questionnaire-editor]');
   const scroll=await followupBanner.evaluate(dialog=>{
@@ -326,11 +343,17 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   assert.equal(await page.evaluate(()=>window.preparations['gr-1']),'Texto ajustado pelo administrador');
   assert.deepEqual(await page.evaluate(()=>window.questionnaires['gr-1'].at(-1)),
    {prompt:'Qual medida merece prioridade?',options:['Resposta 1','Revisar o fluxo']});
+  await followupBanner.getByRole('button',{name:'EDITAR PÁGINA DE INTERAÇÃO'}).click();
+  await config.locator('[name=prompt-0]').fill('Pergunta revisada na página');
+  await config.getByRole('button',{name:'SALVAR ALTERAÇÕES'}).click();
+  await followupBanner.getByText('Pergunta revisada na página',{exact:true}).waitFor();
   await analyzeButton.click();
-  const closeReplies=analysis.getByRole('button',{name:'ENCERRAR RESPOSTAS DA EQUIPE'});
+  const closeReplies=followupBanner.getByRole('button',{name:'ENCERRAR INTERAÇÃO'});
   await closeReplies.waitFor();
   assert.equal(await analysis.getByRole('textbox',{name:'Prompt para a IA'}).count(),0);
   await closeReplies.click();
+  await followupBanner.getByText('Respostas da equipe encerradas.',{exact:true}).waitFor();
+  await analyzeButton.click();
   await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
   const archivePrompt=await analysis.getByRole('textbox',{name:'Prompt para a IA'}).inputValue();
   assert.match(archivePrompt,/GR 001[\s\S]*"relato": "Relato completo aqui"[\s\S]*"preparacaoPublicada": "Texto ajustado pelo administrador"[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
@@ -397,6 +420,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.evaluate(()=>window.exportPollPages=true);
   await analyzeButton.click();
   await closeReplies.click();
+  await followupBanner.getByText('Respostas da equipe encerradas.',{exact:true}).waitFor();
+  await analyzeButton.click();
   await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
   assert.equal(await page.evaluate(id=>window.closedReplies[id],GRA_001_RECORD_ID),true);
   await analysis.getByRole('button',{name:'COPIAR PROMPT'}).click();
@@ -431,7 +456,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await ack.click();
   await followupBanner.getByRole('button',{name:'CIÊNCIA REGISTRADA',exact:true}).locator('xpath=self::*[@disabled]').waitFor();
   assert.deepEqual(await page.evaluate(()=>window.acknowledgement),{uid:'synthetic',id:GRA_001_RECORD_ID,resultAt:1});
-  assert.equal(await followupBanner.getByRole('button',{name:'FINALIZAR EVENTO'}).count(),0);
+  assert.equal(await followupBanner.getByRole('button',{name:'FINALIZAR ANÁLISE'}).count(),0);
   assert.equal(await followupBanner.getByRole('button',{name:'EDITAR ANÁLISE FINAL'}).count(),0);
   assert.equal(await followupBanner.getByRole('button',{name:'PUBLICAR RESULTADO'}).count(),0);
   await back.click();
@@ -442,7 +467,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await followupBanner.getByRole('textbox',{name:'Resultado final'}).fill('Resultado revisado.');
   await followupBanner.getByRole('button',{name:'PUBLICAR RESULTADO'}).click();
   await followupBanner.getByText('Resultado revisado.',{exact:true}).waitFor();
-  await followupBanner.getByRole('button',{name:'FINALIZAR EVENTO'}).click();
+  await followupBanner.getByRole('button',{name:'FINALIZAR ANÁLISE'}).click();
   await followupBanner.getByText('Evento finalizado.',{exact:true}).waitFor();
   assert.deepEqual(await page.evaluate(()=>window.finalized),{uid:'synthetic',id:GRA_001_RECORD_ID,resultAt:2});
   await back.click();
