@@ -2181,7 +2181,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-form-section h4{margin:0 0 10px}
 .occurrence-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .occurrence-field{display:grid;align-content:start;gap:6px;min-width:0;font-size:.92rem}
-.occurrence-field--textarea{grid-column:1/-1}
+.occurrence-field--textarea,.occurrence-field--full{grid-column:1/-1}
 .occurrence-field input,.occurrence-field select,.occurrence-field textarea{width:100%;min-width:0;min-height:44px;padding:10px 11px;border:1px solid #b9cbd2;border-radius:11px;background:#fff;color:#143254;font:inherit;font-size:16px}
 .occurrence-field small{color:#43596c;font-size:.8rem}
 .occurrence-field [aria-invalid="true"]{border-color:#a22929}
@@ -2198,7 +2198,7 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-anonymous input{width:20px;height:20px}
 #occurrence-author-note{display:block;color:#526578;line-height:1.4;font-size:.85rem}
 .occurrence-form-status{min-height:1.4em;margin:12px 0 0;color:#526578}
-@media(max-width:600px){.occurrence-form-grid{grid-template-columns:1fr}.occurrence-field--textarea{grid-column:auto}}
+@media(max-width:600px){.occurrence-form-grid{grid-template-columns:1fr}}
 @media(max-width:360px){
   .app-shell--occurrences{--occurrences-gap:6px;--occurrences-banner-height:min(94dvh,calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 12px))}
   .occurrence-menu-block{padding:5px}

@@ -5,7 +5,8 @@ import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_FORMS, OCCURRENCE_GROUPS, OCCURRENC
 
 const catalogMocks = Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS)
   .map(([key, spec]) => [key, Array.from({length: spec.count}, (_, index) => `Opção sintética ${index + 1}`)]));
-const commonValues = {eventDate:'2026-10-12',occurrence:'Registro sintético',description:'Descrição sintética'};
+const patientValues = {sex:'Feminino',age:'8 meses',diagnosisOrTreatment:'Tratamento sintético'};
+const commonValues = {eventDate:'2026-10-12',occurrence:'Registro sintético',description:'Descrição sintética',...patientValues};
 
 test('define os dez formulários e quatro grupos, sem inventar formulário oncológico', () => {
   assert.equal(OCCURRENCE_FORMS.length, 10);
@@ -32,9 +33,9 @@ test('F10 não recebe campos gerais que a especificação exclui', () => {
   assert.deepEqual(form.classification.map(item => item.id), ['sourceSector','destinationSector','patientOrAttendance','immediateAction']);
   const values = {sourceSector:catalogMocks.SETORES_55[0],destinationSector:catalogMocks.SETORES_55[1]};
   assert.deepEqual(validateOccurrenceValues('F10',values,catalogMocks).errors,[
-    'REQUIRED:patientOrAttendance','REQUIRED:immediateAction'
+    'REQUIRED:patientOrAttendance','REQUIRED:sex','REQUIRED:age','REQUIRED:diagnosisOrTreatment','REQUIRED:immediateAction'
   ]);
-  assert.equal(validateOccurrenceValues('F10',{...values,patientOrAttendance:'012345',immediateAction:'Ação'},catalogMocks).valid,true);
+  assert.equal(validateOccurrenceValues('F10',{...values,...patientValues,patientOrAttendance:'012345',immediateAction:'Ação'},catalogMocks).valid,true);
   assert.ok(OCCURRENCE_FORMS.every(item=>[...item.classification,...item.fields].every(field=>field.required)));
 });
 
@@ -47,6 +48,7 @@ test('valida obrigatoriedade, datas reais, horário e opção pertencente ao cat
   const required = { ...commonValues, attendance:'Sintético',causingSector:'Opção sintética 1',medicationName:'Sintético',
     lotNumber:'L-1',symptomAfterEvent:'Opção sintética 2',immediateAction:'Ação sintética',eventPeriod:'Opção sintética 3'};
   assert.equal(validateOccurrenceValues('F01', required, catalogMocks).valid, true);
+  assert.deepEqual(validateOccurrenceValues('F01', {...required,sex:'Não informado'}, catalogMocks).errors,['OPTION:sex']);
   assert.equal(validateOccurrenceValues('F01', {...required,eventDate:'2026-02-30'}, catalogMocks).valid, false);
   assert.equal(validateOccurrenceValues('F05', {...commonValues,fallTime:'25:77'}, catalogMocks).valid, false);
   assert.equal(validateOccurrenceValues('F01', {...required,causingSector:'Valor fora do catálogo'}, catalogMocks).valid, false);

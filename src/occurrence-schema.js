@@ -28,8 +28,18 @@ const date = (id, label) => field(id, label, 'date');
 const time = (id, label) => field(id, label, 'time');
 const long = (id, label) => field(id, label, 'textarea', {maxLength: 3000});
 const attendance = (id = 'attendance', maxLength = 180) => field(id, 'Atendimento', 'text', {
-  maxLength, hint: 'Conferir o número do atendimento, pois é imprescindível'
+  maxLength, fullWidth: true, hint: 'Conferir o número do atendimento, pois é imprescindível'
 });
+const patientFields = Object.freeze([
+  field('sex', 'Sexo', 'select', {options: Object.freeze(['Masculino', 'Feminino', 'Outro'])}),
+  field('age', 'Idade', 'text', {maxLength: 40, hint: 'Informe em anos, meses ou dias'}),
+  long('diagnosisOrTreatment', 'Diagnóstico ou Tratamento')
+]);
+
+export function withOccurrencePatientFields(fields) {
+  return fields.flatMap(item => item.id === 'attendance' || item.id === 'patientOrAttendance'
+    ? [item, ...patientFields] : [item]);
+}
 
 const forms = [
   {id: 'F01', group: 'A', title: 'Notificação de Farmacovigilância - Queixa Técnica de Medicamento', fields: [
@@ -83,9 +93,10 @@ const forms = [
     select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), long('immediateAction', 'Disposição (ação imediata)'),
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
-  {id: 'F08', group: 'B', title: 'Dilema Ético', classification: [select('occurrenceSector', 'Setor da Ocorrência', 'SETORES_55')], fields: []},
+  {id: 'F08', group: 'B', title: 'Dilema Ético', classification: [select('occurrenceSector', 'Setor da Ocorrência', 'SETORES_55')],
+    fields: [attendance()]},
   {id: 'F09', group: 'C', title: 'Notificação de Incidente de Segurança da Informação', fields: [
-    time('incidentTime', 'Hora'), field('incidentLocation', 'Localização (Onde está o incidente)'),
+    attendance(), time('incidentTime', 'Hora'), field('incidentLocation', 'Localização (Onde está o incidente)'),
     long('incidentEffect', 'Efeito do incidente'), field('eventDiscovery', 'Como o evento foi descoberto'),
     select('securityIncidentType', 'Tipo de incidente', 'TIPO_SEGURANCA'), field('othersInformed', 'Quem mais foi informado')
   ]},
@@ -126,7 +137,9 @@ export const OCCURRENCE_ANALYSIS_FIELDS = Object.freeze({
 });
 export const OCCURRENCE_ANALYSIS_LIMIT = 3000;
 export const OCCURRENCE_ETHICAL_REVIEW_LIMIT = 20000;
-export const OCCURRENCE_PRIVATE_FIELDS = Object.freeze(['attendance','patientOrAttendance','prescriptionNumber','othersInformed','eventDiscovery']);
+export const OCCURRENCE_PRIVATE_FIELDS = Object.freeze([
+  'attendance','patientOrAttendance','prescriptionNumber','othersInformed','eventDiscovery', ...patientFields.map(item => item.id)
+]);
 
 export function occurrenceHospitalNumber(value) {
   const digits = /^(?:GR\s*)?(\d{1,12})$/i.exec(String(value ?? '').trim())?.[1];
@@ -149,7 +162,7 @@ export function validateOccurrenceValues(formId, values, catalogs = {}) {
   const form = getOccurrenceForm(formId);
   if (!form || !values || typeof values !== 'object' || Array.isArray(values)) return {valid: false, errors: ['FORM_INVALID']};
   const errors = [];
-  const fields = [...form.classification, ...form.fields];
+  const fields = withOccurrencePatientFields([...form.classification, ...form.fields]);
   for (const item of fields) {
     const value = values[item.id];
     const empty = value === undefined || value === null || String(value).trim() === '';
@@ -161,8 +174,8 @@ export function validateOccurrenceValues(formId, values, catalogs = {}) {
     if (item.type === 'date' && !validDate(normalized)) errors.push(`DATE:${item.id}`);
     if (item.type === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(normalized)) errors.push(`TIME:${item.id}`);
     if (item.type === 'select') {
-      const options = catalogs[item.catalog];
-      if (!Array.isArray(options) || options.length !== OCCURRENCE_CATALOG_SPECS[item.catalog]?.count) errors.push(`CATALOG_UNAVAILABLE:${item.catalog}`);
+      const options = item.options ?? catalogs[item.catalog];
+      if (!item.options && (!Array.isArray(options) || options.length !== OCCURRENCE_CATALOG_SPECS[item.catalog]?.count)) errors.push(`CATALOG_UNAVAILABLE:${item.catalog}`);
       else if (!options.includes(normalized)) errors.push(`OPTION:${item.id}`);
     }
   }

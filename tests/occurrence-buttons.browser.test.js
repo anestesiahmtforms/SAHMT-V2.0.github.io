@@ -122,6 +122,13 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    const controls=formDialog.locator('input[name]:not([name=anonymous]),select,textarea');
    assert.ok(await controls.count());
    assert.equal(await controls.locator('xpath=self::*[not(@required)]').count(),0,id);
+   const names=await controls.evaluateAll(elements=>elements.map(element=>element.name));
+   const attendanceIndex=names.indexOf(id==='F10'?'patientOrAttendance':'attendance');
+   assert.ok(attendanceIndex>=0,id);
+   assert.deepEqual(names.slice(attendanceIndex+1,attendanceIndex+4),['sex','age','diagnosisOrTreatment'],id);
+   assert.deepEqual(await formDialog.locator('select[name=sex] option:not([value=""])').allTextContents(),
+    ['Masculino','Feminino','Outro'],id);
+   assert.equal(await formDialog.locator('textarea[name=diagnosisOrTreatment]').count(),1,id);
    assert.equal(await page.getByText('A identidade é mantida para auditoria restrita.').count(),0);
    if(id==='F03'){
     const picker=formDialog.getByRole('combobox',{name:/Tipo de Evento/});

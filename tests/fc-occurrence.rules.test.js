@@ -12,6 +12,7 @@ const [host,portText]=emulatorHost.split(':');
 const port=Number(portText),project='demo-sahmt-fc-modules',uid='writer-synthetic',id='10000000-0000-4000-8000-000000000001';let env;
 const google=(userId,claims={})=>env.authenticatedContext(userId,{firebase:{sign_in_provider:'google.com'},aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:userId,...claims}).firestore();
 const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS).map(([key,spec])=>[key,Array.from({length:spec.count},(_,i)=>`Opção sintética ${i+1}`)]));
+const patientValues={sex:'Masculino',age:'3 meses',diagnosisOrTreatment:'Tratamento sintético'};
 before(async()=>{assert.ok(host&&Number.isInteger(port)&&port>0,`Invalid FIRESTORE_EMULATOR_HOST: ${emulatorHost}`);env=await initializeTestEnvironment({projectId:project,firestore:{host,port,rules:await readFile(new URL('../firestore.fc.rules',import.meta.url),'utf8')}});});
 after(async()=>env?.cleanup());
 beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{
@@ -55,11 +56,12 @@ test('administrator with registration permission opens the current catalog and s
  assert.equal(loaded.schemaVersion,1);
  const result=await repository.save({uid:adminUid,recordId:id,formId:'F10',displayName:'Administrador sintético',
   values:{sourceSector:loaded.catalogs.SETORES_55[0],destinationSector:loaded.catalogs.SETORES_55[1],
-   patientOrAttendance:'012345',immediateAction:'Ação sintética'}});
+   patientOrAttendance:'012345',immediateAction:'Ação sintética',...patientValues}});
  assert.equal(result.status,'saved');
  assert.equal(result.protocol,'GRA 001');
  const report=(await getDoc(doc(database,'occurrenceReports',id))).data();
  assert.equal(report.formId,'F10');assert.equal(report.authorLabel,'Administrador sintético');
+ assert.deepEqual(report.details,patientValues);
  const claim=(await getDoc(doc(database,'occurrenceScoreClaims',id))).data();
  assert.equal(claim.originProjectId,'indicadores---sahmt');
 });
@@ -71,7 +73,7 @@ test('a numeração FC é consecutiva em gravações concorrentes e o contador n
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  const data={uid,formId:'F10',displayName:'Autor sintético',catalogs,
   values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
-   patientOrAttendance:'012345',immediateAction:'Ação sintética'}};
+   patientOrAttendance:'012345',immediateAction:'Ação sintética',...patientValues}};
  const ids=[id,'10000000-0000-4000-8000-000000000002'];
  const results=await Promise.all(ids.map(recordId=>repository.save({...data,recordId})));
  assert.deepEqual(results.map(result=>result.protocol).sort(),['GRA 001','GRA 002']);
@@ -87,12 +89,12 @@ test('a equipe consulta a cópia sem autoria e grava somente a própria análise
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  await repository.save({uid,formId:'F10',recordId:id,displayName:'Autor sintético',catalogs,
   values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
-   patientOrAttendance:'Paciente sintético',immediateAction:'Ação sintética'}});
+   patientOrAttendance:'Paciente sintético',immediateAction:'Ação sintética',...patientValues}});
  await assertFails(getDocFromServer(doc(memberDb,'occurrenceReports',id)));
  await assertFails(getDocFromServer(doc(memberDb,'occurrenceAudit',id)));
  const visible=await assertSucceeds(getDocs(query(collection(memberDb,'occurrenceFollowups'),limit(30))));
  assert.equal(visible.size,1);
- assert.doesNotMatch(JSON.stringify(visible.docs[0].data()),/Autor sintético|Paciente sintético|patientOrAttendance|authorLabel/);
+ assert.doesNotMatch(JSON.stringify(visible.docs[0].data()),/Autor sintético|Paciente sintético|patientOrAttendance|authorLabel|diagnosisOrTreatment|Tratamento sintético|3 meses|Masculino/);
  const ref=doc(memberDb,'occurrenceFollowups',id,'analyses',member);
  const valid={problem:'Problema',cause:'Causa',review:'Análise',correction:'Correção',plan:'Plano'};
  await assertFails(setDoc(ref,{analysis:{problem:'Incompleta'},updatedAt:serverTimestamp()}));
@@ -110,7 +112,7 @@ test('a projeção do formulário mais extenso preserva contexto e não expõe o
  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
   auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
- const values={eventDate:'2026-11-20',occurrence:'Queda',description:'Relato sintético',attendance:'Identificador sintético',
+ const values={eventDate:'2026-11-20',occurrence:'Queda',description:'Relato sintético',attendance:'Identificador sintético',...patientValues,
   causingSector:catalogs.SETORES_9[0],fallDate:'2026-11-20',fallTime:'08:00',fallRisk:catalogs.RISCO_QUEDA[0],
   fallRiskGuidance:catalogs.SIM_NAO_NI[0],lastAssessmentDate:'2026-11-19',redWristband:catalogs.SIM_NAO_NI[0],
   fallLocation:catalogs.LOCAL_QUEDA[0],fallMechanism:catalogs.MECANISMO_QUEDA[0],adequateFootwear:catalogs.SIM_NAO_NI[0],
