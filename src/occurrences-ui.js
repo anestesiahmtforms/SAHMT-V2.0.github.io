@@ -147,8 +147,10 @@ export function occurrenceFieldMarkup(item, catalogs = {}) {
   const id=`occurrence-${item.id}`;
   const hint=item.hint?`<small id="${id}-hint">(${escape(item.hint)})</small>`:'';
   const description=item.hint?`aria-describedby="${id}-hint"`:'';
+  const initialValue=item.fixedValue ? `value="${escape(item.fixedValue)}" readonly` :
+    item.type==='date'&&item.id==='eventDate' ? `value="${dayLocal()}"` : '';
   const control=item.type==='textarea'?`<textarea id="${id}" name="${escape(item.id)}" rows="3" maxlength="${item.maxLength||5000}" ${required} ${description}></textarea>`:
-    `<input id="${id}" name="${escape(item.id)}" type="${type}" ${required} ${description} maxlength="${item.maxLength||180}" ${item.type==='date'&&item.id==='eventDate'?`value="${dayLocal()}"`:''}>`;
+    `<input id="${id}" name="${escape(item.id)}" type="${type}" ${required} ${description} maxlength="${item.maxLength||180}" ${initialValue}>`;
   return `<div class="occurrence-field occurrence-field--${item.type}${item.fullWidth?' occurrence-field--full':''}"><div><label for="${id}">${label}</label> ${hint}</div>${control}</div>`;
 }
 

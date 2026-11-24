@@ -126,7 +126,7 @@ test('resposta e ciência enfileiram um ponto cada, sem duplicar ao rever o resu
 
 test('publica o relato de acompanhamento sem o autor e os campos clínicos privados',async()=>{
   const {repository,store}=harness({claims:allClaims});
-  await repository.save({...input,values:{...input.values,informationTechnologyFactors:'Proteção de dados',
+  await repository.save({...input,values:{...input.values,informationTechnologyFactors:'Proteção de dados',analysisParticipants:'Valor alterado',
     description:'Atendimento sintético acompanhado por Profissional Sintético.'}});
   const entry=store.get(`occurrenceFollowups/${input.recordId}`);
   assert.equal(entry.formId,'F01');
@@ -139,7 +139,7 @@ test('publica o relato de acompanhamento sem o autor e os campos clínicos priva
     '16 meses','Diagnóstico privado sintético','Outro'])assert.ok(!publicJson.includes(secret));
   const {details}=store.get(`occurrenceReports/${input.recordId}`);
   for(const key of ['sex','age','diagnosisOrTreatment'])assert.equal(details[key],input.values[key]);
-  assert.deepEqual(details.actionFollowup,actionValues);
+  assert.deepEqual(details.actionFollowup,{...actionValues,analysisParticipants:'Serviço de Anestesiologia'});
   assert.equal(Object.hasOwn(details,'informationTechnologyFactors'),false);
 });
 

@@ -314,9 +314,10 @@ service cloud.firestore {
           request.resource.data.keys().hasOnly(['fields']) &&
           request.resource.data.fields is map &&
           request.resource.data.fields.size() > 0 &&
-          request.resource.data.fields.keys().hasOnly(['immediateAction','chartDisclosure','patientFactors','taskFactors',
+          request.resource.data.fields.keys().hasOnly(['immediateAction','chartDisclosure','analysisParticipants','patientFactors','taskFactors',
             'individualFactors','teamFactors','workEnvironmentFactors','informationTechnologyFactors']) &&
           request.resource.data.fields.diff(getAfter(reportPath(id)).data.details.actionFollowup).affectedKeys().hasOnly(['immediateAction']) &&
+          request.resource.data.fields.get('analysisParticipants','Serviço de Anestesiologia') == 'Serviço de Anestesiologia' &&
           (!request.resource.data.fields.keys().hasAny(['immediateAction']) ||
             (getAfter(reportPath(id)).data.formId == 'F02' && occurrenceText(request.resource.data.fields.immediateAction,3000)));
         allow list, update, delete: if false;

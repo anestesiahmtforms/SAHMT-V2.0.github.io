@@ -129,10 +129,19 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    assert.deepEqual(await formDialog.locator('select[name=sex] option:not([value=""])').allTextContents(),
     ['Masculino','Feminino','Outro'],id);
    assert.equal(await formDialog.locator('textarea[name=diagnosisOrTreatment]').count(),1,id);
+   const participants=formDialog.getByLabel(/Pessoas envolvidas na análise do evento/);
+   assert.equal(await participants.count(),id==='F08'?0:1,id);
+   if(id!=='F08'){
+    assert.equal(await participants.inputValue(),'Serviço de Anestesiologia',id);
+    assert.equal(await participants.isEditable(),false,id);
+   }
    if(['F01','F02','F03','F04','F05','F06','F07','F10'].includes(id)){
     const actionIndex=names.indexOf('immediateAction');
     assert.ok(actionIndex>=0,id);
-    assert.deepEqual(names.slice(actionIndex+1,actionIndex+7),['chartDisclosure','patientFactors','taskFactors',
+    const periodIndex=names.indexOf('eventPeriod');
+    if(periodIndex>=0)assert.equal(periodIndex,actionIndex+1,id);
+    const anchor=periodIndex>=0?periodIndex:actionIndex;
+    assert.deepEqual(names.slice(anchor+1,anchor+8),['chartDisclosure','analysisParticipants','patientFactors','taskFactors',
      'individualFactors','teamFactors','workEnvironmentFactors'],id);
     assert.equal(await formDialog.getByLabel(/Descreva sintomas observados e suas ações para o cuidado/).count(),1,id);
     const disclosure=formDialog.getByLabel(/Disclosure com registro em prontuário/);
@@ -146,6 +155,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    const technology=formDialog.getByLabel(/Fatores de TI e sistemas eletrônicos/);
    assert.equal(await technology.count(),id==='F09'?1:0,id);
    if(id==='F09'){
+    assert.equal(names.indexOf('analysisParticipants')+1,names.indexOf('informationTechnologyFactors'));
     assert.equal(await formDialog.getByRole('group',{name:'FATORES CONTRIBUINTES'}).locator('select[required]').count(),1);
     assert.deepEqual(await technology.locator('option:not([value=""])').allTextContents(),[
      'Nenhuma','Hardware (incluindo design e manutenção)','Software (incluindo design e manutenção)',

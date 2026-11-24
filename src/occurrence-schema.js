@@ -41,6 +41,9 @@ const choice = (id, label, options, extra = {}) => field(id, label, 'select', {o
 const disclosure = choice('chartDisclosure', 'Disclosure com registro em prontuário:', [
   'Sim', 'Não', 'Não se aplica (Evento sem envolver o paciente)'
 ], {fullWidth: true});
+const analysisParticipants = field('analysisParticipants', 'Pessoas envolvidas na análise do evento:', 'text', {
+  fixedValue: 'Serviço de Anestesiologia', fullWidth: true
+});
 
 const clinicalFactors = Object.freeze([
   choice('patientFactors', 'Fatores contribuintes do paciente?', [
@@ -68,9 +71,10 @@ const informationTechnology = choice('informationTechnologyFactors', 'Fatores de
 
 const immediateAction = () => long('immediateAction', 'Disposição (ação imediata: Descreva sintomas observados e suas ações para o cuidado)');
 const actionFollowup = (after, fields, factors) => Object.freeze({
-  after, fields: Object.freeze(fields), factors: Object.freeze(factors)
+  after, fields: Object.freeze([...fields, analysisParticipants]), factors: Object.freeze(factors)
 });
 const clinicalFollowup = actionFollowup('immediateAction', [disclosure], clinicalFactors);
+const periodFollowup = actionFollowup('eventPeriod', [disclosure], clinicalFactors);
 const adverseReactionFollowup = actionFollowup('prescriptionNumber', [immediateAction(), disclosure], clinicalFactors);
 const informationSecurityFollowup = actionFollowup('othersInformed', [], [informationTechnology]);
 
@@ -153,7 +157,8 @@ const forms = [
 ].map(form => {
   const classification = Object.freeze(form.classification || []);
   const fields = Object.freeze(form.noGeneralInformation ? form.fields : [...common, ...form.fields]);
-  const defaultFollowup = [...classification, ...fields].some(item => item.id === 'immediateAction') ? clinicalFollowup : null;
+  const defaultFollowup = fields.some(item => item.id === 'eventPeriod') ? periodFollowup
+    : classification.some(item => item.id === 'immediateAction') ? clinicalFollowup : null;
   return Object.freeze({...form, classification, fields, actionFollowup: form.actionFollowup ?? defaultFollowup});
 });
 
@@ -214,7 +219,7 @@ export function validateOccurrenceValues(formId, values, catalogs = {}) {
   const fields = withOccurrencePatientFields([...form.classification, ...form.fields]).flatMap(item =>
     item.id === form.actionFollowup?.after ? [item, ...occurrenceActionFollowupFields(form)] : [item]);
   for (const item of fields) {
-    const value = values[item.id];
+    const value = item.fixedValue ?? values[item.id];
     const empty = value === undefined || value === null || String(value).trim() === '';
     if (item.required && empty) { errors.push(`REQUIRED:${item.id}`); continue; }
     if (empty) continue;

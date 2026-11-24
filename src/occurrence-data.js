@@ -48,6 +48,7 @@ function preparationAdditions(form,values,redact=text=>text) {
   return Object.fromEntries(occurrenceActionFollowupFields(form).flatMap(field=>{
     const value=values?.[field.id];
     if(!boundedText(value,field.maxLength??300))return [];
+    if(field.fixedValue)return value===field.fixedValue?[[field.id,value]]:[];
     if(field.options)return field.options.includes(value)?[[field.id,value]]:[];
     return [[field.id,redact(value.trim())]];
   }));
@@ -153,7 +154,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       .map(key => [key, values[key].trim()]));
     if (form.actionFollowup) {
       details.actionFollowup = Object.fromEntries(occurrenceActionFollowupFields(form)
-        .map(item => [item.id, values[item.id].trim()]));
+        .map(item => [item.id, item.fixedValue ?? values[item.id].trim()]));
     }
     const report = Object.freeze({schemaVersion:1,id:recordId,formId,formTitle:form.title,
       occurredOn:form.noGeneralInformation ? null : values.eventDate.trim(),
