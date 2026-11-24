@@ -203,6 +203,8 @@ export function mountOccurrenceFollowup(host,{
       onEventFinalized:()=>onChainChanged?.(),
       onEditorReady:options=>bindOccurrencePromptActions(promptActions,promptPanel,{
         ...options,entry,isCurrent:current,isWriting,setWriting:value=>{writing=value;},
+        readPreparationContext:()=>entry.origin==='app'&&entry.formId!=='F08'
+          ? repository.readPreparationContext({uid,id:entry.id,formId:entry.formId}) : {},
         stageDescription:text=>stageDescription?.(text)
       })
     });

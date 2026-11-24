@@ -51,7 +51,7 @@ test('administrator with registration permission opens the current catalog and s
  }));
  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
   auth:{currentUser:{uid:adminUid}},notifyScore:async()=>{},firestore:{
-   doc:(_,name,key)=>doc(database,name,key),getDocFromServer,
+   doc:(_,name,key,...path)=>doc(database,name,key,...path),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(database,callback)
   }});
  const loaded=await repository.loadCatalog({uid:adminUid});
@@ -71,7 +71,7 @@ test('administrator with registration permission opens the current catalog and s
 test('a numeração FC é consecutiva em gravações concorrentes e o contador não pode avançar sozinho',async()=>{
  const db=google(uid);
  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
-  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
+  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key,...path)=>doc(db,name,key,...path),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  const data={uid,formId:'F10',displayName:'Autor sintético',catalogs,
   values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
@@ -87,7 +87,7 @@ test('a numeração FC é consecutiva em gravações concorrentes e o contador n
 test('a equipe consulta a cópia sem autoria e grava somente a própria análise completa',async()=>{
  const db=google(uid),member='unauthorized-synthetic',memberDb=google(member);
  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
-  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
+  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key,...path)=>doc(db,name,key,...path),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  await repository.save({uid,formId:'F10',recordId:id,displayName:'Autor sintético',catalogs,
   values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
@@ -113,7 +113,7 @@ test('a equipe consulta a cópia sem autoria e grava somente a própria análise
 test('a projeção do formulário mais extenso preserva contexto e não expõe o atendimento',async()=>{
  const db=google(uid);
  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
-  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
+  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key,...path)=>doc(db,name,key,...path),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  const values={eventDate:'2026-11-20',occurrence:'Queda',description:'Relato sintético',attendance:'Identificador sintético',...patientValues,
   causingSector:catalogs.SETORES_9[0],fallDate:'2026-11-20',fallTime:'08:00',fallRisk:catalogs.RISCO_QUEDA[0],
@@ -129,16 +129,24 @@ test('a projeção do formulário mais extenso preserva contexto e não expõe o
  assert.deepEqual(original.data().details.actionFollowup,actionValues);
 });
 
-test('FC grava o bloco de reação adversa e o fator exclusivo de segurança da informação',async()=>{
+test('FC grava os fatores e o contexto da preparação fica acessível ao gestor designado',async()=>{
  const db=google(uid),team=google('unauthorized-synthetic');
+ const manager='preparation-manager',managerDb=google(manager);
+ await env.withSecurityRulesDisabled(async context=>{
+  const admin=context.firestore();
+  await setDoc(doc(admin,'users',manager),{uid:manager,active:true,access:true,permissions:{}});
+  await setDoc(doc(admin,'occurrenceDescriptionGrants',manager),{enabled:true});
+ });
  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
-  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
+  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key,...path)=>doc(db,name,key,...path),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
+ const managerRepository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
+  auth:{currentUser:{uid:manager}},firestore:{doc:(_,name,key,...path)=>doc(managerDb,name,key,...path),getDocFromServer}});
  const common={eventDate:'2026-11-20',occurrence:'Sintética',description:'Relato sintético',attendance:'012345',...patientValues};
  const cases=[
   {formId:'F02',recordId:id,formValues:{eventSector:catalogs.SETORES_9[0],reactionEvent:catalogs.RAM_100[0],
    medicationRegimen:'Medicação sintética',suspectedReactionDate:'2026-11-20',prescriptionNumber:'123'},
-   followup:{...actionValues,immediateAction:'Ação sintética'}},
+   followup:{...actionValues,immediateAction:'Ação sintética para atendimento 012345'}},
   {formId:'F09',recordId:'10000000-0000-4000-8000-000000000002',
    formValues:{incidentTime:'09:00',incidentLocation:'Setor',incidentEffect:'Efeito sintético',
     eventDiscovery:'Descoberta sintética',securityIncidentType:catalogs.TIPO_SEGURANCA[0],othersInformed:'Coordenação'},
@@ -151,6 +159,11 @@ test('FC grava o bloco de reação adversa e o fator exclusivo de segurança da 
   assert.deepEqual(original.details.actionFollowup,followup);
   const shared=(await assertSucceeds(getDocFromServer(doc(team,'occurrenceFollowups',recordId)))).data();
   assert.equal(Object.hasOwn(shared.details,'actionFollowup'),false);
+  await assertFails(getDocFromServer(doc(team,'occurrenceFollowups',recordId,'preparationContext','current')));
+  await assertFails(getDocFromServer(doc(managerDb,'occurrenceReports',recordId)));
+  const prepared=await managerRepository.readPreparationContext({uid:manager,id:recordId,formId});
+  assert.deepEqual(prepared,formId==='F02'?{...followup,immediateAction:'Ação sintética para atendimento …'}:followup);
+  await assertFails(updateDoc(doc(managerDb,'occurrenceFollowups',recordId,'preparationContext','current'),{fields:{}}));
  }
 });
 

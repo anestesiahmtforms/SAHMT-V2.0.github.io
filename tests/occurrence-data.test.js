@@ -90,7 +90,7 @@ test('grava relatório anonimizado, auditoria restrita e claim pendente em um co
   const first=await repository.save({...input,anonymous:true,displayName:''});
   const retry=await repository.save({...input,anonymous:true,displayName:''});
   assert.equal(first.status,'saved'); assert.equal(retry.status,'already-saved');
-  assert.equal(store.size,5);
+  assert.equal(store.size,6);
   assert.equal(first.protocol,'GRA 001');
   assert.equal(retry.protocol,first.protocol);
   const report=store.get(`occurrenceReports/${input.recordId}`);

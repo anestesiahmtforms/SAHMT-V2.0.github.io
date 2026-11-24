@@ -6,6 +6,8 @@ export const OCCURRENCE_OPTION_LIMIT = 5;
 export const OCCURRENCE_PROMPT_LIMIT = 500;
 export const OCCURRENCE_OPTION_TEXT_LIMIT = 300;
 export const OCCURRENCE_COMMENT_LIMIT = 2000;
+export const OCCURRENCE_IMPROVEMENT_QUESTION = 'Qual ação de melhoria deve ser priorizada?';
+export const OCCURRENCE_IMPROVEMENT_OPTION_LIMIT = 3;
 
 export const GRA_001_QUESTIONS = [
   {
@@ -57,6 +59,19 @@ export function normalizeOccurrenceQuestions(questions) {
     throw new Error('OCCURRENCE_QUESTIONNAIRE_INVALID');
   }
   return questions.map(({prompt,options})=>({prompt:prompt.trim(),options:options.map(text=>text.trim())}));
+}
+
+export function normalizeOccurrencePreparationQuestions(questions, formId) {
+  const normalized = normalizeOccurrenceQuestions(questions);
+  if (formId && formId !== 'F08') {
+    const vote = normalized.at(-1);
+    if (vote.prompt !== OCCURRENCE_IMPROVEMENT_QUESTION ||
+      vote.options.length > OCCURRENCE_IMPROVEMENT_OPTION_LIMIT ||
+      new Set(vote.options.map(option => option.toLocaleLowerCase('pt-BR'))).size !== vote.options.length) {
+      throw new Error('OCCURRENCE_IMPROVEMENT_VOTE_INVALID');
+    }
+  }
+  return normalized;
 }
 
 export function formatOccurrenceAnalysisExport({label,questions,entries,legacy}) {

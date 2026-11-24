@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {GRA_001_QUESTIONS,GRA_001_RECORD_ID} from '../src/occurrence-questionnaire.js';
+import {GRA_001_QUESTIONS,GRA_001_RECORD_ID,OCCURRENCE_IMPROVEMENT_QUESTION} from '../src/occurrence-questionnaire.js';
 import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
@@ -262,7 +262,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   const prepText=await prep.getByRole('textbox',{name:'Prompt para a IA'}).inputValue();
   assert.match(prepText,/"protocolo": "GR 001"[\s\S]*"relato": "Relato completo aqui"/);
   const draft={protocolo:'GR 999',descricao:'Texto revisado',perguntas:Array.from({length:4},(_,index)=>({
-   prompt:'Pergunta do Núcleo '+(index+1),options:['Resposta 1','Resposta 2']
+   prompt:index===3?OCCURRENCE_IMPROVEMENT_QUESTION:'Pergunta do Núcleo '+(index+1),options:['Resposta 1','Resposta 2']
   }))};
   const aiResponse=prep.getByRole('textbox',{name:'Resposta da IA em JSON'});
   await aiResponse.fill(JSON.stringify(draft));
@@ -298,11 +298,12 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   });
   assert.ok(scroll.scrolled>0&&scroll.outer===0&&scroll.after===scroll.before,JSON.stringify(scroll));
   for(let index=0;index<4;index++){
-   assert.equal(await config.locator('[name=prompt-'+index+']').inputValue(),'Pergunta do Núcleo '+(index+1));
+   assert.equal(await config.locator('[name=prompt-'+index+']').inputValue(),draft.perguntas[index].prompt);
    for(let option=0;option<2;option++){
     assert.equal(await config.locator('[name=option-'+index+'-'+option+']').inputValue(),'Resposta '+(option+1));
    }
   }
+  assert.equal(await config.locator('[name=option-3-3]').count(),0);
   await config.getByRole('button',{name:'PUBLICAR OCORRÊNCIA E QUESTIONÁRIO'}).click();
   await followupBanner.getByText('Pergunta do Núcleo 1',{exact:true}).waitFor();
   assert.equal(await followupBanner.getByRole('radio').count(),2);

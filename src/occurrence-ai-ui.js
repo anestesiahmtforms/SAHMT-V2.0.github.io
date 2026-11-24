@@ -1,17 +1,18 @@
 import {occurrenceProtocol} from './occurrence-schema.js';
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
 import {buildPreparationPrompt,buildAnalysisPrompt,readPreparationDraft,readAnalysisDraft} from './occurrence-ai-prompts.js';
+import {OCCURRENCE_IMPROVEMENT_QUESTION} from './occurrence-questionnaire.js';
 
 export function bindOccurrencePromptActions(footer,host,{
-  entry,isCurrent,isWriting,setWriting,hasQuestionnaire,readResponses,closeResponses,stageDescription,stagePreparation,stageResult
+  entry,isCurrent,isWriting,setWriting,hasQuestionnaire,readPreparationContext,readResponses,closeResponses,stageDescription,stagePreparation,stageResult
 }) {
   const protocol=occurrenceProtocol(entry);
   const modes={
     preparation:{
       label:'PREPARAR OCORRÊNCIA',
-      prepare:()=>buildPreparationPrompt(entry,hasQuestionnaire()),
+      prepare:async()=>buildPreparationPrompt(entry,hasQuestionnaire(),await readPreparationContext()),
       async stage(text) {
-        const draft=readPreparationDraft(text,protocol,hasQuestionnaire());
+        const draft=readPreparationDraft(text,protocol,hasQuestionnaire(),entry.formId);
         return draft.questions ? stagePreparation(draft) : stageDescription(draft.description);
       },
       success:'Rascunho carregado. Revise a preparação antes de publicar.'
@@ -113,9 +114,13 @@ export function bindOccurrencePromptActions(footer,host,{
         } else if(isCurrent())status.textContent='Não foi possível abrir o editor. Tente novamente.';
       } catch(error) {
         if(!isCurrent())return;
-        status.textContent=error.message==='OCCURRENCE_DRAFT_PROTOCOL'
-          ?'O protocolo do rascunho deve ser '+protocol+'.'
-          :'Confira se o JSON retornado segue o formato solicitado no prompt.';
+        if(error.message==='OCCURRENCE_IMPROVEMENT_VOTE_INVALID') {
+          status.textContent='Use “'+OCCURRENCE_IMPROVEMENT_QUESTION+'” na última pergunta, com duas ou três alternativas distintas.';
+        } else {
+          status.textContent=error.message==='OCCURRENCE_DRAFT_PROTOCOL'
+            ?'O protocolo do rascunho deve ser '+protocol+'.'
+            :'Confira se o JSON retornado segue o formato solicitado no prompt.';
+        }
       } finally {button.disabled=false;}
     });
   }

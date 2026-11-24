@@ -27,17 +27,29 @@ const validUid = value => boundedText(value,128) && !value.includes('/');
 const fcAdministrator = profile => profile?.role === 'administrador_app' || profile?.permissions?.admin === true;
 const followupId = id => /^[A-Fa-f0-9-]{36}$|^gr-[1-9]\d{0,11}$/.test(id || '');
 
-function safeAppNarrative(report, displayName, extraIdentityValues) {
-  const confidential = [displayName, ...extraIdentityValues].filter(text => boundedText(text,5000))
+function occurrenceRedactor(identifiers) {
+  const confidential = identifiers.filter(text => boundedText(text,5000))
     .map(text => text.trim()).sort((a,b) => b.length - a.length);
   const identity = confidential.map(value => value.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')).join('|');
   const pattern = identity ? new RegExp(`(^|[^\\p{L}\\p{N}])(?:${identity})(?![\\p{L}\\p{N}])`,'giu') : null;
-  const redact = text => typeof text !== 'string' || !pattern ? text :
+  return text => typeof text !== 'string' || !pattern ? text :
     text.replace(pattern,(_match,before) => before+'…');
+}
+
+function safeAppNarrative(report, redact) {
   const safeFields = values => Object.fromEntries(Object.entries(values)
     .filter(([key]) => !OCCURRENCE_PRIVATE_FIELDS.includes(key)).map(([key,value]) => [key,redact(value)]));
   return {title:redact(report.occurrence),description:redact(report.description),
     classification:safeFields(report.classification),details:safeFields(report.details)};
+}
+
+function preparationAdditions(form,values,redact=text=>text) {
+  return Object.fromEntries(occurrenceActionFollowupFields(form).flatMap(field=>{
+    const value=values?.[field.id];
+    if(!boundedText(value,field.maxLength??300))return [];
+    if(field.options)return field.options.includes(value)?[[field.id,value]]:[];
+    return [[field.id,redact(value.trim())]];
+  }));
 }
 
 export function validateOccurrenceCatalogDocument(value) {
@@ -158,7 +170,9 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const scoreRef = api.doc(db, SCORE_CLAIMS, recordId);
     const sequenceRef = api.doc(db, 'occurrenceSequences', 'app');
     const followupRef = api.doc(db,FOLLOWUPS,recordId);
-    const safe = safeAppNarrative(report,displayName,[user.email,values.attendance,values.patientOrAttendance,values.prescriptionNumber]);
+    const redact = occurrenceRedactor([displayName,user.email,values.attendance,values.patientOrAttendance,values.prescriptionNumber]);
+    const safe = safeAppNarrative(report,redact);
+    const preparation = preparationAdditions(form,details.actionFollowup,redact);
     try {
       const result = await api.runTransaction(db, async transaction => {
         const [priorReport, priorAudit, priorScore] = await Promise.all([
@@ -180,6 +194,9 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
         transaction.set(reportRef, {...report,sequence});
         transaction.set(followupRef,{schemaVersion:1,id:recordId,origin:'app',formId,sequence,
           occurredOn:report.occurredOn,...safe,createdAt:api.serverTimestamp()});
+        if(Object.keys(preparation).length) {
+          transaction.set(api.doc(db,FOLLOWUPS,recordId,'preparationContext','current'),{fields:preparation});
+        }
         transaction.set(auditRef, audit);
         transaction.set(scoreRef, scoreClaim);
         return {status:'saved',sequence};
@@ -234,6 +251,25 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
   const hospitalAccess = ({uid} = {}) => hasGrant(uid,'hospital');
   const descriptionAccess = ({uid} = {}) => hasGrant(uid,'descriptions');
+  const readPreparationContext = async ({uid,id,formId} = {}) => {
+    const form=getOccurrenceForm(formId);
+    if(!form?.actionFollowup||!followupId(id)||id.startsWith('gr-'))return {};
+    const user=auth.currentUser;
+    if(!await descriptionAccess({uid}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const row=await api.getDocFromServer(api.doc(db,FOLLOWUPS,id,'preparationContext','current'));
+    if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
+    if(row.exists())return preparationAdditions(form,row.data().fields);
+    let original;
+    try {original=await api.getDocFromServer(api.doc(db,REPORTS,id));}
+    catch(error){if(error?.code==='permission-denied')return {};throw error;}
+    if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
+    if(!original.exists())return {};
+    const report=original.data();
+    if(report.formId!==formId)return {};
+    const redact=occurrenceRedactor([report.authorLabel,report.classification?.patientOrAttendance,report.details?.attendance,
+      report.details?.prescriptionNumber]);
+    return preparationAdditions(form,report.details?.actionFollowup,redact);
+  };
   const ethicalReviewRef = id => {
     if (!followupId(id)) throw new Error('OCCURRENCE_INPUT_INVALID');
     return api.doc(db,FOLLOWUPS,id,'ethicalReview','current');
@@ -467,7 +503,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
-    hospitalAccess,saveHospital,descriptionAccess,saveDescription,readEthicalReview,saveEthicalReview,
+    hospitalAccess,saveHospital,descriptionAccess,readPreparationContext,saveDescription,readEthicalReview,saveEthicalReview,
     readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,readOccurrenceAcknowledgement,acknowledgeOccurrence,finalizeOccurrence,closeOccurrenceResponses,getGrant,saveGrant,
     clear:()=>{catalogCache=null;}});
 }

@@ -110,6 +110,21 @@
           exists(occurrenceResultPath(id)))
       );
       allow delete: if false;
+      match /preparationContext/current {
+        allow get: if canEditOccurrenceDescription();
+        allow create: if canWrite() && !exists(reportPath(id)) &&
+          getAfter(occurrenceFollowupPath(id)).data.origin == 'app' &&
+          getAfter(auditPath(id)).data.uid == request.auth.uid &&
+          request.resource.data.keys().hasOnly(['fields']) &&
+          request.resource.data.fields is map &&
+          request.resource.data.fields.size() > 0 &&
+          request.resource.data.fields.keys().hasOnly(['immediateAction','chartDisclosure','patientFactors','taskFactors',
+            'individualFactors','teamFactors','workEnvironmentFactors','informationTechnologyFactors']) &&
+          request.resource.data.fields.diff(getAfter(reportPath(id)).data.details.actionFollowup).affectedKeys().hasOnly(['immediateAction']) &&
+          (!request.resource.data.fields.keys().hasAny(['immediateAction']) ||
+            (getAfter(reportPath(id)).data.formId == 'F02' && occurrenceText(request.resource.data.fields.immediateAction,3000)));
+        allow list, update, delete: if false;
+      }
       match /analyses/{uid} {
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
         allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;

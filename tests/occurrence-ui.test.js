@@ -1,7 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OCCURRENCE_FORMS} from '../src/occurrence-schema.js';
+import {buildAnalysisPrompt,buildPreparationPrompt,readPreparationDraft} from '../src/occurrence-ai-prompts.js';
+import {OCCURRENCE_IMPROVEMENT_QUESTION} from '../src/occurrence-questionnaire.js';
 import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess,loadOccurrenceCatalogForSession,occurrenceCatalogErrorMessage,createOccurrenceSessionGate,submitOccurrenceWithFallback,occurrenceWriteFailureMessage} from '../src/occurrences-ui.js';
+
+const report={origin:'app',sequence:4,formId:'F03',description:'Relato sintético',details:{attendance:'IDENTIFICADOR NÃO EXPORTÁVEL'}};
+const improvementQuestions=[
+ ...Array.from({length:3},(_,index)=>({prompt:'Pergunta '+index,options:['Primeira','Segunda']})),
+ {prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options:['Revisar protocolo','Melhorar comunicação','Rever supervisão']}
+];
+
+test('preparo clínico inclui os dez itens, usa fatores validados e preserva o método IDEA',()=>{
+ const clinical=buildPreparationPrompt(report,false,{chartDisclosure:'Sim',teamFactors:'Comunicação escrita',taskFactors:'Texto inválido'});
+ assert.match(clinical,/1\. Ocorrência[\s\S]*7\. História da moléstia atual[\s\S]*10\. Disclosure/);
+ assert.match(clinical,/"Fatores contribuintes do time \(equipe\)\?": "Comunicação escrita"/);
+ assert.match(clinical,/"Disclosure com registro em prontuário:": "Sim"/);
+ assert.doesNotMatch(clinical,/IDENTIFICADOR NÃO EXPORTÁVEL|Texto inválido/);
+ const ethical=buildPreparationPrompt({...report,formId:'F08'},false);
+ assert.match(ethical,/Tratamento das Questões Éticas — IDEA/);
+ assert.doesNotMatch(ethical,/Pré-análise de ocorrência no contexto anestésico/);
+});
+
+test('rascunho exige a pergunta de priorização e até três alternativas distintas',()=>{
+ const draft={protocolo:'GRA 004',descricao:'Descrição',perguntas:improvementQuestions};
+ const read=perguntas=>readPreparationDraft(JSON.stringify({...draft,perguntas}),'GRA 004',false,'F03');
+ assert.deepEqual(read(improvementQuestions).questions,improvementQuestions);
+ for(const options of [['A','B','C','D'],['Revisão','revisão']]){
+  const questions=[...improvementQuestions.slice(0,3),{prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options}];
+  assert.throws(()=>read(questions),/OCCURRENCE_IMPROVEMENT_VOTE_INVALID/);
+ }
+});
+
+test('análise recebe a apuração da ação proposta, incluindo empate e ausência de votos',()=>{
+ const vote=answers=>{
+  const prompt=buildAnalysisPrompt(report,{questions:improvementQuestions,
+   entries:answers.map(answer=>({answers:[1,1,1,answer]})),legacy:[]});
+  return JSON.parse(prompt.split('\n\nVOTAÇÃO DA AÇÃO DE MELHORIA\n')[1].split('\n\nRESPOSTAS DA OCORRÊNCIA')[0]);
+ };
+ assert.equal(vote([1,2,2]).acaoProposta,'Melhorar comunicação');
+ assert.deepEqual(vote([1,2]).empate,['Revisar protocolo','Melhorar comunicação']);
+ assert.equal(vote([]).acaoProposta,null);
+ assert.equal(vote([]).totalDeVotos,0);
+});
 
 test('occurrence write failures never mention local queues or delayed synchronization',()=>{
  assert.match(occurrenceWriteFailureMessage(Object.assign(Error('offline'),{code:'online-required'})),/Conecte-se ao servidor/);
