@@ -1,4 +1,6 @@
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
+import {formatDisplayDate} from './date-format.js';
+import {OCCURRENCE_ANALYSIS_ATTENDANCE_MARKER} from './occurrence-ai-prompts.js';
 import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_OPTION_LIMIT,OCCURRENCE_PROMPT_LIMIT,
   OCCURRENCE_OPTION_TEXT_LIMIT,OCCURRENCE_IMPROVEMENT_OPTION_LIMIT,
   normalizeOccurrencePreparationQuestions} from './occurrence-questionnaire.js';
@@ -102,6 +104,7 @@ function bindOccurrenceResult(panel,{
 }) {
   panel.innerHTML='<div data-poll-result-body></div><p role="status"></p>';
   const body=panel.querySelector('[data-poll-result-body]'),status=panel.querySelector('[role="status"]');
+  const safetyAnalysis=entry.formId!=='F08';
   let published=null,loading=false;
 
   async function run(button,progress,action) {
@@ -117,6 +120,8 @@ function bindOccurrenceResult(panel,{
 
   function renderPublished() {
     body.innerHTML='<h4>RESULTADO DA ANÁLISE PELO SERVIÇO</h4><p class="occurrence-poll-final-text">'+escape(published.text)+'</p>'+
+      (published.dueDate?'<p><strong>Prazo da ação de melhoria</strong> <time datetime="'+escape(published.dueDate)+'">'+
+        escape(formatDisplayDate(published.dueDate))+'</time></p>':'')+
       '<div class="occurrence-result-actions"><button type="button" class="primary-button" disabled data-occurrence-ack>CIÊNCIA</button>'+
       (canEdit&&!entry.eventClosed?
         '<button type="button" class="secondary-button" data-occurrence-result-edit>EDITAR ANÁLISE FINAL</button>'+
@@ -140,7 +145,7 @@ function bindOccurrenceResult(panel,{
       });
       if(confirmed&&isCurrent())showAcknowledged();
     });
-    body.querySelector('[data-occurrence-result-edit]')?.addEventListener('click',()=>{if(!isWriting())renderEditor(published.text);});
+    body.querySelector('[data-occurrence-result-edit]')?.addEventListener('click',()=>{if(!isWriting())renderEditor(published);});
     const finalize=body.querySelector('[data-occurrence-finalize]');
     finalize?.addEventListener('click',()=>void run(finalize,'Finalizando evento…',async()=>{
       await repository.finalizeOccurrence({uid,id,resultAt});
@@ -152,14 +157,18 @@ function bindOccurrenceResult(panel,{
     }));
   }
 
-  function renderEditor(text) {
+  function renderEditor({text,dueDate=''}) {
     body.innerHTML='<form class="occurrence-followup-analysis"><fieldset>'+
+      (safetyAnalysis?'<p>Confira as informações antes de publicar o resultado para a equipe.</p>':'')+
       '<label class="occurrence-field"><span>Resultado final</span><textarea name="result" rows="8" required maxlength="'+
-      OCCURRENCE_ETHICAL_REVIEW_LIMIT+'"></textarea></label><button type="submit" class="primary-button">PUBLICAR RESULTADO</button>'+
+      OCCURRENCE_ETHICAL_REVIEW_LIMIT+'"></textarea></label>'+
+      (safetyAnalysis?'<label class="occurrence-field"><span>Prazo da ação de melhoria</span><input name="dueDate" type="date" lang="pt-BR"></label>':'')+
+      '<button type="submit" class="primary-button">PUBLICAR RESULTADO</button>'+
       (published?'<button type="button" class="secondary-button" data-result-cancel>CANCELAR</button>':'')+'</fieldset></form>';
     const form=body.querySelector('form'),input=form.elements.result,controls=form.querySelector('fieldset');
     const submit=form.querySelector('[type="submit"]');
     input.value=text;
+    if(safetyAnalysis)form.elements.dueDate.value=dueDate;
     input.focus({preventScroll:true});
     form.querySelector('[data-result-cancel]')?.addEventListener('click',()=>{if(!isWriting())renderPublished();});
     form.addEventListener('submit',event=>{
@@ -169,7 +178,8 @@ function bindOccurrenceResult(panel,{
       void run(submit,'Publicando resultado…',async()=>{
         controls.disabled=true;
         try {
-          await repository.saveOccurrenceResult({uid,id,text:next,expectedText:published?.text??''});
+          await repository.saveOccurrenceResult({uid,id,text:next,expectedText:published?.text??'',
+            ...(safetyAnalysis?{dueDate:form.elements.dueDate.value,expectedDueDate:published?.dueDate??''}:{})});
           if(!isCurrent())return;
           entry.analysisClosed=true;
           onResultPublished?.();
@@ -187,15 +197,19 @@ function bindOccurrenceResult(panel,{
     if(!isCurrent()||isWriting()||loading)return false;
     loading=true;panel.hidden=false;status.textContent='Carregando resultado…';
     try {
-      const result=await repository.readOccurrenceResult({uid,id});
+      const [result,attendance]=await Promise.all([
+        repository.readOccurrenceResult({uid,id}),
+        draft&&safetyAnalysis&&canEdit&&entry.origin==='app'?repository.readAnalysisAttendance({uid,id}):null
+      ]);
       if(!isCurrent()||isWriting())return false;
       if(entry.analysisClosed===true&&!result)throw Error('OCCURRENCE_RESULT_MISSING');
       published=result;
       status.textContent='';
-      if(typeof draft==='string'&&canEdit&&!entry.eventClosed){
-        renderEditor(draft).focus();
+      if(draft&&canEdit&&!entry.eventClosed){
+        renderEditor({...draft,text:draft.text.replaceAll(OCCURRENCE_ANALYSIS_ATTENDANCE_MARKER,
+          attendance??'A confirmar no registro')}).focus();
       } else if(published)renderPublished();
-      else if(canEdit&&!entry.eventClosed)renderEditor('');
+      else if(canEdit&&!entry.eventClosed)renderEditor({text:''});
       return true;
     } catch {
       if(isCurrent()){
@@ -209,7 +223,7 @@ function bindOccurrenceResult(panel,{
     } finally {loading=false;}
   }
   if(entry.analysisClosed===true)void open();
-  return text=>open(text);
+  return draft=>open(draft);
 }
 
 function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWriting,setWriting},onPublished) {

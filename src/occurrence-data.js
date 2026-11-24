@@ -54,6 +54,13 @@ function preparationAdditions(form,values,redact=text=>text) {
   }));
 }
 
+function analysisClinicalFields(values,redact=text=>text) {
+  return Object.fromEntries(Object.entries({age:40,sex:12,diagnosisOrTreatment:3000}).flatMap(([key,max])=>{
+    const value=values?.[key];
+    return boundedText(value,max)?[[key,redact(value.trim())]]:[];
+  }));
+}
+
 export function validateOccurrenceCatalogDocument(value) {
   if (!plain(value) || value.schemaVersion !== 1 || !plain(value.catalogs)) throw new Error('OCCURRENCE_CATALOG_INVALID');
   const keys = Object.keys(value.catalogs).sort();
@@ -197,7 +204,10 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
         transaction.set(followupRef,{schemaVersion:1,id:recordId,origin:'app',formId,sequence,
           occurredOn:report.occurredOn,...safe,createdAt:api.serverTimestamp()});
         if(Object.keys(preparation).length) {
-          transaction.set(api.doc(db,FOLLOWUPS,recordId,'preparationContext','current'),{fields:preparation});
+          transaction.set(api.doc(db,FOLLOWUPS,recordId,'preparationContext','current'),{
+            fields:preparation,clinical:analysisClinicalFields(details,redact),
+            attendance:details.attendance??classification.patientOrAttendance
+          });
         }
         transaction.set(auditRef, audit);
         transaction.set(scoreRef, scoreClaim);
@@ -253,24 +263,45 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
   const hospitalAccess = ({uid} = {}) => hasGrant(uid,'hospital');
   const descriptionAccess = ({uid} = {}) => hasGrant(uid,'descriptions');
-  const readPreparationContext = async ({uid,id,formId} = {}) => {
+  const readAnalysisAttendance = async ({uid,id} = {}) => {
+    if(!followupId(id)||id.startsWith('gr-'))return null;
+    const user=auth.currentUser;
+    if(!await descriptionAccess({uid}))return null;
+    const context=await api.getDocFromServer(api.doc(db,FOLLOWUPS,id,'preparationContext','current'));
+    if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
+    const attendance=context.exists()?context.data().attendance:null;
+    if(boundedText(attendance,180))return attendance;
+    let original;
+    try {original=await api.getDocFromServer(api.doc(db,REPORTS,id));}
+    catch(error){if(error?.code==='permission-denied')return null;throw error;}
+    if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
+    if(!original.exists())return null;
+    const {classification,details}=original.data();
+    return details?.attendance??classification?.patientOrAttendance??null;
+  };
+  const readPreparationContext = async ({uid,id,formId,includeClinical=false} = {}) => {
     const form=getOccurrenceForm(formId);
     if(!form?.actionFollowup||!followupId(id)||id.startsWith('gr-'))return {};
     const user=auth.currentUser;
     if(!await descriptionAccess({uid}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const row=await api.getDocFromServer(api.doc(db,FOLLOWUPS,id,'preparationContext','current'));
     if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
-    if(row.exists())return preparationAdditions(form,row.data().fields);
+    const stored=row.exists()?row.data():null;
+    const prepared=preparationAdditions(form,stored?.fields);
+    if(stored&&(!includeClinical||stored.clinical))return {
+      ...prepared,...(includeClinical?analysisClinicalFields(stored.clinical):{})
+    };
     let original;
     try {original=await api.getDocFromServer(api.doc(db,REPORTS,id));}
-    catch(error){if(error?.code==='permission-denied')return {};throw error;}
+    catch(error){if(error?.code==='permission-denied')return prepared;throw error;}
     if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
-    if(!original.exists())return {};
+    if(!original.exists())return prepared;
     const report=original.data();
-    if(report.formId!==formId)return {};
+    if(report.formId!==formId)return prepared;
     const redact=occurrenceRedactor([report.authorLabel,report.classification?.patientOrAttendance,report.details?.attendance,
       report.details?.prescriptionNumber]);
-    return preparationAdditions(form,report.details?.actionFollowup,redact);
+    return {...(stored?prepared:preparationAdditions(form,report.details?.actionFollowup,redact)),
+      ...(includeClinical?analysisClinicalFields(report.details,redact):{})};
   };
   const ethicalReviewRef = id => {
     if (!followupId(id)) throw new Error('OCCURRENCE_INPUT_INVALID');
@@ -282,18 +313,27 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     return row.exists() ? row.data().text : '';
   };
-  const saveEthicalText = async ({uid,ref,text,expectedText,allowEmpty=false,completedRecord}) => {
+  const saveEthicalText = async ({uid,ref,text,expectedText,allowEmpty=false,completedRecord,dueDate,expectedDueDate}) => {
     if (typeof text !== 'string' || text.trim().length > OCCURRENCE_ETHICAL_REVIEW_LIMIT ||
       (!allowEmpty&&!text.trim()) || typeof expectedText !== 'string') throw new Error('OCCURRENCE_INPUT_INVALID');
+    for(const date of [dueDate,expectedDueDate]) {
+      if(date!==undefined&&date!==''&&(typeof date!=='string'||!isValidDateKey(date))) {
+        throw new Error('OCCURRENCE_ANALYSIS_DATE_INVALID');
+      }
+    }
     const {user} = await requirePermission(uid);
     const next = text.trim();
     await api.runTransaction(db,async tx => {
       const row = await tx.get(ref);
       if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
-      const previous = row.exists() ? row.data().text : '';
-      if (previous === next) return;
-      if (previous !== expectedText) throw new Error('OCCURRENCE_ETHICAL_REVIEW_CHANGED');
-      tx.set(ref,{text:next,updatedAt:api.serverTimestamp()});
+      const previous = row.exists() ? row.data() : {};
+      const previousDate = previous.dueDate??'';
+      const nextDate = dueDate??previousDate;
+      if ((previous.text??'')===next&&previousDate===nextDate) return;
+      if ((previous.text??'')!==expectedText||(expectedDueDate!==undefined&&previousDate!==expectedDueDate)) {
+        throw new Error('OCCURRENCE_ETHICAL_REVIEW_CHANGED');
+      }
+      tx.set(ref,{text:next,updatedAt:api.serverTimestamp(),...(nextDate?{dueDate:nextDate}:{})});
       if (completedRecord) tx.update(completedRecord,{analysisClosed:true});
     });
     return next;
@@ -344,7 +384,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const snapshot=await api.getDocFromServer(analysisRef(id,'ethicalPollResult'));
     if (!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     const row=snapshot.data();
-    return row ? {text:row.text,updatedAt:row.updatedAt} : null;
+    return row ? {text:row.text,updatedAt:row.updatedAt,...(row.dueDate?{dueDate:row.dueDate}:{})} : null;
   };
   const readOccurrenceAcknowledgement = async ({uid,id,resultAt} = {}) => {
     const {user}=await requirePermission(uid);
@@ -375,8 +415,9 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       if(parent.data()?.eventClosed!==true)tx.update(record,{eventClosed:true});
     });
   };
-  const saveOccurrenceResult = ({uid,id,text,expectedText} = {}) =>
-    saveEthicalText({uid,ref:analysisRef(id,'ethicalPollResult'),text,expectedText,completedRecord:api.doc(db,FOLLOWUPS,id)});
+  const saveOccurrenceResult = ({uid,id,text,expectedText,dueDate,expectedDueDate} = {}) =>
+    saveEthicalText({uid,ref:analysisRef(id,'ethicalPollResult'),text,expectedText,dueDate,expectedDueDate,
+      completedRecord:api.doc(db,FOLLOWUPS,id)});
   const saveDescription = async ({uid,id,description,expectedDescription} = {}) => {
     if (!followupId(id) || !boundedText(description,5000) ||
       (expectedDescription !== null && typeof expectedDescription !== 'string')) throw new Error('OCCURRENCE_INPUT_INVALID');
@@ -505,7 +546,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
-    hospitalAccess,saveHospital,descriptionAccess,readPreparationContext,saveDescription,readEthicalReview,saveEthicalReview,
+    hospitalAccess,saveHospital,descriptionAccess,readPreparationContext,readAnalysisAttendance,saveDescription,readEthicalReview,saveEthicalReview,
     readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,readOccurrenceAcknowledgement,acknowledgeOccurrence,finalizeOccurrence,closeOccurrenceResponses,getGrant,saveGrant,
     clear:()=>{catalogCache=null;}});
 }

@@ -132,17 +132,20 @@ test('a projeção do formulário mais extenso preserva contexto e não expõe o
 
 test('FC grava os fatores e o contexto da preparação fica acessível ao gestor designado',async()=>{
  const db=google(uid),team=google('unauthorized-synthetic');
- const manager='preparation-manager',managerDb=google(manager);
+ const manager='preparation-manager',managerDb=google(manager),admin='clinical-admin',adminDb=google(admin);
  await env.withSecurityRulesDisabled(async context=>{
   const admin=context.firestore();
   await setDoc(doc(admin,'users',manager),{uid:manager,active:true,access:true,permissions:{}});
   await setDoc(doc(admin,'occurrenceDescriptionGrants',manager),{enabled:true});
+  await setDoc(doc(admin,'users','clinical-admin'),{uid:'clinical-admin',active:true,access:true,role:'administrador_app'});
  });
  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
   auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key,...path)=>doc(db,name,key,...path),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  const managerRepository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
   auth:{currentUser:{uid:manager}},firestore:{doc:(_,name,key,...path)=>doc(managerDb,name,key,...path),getDocFromServer}});
+ const adminRepository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
+  auth:{currentUser:{uid:admin}},firestore:{doc:(_,name,key,...path)=>doc(adminDb,name,key,...path),getDocFromServer}});
  const common={eventDate:'2026-11-20',occurrence:'Sintética',description:'Relato sintético',attendance:'012345',...patientValues};
  const cases=[
   {formId:'F02',recordId:id,formValues:{eventSector:catalogs.SETORES_9[0],reactionEvent:catalogs.RAM_100[0],
@@ -166,6 +169,10 @@ test('FC grava os fatores e o contexto da preparação fica acessível ao gestor
   const expected={...followup,analysisParticipants};
   if(formId==='F02')expected.immediateAction='Ação sintética para atendimento …';
   assert.deepEqual(prepared,expected);
+  assert.deepEqual(await managerRepository.readPreparationContext({uid:manager,id:recordId,formId,includeClinical:true}),
+   {...expected,...patientValues});
+  assert.equal(await adminRepository.readAnalysisAttendance({uid:admin,id:recordId}),'012345');
+  assert.equal(await managerRepository.readAnalysisAttendance({uid:manager,id:recordId}),'012345');
   await assertFails(updateDoc(doc(managerDb,'occurrenceFollowups',recordId,'preparationContext','current'),{fields:{}}));
  }
 });
@@ -413,9 +420,14 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  await assertFails(updateDoc(caseRow(delegateDb),{analysisClosed:false}));
  await assert.rejects(editor.saveOccurrenceResult({uid:delegate,id:caseId,text:'Conflito',expectedText:''}),{message:'OCCURRENCE_ETHICAL_REVIEW_CHANGED'});
  await editor.closeOccurrenceResponses({uid:delegate,id});
- assert.equal(await editor.saveOccurrenceResult({uid:delegate,id,text:'Outro caso',expectedText:''}),'Outro caso');
+ assert.equal(await editor.saveOccurrenceResult({uid:delegate,id,text:'Outro caso',expectedText:'',dueDate:'2026-12-01',expectedDueDate:''}),'Outro caso');
  assert.equal((await assertSucceeds(getDocFromServer(result(ordinaryDb,id)))).data().text,'Outro caso');
  assert.equal((await assertSucceeds(getDocFromServer(result(otherDb,id)))).data().text,'Outro caso');
+ assert.equal((await repository.readOccurrenceResult({uid:ordinary,id})).dueDate,'2026-12-01');
+ await editor.saveOccurrenceResult({uid:delegate,id,text:'Outro caso',expectedText:'Outro caso',dueDate:'2026-12-03',expectedDueDate:'2026-12-01'});
+ assert.equal((await repository.readOccurrenceResult({uid:ordinary,id})).dueDate,'2026-12-03');
+ await assert.rejects(editor.saveOccurrenceResult({uid:delegate,id,text:'Outra versão',expectedText:'Outro caso',
+   dueDate:'2026-12-05',expectedDueDate:'2026-12-01'}),{message:'OCCURRENCE_ETHICAL_REVIEW_CHANGED'});
  await assertFails(updateDoc(result(delegateDb),{text:'   ',updatedAt:serverTimestamp()}));
 });
 

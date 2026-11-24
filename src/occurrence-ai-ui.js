@@ -18,7 +18,10 @@ export function bindOccurrencePromptActions(footer,host,{
     },
     analysis:{
       label:'ANALISAR RESPOSTAS',
-      prepare:async()=>buildAnalysisPrompt(entry,await readResponses()),
+      async prepare() {
+        const [responses,context]=await Promise.all([readResponses(),readPreparationContext(true)]);
+        return buildAnalysisPrompt(entry,responses,context);
+      },
       stage:text=>stageResult(readAnalysisDraft(text,protocol)),
       success:'Rascunho carregado em Resultado da análise pelo serviço. Revise antes de publicar.'
     }
@@ -118,6 +121,8 @@ export function bindOccurrencePromptActions(footer,host,{
         } else if(error.message==='OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID') {
           status.textContent=entry.formId==='F08'?'Inclua as quatro perguntas do roteiro IDEA.'
             :'Inclua de cinco a dez perguntas, contando a votação final.';
+        } else if(error.message==='OCCURRENCE_ANALYSIS_DATE_INVALID') {
+          status.textContent='Confira o prazo sugerido. Use uma data válida ou deixe o campo vazio.';
         } else {
           status.textContent=error.message==='OCCURRENCE_DRAFT_PROTOCOL'
             ?'O protocolo do rascunho deve ser '+protocol+'.'

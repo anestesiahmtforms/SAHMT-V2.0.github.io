@@ -333,7 +333,18 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await closeReplies.click();
   await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
   const archivePrompt=await analysis.getByRole('textbox',{name:'Prompt para a IA'}).inputValue();
-  assert.match(archivePrompt,/GR 001[\s\S]*"relato": "Texto ajustado pelo administrador"[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
+  assert.match(archivePrompt,/GR 001[\s\S]*"relato": "Relato completo aqui"[\s\S]*"preparacaoPublicada": "Texto ajustado pelo administrador"[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
+  await analysis.getByRole('textbox',{name:'Resposta da IA em JSON'}).fill(JSON.stringify({
+   protocolo:'GR 001',resultado:'3. Número do atendimento — [[NUMERO_DO_ATENDIMENTO]]',prazoSugerido:'2026-11-30'
+  }));
+  await analysis.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
+  const dueDate=followupBanner.getByLabel('Prazo da ação de melhoria');
+  assert.equal(await dueDate.inputValue(),'2026-11-30');
+  await dueDate.fill('2026-12-02');
+  assert.equal(await dueDate.inputValue(),'2026-12-02');
+  const finalAnalysis=followupBanner.getByRole('textbox',{name:'Resultado final'});
+  assert.equal(await finalAnalysis.inputValue(),'3. Número do atendimento — A confirmar no registro');
+  await finalAnalysis.fill('Análise editada');
   await back.click();
   await page.evaluate(()=>window.canEditDescription=false);
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();

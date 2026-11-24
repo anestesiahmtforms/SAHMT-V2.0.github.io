@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OCCURRENCE_FORMS} from '../src/occurrence-schema.js';
-import {buildAnalysisPrompt,buildPreparationPrompt,readPreparationDraft} from '../src/occurrence-ai-prompts.js';
+import {buildAnalysisPrompt,buildPreparationPrompt,readAnalysisDraft,readPreparationDraft} from '../src/occurrence-ai-prompts.js';
 import {OCCURRENCE_IMPROVEMENT_QUESTION} from '../src/occurrence-questionnaire.js';
 import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess,loadOccurrenceCatalogForSession,occurrenceCatalogErrorMessage,createOccurrenceSessionGate,submitOccurrenceWithFallback,occurrenceWriteFailureMessage} from '../src/occurrences-ui.js';
 
@@ -52,6 +52,24 @@ test('análise recebe a apuração da ação proposta, incluindo empate e ausên
  assert.deepEqual(vote([1,2]).empate,['Revisar protocolo','Melhorar comunicação']);
  assert.equal(vote([]).acaoProposta,null);
  assert.equal(vote([]).totalDeVotos,0);
+});
+
+test('análise clínica segue a ordem de 19 itens, recebe dados desidentificados e separa o prazo',()=>{
+ const entry={...report,preparedDescription:'Pré-análise aprovada'};
+ const prompt=buildAnalysisPrompt(entry,{questions:improvementQuestions,entries:[],legacy:[]},{
+  age:'8 meses',sex:'Feminino',diagnosisOrTreatment:'Tratamento sintético',teamFactors:'Comunicação verbal',chartDisclosure:'Não'
+ });
+ const sections=[...prompt.matchAll(/^(\d+)\. [^\n]+/gm)].slice(0,19).map(match=>Number(match[1]));
+ assert.deepEqual(sections,Array.from({length:19},(_,index)=>index+1));
+ assert.match(prompt,/3\. Número do atendimento[\s\S]*\[\[NUMERO_DO_ATENDIMENTO\]\]/);
+ assert.match(prompt,/"relato": "Relato sintético"[\s\S]*"preparacaoPublicada": "Pré-análise aprovada"/);
+ assert.match(prompt,/"Fatores contribuintes do time \(equipe\)\?": "Comunicação verbal"/);
+ assert.match(prompt,/"idade": "8 meses"[\s\S]*"sexo": "Feminino"[\s\S]*"diagnosticoOuTratamento": "Tratamento sintético"/);
+ assert.doesNotMatch(prompt,/IDENTIFICADOR NÃO EXPORTÁVEL/);
+ assert.deepEqual(readAnalysisDraft(JSON.stringify({protocolo:'GRA 004',resultado:'Análise',prazoSugerido:'30/11/2026'}),'GRA 004'),
+  {text:'Análise',dueDate:'2026-11-30'});
+ assert.throws(()=>readAnalysisDraft(JSON.stringify({protocolo:'GRA 004',resultado:'Análise',prazoSugerido:'2026-02-30'}),'GRA 004'),
+  /OCCURRENCE_ANALYSIS_DATE_INVALID/);
 });
 
 test('occurrence write failures never mention local queues or delayed synchronization',()=>{

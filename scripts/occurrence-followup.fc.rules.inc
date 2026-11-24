@@ -115,13 +115,16 @@
         allow create: if canWrite() && !exists(reportPath(id)) &&
           getAfter(occurrenceFollowupPath(id)).data.origin == 'app' &&
           getAfter(auditPath(id)).data.uid == request.auth.uid &&
-          request.resource.data.keys().hasOnly(['fields']) &&
+          request.resource.data.keys().hasOnly(['fields','clinical','attendance']) &&
           request.resource.data.fields is map &&
           request.resource.data.fields.size() > 0 &&
           request.resource.data.fields.keys().hasOnly(['immediateAction','chartDisclosure','analysisParticipants','patientFactors','taskFactors',
             'individualFactors','teamFactors','workEnvironmentFactors','informationTechnologyFactors']) &&
           request.resource.data.fields.diff(getAfter(reportPath(id)).data.details.actionFollowup).affectedKeys().hasOnly(['immediateAction']) &&
           request.resource.data.fields.get('analysisParticipants','Serviço de Anestesiologia') == 'Serviço de Anestesiologia' &&
+          validOccurrenceAnalysisClinical(request.resource.data.get('clinical',{})) &&
+          (!request.resource.data.keys().hasAny(['attendance']) ||
+            validOccurrenceAnalysisAttendance(id,request.resource.data.attendance)) &&
           (!request.resource.data.fields.keys().hasAny(['immediateAction']) ||
             (getAfter(reportPath(id)).data.formId == 'F02' && occurrenceText(request.resource.data.fields.immediateAction,3000)));
         allow list, update, delete: if false;
@@ -166,7 +169,9 @@
             get(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) is timestamp) &&
           !get(occurrenceFollowupPath(id)).data.get('eventClosed',false) &&
           getAfter(occurrenceFollowupPath(id)).data.analysisClosed == true &&
-          request.resource.data.keys().hasOnly(['text','updatedAt']) &&
+          request.resource.data.keys().hasOnly(['text','updatedAt','dueDate']) &&
+          request.resource.data.get('dueDate','2000-01-01') is string &&
+          request.resource.data.get('dueDate','2000-01-01').matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$') &&
           occurrenceText(request.resource.data.text,20000) && request.resource.data.updatedAt == request.time;
         allow delete: if false;
       }
@@ -209,6 +214,17 @@
         occurrenceText(question.prompt,OCCURRENCE_PROMPT_LIMIT) &&
         options is list && options.size() >= 2 && options.size() <= OCCURRENCE_OPTION_LIMIT &&
         OCCURRENCE_OPTION_CHECKS;
+    }
+    function validOccurrenceAnalysisClinical(clinical) {
+      return clinical is map && clinical.keys().hasOnly(['age','sex','diagnosisOrTreatment']) &&
+        occurrenceText(clinical.get('age','—'),40) &&
+        occurrenceText(clinical.get('sex','—'),12) &&
+        occurrenceText(clinical.get('diagnosisOrTreatment','—'),3000);
+    }
+    function validOccurrenceAnalysisAttendance(id,attendance) {
+      let report = getAfter(reportPath(id)).data;
+      return occurrenceText(attendance,180) &&
+        attendance == report.details.get('attendance',report.classification.get('patientOrAttendance',''));
     }
     function validSafetyQuestion(question) {
       let options = question.options;

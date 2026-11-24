@@ -72,6 +72,7 @@ const end=output.indexOf('    match /indicators/',begin);
 if(begin<0||end<0)throw Error('FC_RECORDS_RULE_SCOPE_MISSING');
 const occurrenceRules=output.slice(begin,end).replace('validReport(reportId, request.resource.data) && pairedAfter(reportId);',
   "validReport(reportId, request.resource.data) && pairedAfter(reportId) &&\n        (!request.resource.data.keys().hasAny(['sequence']) || validOccurrenceNumber(reportId,request.resource.data));")
+  .replace('allow get: if canReadReport(reportId);','allow get: if canReadReport(reportId) || occurrenceAdministrator();')
   .replace(/(allow [a-z, ]+: if )(?!false\s*;)([^;]+);/g,
   (_,prefix,condition)=>prefix+"fcRecordsFolderOpen_('registros/ocorrencias') && ("+condition+");");
 output=output.slice(0,begin)+folderRules+occurrenceRules+output.slice(end);
