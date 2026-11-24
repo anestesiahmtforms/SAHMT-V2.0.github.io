@@ -7,7 +7,7 @@ const catalogMocks = Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS)
   .map(([key, spec]) => [key, Array.from({length: spec.count}, (_, index) => `Opção sintética ${index + 1}`)]));
 const patientValues = {sex:'Feminino',age:'8 meses',diagnosisOrTreatment:'Tratamento sintético'};
 const actionValues = {chartDisclosure:'Sim',patientFactors:'Nenhum',taskFactors:'Nenhum',individualFactors:'Nenhum',
-  teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma',informationTechnologyFactors:'Nenhuma'};
+  teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma'};
 const commonValues = {eventDate:'2026-10-12',occurrence:'Registro sintético',description:'Descrição sintética',...patientValues};
 
 test('define os dez formulários e quatro grupos, sem inventar formulário oncológico', () => {
@@ -44,6 +44,17 @@ test('F10 não recebe campos gerais que a especificação exclui', () => {
 test('F02 e F03 não contêm os campos de paciente explicitamente excluídos', () => {
   const prohibited = new Set(['patient','patientName','motherName','insurance','admissionDate','diagnosis','treatment','careSector']);
   for (const id of ['F02','F03']) assert.equal(getOccurrenceForm(id).fields.some(item => prohibited.has(item.id)), false);
+});
+
+test('exige disposição e os cinco fatores clínicos na RAM e exige TI somente na Segurança da Informação', () => {
+  const adverse = {...commonValues,...actionValues,attendance:'1023',eventSector:catalogMocks.SETORES_9[0],
+    reactionEvent:catalogMocks.RAM_100[0],medicationRegimen:'Sintético',suspectedReactionDate:'2026-10-12',prescriptionNumber:'12'};
+  assert.deepEqual(validateOccurrenceValues('F02',adverse,catalogMocks).errors,['REQUIRED:immediateAction']);
+  assert.equal(validateOccurrenceValues('F02',{...adverse,immediateAction:'Ação'},catalogMocks).valid,true);
+  const security = {...commonValues,attendance:'1023',incidentTime:'12:45',incidentLocation:'Setor',
+    incidentEffect:'Efeito',eventDiscovery:'Descoberta',securityIncidentType:catalogMocks.TIPO_SEGURANCA[0],othersInformed:'Coordenação'};
+  assert.deepEqual(validateOccurrenceValues('F09',security,catalogMocks).errors,['REQUIRED:informationTechnologyFactors']);
+  assert.equal(validateOccurrenceValues('F09',{...security,informationTechnologyFactors:'Proteção de dados'},catalogMocks).valid,true);
 });
 
 test('valida obrigatoriedade, datas reais, horário e opção pertencente ao catálogo', () => {

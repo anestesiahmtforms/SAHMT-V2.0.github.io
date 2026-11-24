@@ -32,7 +32,7 @@ function harness({claims={}, active=true, failTransaction=false, failTransaction
 }
 const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS).map(([key,spec])=>[key,Array.from({length:spec.count},(_,i)=>`Opção sintética ${i+1}`)]));
 const actionValues={chartDisclosure:'Sim',patientFactors:'Nenhum',taskFactors:'Nenhum',individualFactors:'Nenhum',
-  teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma',informationTechnologyFactors:'Proteção de dados'};
+  teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma'};
 const input={uid:'uid-synthetic',displayName:'Profissional Sintético',anonymous:false,formId:'F01',recordId:'10000000-0000-4000-8000-000000000001',catalogs,
   values:{eventDate:'2026-10-12',occurrence:'Sintética',description:'Descrição sintética',attendance:'Atendimento sintético',
     sex:'Outro',age:'16 meses',diagnosisOrTreatment:'Diagnóstico privado sintético',
@@ -126,7 +126,8 @@ test('resposta e ciência enfileiram um ponto cada, sem duplicar ao rever o resu
 
 test('publica o relato de acompanhamento sem o autor e os campos clínicos privados',async()=>{
   const {repository,store}=harness({claims:allClaims});
-  await repository.save({...input,values:{...input.values,description:'Atendimento sintético acompanhado por Profissional Sintético.'}});
+  await repository.save({...input,values:{...input.values,informationTechnologyFactors:'Proteção de dados',
+    description:'Atendimento sintético acompanhado por Profissional Sintético.'}});
   const entry=store.get(`occurrenceFollowups/${input.recordId}`);
   assert.equal(entry.formId,'F01');
   assert.equal(entry.origin,'app');
@@ -139,6 +140,7 @@ test('publica o relato de acompanhamento sem o autor e os campos clínicos priva
   const {details}=store.get(`occurrenceReports/${input.recordId}`);
   for(const key of ['sex','age','diagnosisOrTreatment'])assert.equal(details[key],input.values[key]);
   assert.deepEqual(details.actionFollowup,actionValues);
+  assert.equal(Object.hasOwn(details,'informationTechnologyFactors'),false);
 });
 
 test('dois registros distintos recebem protocolos consecutivos no mesmo FC',async()=>{

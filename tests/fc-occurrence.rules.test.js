@@ -14,7 +14,7 @@ const google=(userId,claims={})=>env.authenticatedContext(userId,{firebase:{sign
 const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS).map(([key,spec])=>[key,Array.from({length:spec.count},(_,i)=>`Opção sintética ${i+1}`)]));
 const patientValues={sex:'Masculino',age:'3 meses',diagnosisOrTreatment:'Tratamento sintético'};
 const actionValues={chartDisclosure:'Não se aplica (Evento sem envolver o paciente)',patientFactors:'Nenhum',taskFactors:'Nenhum',
- individualFactors:'Nenhum',teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma',informationTechnologyFactors:'Proteção de dados'};
+ individualFactors:'Nenhum',teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma'};
 before(async()=>{assert.ok(host&&Number.isInteger(port)&&port>0,`Invalid FIRESTORE_EMULATOR_HOST: ${emulatorHost}`);env=await initializeTestEnvironment({projectId:project,firestore:{host,port,rules:await readFile(new URL('../firestore.fc.rules',import.meta.url),'utf8')}});});
 after(async()=>env?.cleanup());
 beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{
@@ -127,6 +127,31 @@ test('a projeção do formulário mais extenso preserva contexto e não expõe o
  assert.equal(Object.hasOwn(entry.data().details,'attendance'),false);
  const original=await getDocFromServer(doc(db,'occurrenceReports',id));
  assert.deepEqual(original.data().details.actionFollowup,actionValues);
+});
+
+test('FC grava o bloco de reação adversa e o fator exclusivo de segurança da informação',async()=>{
+ const db=google(uid),team=google('unauthorized-synthetic');
+ const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
+  auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
+   runTransaction:(_,callback)=>runTransaction(db,callback)}});
+ const common={eventDate:'2026-11-20',occurrence:'Sintética',description:'Relato sintético',attendance:'012345',...patientValues};
+ const cases=[
+  {formId:'F02',recordId:id,formValues:{eventSector:catalogs.SETORES_9[0],reactionEvent:catalogs.RAM_100[0],
+   medicationRegimen:'Medicação sintética',suspectedReactionDate:'2026-11-20',prescriptionNumber:'123'},
+   followup:{...actionValues,immediateAction:'Ação sintética'}},
+  {formId:'F09',recordId:'10000000-0000-4000-8000-000000000002',
+   formValues:{incidentTime:'09:00',incidentLocation:'Setor',incidentEffect:'Efeito sintético',
+    eventDiscovery:'Descoberta sintética',securityIncidentType:catalogs.TIPO_SEGURANCA[0],othersInformed:'Coordenação'},
+   followup:{informationTechnologyFactors:'Proteção de dados'}}
+ ];
+ for (const {formId,recordId,formValues,followup} of cases) {
+  assert.equal((await repository.save({uid,formId,recordId,displayName:'Autor sintético',catalogs,
+   values:{...common,...formValues,...followup}})).status,'saved');
+  const original=(await getDocFromServer(doc(db,'occurrenceReports',recordId))).data();
+  assert.deepEqual(original.details.actionFollowup,followup);
+  const shared=(await assertSucceeds(getDocFromServer(doc(team,'occurrenceFollowups',recordId)))).data();
+  assert.equal(Object.hasOwn(shared.details,'actionFollowup'),false);
+ }
 });
 
 test('somente administrador delega registros GR, cujo protocolo preserva unicidade e não gera pontuação',async()=>{

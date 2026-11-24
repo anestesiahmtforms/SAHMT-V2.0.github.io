@@ -38,11 +38,11 @@ const patientFields = Object.freeze([
 
 const choice = (id, label, options, extra = {}) => field(id, label, 'select', {options: Object.freeze(options), ...extra});
 
-export const OCCURRENCE_DISCLOSURE_FIELD = choice('chartDisclosure', 'Disclosure com registro em prontuário:', [
+const disclosure = choice('chartDisclosure', 'Disclosure com registro em prontuário:', [
   'Sim', 'Não', 'Não se aplica (Evento sem envolver o paciente)'
 ], {fullWidth: true});
 
-export const OCCURRENCE_CONTRIBUTING_FACTORS = Object.freeze([
+const clinicalFactors = Object.freeze([
   choice('patientFactors', 'Fatores contribuintes do paciente?', [
     'Nenhum', 'Barreira linguística e de comunicação', 'Doença (complexidade e gravidade)', 'Personalidade e fatores sociais'
   ]),
@@ -59,14 +59,25 @@ export const OCCURRENCE_CONTRIBUTING_FACTORS = Object.freeze([
   choice('workEnvironmentFactors', 'Fatores do ambiente de trabalho?', [
     'Nenhuma', 'Nível das equipes e conjunto de habilidades', 'Padrões dos turnos e carga de trabalho',
     'Design, disponibilidade e manutenção dos equipamentos', 'Ambiente físico', 'Apoio administrativo e gerencial', 'Atrasos'
-  ]),
-  choice('informationTechnologyFactors', 'Fatores de TI e sistemas eletrônicos?', [
-    'Nenhuma', 'Hardware (incluindo design e manutenção)', 'Software (incluindo design e manutenção)',
-    'Conteúdo técnico e suporte à decisão clínica', 'Interface pessoa-dispositivo', 'Integração no fluxo de trabalho', 'Proteção de dados'
   ])
+]);
+const informationTechnology = choice('informationTechnologyFactors', 'Fatores de TI e sistemas eletrônicos?', [
+  'Nenhuma', 'Hardware (incluindo design e manutenção)', 'Software (incluindo design e manutenção)',
+  'Conteúdo técnico e suporte à decisão clínica', 'Interface pessoa-dispositivo', 'Integração no fluxo de trabalho', 'Proteção de dados'
 ]);
 
 const immediateAction = () => long('immediateAction', 'Disposição (ação imediata: Descreva sintomas observados e suas ações para o cuidado)');
+const actionFollowup = (after, fields, factors) => Object.freeze({
+  after, fields: Object.freeze(fields), factors: Object.freeze(factors)
+});
+const clinicalFollowup = actionFollowup('immediateAction', [disclosure], clinicalFactors);
+const adverseReactionFollowup = actionFollowup('prescriptionNumber', [immediateAction(), disclosure], clinicalFactors);
+const informationSecurityFollowup = actionFollowup('othersInformed', [], [informationTechnology]);
+
+export function occurrenceActionFollowupFields(form) {
+  const followup = form.actionFollowup;
+  return followup ? [...followup.fields, ...followup.factors] : [];
+}
 
 export function withOccurrencePatientFields(fields) {
   return fields.flatMap(item => item.id === 'attendance' || item.id === 'patientOrAttendance'
@@ -80,7 +91,8 @@ const forms = [
     select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'),
     immediateAction(), select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
-  {id: 'F02', group: 'A', title: 'Notificação de Farmacovigilância - Reação Adversa ao Medicamento', fields: [
+  {id: 'F02', group: 'A', title: 'Notificação de Farmacovigilância - Reação Adversa ao Medicamento',
+    actionFollowup: adverseReactionFollowup, fields: [
     attendance(), select('eventSector', 'Local de ocorrência da RAM', 'SETORES_9'),
     select('reactionEvent', 'Qual incidente/evento aconteceu?', 'RAM_100'), field('medicationRegimen', 'Nome do Medicamento/Esquema QT'),
     date('suspectedReactionDate', 'Data suspeita RAM'), field('prescriptionNumber', 'Número Prescrição')
@@ -127,7 +139,8 @@ const forms = [
   ]},
   {id: 'F08', group: 'B', title: 'Dilema Ético', classification: [select('occurrenceSector', 'Setor da Ocorrência', 'SETORES_55')],
     fields: [attendance()]},
-  {id: 'F09', group: 'C', title: 'Notificação de Incidente de Segurança da Informação', fields: [
+  {id: 'F09', group: 'C', title: 'Notificação de Incidente de Segurança da Informação',
+    actionFollowup: informationSecurityFollowup, fields: [
     attendance(), time('incidentTime', 'Hora'), field('incidentLocation', 'Localização (Onde está o incidente)'),
     long('incidentEffect', 'Efeito do incidente'), field('eventDiscovery', 'Como o evento foi descoberto'),
     select('securityIncidentType', 'Tipo de incidente', 'TIPO_SEGURANCA'), field('othersInformed', 'Quem mais foi informado')
@@ -137,8 +150,12 @@ const forms = [
     attendance('patientOrAttendance', 160),
     immediateAction()
   ], fields: [], noGeneralInformation: true}
-].map(form => Object.freeze({...form, classification: Object.freeze(form.classification || []),
-  fields: Object.freeze(form.noGeneralInformation ? form.fields : [...common, ...form.fields])}));
+].map(form => {
+  const classification = Object.freeze(form.classification || []);
+  const fields = Object.freeze(form.noGeneralInformation ? form.fields : [...common, ...form.fields]);
+  const defaultFollowup = [...classification, ...fields].some(item => item.id === 'immediateAction') ? clinicalFollowup : null;
+  return Object.freeze({...form, classification, fields, actionFollowup: form.actionFollowup ?? defaultFollowup});
+});
 
 export const OCCURRENCE_FORMS = Object.freeze(forms);
 export const OCCURRENCE_GROUPS = Object.freeze([
@@ -195,7 +212,7 @@ export function validateOccurrenceValues(formId, values, catalogs = {}) {
   if (!form || !values || typeof values !== 'object' || Array.isArray(values)) return {valid: false, errors: ['FORM_INVALID']};
   const errors = [];
   const fields = withOccurrencePatientFields([...form.classification, ...form.fields]).flatMap(item =>
-    item.id === 'immediateAction' ? [item, OCCURRENCE_DISCLOSURE_FIELD, ...OCCURRENCE_CONTRIBUTING_FACTORS] : [item]);
+    item.id === form.actionFollowup?.after ? [item, ...occurrenceActionFollowupFields(form)] : [item]);
   for (const item of fields) {
     const value = values[item.id];
     const empty = value === undefined || value === null || String(value).trim() === '';

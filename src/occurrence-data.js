@@ -1,7 +1,7 @@
 import {collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query, runTransaction, serverTimestamp, startAfter, where} from 'firebase/firestore';
 import {FIREBASE_PROJECTS} from './firebase-projects.js';
-import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_CONTRIBUTING_FACTORS, OCCURRENCE_DISCLOSURE_FIELD,
-  OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PRIVATE_FIELDS, OCCURRENCE_REGISTRATION_POINTS, getOccurrenceForm, occurrenceAppProtocol,
+import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PRIVATE_FIELDS,
+  OCCURRENCE_REGISTRATION_POINTS, getOccurrenceForm, occurrenceActionFollowupFields, occurrenceAppProtocol,
   occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues, withOccurrencePatientFields} from './occurrence-schema.js';
 import {isValidDateKey} from './schedule-date.js';
 import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIMIT,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
@@ -138,8 +138,8 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const details = Object.fromEntries(withOccurrencePatientFields(formFields).map(item => item.id)
       .filter(key => !commonIds.has(key) && !classificationIds.has(key) && values[key] !== undefined)
       .map(key => [key, values[key].trim()]));
-    if (formFields.some(item => item.id === 'immediateAction')) {
-      details.actionFollowup = Object.fromEntries([OCCURRENCE_DISCLOSURE_FIELD, ...OCCURRENCE_CONTRIBUTING_FACTORS]
+    if (form.actionFollowup) {
+      details.actionFollowup = Object.fromEntries(occurrenceActionFollowupFields(form)
         .map(item => [item.id, values[item.id].trim()]));
     }
     const report = Object.freeze({schemaVersion:1,id:recordId,formId,formTitle:form.title,
