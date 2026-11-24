@@ -31,11 +31,13 @@ function harness({claims={}, active=true, failTransaction=false, failTransaction
   return {repository,store,calls,auth,user,db};
 }
 const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS).map(([key,spec])=>[key,Array.from({length:spec.count},(_,i)=>`Opção sintética ${i+1}`)]));
+const actionValues={chartDisclosure:'Sim',patientFactors:'Nenhum',taskFactors:'Nenhum',individualFactors:'Nenhum',
+  teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma',informationTechnologyFactors:'Proteção de dados'};
 const input={uid:'uid-synthetic',displayName:'Profissional Sintético',anonymous:false,formId:'F01',recordId:'10000000-0000-4000-8000-000000000001',catalogs,
   values:{eventDate:'2026-10-12',occurrence:'Sintética',description:'Descrição sintética',attendance:'Atendimento sintético',
     sex:'Outro',age:'16 meses',diagnosisOrTreatment:'Diagnóstico privado sintético',
     causingSector:'Opção sintética 1',medicationName:'Medicamento sintético',lotNumber:'L-1',symptomAfterEvent:'Opção sintética 2',
-    immediateAction:'Ação sintética',eventPeriod:'Opção sintética 1'}};
+    immediateAction:'Ação sintética',eventPeriod:'Opção sintética 1',...actionValues}};
 const allClaims={sahmtOccurrencesCatalogRead:true,sahmtOccurrencesWrite:true,sahmtOccurrencesRead:true};
 
 test('consultas consecutivas no FC usam o token gerenciado pelo SDK sem renovação forçada', async()=>{
@@ -136,6 +138,7 @@ test('publica o relato de acompanhamento sem o autor e os campos clínicos priva
     '16 meses','Diagnóstico privado sintético','Outro'])assert.ok(!publicJson.includes(secret));
   const {details}=store.get(`occurrenceReports/${input.recordId}`);
   for(const key of ['sex','age','diagnosisOrTreatment'])assert.equal(details[key],input.values[key]);
+  assert.deepEqual(details.actionFollowup,actionValues);
 });
 
 test('dois registros distintos recebem protocolos consecutivos no mesmo FC',async()=>{

@@ -2180,6 +2180,8 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-form-section+.occurrence-form-section{margin-top:16px;padding-top:16px;border-top:1px solid #bfd0d9}
 .occurrence-form-section h4{margin:0 0 10px}
 .occurrence-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.occurrence-factors{grid-column:1/-1;min-width:0;margin:0;padding:10px;border:1px solid #bfd0d9;border-radius:11px}
+.occurrence-factors legend{padding:0 6px;font-weight:800}
 .occurrence-field{display:grid;align-content:start;gap:6px;min-width:0;font-size:.92rem}
 .occurrence-field--textarea,.occurrence-field--full{grid-column:1/-1}
 .occurrence-field input,.occurrence-field select,.occurrence-field textarea{width:100%;min-width:0;min-height:44px;padding:10px 11px;border:1px solid #b9cbd2;border-radius:11px;background:#fff;color:#143254;font:inherit;font-size:16px}

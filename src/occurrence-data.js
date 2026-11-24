@@ -1,7 +1,8 @@
 import {collection, doc, documentId, getDocFromServer, getDocsFromServer, limit, orderBy, query, runTransaction, serverTimestamp, startAfter, where} from 'firebase/firestore';
 import {FIREBASE_PROJECTS} from './firebase-projects.js';
-import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PRIVATE_FIELDS, OCCURRENCE_REGISTRATION_POINTS, getOccurrenceForm, occurrenceAppProtocol,
-  occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues} from './occurrence-schema.js';
+import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_CONTRIBUTING_FACTORS, OCCURRENCE_DISCLOSURE_FIELD,
+  OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PRIVATE_FIELDS, OCCURRENCE_REGISTRATION_POINTS, getOccurrenceForm, occurrenceAppProtocol,
+  occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues, withOccurrencePatientFields} from './occurrence-schema.js';
 import {isValidDateKey} from './schedule-date.js';
 import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIMIT,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
 
@@ -133,8 +134,14 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const commonIds = new Set(['eventDate','occurrence','description']);
     const classificationIds = new Set(form.classification.map(item => item.id));
     const classification = Object.fromEntries([...classificationIds].filter(key => values[key] !== undefined).map(key => [key, values[key].trim()]));
-    const details = Object.fromEntries(Object.keys(values).filter(key => !commonIds.has(key) && !classificationIds.has(key))
-      .map(key => [key, typeof values[key] === 'string' ? values[key].trim() : values[key]]));
+    const formFields = [...form.classification, ...form.fields];
+    const details = Object.fromEntries(withOccurrencePatientFields(formFields).map(item => item.id)
+      .filter(key => !commonIds.has(key) && !classificationIds.has(key) && values[key] !== undefined)
+      .map(key => [key, values[key].trim()]));
+    if (formFields.some(item => item.id === 'immediateAction')) {
+      details.actionFollowup = Object.fromEntries([OCCURRENCE_DISCLOSURE_FIELD, ...OCCURRENCE_CONTRIBUTING_FACTORS]
+        .map(item => [item.id, values[item.id].trim()]));
+    }
     const report = Object.freeze({schemaVersion:1,id:recordId,formId,formTitle:form.title,
       occurredOn:form.noGeneralInformation ? null : values.eventDate.trim(),
       occurrence:form.noGeneralInformation ? null : values.occurrence.trim(),

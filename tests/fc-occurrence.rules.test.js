@@ -13,6 +13,8 @@ const port=Number(portText),project='demo-sahmt-fc-modules',uid='writer-syntheti
 const google=(userId,claims={})=>env.authenticatedContext(userId,{firebase:{sign_in_provider:'google.com'},aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:userId,...claims}).firestore();
 const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS).map(([key,spec])=>[key,Array.from({length:spec.count},(_,i)=>`Opção sintética ${i+1}`)]));
 const patientValues={sex:'Masculino',age:'3 meses',diagnosisOrTreatment:'Tratamento sintético'};
+const actionValues={chartDisclosure:'Não se aplica (Evento sem envolver o paciente)',patientFactors:'Nenhum',taskFactors:'Nenhum',
+ individualFactors:'Nenhum',teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma',informationTechnologyFactors:'Proteção de dados'};
 before(async()=>{assert.ok(host&&Number.isInteger(port)&&port>0,`Invalid FIRESTORE_EMULATOR_HOST: ${emulatorHost}`);env=await initializeTestEnvironment({projectId:project,firestore:{host,port,rules:await readFile(new URL('../firestore.fc.rules',import.meta.url),'utf8')}});});
 after(async()=>env?.cleanup());
 beforeEach(async()=>{await env.clearFirestore();await env.withSecurityRulesDisabled(async c=>{
@@ -56,12 +58,12 @@ test('administrator with registration permission opens the current catalog and s
  assert.equal(loaded.schemaVersion,1);
  const result=await repository.save({uid:adminUid,recordId:id,formId:'F10',displayName:'Administrador sintético',
   values:{sourceSector:loaded.catalogs.SETORES_55[0],destinationSector:loaded.catalogs.SETORES_55[1],
-   patientOrAttendance:'012345',immediateAction:'Ação sintética',...patientValues}});
+   patientOrAttendance:'012345',immediateAction:'Ação sintética',...patientValues,...actionValues}});
  assert.equal(result.status,'saved');
  assert.equal(result.protocol,'GRA 001');
  const report=(await getDoc(doc(database,'occurrenceReports',id))).data();
  assert.equal(report.formId,'F10');assert.equal(report.authorLabel,'Administrador sintético');
- assert.deepEqual(report.details,patientValues);
+ assert.deepEqual(report.details,{...patientValues,actionFollowup:actionValues});
  const claim=(await getDoc(doc(database,'occurrenceScoreClaims',id))).data();
  assert.equal(claim.originProjectId,'indicadores---sahmt');
 });
@@ -73,7 +75,7 @@ test('a numeração FC é consecutiva em gravações concorrentes e o contador n
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  const data={uid,formId:'F10',displayName:'Autor sintético',catalogs,
   values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
-   patientOrAttendance:'012345',immediateAction:'Ação sintética',...patientValues}};
+   patientOrAttendance:'012345',immediateAction:'Ação sintética',...patientValues,...actionValues}};
  const ids=[id,'10000000-0000-4000-8000-000000000002'];
  const results=await Promise.all(ids.map(recordId=>repository.save({...data,recordId})));
  assert.deepEqual(results.map(result=>result.protocol).sort(),['GRA 001','GRA 002']);
@@ -89,11 +91,12 @@ test('a equipe consulta a cópia sem autoria e grava somente a própria análise
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  await repository.save({uid,formId:'F10',recordId:id,displayName:'Autor sintético',catalogs,
   values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
-   patientOrAttendance:'Paciente sintético',immediateAction:'Ação sintética',...patientValues}});
+   patientOrAttendance:'Paciente sintético',immediateAction:'Ação sintética',...patientValues,...actionValues}});
  await assertFails(getDocFromServer(doc(memberDb,'occurrenceReports',id)));
  await assertFails(getDocFromServer(doc(memberDb,'occurrenceAudit',id)));
  const visible=await assertSucceeds(getDocs(query(collection(memberDb,'occurrenceFollowups'),limit(30))));
  assert.equal(visible.size,1);
+ assert.equal(Object.hasOwn(visible.docs[0].data().details,'actionFollowup'),false);
  assert.doesNotMatch(JSON.stringify(visible.docs[0].data()),/Autor sintético|Paciente sintético|patientOrAttendance|authorLabel|diagnosisOrTreatment|Tratamento sintético|3 meses|Masculino/);
  const ref=doc(memberDb,'occurrenceFollowups',id,'analyses',member);
  const valid={problem:'Problema',cause:'Causa',review:'Análise',correction:'Correção',plan:'Plano'};
@@ -117,11 +120,13 @@ test('a projeção do formulário mais extenso preserva contexto e não expõe o
   fallRiskGuidance:catalogs.SIM_NAO_NI[0],lastAssessmentDate:'2026-11-19',redWristband:catalogs.SIM_NAO_NI[0],
   fallLocation:catalogs.LOCAL_QUEDA[0],fallMechanism:catalogs.MECANISMO_QUEDA[0],adequateFootwear:catalogs.SIM_NAO_NI[0],
   consciousness:catalogs.CONSCIENCIA[0],injury:catalogs.SIM_NAO_NI[0],symptomAfterEvent:catalogs.SIM_NAO_NI[0],
-  immediateAction:'Ação sintética',eventPeriod:catalogs.PERIODO[0]};
+  immediateAction:'Ação sintética',eventPeriod:catalogs.PERIODO[0],...actionValues};
  assert.equal((await repository.save({uid,formId:'F05',recordId:id,displayName:'Autor sintético',catalogs,values})).protocol,'GRA 001');
  const entry=await assertSucceeds(getDocFromServer(doc(google('unauthorized-synthetic'),'occurrenceFollowups',id)));
  assert.equal(entry.data().details.fallTime,'08:00');
  assert.equal(Object.hasOwn(entry.data().details,'attendance'),false);
+ const original=await getDocFromServer(doc(db,'occurrenceReports',id));
+ assert.deepEqual(original.data().details.actionFollowup,actionValues);
 });
 
 test('somente administrador delega registros GR, cujo protocolo preserva unicidade e não gera pontuação',async()=>{

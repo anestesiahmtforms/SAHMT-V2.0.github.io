@@ -129,6 +129,20 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    assert.deepEqual(await formDialog.locator('select[name=sex] option:not([value=""])').allTextContents(),
     ['Masculino','Feminino','Outro'],id);
    assert.equal(await formDialog.locator('textarea[name=diagnosisOrTreatment]').count(),1,id);
+   if(['F01','F03','F04','F05','F06','F07','F10'].includes(id)){
+    const actionIndex=names.indexOf('immediateAction');
+    assert.ok(actionIndex>=0,id);
+    assert.deepEqual(names.slice(actionIndex+1,actionIndex+8),['chartDisclosure','patientFactors','taskFactors',
+     'individualFactors','teamFactors','workEnvironmentFactors','informationTechnologyFactors'],id);
+    assert.equal(await formDialog.getByLabel(/Descreva sintomas observados e suas ações para o cuidado/).count(),1,id);
+    const disclosure=formDialog.getByLabel(/Disclosure com registro em prontuário/);
+    assert.deepEqual(await disclosure.locator('option:not([value=""])').allTextContents(),
+     ['Sim','Não','Não se aplica (Evento sem envolver o paciente)'],id);
+    const factors=formDialog.getByRole('group',{name:'FATORES CONTRIBUINTES'});
+    assert.equal(await factors.locator('select[required]').count(),6,id);
+    assert.deepEqual(await factors.locator('select').evaluateAll(elements=>elements.map(select=>select.options.length-1)),
+     [4,4,4,7,7,7],id);
+   }
    assert.equal(await page.getByText('A identidade é mantida para auditoria restrita.').count(),0);
    if(id==='F03'){
     const picker=formDialog.getByRole('combobox',{name:/Tipo de Evento/});

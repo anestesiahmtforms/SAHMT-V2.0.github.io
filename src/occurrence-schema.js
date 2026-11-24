@@ -36,6 +36,38 @@ const patientFields = Object.freeze([
   long('diagnosisOrTreatment', 'Diagnóstico ou Tratamento')
 ]);
 
+const choice = (id, label, options, extra = {}) => field(id, label, 'select', {options: Object.freeze(options), ...extra});
+
+export const OCCURRENCE_DISCLOSURE_FIELD = choice('chartDisclosure', 'Disclosure com registro em prontuário:', [
+  'Sim', 'Não', 'Não se aplica (Evento sem envolver o paciente)'
+], {fullWidth: true});
+
+export const OCCURRENCE_CONTRIBUTING_FACTORS = Object.freeze([
+  choice('patientFactors', 'Fatores contribuintes do paciente?', [
+    'Nenhum', 'Barreira linguística e de comunicação', 'Doença (complexidade e gravidade)', 'Personalidade e fatores sociais'
+  ]),
+  choice('taskFactors', 'Fatores contribuintes da tarefa?', [
+    'Nenhum', 'Clareza da estrutura e concepção da tarefa', 'Disponibilidade e acurácia de resultados de exames', 'Disponibilidade e uso de protocolos'
+  ]),
+  choice('individualFactors', 'Fatores contribuintes individuais?', [
+    'Nenhum', 'Conhecimento e habilidades', 'Valores e comportamentos profissionais', 'Competências'
+  ]),
+  choice('teamFactors', 'Fatores contribuintes do time (equipe)?', [
+    'Nenhuma', 'Comunicação escrita', 'Comunicação verbal', 'Consciência situacional e representação compartilhada',
+    'Estrutura da equipe (congruência, consistência, liderança)', 'Supervisão e busca por ajuda', 'Apoio mútuo'
+  ]),
+  choice('workEnvironmentFactors', 'Fatores do ambiente de trabalho?', [
+    'Nenhuma', 'Nível das equipes e conjunto de habilidades', 'Padrões dos turnos e carga de trabalho',
+    'Design, disponibilidade e manutenção dos equipamentos', 'Ambiente físico', 'Apoio administrativo e gerencial', 'Atrasos'
+  ]),
+  choice('informationTechnologyFactors', 'Fatores de TI e sistemas eletrônicos?', [
+    'Nenhuma', 'Hardware (incluindo design e manutenção)', 'Software (incluindo design e manutenção)',
+    'Conteúdo técnico e suporte à decisão clínica', 'Interface pessoa-dispositivo', 'Integração no fluxo de trabalho', 'Proteção de dados'
+  ])
+]);
+
+const immediateAction = () => long('immediateAction', 'Disposição (ação imediata: Descreva sintomas observados e suas ações para o cuidado)');
+
 export function withOccurrencePatientFields(fields) {
   return fields.flatMap(item => item.id === 'attendance' || item.id === 'patientOrAttendance'
     ? [item, ...patientFields] : [item]);
@@ -46,7 +78,7 @@ const forms = [
     attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
     field('medicationName', 'Nome do Medicamento'), field('lotNumber', 'Número do Lote'),
     select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'),
-    long('immediateAction', 'Disposição (ação imediata)'), select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
+    immediateAction(), select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F02', group: 'A', title: 'Notificação de Farmacovigilância - Reação Adversa ao Medicamento', fields: [
     attendance(), select('eventSector', 'Local de ocorrência da RAM', 'SETORES_9'),
@@ -56,7 +88,7 @@ const forms = [
   {id: 'F03', group: 'A', title: 'Notificação de Incidentes Assistenciais', fields: [
     attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
     select('admissionType', 'Tipo de internação', 'TIPO_INTERNAÇÃO'), select('incidentType', 'Tipo de Evento', 'TIPOS_INCIDENTES'),
-    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), long('immediateAction', 'Disposição (ação imediata)'),
+    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), immediateAction(),
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F04', group: 'A', title: 'Notificação de Lesão por Pressão (LP)', fields: [
@@ -64,7 +96,7 @@ const forms = [
     select('originSector', 'Setor de Origem da LP', 'SETORES_55'), select('bradenRisk', 'Risco para LP (Escala de Braden)', 'BRADEN'),
     date('lesionOpeningDate', 'Data da Abertura da Lesão'), select('lesionType', 'Tipo de LP', 'TIPO_LP'),
     select('lesionStage', 'Estágio da Lesão', 'ESTAGIO_LP'), select('topography', 'Topografia', 'TOPOGRAFIA_LP'),
-    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), long('immediateAction', 'Disposição (ação imediata)'),
+    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), immediateAction(),
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F05', group: 'A', title: 'Notificação de Queda', fields: [
@@ -74,7 +106,7 @@ const forms = [
     select('redWristband', 'Portador de Pulseira Vermelha?', 'SIM_NAO_NI'), select('fallLocation', 'Local da Queda', 'LOCAL_QUEDA'),
     select('fallMechanism', 'Mecanismo de queda', 'MECANISMO_QUEDA'), select('adequateFootwear', 'Em uso de calçado adequado?', 'SIM_NAO_NI'),
     select('consciousness', 'Estado de Consciência no Momento', 'CONSCIENCIA'), select('injury', 'Apresentou lesão?', 'SIM_NAO_NI'),
-    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), long('immediateAction', 'Disposição (ação imediata)'),
+    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), immediateAction(),
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F06', group: 'A', title: 'Notificação de Tecnovigilância - Equipamentos', fields: [
@@ -83,14 +115,14 @@ const forms = [
     field('serviceCallNumber', 'Número do chamado'), date('failureDate', 'Data falha do equipamento'), time('failureTime', 'Horário da falha do equipamento'),
     select('clinicalEngineeringCalled', 'Engenharia Clínica foi acionada?', 'SIM_NAO_NI'),
     select('previousOccurrence', 'O Fato Ocorreu Anteriormente?', 'SIM_NAO_NI'), select('causedDamage', 'Causou Danos?', 'SIM_NAO_NI'),
-    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), long('immediateAction', 'Disposição (ação imediata)'),
+    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), immediateAction(),
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F07', group: 'A', title: 'Notificação de Tecnovigilância - Materiais', fields: [
     attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
     field('materialName', 'Nome do Material'), field('manufacturerName', 'Nome do Fabricante'), field('lotNumber', 'Lote'),
     select('previousOccurrence', 'O Fato Ocorreu Anteriormente?', 'SIM_NAO_NI'), select('causedDamage', 'Causou Danos?', 'SIM_NAO_NI'),
-    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), long('immediateAction', 'Disposição (ação imediata)'),
+    select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), immediateAction(),
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F08', group: 'B', title: 'Dilema Ético', classification: [select('occurrenceSector', 'Setor da Ocorrência', 'SETORES_55')],
@@ -103,7 +135,7 @@ const forms = [
   {id: 'F10', group: 'D', title: 'Não Conformidade de Processo', classification: [
     select('sourceSector', 'Setor de Origem', 'SETORES_55'), select('destinationSector', 'Setor de Destino', 'SETORES_55'),
     attendance('patientOrAttendance', 160),
-    long('immediateAction', 'Disposição/ação imediata')
+    immediateAction()
   ], fields: [], noGeneralInformation: true}
 ].map(form => Object.freeze({...form, classification: Object.freeze(form.classification || []),
   fields: Object.freeze(form.noGeneralInformation ? form.fields : [...common, ...form.fields])}));
@@ -138,7 +170,7 @@ export const OCCURRENCE_ANALYSIS_FIELDS = Object.freeze({
 export const OCCURRENCE_ANALYSIS_LIMIT = 3000;
 export const OCCURRENCE_ETHICAL_REVIEW_LIMIT = 20000;
 export const OCCURRENCE_PRIVATE_FIELDS = Object.freeze([
-  'attendance','patientOrAttendance','prescriptionNumber','othersInformed','eventDiscovery', ...patientFields.map(item => item.id)
+  'attendance','patientOrAttendance','prescriptionNumber','othersInformed','eventDiscovery','actionFollowup', ...patientFields.map(item => item.id)
 ]);
 
 export function occurrenceHospitalNumber(value) {
@@ -162,7 +194,8 @@ export function validateOccurrenceValues(formId, values, catalogs = {}) {
   const form = getOccurrenceForm(formId);
   if (!form || !values || typeof values !== 'object' || Array.isArray(values)) return {valid: false, errors: ['FORM_INVALID']};
   const errors = [];
-  const fields = withOccurrencePatientFields([...form.classification, ...form.fields]);
+  const fields = withOccurrencePatientFields([...form.classification, ...form.fields]).flatMap(item =>
+    item.id === 'immediateAction' ? [item, OCCURRENCE_DISCLOSURE_FIELD, ...OCCURRENCE_CONTRIBUTING_FACTORS] : [item]);
   for (const item of fields) {
     const value = values[item.id];
     const empty = value === undefined || value === null || String(value).trim() === '';
