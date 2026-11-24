@@ -8,7 +8,6 @@ export function bindOccurrencePromptActions(footer,host,{
   entry,isCurrent,isWriting,hasQuestionnaire,readPreparationContext,readResponses,stageDescription,stagePreparation,stageResult
 }) {
   const protocol=occurrenceProtocol(entry);
-  const iphone=/iPhone/i.test(navigator.userAgent);
   const modes={
     preparation:{
       label:'PREPARAR OCORRÊNCIA',
@@ -41,13 +40,12 @@ export function bindOccurrencePromptActions(footer,host,{
     pane.className='occurrence-followup-analysis occurrence-ai-pane';
     pane.hidden=true;
     pane.innerHTML='<h4 tabindex="-1">'+escape(mode.label)+'</h4>'+
-      '<div data-ai-fields><p>'+(iphone?'Revise o prompt antes de executar no ChatGPT.':'Copie o prompt, cole na IA que você usa e traga de volta a resposta em JSON.')+'</p>'+
+      '<div data-ai-fields><p>Revise o prompt antes de executar no ChatGPT.</p>'+
       '<label class="occurrence-field"><span>Prompt para a IA</span><textarea rows="5"></textarea></label>'+
-      (iphone?'<button class="primary-button" type="button" data-ai-iphone>EXECUTAR NO CHATGPT</button>'+
+      '<button class="primary-button" type="button" data-ai-iphone>EXECUTAR NO CHATGPT</button>'+
         '<a class="secondary-button" data-ai-shortcut href="'+shortcutUrl+'" hidden>ABRIR ATALHOS</a>'+
-        '<button class="secondary-button" type="button" data-ai-import>IMPORTAR RESPOSTA DO IPHONE</button>'+
         '<details><summary>Configurar o atalho</summary><p>No app Atalhos, crie “SAHMT Ocorrências” com “Obter Área de Transferência”, '+
-        '“Usar Modelo” com a extensão ChatGPT, e “Copiar para a Área de Transferência” usando a resposta do modelo.</p></details>':'')+
+        '“Usar Modelo” com a extensão ChatGPT, e “Copiar para a Área de Transferência” usando a resposta do modelo.</p></details>'+
       '<button class="secondary-button" type="button" data-ai-copy disabled>COPIAR PROMPT</button>'+
       '<form><label class="occurrence-field"><span>Resposta da IA em JSON</span>'+
       '<textarea rows="4" required></textarea></label>'+
@@ -56,13 +54,18 @@ export function bindOccurrencePromptActions(footer,host,{
     const heading=pane.querySelector('h4'),prompt=pane.querySelector('textarea');
     const copy=pane.querySelector('[data-ai-copy]'),form=pane.querySelector('form'),status=pane.querySelector('[role="status"]');
     const fields=pane.querySelector('[data-ai-fields]'),shortcut=pane.querySelector('[data-ai-shortcut]');
+    const chatgpt=pane.querySelector('[data-ai-iphone]');
+    let sentPrompt='';
     let request=0;
     async function open() {
       const version=++request;
       heading.focus();
       copy.disabled=true;
       prompt.value='';
-      if(shortcut)shortcut.hidden=true;
+      sentPrompt='';
+      chatgpt.disabled=false;
+      chatgpt.textContent='EXECUTAR NO CHATGPT';
+      shortcut.hidden=true;
       fields.hidden=true;
       if(key==='analysis'&&!entry.responsesClosedAt){
         if(!hasQuestionnaire()){
@@ -101,27 +104,48 @@ export function bindOccurrencePromptActions(footer,host,{
       }
     }
     copy.addEventListener('click',()=>void copyPrompt());
-    pane.querySelector('[data-ai-iphone]')?.addEventListener('click',async()=>{
-      if(!await copyPrompt())return;
-      shortcut.hidden=false;
-      status.textContent='Quando o atalho terminar, volte ao SAHMT e toque em Importar resposta do iPhone.';
-      try {window.location.assign(shortcutUrl);} catch {/* O link Abrir Atalhos permanece disponível. */}
+    chatgpt.addEventListener('click',async()=>{
+      if(!isCurrent()||isWriting()||!prompt.value.trim())return;
+      const version=request;
+      chatgpt.disabled=true;
+      try {
+        if(sentPrompt){
+          await importResponse(version);
+          return;
+        }
+        const text=prompt.value.trim();
+        const copied=await copyPrompt();
+        if(!isCurrent()||pane.hidden||request!==version)return;
+        sentPrompt=text;
+        chatgpt.textContent='IMPORTAR RESPOSTA DO IPHONE';
+        shortcut.hidden=false;
+        if(!copied){
+          status.textContent='Copie o prompt selecionado e toque em Abrir Atalhos.';
+          return;
+        }
+        status.textContent='Ao terminar o atalho, volte e toque em Importar resposta do iPhone.';
+        try {window.location.assign(shortcutUrl);} catch {/* O link permanece disponível. */}
+      } finally {
+        if(request===version)chatgpt.disabled=false;
+      }
     });
-    pane.querySelector('[data-ai-import]')?.addEventListener('click',async()=>{
-      if(!isCurrent()||isWriting())return;
+    async function importResponse(version){
       const input=form.querySelector('textarea');
       try {
         const text=await navigator.clipboard.readText();
-        if(!isCurrent()||pane.hidden)return;
+        if(!isCurrent()||pane.hidden||request!==version)return;
+        if(!text.trim()||text.trim()===sentPrompt){
+          status.textContent='A resposta ainda não chegou. Execute o atalho e aguarde terminar.';
+          return;
+        }
         input.value=text;
-        if(!text.trim()){status.textContent='A área de transferência está vazia.';return;}
         form.requestSubmit();
       } catch {
-        if(!isCurrent()||pane.hidden)return;
+        if(!isCurrent()||pane.hidden||request!==version)return;
         input.focus();
         status.textContent='Cole a resposta no campo e toque em Carregar rascunho.';
       }
-    });
+    }
     form.addEventListener('submit',async event=>{
       event.preventDefault();
       if(!isCurrent()||isWriting()||(key==='analysis'&&!entry.responsesClosedAt))return;

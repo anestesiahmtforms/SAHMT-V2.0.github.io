@@ -63,8 +63,11 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   browser=await(engine==='edge'?chromium.launch({channel:'msedge',headless:true}):webkit.launch({headless:true}));
   const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
   if(engine==='webkit')await page.addInitScript(()=>{
-   Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)'});
-   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{readText:async()=>window.shortcutOutput}});
+   Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'});
+   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
+    writeText:async text=>{window.shortcutOutput=text;},
+    readText:async()=>window.shortcutOutput
+   }});
   });
   await page.route('**/*',r=>new URL(r.request().url()).origin===origin?r.continue():r.abort());await page.goto(origin+'/fixture');
   await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).waitFor();
@@ -288,11 +291,18 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
   await prep.getByText('O protocolo do rascunho deve ser GR 001.',{exact:true}).waitFor();
   const preparedJson=JSON.stringify({...draft,protocolo:'GR 001'});
+  const execute=prep.getByRole('button',{name:'EXECUTAR NO CHATGPT'});
+  await execute.waitFor();
   if(engine==='webkit'){
-   assert.equal(await prep.getByRole('button',{name:'EXECUTAR NO CHATGPT'}).count(),1);
+   await execute.click();
+   const importResponse=prep.getByRole('button',{name:'IMPORTAR RESPOSTA DO IPHONE'});
+   await importResponse.waitFor();
+   assert.equal(await page.evaluate(()=>window.shortcutOutput),prepText);
    assert.equal(await prep.locator('[data-ai-shortcut]').getAttribute('href'),'shortcuts://run-shortcut?name=SAHMT%20Ocorr%C3%AAncias&input=clipboard');
+   await importResponse.click();
+   await prep.getByText(/A resposta ainda não chegou/).waitFor();
    await page.evaluate(text=>{window.shortcutOutput=text;},preparedJson);
-   await prep.getByRole('button',{name:'IMPORTAR RESPOSTA DO IPHONE'}).click();
+   await importResponse.click();
   } else {
    await aiResponse.fill(preparedJson);
    await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
