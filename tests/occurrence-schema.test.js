@@ -63,7 +63,7 @@ test('valida obrigatoriedade, datas reais, horário e opção pertencente ao cat
   assert.equal(validateOccurrenceValues('F01', required, catalogMocks).valid, true);
   assert.deepEqual(validateOccurrenceValues('F01', {...required,sex:'Não informado'}, catalogMocks).errors,['OPTION:sex']);
   assert.deepEqual(validateOccurrenceValues('F01', {...required,chartDisclosure:'',taskFactors:'Opção inválida'}, catalogMocks).errors,
-    ['REQUIRED:chartDisclosure','OPTION:taskFactors']);
+    ['OPTION:taskFactors','REQUIRED:chartDisclosure']);
   assert.equal(validateOccurrenceValues('F01', {...required,eventDate:'2026-02-30'}, catalogMocks).valid, false);
   assert.equal(validateOccurrenceValues('F05', {...commonValues,fallTime:'25:77'}, catalogMocks).valid, false);
   assert.equal(validateOccurrenceValues('F01', {...required,causingSector:'Valor fora do catálogo'}, catalogMocks).valid, false);

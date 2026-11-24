@@ -158,9 +158,11 @@ function occurrenceInputMarkup(fields,catalogs,followup) {
   return withOccurrencePatientFields(fields).map(item=>{
     const markup=occurrenceFieldMarkup(item,catalogs);
     if(item.id!==followup?.after)return markup;
-    return markup+followup.fields.map(field=>occurrenceFieldMarkup(field,catalogs)).join('')+
+    const period=item.id==='eventPeriod';
+    return (period?'':markup)+followup.fields.map(field=>occurrenceFieldMarkup(field,catalogs)).join('')+
       `<fieldset class="occurrence-factors"><legend>FATORES CONTRIBUINTES</legend><div class="occurrence-form-grid">${followup.factors
-        .map(factor=>occurrenceFieldMarkup(factor,catalogs)).join('')}</div></fieldset>`;
+        .map(factor=>occurrenceFieldMarkup(factor,catalogs)).join('')}</div></fieldset>`+
+      (period?markup:'')+followup.closingFields.map(field=>occurrenceFieldMarkup(field,catalogs)).join('');
   }).join('');
 }
 

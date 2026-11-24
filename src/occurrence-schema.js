@@ -70,17 +70,18 @@ const informationTechnology = choice('informationTechnologyFactors', 'Fatores de
 ]);
 
 const immediateAction = () => long('immediateAction', 'Disposição (ação imediata: Descreva sintomas observados e suas ações para o cuidado)');
-const actionFollowup = (after, fields, factors) => Object.freeze({
-  after, fields: Object.freeze([...fields, analysisParticipants]), factors: Object.freeze(factors)
+const actionFollowup = (after, fields, factors, closingFields = []) => Object.freeze({
+  after, fields: Object.freeze([...fields, analysisParticipants]), factors: Object.freeze(factors),
+  closingFields: Object.freeze(closingFields)
 });
-const clinicalFollowup = actionFollowup('immediateAction', [disclosure], clinicalFactors);
-const periodFollowup = actionFollowup('eventPeriod', [disclosure], clinicalFactors);
-const adverseReactionFollowup = actionFollowup('prescriptionNumber', [immediateAction(), disclosure], clinicalFactors);
+const clinicalFollowup = actionFollowup('immediateAction', [], clinicalFactors, [disclosure]);
+const periodFollowup = actionFollowup('eventPeriod', [], clinicalFactors, [disclosure]);
+const adverseReactionFollowup = actionFollowup('prescriptionNumber', [immediateAction()], clinicalFactors, [disclosure]);
 const informationSecurityFollowup = actionFollowup('othersInformed', [], [informationTechnology]);
 
 export function occurrenceActionFollowupFields(form) {
   const followup = form.actionFollowup;
-  return followup ? [...followup.fields, ...followup.factors] : [];
+  return followup ? [...followup.fields, ...followup.factors, ...followup.closingFields] : [];
 }
 
 export function withOccurrencePatientFields(fields) {
@@ -216,8 +217,12 @@ export function validateOccurrenceValues(formId, values, catalogs = {}) {
   const form = getOccurrenceForm(formId);
   if (!form || !values || typeof values !== 'object' || Array.isArray(values)) return {valid: false, errors: ['FORM_INVALID']};
   const errors = [];
-  const fields = withOccurrencePatientFields([...form.classification, ...form.fields]).flatMap(item =>
-    item.id === form.actionFollowup?.after ? [item, ...occurrenceActionFollowupFields(form)] : [item]);
+  const followup = form.actionFollowup;
+  const fields = withOccurrencePatientFields([...form.classification, ...form.fields]).flatMap(item => {
+    if (item.id !== followup?.after) return [item];
+    if (item.id === 'eventPeriod') return [...followup.fields, ...followup.factors, item, ...followup.closingFields];
+    return [item, ...occurrenceActionFollowupFields(form)];
+  });
   for (const item of fields) {
     const value = item.fixedValue ?? values[item.id];
     const empty = value === undefined || value === null || String(value).trim() === '';

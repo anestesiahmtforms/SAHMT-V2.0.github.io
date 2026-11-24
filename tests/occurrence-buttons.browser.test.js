@@ -138,11 +138,11 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    if(['F01','F02','F03','F04','F05','F06','F07','F10'].includes(id)){
     const actionIndex=names.indexOf('immediateAction');
     assert.ok(actionIndex>=0,id);
-    const periodIndex=names.indexOf('eventPeriod');
-    if(periodIndex>=0)assert.equal(periodIndex,actionIndex+1,id);
-    const anchor=periodIndex>=0?periodIndex:actionIndex;
-    assert.deepEqual(names.slice(anchor+1,anchor+8),['chartDisclosure','analysisParticipants','patientFactors','taskFactors',
-     'individualFactors','teamFactors','workEnvironmentFactors'],id);
+    assert.deepEqual(names.slice(actionIndex+1),['analysisParticipants','patientFactors','taskFactors',
+     'individualFactors','teamFactors','workEnvironmentFactors',
+     ...(names.includes('eventPeriod')?['eventPeriod']:[]),'chartDisclosure'],id);
+    const finalControls=await formDialog.locator('input[name],select,textarea').evaluateAll(elements=>elements.map(element=>element.name));
+    assert.deepEqual(finalControls.slice(-2),['chartDisclosure','anonymous'],id);
     assert.equal(await formDialog.getByLabel(/Descreva sintomas observados e suas ações para o cuidado/).count(),1,id);
     const disclosure=formDialog.getByLabel(/Disclosure com registro em prontuário/);
     assert.deepEqual(await disclosure.locator('option:not([value=""])').allTextContents(),
