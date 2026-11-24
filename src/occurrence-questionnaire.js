@@ -2,6 +2,8 @@ import {OCCURRENCE_ANALYSIS_FIELDS} from './occurrence-schema.js';
 
 export const GRA_001_RECORD_ID = '49de5878-28c7-40b5-81e6-f416d58b2433';
 export const OCCURRENCE_QUESTION_COUNT = 4;
+export const OCCURRENCE_SAFETY_MIN_QUESTIONS = 5;
+export const OCCURRENCE_SAFETY_MAX_QUESTIONS = 10;
 export const OCCURRENCE_OPTION_LIMIT = 5;
 export const OCCURRENCE_PROMPT_LIMIT = 500;
 export const OCCURRENCE_OPTION_TEXT_LIMIT = 300;
@@ -52,7 +54,7 @@ export const GRA_001_QUESTIONS = [
 
 export function normalizeOccurrenceQuestions(questions) {
   const validText=(text,max)=>typeof text==='string'&&text.trim().length>0&&text.trim().length<=max;
-  if (!Array.isArray(questions)||questions.length!==OCCURRENCE_QUESTION_COUNT||
+  if (!Array.isArray(questions)||questions.length<OCCURRENCE_QUESTION_COUNT||questions.length>OCCURRENCE_SAFETY_MAX_QUESTIONS||
     !questions.every(question=>validText(question?.prompt,OCCURRENCE_PROMPT_LIMIT)&&
       Array.isArray(question.options)&&question.options.length>=2&&question.options.length<=OCCURRENCE_OPTION_LIMIT&&
       question.options.every(text=>validText(text,OCCURRENCE_OPTION_TEXT_LIMIT)))) {
@@ -62,11 +64,15 @@ export function normalizeOccurrenceQuestions(questions) {
 }
 
 export function normalizeOccurrencePreparationQuestions(questions, formId) {
+  if (Array.isArray(questions) && ((formId==='F08' && questions.length!==OCCURRENCE_QUESTION_COUNT) ||
+    (formId && formId!=='F08' && (questions.length<OCCURRENCE_SAFETY_MIN_QUESTIONS ||
+      questions.length>OCCURRENCE_SAFETY_MAX_QUESTIONS)))) {
+    throw new Error('OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID');
+  }
   const normalized = normalizeOccurrenceQuestions(questions);
   if (formId && formId !== 'F08') {
     const vote = normalized.at(-1);
-    if (vote.prompt !== OCCURRENCE_IMPROVEMENT_QUESTION ||
-      vote.options.length > OCCURRENCE_IMPROVEMENT_OPTION_LIMIT ||
+    if (vote.options.length > OCCURRENCE_IMPROVEMENT_OPTION_LIMIT ||
       new Set(vote.options.map(option => option.toLocaleLowerCase('pt-BR'))).size !== vote.options.length) {
       throw new Error('OCCURRENCE_IMPROVEMENT_VOTE_INVALID');
     }

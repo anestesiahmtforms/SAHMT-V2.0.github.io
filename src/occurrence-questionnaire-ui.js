@@ -1,6 +1,6 @@
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
-import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIMIT,OCCURRENCE_PROMPT_LIMIT,
-  OCCURRENCE_OPTION_TEXT_LIMIT,OCCURRENCE_IMPROVEMENT_OPTION_LIMIT,OCCURRENCE_IMPROVEMENT_QUESTION,
+import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_OPTION_LIMIT,OCCURRENCE_PROMPT_LIMIT,
+  OCCURRENCE_OPTION_TEXT_LIMIT,OCCURRENCE_IMPROVEMENT_OPTION_LIMIT,
   normalizeOccurrencePreparationQuestions} from './occurrence-questionnaire.js';
 import {OCCURRENCE_ETHICAL_REVIEW_LIMIT} from './occurrence-schema.js';
 
@@ -213,27 +213,30 @@ function bindOccurrenceResult(panel,{
 }
 
 function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWriting,setWriting},onPublished) {
-  const improvementVote=index=>entry.formId!=='F08'&&index===OCCURRENCE_QUESTION_COUNT-1;
+  let questionCount=0;
+  const improvementVote=index=>entry.formId!=='F08'&&index===questionCount-1;
   const optionLimit=index=>improvementVote(index)?OCCURRENCE_IMPROVEMENT_OPTION_LIMIT:OCCURRENCE_OPTION_LIMIT;
-  const questions=Array.from({length:OCCURRENCE_QUESTION_COUNT},(_,index)=>
-    '<fieldset><legend>PERGUNTA '+(index+1)+' DE '+OCCURRENCE_QUESTION_COUNT+'</legend>'+
+  const questionMarkup=index=>
+    '<fieldset><legend>PERGUNTA '+(index+1)+' DE '+questionCount+'</legend>'+
+    (improvementVote(index)?'<strong>Votação da ação de melhoria</strong>':'')+
     '<label class="occurrence-field"><span>Enunciado</span><textarea name="prompt-'+index+'" rows="2" maxlength="'+
-    OCCURRENCE_PROMPT_LIMIT+'" required'+(improvementVote(index)?' readonly':'')+'></textarea></label>'+
+    OCCURRENCE_PROMPT_LIMIT+'" required></textarea></label>'+
     Array.from({length:optionLimit(index)},(_,option)=>
       '<label class="occurrence-field"><span>Alternativa '+(option+1)+(option<2?'':' (opcional)')+'</span>'+
       '<input name="option-'+index+'-'+option+'" maxlength="'+OCCURRENCE_OPTION_TEXT_LIMIT+'" '+(option<2?'required':'')+'></label>').join('')+
-    '</fieldset>').join('');
+    '</fieldset>';
   panel.innerHTML='<form class="occurrence-followup-analysis"><h4>REVISAR PREPARAÇÃO</h4>'+
     '<fieldset><label class="occurrence-field"><span>Descrição para análise da equipe</span>'+
     '<textarea name="description" rows="5" maxlength="5000" required></textarea></label>'+
-    questions+'<button type="submit" class="primary-button">PUBLICAR OCORRÊNCIA E QUESTIONÁRIO</button></fieldset>'+
+    '<div class="occurrence-followup-analysis" data-occurrence-question-fields></div>'+
+    '<button type="submit" class="primary-button">PUBLICAR OCORRÊNCIA E QUESTIONÁRIO</button></fieldset>'+
     '</form><p role="status"></p>';
   panel.hidden=true;
   const form=panel.querySelector('form'),controls=form.querySelector('fieldset'),status=panel.querySelector('[role="status"]');
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     if(!isCurrent()||isWriting())return;
-    const draft=Array.from({length:OCCURRENCE_QUESTION_COUNT},(_,index)=>({
+    const draft=Array.from({length:questionCount},(_,index)=>({
       prompt:form.elements['prompt-'+index].value,
       options:Array.from({length:optionLimit(index)},(_,option)=>form.elements['option-'+index+'-'+option].value.trim()).filter(Boolean)
     }));
@@ -244,7 +247,7 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
     catch(error) {
       status.textContent=error.message==='OCCURRENCE_IMPROVEMENT_VOTE_INVALID'
         ?'Use duas ou três ações distintas na última pergunta.'
-        :'Preencha as quatro perguntas e pelo menos duas alternativas de cada uma.';
+        :'Preencha todas as perguntas e pelo menos duas alternativas de cada uma.';
       return;
     }
     setWriting(true);controls.disabled=true;status.textContent='Publicando ocorrência e questionário…';
@@ -258,9 +261,11 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
     } finally {setWriting(false);controls.disabled=false;}
   });
   return ({description,questions})=>{
+    questionCount=questions.length;
+    form.querySelector('[data-occurrence-question-fields]').innerHTML=questions.map((_,index)=>questionMarkup(index)).join('');
     form.elements.description.value=description;
     for(const [index,{prompt,options}] of questions.entries()){
-      form.elements['prompt-'+index].value=improvementVote(index)?OCCURRENCE_IMPROVEMENT_QUESTION:prompt;
+      form.elements['prompt-'+index].value=prompt;
       for(let option=0;option<optionLimit(index);option++) {
         form.elements['option-'+index+'-'+option].value=options[option]??'';
       }

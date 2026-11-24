@@ -1,7 +1,9 @@
 import {readFile, writeFile} from 'node:fs/promises';
 import {addMemberCategoryRules} from './lib/member-category-rules.js';
 import {OCCURRENCE_FORMS,OCCURRENCE_PRIVATE_FIELDS} from '../src/occurrence-schema.js';
-import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIMIT,OCCURRENCE_PROMPT_LIMIT,OCCURRENCE_OPTION_TEXT_LIMIT} from '../src/occurrence-questionnaire.js';
+import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_SAFETY_MIN_QUESTIONS,OCCURRENCE_SAFETY_MAX_QUESTIONS,
+  OCCURRENCE_IMPROVEMENT_OPTION_LIMIT,OCCURRENCE_OPTION_LIMIT,OCCURRENCE_PROMPT_LIMIT,
+  OCCURRENCE_OPTION_TEXT_LIMIT} from '../src/occurrence-questionnaire.js';
 
 const source=(await readFile('firestore.occurrences.rules','utf8')).replaceAll('\r\n','\n');
 const replacements=[
@@ -87,21 +89,28 @@ function followupFields(fields,name){
 }
 const formFields=OCCURRENCE_FORMS.map(form=>`(data.formId == '${form.id}' && ${followupFields(form.fields,'fields')} &&
           ${followupFields(form.classification,'classification')})`).join(' ||\n        ');
-const indexes=Array.from({length:OCCURRENCE_QUESTION_COUNT},(_,index)=>index);
+const indexes=Array.from({length:OCCURRENCE_SAFETY_MAX_QUESTIONS},(_,index)=>index);
+const optionalIndex=(list,index,check)=>index<OCCURRENCE_QUESTION_COUNT?check:`(${list}.size() <= ${index} || (${check}))`;
 const optionChecks=Array.from({length:OCCURRENCE_OPTION_LIMIT},(_,index)=>{
   const check=`occurrenceText(options[${index}],${OCCURRENCE_OPTION_TEXT_LIMIT})`;
   return index<2?check:`(options.size() <= ${index} || ${check})`;
-});
+}).join(' &&\n        ');
 const followupRules=(await readFile('scripts/occurrence-followup.fc.rules.inc','utf8'))
   .replace('OCCURRENCE_FOLLOWUP_FORM_FIELDS',formFields)
   .replaceAll('OCCURRENCE_QUESTION_COUNT',OCCURRENCE_QUESTION_COUNT)
-  .replace('OCCURRENCE_PROMPT_LIMIT',OCCURRENCE_PROMPT_LIMIT)
-  .replace('OCCURRENCE_OPTION_LIMIT',OCCURRENCE_OPTION_LIMIT)
+  .replace('OCCURRENCE_SAFETY_MIN_QUESTIONS',OCCURRENCE_SAFETY_MIN_QUESTIONS)
+  .replaceAll('OCCURRENCE_SAFETY_MAX_QUESTIONS',OCCURRENCE_SAFETY_MAX_QUESTIONS)
+  .replace('OCCURRENCE_IMPROVEMENT_OPTION_LIMIT',OCCURRENCE_IMPROVEMENT_OPTION_LIMIT)
+  .replaceAll('OCCURRENCE_OPTION_LIMIT',OCCURRENCE_OPTION_LIMIT)
+  .replaceAll('OCCURRENCE_PROMPT_LIMIT',OCCURRENCE_PROMPT_LIMIT)
   .replace('OCCURRENCE_COMMENT_LIMIT',OCCURRENCE_COMMENT_LIMIT)
-  .replace('OCCURRENCE_OPTION_CHECKS',optionChecks.join(' &&\n        '))
-  .replace('OCCURRENCE_QUESTION_CHECKS',indexes.map(index=>`validOccurrenceQuestion(questions[${index}])`).join(' &&\n        '))
-  .replace('OCCURRENCE_ANSWER_CHECKS',indexes.map(index=>
-    `answers[${index}] is int && answers[${index}] >= 1 && answers[${index}] <= questions[${index}].options.size()`).join(' &&\n        '));
+  .replace('OCCURRENCE_OPTION_CHECKS',optionChecks)
+  .replace('OCCURRENCE_QUESTION_CHECKS',indexes.slice(0,OCCURRENCE_QUESTION_COUNT)
+    .map(index=>`validOccurrenceQuestion(questions[${index}])`).join(' &&\n        '))
+  .replace('OCCURRENCE_SAFETY_QUESTION_CHECKS',indexes.map(index=>
+    optionalIndex('questions',index,`validSafetyQuestion(questions[${index}])`)).join(' &&\n        '))
+  .replace('OCCURRENCE_ANSWER_CHECKS',indexes.map(index=>optionalIndex('answers',index,
+    `answers[${index}] is int && answers[${index}] >= 1 && answers[${index}] <= questions[${index}].options.size()`)).join(' &&\n        '));
 output=output.replace(marker,()=>followupRules+'\n'+marker);
 await writeFile('firestore.fc.base.rules',addMemberCategoryRules(output));
 console.log('FC_MODULE_RULE_BASE_PREPARED');

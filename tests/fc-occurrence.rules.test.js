@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {initializeTestEnvironment,assertSucceeds,assertFails} from '@firebase/rules-unit-testing';
 import {collection,doc,getDoc,getDocFromServer,getDocs,limit,query,runTransaction,serverTimestamp,setDoc,updateDoc,writeBatch} from 'firebase/firestore';
 import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
-import {GRA_001_QUESTIONS} from '../src/occurrence-questionnaire.js';
+import {GRA_001_QUESTIONS,OCCURRENCE_IMPROVEMENT_QUESTION} from '../src/occurrence-questionnaire.js';
 import {createOccurrenceRepository} from '../src/occurrence-data.js';
 
 const emulatorHost=process.env.FIRESTORE_EMULATOR_HOST||'127.0.0.1:18493';
@@ -292,17 +292,24 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  const caseRow=(db,record=caseId)=>doc(db,'occurrenceFollowups',record);
  const published={questions:GRA_001_QUESTIONS,publishedAt:serverTimestamp()};
  const shorter=GRA_001_QUESTIONS.map(({prompt,options})=>({prompt,options:options.slice(0,2)}));
- const maxOptions=GRA_001_QUESTIONS.map(({prompt})=>({prompt,options:['Um','Dois','Três','Quatro','Cinco']}));
+ const maxOptions=Array.from({length:10},(_,index)=>index===9
+  ?{prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options:['Um','Dois','Três']}
+  :{prompt:'Questão '+(index+1),options:['Um','Dois','Três','Quatro','Cinco']});
  const managerPublisher=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},auth:{currentUser:{uid:delegate}},
   firestore:{doc:(_, ...path)=>doc(delegateDb,...path),getDocFromServer,runTransaction:(_,callback)=>runTransaction(delegateDb,callback)}});
  assert.deepEqual(await managerPublisher.publishOccurrenceQuestionnaire({uid:delegate,id:maxOptionsCase,description:'Preparação do caso',questions:maxOptions}),maxOptions);
  const valid={answers:[5,2,4,4],comment:'',submittedAt:serverTimestamp()};
  await env.withSecurityRulesDisabled(context=>updateDoc(config(context.firestore(),maxOptionsCase),{revision:2}));
  const revisedRef=ref(ordinaryDb,ordinary,maxOptionsCase);
- await assertFails(setDoc(revisedRef,{...valid,answers:[1,2,3,4]}));
- await assertFails(setDoc(revisedRef,{...valid,answers:[1,2,3,4],questionnaireRevision:1}));
- await assertSucceeds(setDoc(revisedRef,{...valid,answers:[1,2,3,4],questionnaireRevision:2}));
- assert.equal((await repository.readOccurrenceQuestionnaire({uid:ordinary,id:maxOptionsCase})).revision,2);
+ const tenAnswers=[1,2,3,4,5,1,2,3,4,3];
+ await assertFails(setDoc(revisedRef,{...valid,answers:tenAnswers}));
+ await assertFails(setDoc(revisedRef,{...valid,answers:tenAnswers,questionnaireRevision:1}));
+ await assertFails(setDoc(revisedRef,{...valid,answers:tenAnswers.slice(0,9),questionnaireRevision:2}));
+ await assertFails(setDoc(revisedRef,{...valid,answers:[...tenAnswers.slice(0,9),4],questionnaireRevision:2}));
+ assert.equal(await repository.submitOccurrenceResponse({uid:ordinary,id:maxOptionsCase,answers:tenAnswers,comment:'',questionnaireRevision:2}),'submitted');
+ const expanded=await repository.readOccurrenceQuestionnaire({uid:ordinary,id:maxOptionsCase});
+ assert.equal(expanded.revision,2);
+ assert.equal(expanded.questions.length,10);
  await assertFails(setDoc(ref(ordinaryDb),valid));
  await assertFails(setDoc(config(ordinaryDb),published));
  await assertFails(setDoc(config(adminDb,'missing'),published));
@@ -318,11 +325,12 @@ test('cada ocorrência tem questionário próprio, uma resposta por conta e resu
  await assertFails(setDoc(ref(ordinaryDb,other),valid));
  await assertFails(setDoc(ref(ordinaryDb,ordinary,id),valid));
  const managerBatch=writeBatch(delegateDb);
- managerBatch.set(config(delegateDb,id),{...published,questions:shorter});
+ const hospitalQuestions=[...shorter,{prompt:'Qual medida merece prioridade?',options:['Primeira','Segunda']}];
+ managerBatch.set(config(delegateDb,id),{...published,questions:hospitalQuestions});
  managerBatch.update(caseRow(delegateDb,id),{analysisStarted:true,preparedDescription:'Relato do Núcleo preparado'});
  await assertSucceeds(managerBatch.commit());
  await assertFails(setDoc(ref(ordinaryDb,ordinary,id),valid));
- await assertSucceeds(setDoc(ref(otherDb,other,id),{...valid,answers:[1,2,1,2],comment:'  Preservar\n  espaços.  '}));
+ await assertSucceeds(setDoc(ref(otherDb,other,id),{...valid,answers:[1,2,1,2,1],comment:'  Preservar\n  espaços.  '}));
  assert.equal((await getDocFromServer(ref(otherDb,other,id))).data().comment,'  Preservar\n  espaços.  ');
  await assertFails(setDoc(ref(ordinaryDb),{...valid,answers:[5,2,5,4]}));
  await assertFails(setDoc(ref(ordinaryDb),{...valid,answers:[5,2,4]}));

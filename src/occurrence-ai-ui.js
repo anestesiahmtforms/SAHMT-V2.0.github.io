@@ -1,7 +1,6 @@
 import {occurrenceProtocol} from './occurrence-schema.js';
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
 import {buildPreparationPrompt,buildAnalysisPrompt,readPreparationDraft,readAnalysisDraft} from './occurrence-ai-prompts.js';
-import {OCCURRENCE_IMPROVEMENT_QUESTION} from './occurrence-questionnaire.js';
 
 export function bindOccurrencePromptActions(footer,host,{
   entry,isCurrent,isWriting,setWriting,hasQuestionnaire,readPreparationContext,readResponses,closeResponses,stageDescription,stagePreparation,stageResult
@@ -115,7 +114,10 @@ export function bindOccurrencePromptActions(footer,host,{
       } catch(error) {
         if(!isCurrent())return;
         if(error.message==='OCCURRENCE_IMPROVEMENT_VOTE_INVALID') {
-          status.textContent='Use “'+OCCURRENCE_IMPROVEMENT_QUESTION+'” na última pergunta, com duas ou três alternativas distintas.';
+          status.textContent='Use duas ou três ações distintas na última pergunta.';
+        } else if(error.message==='OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID') {
+          status.textContent=entry.formId==='F08'?'Inclua as quatro perguntas do roteiro IDEA.'
+            :'Inclua de cinco a dez perguntas, contando a votação final.';
         } else {
           status.textContent=error.message==='OCCURRENCE_DRAFT_PROTOCOL'
             ?'O protocolo do rascunho deve ser '+protocol+'.'

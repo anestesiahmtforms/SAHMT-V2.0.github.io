@@ -146,7 +146,7 @@
         allow get: if activeUser() && exists(occurrenceFollowupPath(id));
         allow create: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
           !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
-          getAfter(occurrenceFollowupPath(id)).data.get('analysisStarted',false) && validOccurrenceQuestionnaire(request.resource.data);
+          getAfter(occurrenceFollowupPath(id)).data.get('analysisStarted',false) && validOccurrenceQuestionnaire(id,request.resource.data);
         allow update, delete: if false;
       }
       match /ethicalPollResponses/{uid} {
@@ -209,11 +209,25 @@
         options is list && options.size() >= 2 && options.size() <= OCCURRENCE_OPTION_LIMIT &&
         OCCURRENCE_OPTION_CHECKS;
     }
-    function validOccurrenceQuestionnaire(data) {
+    function validSafetyQuestion(question) {
+      let options = question.options;
+      // Keep the question shape and answer bounds within the ten-question evaluation budget.
+      // The app also normalizes each option's text on publication and on read.
+      return question.keys().hasOnly(['prompt','options']) &&
+        question.prompt is string &&
+        options is list && options.size() >= 2 && options.size() <= OCCURRENCE_OPTION_LIMIT;
+    }
+    function validOccurrenceQuestionnaire(id,data) {
       let questions = data.questions;
-      return data.keys().hasOnly(['questions','publishedAt']) && data.publishedAt == request.time &&
-        questions is list && questions.size() == OCCURRENCE_QUESTION_COUNT &&
-        OCCURRENCE_QUESTION_CHECKS;
+      let ethical = getAfter(occurrenceFollowupPath(id)).data.formId == 'F08';
+      return data.keys().hasOnly(['questions','publishedAt']) && data.publishedAt == request.time && questions is list &&
+        (ethical ? (questions.size() == OCCURRENCE_QUESTION_COUNT && OCCURRENCE_QUESTION_CHECKS) :
+          validSafetyQuestionnaire(questions));
+    }
+    function validSafetyQuestionnaire(questions) {
+      return questions.size() >= OCCURRENCE_SAFETY_MIN_QUESTIONS && questions.size() <= OCCURRENCE_SAFETY_MAX_QUESTIONS &&
+        OCCURRENCE_SAFETY_QUESTION_CHECKS &&
+        questions[questions.size()-1].options.size() <= OCCURRENCE_IMPROVEMENT_OPTION_LIMIT;
     }
     function validOccurrenceResponse(id,data) {
       let answers = data.answers;
@@ -221,7 +235,8 @@
       let questions = questionnaire.questions;
       return data.keys().hasOnly(['answers','comment','submittedAt','questionnaireRevision']) &&
         data.get('questionnaireRevision',0) == questionnaire.get('revision',0) &&
-        answers is list && answers.size() == OCCURRENCE_QUESTION_COUNT &&
+        answers is list && answers.size() == questions.size() &&
+        answers.size() >= OCCURRENCE_QUESTION_COUNT && answers.size() <= OCCURRENCE_SAFETY_MAX_QUESTIONS &&
         OCCURRENCE_ANSWER_CHECKS &&
         data.comment is string && data.comment.size() <= OCCURRENCE_COMMENT_LIMIT &&
         data.submittedAt == request.time;

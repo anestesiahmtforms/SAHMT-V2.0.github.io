@@ -261,8 +261,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await prep.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
   const prepText=await prep.getByRole('textbox',{name:'Prompt para a IA'}).inputValue();
   assert.match(prepText,/"protocolo": "GR 001"[\s\S]*"relato": "Relato completo aqui"/);
-  const draft={protocolo:'GR 999',descricao:'Texto revisado',perguntas:Array.from({length:4},(_,index)=>({
-   prompt:index===3?OCCURRENCE_IMPROVEMENT_QUESTION:'Pergunta do Núcleo '+(index+1),options:['Resposta 1','Resposta 2']
+  const draft={protocolo:'GR 999',descricao:'Texto revisado',perguntas:Array.from({length:5},(_,index)=>({
+   prompt:index===4?OCCURRENCE_IMPROVEMENT_QUESTION:'Pergunta do Núcleo '+(index+1),options:['Resposta 1','Resposta 2']
   }))};
   const aiResponse=prep.getByRole('textbox',{name:'Resposta da IA em JSON'});
   await aiResponse.fill(JSON.stringify(draft));
@@ -297,18 +297,25 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    return {before,after,scrolled:body.scrollTop,outer:dialog.scrollTop};
   });
   assert.ok(scroll.scrolled>0&&scroll.outer===0&&scroll.after===scroll.before,JSON.stringify(scroll));
-  for(let index=0;index<4;index++){
+  for(let index=0;index<draft.perguntas.length;index++){
    assert.equal(await config.locator('[name=prompt-'+index+']').inputValue(),draft.perguntas[index].prompt);
    for(let option=0;option<2;option++){
     assert.equal(await config.locator('[name=option-'+index+'-'+option+']').inputValue(),'Resposta '+(option+1));
    }
   }
-  assert.equal(await config.locator('[name=option-3-3]').count(),0);
+  assert.equal(await config.locator('[name=option-4-3]').count(),0);
+  assert.equal(await config.getByText('PERGUNTA 5 DE 5',{exact:true}).count(),1);
+  await editor.fill('Texto ajustado pelo administrador');
+  await config.locator('[name=prompt-4]').fill('Qual medida merece prioridade?');
+  await config.locator('[name=option-4-1]').fill('Revisar o fluxo');
   await config.getByRole('button',{name:'PUBLICAR OCORRÊNCIA E QUESTIONÁRIO'}).click();
   await followupBanner.getByText('Pergunta do Núcleo 1',{exact:true}).waitFor();
+  assert.equal(await followupBanner.getByText('PERGUNTA 1 DE 5',{exact:true}).count(),1);
   assert.equal(await followupBanner.getByRole('radio').count(),2);
-  assert.equal(await followupBanner.locator('[data-occurrence-description]').textContent(),'Texto revisado');
-  assert.equal(await page.evaluate(()=>window.preparations['gr-1']),'Texto revisado');
+  assert.equal(await followupBanner.locator('[data-occurrence-description]').textContent(),'Texto ajustado pelo administrador');
+  assert.equal(await page.evaluate(()=>window.preparations['gr-1']),'Texto ajustado pelo administrador');
+  assert.deepEqual(await page.evaluate(()=>window.questionnaires['gr-1'].at(-1)),
+   {prompt:'Qual medida merece prioridade?',options:['Resposta 1','Revisar o fluxo']});
   await analyzeButton.click();
   const closeReplies=analysis.getByRole('button',{name:'ENCERRAR RESPOSTAS DA EQUIPE'});
   await closeReplies.waitFor();
@@ -316,11 +323,11 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await closeReplies.click();
   await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
   const archivePrompt=await analysis.getByRole('textbox',{name:'Prompt para a IA'}).inputValue();
-  assert.match(archivePrompt,/GR 001[\s\S]*"relato": "Texto revisado"[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
+  assert.match(archivePrompt,/GR 001[\s\S]*"relato": "Texto ajustado pelo administrador"[\s\S]*ANÁLISE ANTERIOR 1[\s\S]*Linha um\.\nLinha dois\./);
   await back.click();
   await page.evaluate(()=>window.canEditDescription=false);
   await page.getByRole('button',{name:'GR 001 · Evento externo'}).click();
-  await followupBanner.getByText('Texto revisado',{exact:true}).waitFor();
+  await followupBanner.getByText('Texto ajustado pelo administrador',{exact:true}).waitFor();
   await followupBanner.getByText('Respostas da equipe encerradas.',{exact:true}).waitFor();
   assert.equal(await followupBanner.getByRole('radio').count(),0);
   await back.click();

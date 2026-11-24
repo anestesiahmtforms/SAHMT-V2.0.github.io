@@ -342,7 +342,7 @@ service cloud.firestore {
         allow get: if activeUser() && exists(occurrenceFollowupPath(id));
         allow create: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
           !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
-          getAfter(occurrenceFollowupPath(id)).data.get('analysisStarted',false) && validOccurrenceQuestionnaire(request.resource.data);
+          getAfter(occurrenceFollowupPath(id)).data.get('analysisStarted',false) && validOccurrenceQuestionnaire(id,request.resource.data);
         allow update, delete: if false;
       }
       match /ethicalPollResponses/{uid} {
@@ -409,14 +409,37 @@ service cloud.firestore {
         (options.size() <= 3 || occurrenceText(options[3],300)) &&
         (options.size() <= 4 || occurrenceText(options[4],300));
     }
-    function validOccurrenceQuestionnaire(data) {
+    function validSafetyQuestion(question) {
+      let options = question.options;
+      // Keep the question shape and answer bounds within the ten-question evaluation budget.
+      // The app also normalizes each option's text on publication and on read.
+      return question.keys().hasOnly(['prompt','options']) &&
+        question.prompt is string &&
+        options is list && options.size() >= 2 && options.size() <= 5;
+    }
+    function validOccurrenceQuestionnaire(id,data) {
       let questions = data.questions;
-      return data.keys().hasOnly(['questions','publishedAt']) && data.publishedAt == request.time &&
-        questions is list && questions.size() == 4 &&
-        validOccurrenceQuestion(questions[0]) &&
+      let ethical = getAfter(occurrenceFollowupPath(id)).data.formId == 'F08';
+      return data.keys().hasOnly(['questions','publishedAt']) && data.publishedAt == request.time && questions is list &&
+        (ethical ? (questions.size() == 4 && validOccurrenceQuestion(questions[0]) &&
         validOccurrenceQuestion(questions[1]) &&
         validOccurrenceQuestion(questions[2]) &&
-        validOccurrenceQuestion(questions[3]);
+        validOccurrenceQuestion(questions[3])) :
+          validSafetyQuestionnaire(questions));
+    }
+    function validSafetyQuestionnaire(questions) {
+      return questions.size() >= 5 && questions.size() <= 10 &&
+        validSafetyQuestion(questions[0]) &&
+        validSafetyQuestion(questions[1]) &&
+        validSafetyQuestion(questions[2]) &&
+        validSafetyQuestion(questions[3]) &&
+        (questions.size() <= 4 || (validSafetyQuestion(questions[4]))) &&
+        (questions.size() <= 5 || (validSafetyQuestion(questions[5]))) &&
+        (questions.size() <= 6 || (validSafetyQuestion(questions[6]))) &&
+        (questions.size() <= 7 || (validSafetyQuestion(questions[7]))) &&
+        (questions.size() <= 8 || (validSafetyQuestion(questions[8]))) &&
+        (questions.size() <= 9 || (validSafetyQuestion(questions[9]))) &&
+        questions[questions.size()-1].options.size() <= 3;
     }
     function validOccurrenceResponse(id,data) {
       let answers = data.answers;
@@ -424,11 +447,18 @@ service cloud.firestore {
       let questions = questionnaire.questions;
       return data.keys().hasOnly(['answers','comment','submittedAt','questionnaireRevision']) &&
         data.get('questionnaireRevision',0) == questionnaire.get('revision',0) &&
-        answers is list && answers.size() == 4 &&
+        answers is list && answers.size() == questions.size() &&
+        answers.size() >= 4 && answers.size() <= 10 &&
         answers[0] is int && answers[0] >= 1 && answers[0] <= questions[0].options.size() &&
         answers[1] is int && answers[1] >= 1 && answers[1] <= questions[1].options.size() &&
         answers[2] is int && answers[2] >= 1 && answers[2] <= questions[2].options.size() &&
         answers[3] is int && answers[3] >= 1 && answers[3] <= questions[3].options.size() &&
+        (answers.size() <= 4 || (answers[4] is int && answers[4] >= 1 && answers[4] <= questions[4].options.size())) &&
+        (answers.size() <= 5 || (answers[5] is int && answers[5] >= 1 && answers[5] <= questions[5].options.size())) &&
+        (answers.size() <= 6 || (answers[6] is int && answers[6] >= 1 && answers[6] <= questions[6].options.size())) &&
+        (answers.size() <= 7 || (answers[7] is int && answers[7] >= 1 && answers[7] <= questions[7].options.size())) &&
+        (answers.size() <= 8 || (answers[8] is int && answers[8] >= 1 && answers[8] <= questions[8].options.size())) &&
+        (answers.size() <= 9 || (answers[9] is int && answers[9] >= 1 && answers[9] <= questions[9].options.size())) &&
         data.comment is string && data.comment.size() <= 2000 &&
         data.submittedAt == request.time;
     }

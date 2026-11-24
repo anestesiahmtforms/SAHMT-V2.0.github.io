@@ -4,7 +4,8 @@ import {OCCURRENCE_CATALOG_SPECS, OCCURRENCE_ETHICAL_REVIEW_LIMIT, OCCURRENCE_PR
   OCCURRENCE_REGISTRATION_POINTS, getOccurrenceForm, occurrenceActionFollowupFields, occurrenceAppProtocol,
   occurrenceHospitalNumber, occurrenceProtocol, readOccurrenceAnalysis, validateOccurrenceValues, withOccurrencePatientFields} from './occurrence-schema.js';
 import {isValidDateKey} from './schedule-date.js';
-import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_OPTION_LIMIT,normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
+import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_SAFETY_MAX_QUESTIONS,OCCURRENCE_OPTION_LIMIT,
+  normalizeOccurrenceQuestions} from './occurrence-questionnaire.js';
 
 const REPORTS = 'occurrenceReports';
 const AUDIT = 'occurrenceAudit';
@@ -410,7 +411,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     return row.exists();
   };
   const submitOccurrenceResponse = async ({uid,id,answers,comment='',questionnaireRevision=0} = {}) => {
-    if (!Array.isArray(answers) || answers.length !== OCCURRENCE_QUESTION_COUNT ||
+    if (!Array.isArray(answers) || answers.length<OCCURRENCE_QUESTION_COUNT || answers.length>OCCURRENCE_SAFETY_MAX_QUESTIONS ||
       answers.some(answer=>!Number.isInteger(answer)||answer<1||answer>OCCURRENCE_OPTION_LIMIT) ||
       !Number.isSafeInteger(questionnaireRevision)||questionnaireRevision<0||
       typeof comment !== 'string' || comment.length>OCCURRENCE_COMMENT_LIMIT) throw new Error('OCCURRENCE_INPUT_INVALID');

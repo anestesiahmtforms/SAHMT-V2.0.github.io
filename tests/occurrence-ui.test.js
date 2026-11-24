@@ -7,13 +7,15 @@ import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurre
 
 const report={origin:'app',sequence:4,formId:'F03',description:'Relato sintético',details:{attendance:'IDENTIFICADOR NÃO EXPORTÁVEL'}};
 const improvementQuestions=[
- ...Array.from({length:3},(_,index)=>({prompt:'Pergunta '+index,options:['Primeira','Segunda']})),
+ ...Array.from({length:4},(_,index)=>({prompt:'Pergunta '+index,options:['Primeira','Segunda']})),
  {prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options:['Revisar protocolo','Melhorar comunicação','Rever supervisão']}
 ];
 
 test('preparo clínico inclui os dez itens, usa fatores validados e preserva o método IDEA',()=>{
  const clinical=buildPreparationPrompt(report,false,{chartDisclosure:'Sim',teamFactors:'Comunicação escrita',taskFactors:'Texto inválido'});
  assert.match(clinical,/1\. Ocorrência[\s\S]*7\. História da moléstia atual[\s\S]*10\. Disclosure/);
+ assert.match(clinical,/de 5 a 10 perguntas/);
+ assert.match(clinical,/Caderno 7 da Anvisa[\s\S]*Resolução CFM nº 2\.174\/2017/);
  assert.match(clinical,/"Fatores contribuintes do time \(equipe\)\?": "Comunicação escrita"/);
  assert.match(clinical,/"Disclosure com registro em prontuário:": "Sim"/);
  assert.doesNotMatch(clinical,/IDENTIFICADOR NÃO EXPORTÁVEL|Texto inválido/);
@@ -22,20 +24,28 @@ test('preparo clínico inclui os dez itens, usa fatores validados e preserva o m
  assert.doesNotMatch(ethical,/Pré-análise de ocorrência no contexto anestésico/);
 });
 
-test('rascunho exige a pergunta de priorização e até três alternativas distintas',()=>{
+test('rascunho aceita edição da pergunta de priorização e até três alternativas distintas',()=>{
  const draft={protocolo:'GRA 004',descricao:'Descrição',perguntas:improvementQuestions};
  const read=perguntas=>readPreparationDraft(JSON.stringify({...draft,perguntas}),'GRA 004',false,'F03');
  assert.deepEqual(read(improvementQuestions).questions,improvementQuestions);
+ const edited={...improvementQuestions.at(-1),prompt:'Qual medida você recomenda para o serviço?'};
+ assert.equal(read([...improvementQuestions.slice(0,-1),edited]).questions.at(-1).prompt,edited.prompt);
+ assert.throws(()=>read(improvementQuestions.slice(1)),/OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID/);
+ assert.deepEqual(read([...improvementQuestions.slice(0,4),...improvementQuestions]).questions.length,9);
+ const maximum=[...Array.from({length:9},(_,index)=>({prompt:'Questão '+index,options:['Uma','Outra']})),improvementQuestions.at(-1)];
+ assert.equal(read(maximum).questions.length,10);
+ assert.throws(()=>read([maximum[0],...maximum]),/OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID/);
  for(const options of [['A','B','C','D'],['Revisão','revisão']]){
-  const questions=[...improvementQuestions.slice(0,3),{prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options}];
+  const questions=[...improvementQuestions.slice(0,4),{prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options}];
   assert.throws(()=>read(questions),/OCCURRENCE_IMPROVEMENT_VOTE_INVALID/);
  }
 });
 
 test('análise recebe a apuração da ação proposta, incluindo empate e ausência de votos',()=>{
  const vote=answers=>{
-  const prompt=buildAnalysisPrompt(report,{questions:improvementQuestions,
-   entries:answers.map(answer=>({answers:[1,1,1,answer]})),legacy:[]});
+  const questions=[...improvementQuestions.slice(0,-1),{...improvementQuestions.at(-1),prompt:'Qual medida você recomenda?'}];
+  const prompt=buildAnalysisPrompt(report,{questions,
+   entries:answers.map(answer=>({answers:[1,1,1,1,answer]})),legacy:[]});
   return JSON.parse(prompt.split('\n\nVOTAÇÃO DA AÇÃO DE MELHORIA\n')[1].split('\n\nRESPOSTAS DA OCORRÊNCIA')[0]);
  };
  assert.equal(vote([1,2,2]).acaoProposta,'Melhorar comunicação');
