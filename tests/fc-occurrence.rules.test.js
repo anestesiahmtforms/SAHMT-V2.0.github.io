@@ -54,7 +54,8 @@ test('administrator with registration permission opens the current catalog and s
  const loaded=await repository.loadCatalog({uid:adminUid});
  assert.equal(loaded.schemaVersion,1);
  const result=await repository.save({uid:adminUid,recordId:id,formId:'F10',displayName:'Administrador sintético',
-  values:{sourceSector:loaded.catalogs.SETORES_55[0],destinationSector:loaded.catalogs.SETORES_55[1]}});
+  values:{sourceSector:loaded.catalogs.SETORES_55[0],destinationSector:loaded.catalogs.SETORES_55[1],
+   patientOrAttendance:'012345',immediateAction:'Ação sintética'}});
  assert.equal(result.status,'saved');
  assert.equal(result.protocol,'GRA 001');
  const report=(await getDoc(doc(database,'occurrenceReports',id))).data();
@@ -69,7 +70,8 @@ test('a numeração FC é consecutiva em gravações concorrentes e o contador n
   auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  const data={uid,formId:'F10',displayName:'Autor sintético',catalogs,
-  values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1]}};
+  values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
+   patientOrAttendance:'012345',immediateAction:'Ação sintética'}};
  const ids=[id,'10000000-0000-4000-8000-000000000002'];
  const results=await Promise.all(ids.map(recordId=>repository.save({...data,recordId})));
  assert.deepEqual(results.map(result=>result.protocol).sort(),['GRA 001','GRA 002']);
@@ -84,7 +86,8 @@ test('a equipe consulta a cópia sem autoria e grava somente a própria análise
   auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key)=>doc(db,name,key),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  await repository.save({uid,formId:'F10',recordId:id,displayName:'Autor sintético',catalogs,
-  values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],patientOrAttendance:'Paciente sintético'}});
+  values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
+   patientOrAttendance:'Paciente sintético',immediateAction:'Ação sintética'}});
  await assertFails(getDocFromServer(doc(memberDb,'occurrenceReports',id)));
  await assertFails(getDocFromServer(doc(memberDb,'occurrenceAudit',id)));
  const visible=await assertSucceeds(getDocs(query(collection(memberDb,'occurrenceFollowups'),limit(30))));

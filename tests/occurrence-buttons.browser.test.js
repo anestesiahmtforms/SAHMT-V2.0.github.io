@@ -1,9 +1,13 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {GRA_001_QUESTIONS,GRA_001_RECORD_ID} from '../src/occurrence-questionnaire.js';
+import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
+ const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS)
+  .map(([key,{count}])=>[key,Array.from({length:count},(_,index)=>`Opção ${index+1}`)]));
+ catalogs.TIPOS_INCIDENTES[15]='Evento anestésico';
  const stubs={
-  'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:{}};},
+  'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:${JSON.stringify(catalogs)}};},
    listFollowups:async({after,origin})=>after?{entries:origin==='app'?[
       {id:'49de5878-28c7-40b5-81e6-f416d58b2433',formId:'F08',origin:'app',sequence:1,title:'Enquete de teste',
       description:'Relato com questionário',classification:{},details:{},analysisStarted:true,responsesClosedAt:window.closedReplies?.['49de5878-28c7-40b5-81e6-f416d58b2433'],analysisClosed:!!window.pollResult,eventClosed:!!window.eventClosed},
@@ -113,12 +117,37 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    const group=i<=7?'A':i===8?'B':i===9?'C':'D',id='F'+String(i).padStart(2,'0');
    await page.locator(`.occurrence-groups [data-occurrence-group="${group}"]`).click();
    if(group==='A')await page.locator(`[data-occurrence-form="${id}"]`).click();
-   await page.locator('[data-occurrence-dialog-host] dialog[open]').waitFor();
-   assert.ok(await page.locator('[data-occurrence-dialog-host] input, [data-occurrence-dialog-host] textarea').count());
+   const formDialog=page.locator('[data-occurrence-dialog-host] dialog[open]');
+   await formDialog.waitFor();
+   const controls=formDialog.locator('input[name]:not([name=anonymous]),select,textarea');
+   assert.ok(await controls.count());
+   assert.equal(await controls.locator('xpath=self::*[not(@required)]').count(),0,id);
    assert.equal(await page.getByText('A identidade é mantida para auditoria restrita.').count(),0);
+   if(id==='F03'){
+    const picker=formDialog.getByRole('combobox',{name:/Tipo de Evento/});
+    assert.equal(await formDialog.locator('select[name=incidentType]').count(),0);
+    assert.equal(await picker.getAttribute('aria-expanded'),'false');
+    await picker.click();
+    const options=formDialog.getByRole('listbox',{name:'Tipo de Evento'}).getByRole('option');
+    assert.equal(await options.first().textContent(),'Evento anestésico');
+    await options.first().click();
+    assert.equal(await picker.inputValue(),'Evento anestésico');
+    assert.equal(await picker.getAttribute('aria-expanded'),'false');
+    await picker.click();
+    await picker.fill('evento anestesico');
+    assert.equal(await options.count(),1);
+    await picker.press('ArrowDown');
+    await picker.press('Enter');
+    assert.equal(await picker.inputValue(),'Evento anestésico');
+    page.once('dialog',dialog=>dialog.accept());
+   }
    if(id==='F10'){
     assert.equal(await page.getByRole('heading',{name:'NÃO CONFORMIDADE DE PROCESSO',exact:true}).count(),1);
-    assert.equal(await page.getByRole('textbox',{name:'Atendimento',exact:true}).count(),1);
+    const attendance=formDialog.getByRole('textbox',{name:/^Atendimento/});
+    assert.ok((await attendance.getAttribute('aria-describedby')).endsWith('-hint'));
+    await formDialog.getByRole('button',{name:'SALVAR'}).click();
+    assert.equal(await attendance.getAttribute('aria-invalid'),'true');
+    assert.equal(await formDialog.locator('[name=immediateAction]').getAttribute('aria-invalid'),'true');
    }
    await page.locator('[data-occurrence-cancel]').click();
    if(group==='A')await page.locator('[data-occurrence-group-cancel]').click();

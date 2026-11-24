@@ -30,8 +30,12 @@ test('F10 não recebe campos gerais que a especificação exclui', () => {
   assert.equal(form.noGeneralInformation, true);
   assert.deepEqual(form.fields, []);
   assert.deepEqual(form.classification.map(item => item.id), ['sourceSector','destinationSector','patientOrAttendance','immediateAction']);
-  assert.equal(form.classification[2].required, false);
-  assert.equal(form.classification[3].required, false);
+  const values = {sourceSector:catalogMocks.SETORES_55[0],destinationSector:catalogMocks.SETORES_55[1]};
+  assert.deepEqual(validateOccurrenceValues('F10',values,catalogMocks).errors,[
+    'REQUIRED:patientOrAttendance','REQUIRED:immediateAction'
+  ]);
+  assert.equal(validateOccurrenceValues('F10',{...values,patientOrAttendance:'012345',immediateAction:'Ação'},catalogMocks).valid,true);
+  assert.ok(OCCURRENCE_FORMS.every(item=>[...item.classification,...item.fields].every(field=>field.required)));
 });
 
 test('F02 e F03 não contêm os campos de paciente explicitamente excluídos', () => {

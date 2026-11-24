@@ -2182,8 +2182,18 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 .occurrence-field{display:grid;align-content:start;gap:6px;min-width:0;font-size:.92rem}
 .occurrence-field--textarea{grid-column:1/-1}
-.occurrence-field input,.occurrence-field select,.occurrence-field textarea,.occurrence-select-search{width:100%;min-width:0;min-height:44px;padding:10px 11px;border:1px solid #b9cbd2;border-radius:11px;background:#fff;color:#143254;font:inherit;font-size:16px}
+.occurrence-field input,.occurrence-field select,.occurrence-field textarea{width:100%;min-width:0;min-height:44px;padding:10px 11px;border:1px solid #b9cbd2;border-radius:11px;background:#fff;color:#143254;font:inherit;font-size:16px}
+.occurrence-field small{color:#43596c;font-size:.8rem}
+.occurrence-field [aria-invalid="true"]{border-color:#a22929}
 .occurrence-field textarea{min-height:88px;resize:none;overflow-x:hidden;overflow-wrap:anywhere}
+.occurrence-picker input[aria-expanded="true"]{border-end-start-radius:0;border-end-end-radius:0}
+.occurrence-picker__popup{border:1px solid #b9cbd2;border-top:0;border-radius:0 0 11px 11px;background:#fff;overflow:hidden}
+.occurrence-picker [hidden]{display:none}
+.occurrence-picker__options{max-height:min(220px,30dvh);overflow-y:auto;overscroll-behavior:contain}
+.occurrence-picker__options button{display:block;width:100%;min-height:44px;padding:8px 11px;border:0;border-radius:0;background:#fff;color:#143254;text-align:start;font:inherit;overflow-wrap:anywhere}
+.occurrence-picker__options button+button{border-top:1px solid #e1e9ed}
+.occurrence-picker__options button:is(:hover,.is-active,[aria-selected="true"]){background:#d7edf9}
+.occurrence-picker__empty{margin:0;padding:10px 11px;color:#43596c}
 .occurrence-anonymous{display:flex;align-items:center;gap:8px;margin:14px 0 6px}
 .occurrence-anonymous input{width:20px;height:20px}
 #occurrence-author-note{display:block;color:#526578;line-height:1.4;font-size:.85rem}

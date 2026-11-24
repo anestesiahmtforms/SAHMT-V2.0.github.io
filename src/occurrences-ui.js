@@ -21,6 +21,101 @@ const iconMarkup = key => `<svg class="occurrence-icon" viewBox="0 0 24 24" fill
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
 const dayLocal = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`; };
 const fieldLabel = item => `${escape(item.label)}${item.required ? ' *' : ''}`;
+const searchText = value => value.trim().toLocaleLowerCase('pt-BR').normalize('NFD').replace(/\p{M}/gu,'');
+
+function occurrenceOptions(catalog, options) {
+  if(catalog!=='TIPOS_INCIDENTES')return options;
+  const first=options.findIndex(option=>/^evento anestesico\b/.test(searchText(option)));
+  return first>0?[options[first],...options.slice(0,first),...options.slice(first+1)]:options;
+}
+
+function searchableOccurrenceField(item, options) {
+  const id=`occurrence-${item.id}`;
+  return `<div class="occurrence-field" data-occurrence-picker>
+    <label for="${id}">${fieldLabel(item)}</label>
+    <div class="occurrence-picker">
+      <input id="${id}" name="${item.id}" type="search" role="combobox" autocomplete="off"
+        aria-expanded="false" aria-controls="${id}-options" aria-autocomplete="list"
+        placeholder="Pesquise por opções" ${item.required?'required':''}>
+      <div class="occurrence-picker__popup" hidden>
+        <div id="${id}-options" class="occurrence-picker__options" role="listbox" aria-label="${escape(item.label)}">
+          ${options.map((option,index)=>`<button type="button" id="${id}-option-${index}" role="option" tabindex="-1"
+            aria-selected="false" data-value="${escape(option)}">${escape(option)}</button>`).join('')}
+        </div>
+        <p class="occurrence-picker__empty" role="status" hidden>Nenhuma opção encontrada.</p>
+      </div>
+    </div>
+  </div>`;
+}
+
+function bindOccurrencePicker(field) {
+  const input=field.querySelector('input');
+  const popup=field.querySelector('.occurrence-picker__popup');
+  const list=field.querySelector('[role="listbox"]');
+  const empty=field.querySelector('.occurrence-picker__empty');
+  const options=[...list.children].map(button=>({button, text:searchText(button.dataset.value)}));
+  let visible=[], active=null;
+
+  function highlight(button, scroll=false) {
+    active?.classList.remove('is-active');
+    active=button;
+    if(!active){input.removeAttribute('aria-activedescendant');return;}
+    active.classList.add('is-active');
+    input.setAttribute('aria-activedescendant',active.id);
+    if(scroll)active.scrollIntoView({block:'nearest'});
+  }
+  function show(query='') {
+    const filter=searchText(query);
+    visible=[];
+    for(const {button,text} of options) {
+      button.hidden=!text.includes(filter);
+      button.setAttribute('aria-selected',String(button.dataset.value===input.value));
+      if(!button.hidden)visible.push(button);
+    }
+    empty.hidden=visible.length>0;
+    popup.hidden=false;
+    input.setAttribute('aria-expanded','true');
+    highlight(null);
+    list.scrollTop=0;
+  }
+  function close() {
+    popup.hidden=true;
+    input.setAttribute('aria-expanded','false');
+    highlight(null);
+  }
+  function choose(button) {
+    input.value=button.dataset.value;
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    close();
+  }
+  const open=()=>{if(popup.hidden)show();};
+  input.addEventListener('focus',open);
+  input.addEventListener('click',open);
+  input.addEventListener('input',()=>show(input.value));
+  input.addEventListener('blur',close);
+  list.addEventListener('mousedown',event=>{if(event.target.closest('[role="option"]'))event.preventDefault();});
+  list.addEventListener('click',event=>{
+    const button=event.target.closest('[role="option"]');
+    if(button)choose(button);
+  });
+  input.addEventListener('keydown',event=>{
+    if(event.key==='ArrowDown'||event.key==='ArrowUp') {
+      event.preventDefault();
+      open();
+      const index=visible.indexOf(active);
+      const next=event.key==='ArrowDown'?Math.min(index+1,visible.length-1):index<0?visible.length-1:Math.max(index-1,0);
+      highlight(visible[next]||null,true);
+    } else if(!popup.hidden&&event.key==='Enter') {
+      event.preventDefault();
+      const option=active||visible[0];
+      if(option)choose(option);
+    } else if(!popup.hidden&&event.key==='Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    }
+  });
+}
 
 export function occurrenceModuleAccess(permissions = {}) {
   return Object.freeze({read:permissions.occurrencesRead === true,write:permissions.occurrencesWrite === true,
@@ -43,14 +138,17 @@ export function occurrenceCategoryMarkup(groupId,{canWrite=true}={}) {
 export function occurrenceFieldMarkup(item, catalogs = {}) {
   const label=fieldLabel(item), required=item.required?'required':'';
   if(item.type==='select') {
-    const options=Array.isArray(catalogs[item.catalog])?catalogs[item.catalog]:[];
-    const search=options.length>20?`<input class="occurrence-select-search" type="search" data-filter-select="${item.id}" aria-label="Pesquisar ${escape(item.label)}" placeholder="Pesquisar opção">`:'';
-    return `<label class="occurrence-field"><span>${label}</span>${search}<select name="${escape(item.id)}" ${required}><option value="">Selecione</option>${options.map(option=>`<option value="${escape(option)}">${escape(option)}</option>`).join('')}</select></label>`;
+    const options=occurrenceOptions(item.catalog,Array.isArray(catalogs[item.catalog])?catalogs[item.catalog]:[]);
+    if(options.length>20)return searchableOccurrenceField(item,options);
+    return `<label class="occurrence-field"><span>${label}</span><select name="${escape(item.id)}" ${required}><option value="">Selecione</option>${options.map(option=>`<option value="${escape(option)}">${escape(option)}</option>`).join('')}</select></label>`;
   }
   const type=item.type==='date'?'date':item.type==='time'?'time':'text';
-  const control=item.type==='textarea'?`<textarea name="${escape(item.id)}" rows="3" maxlength="${item.maxLength||5000}" ${required}></textarea>`:
-    `<input name="${escape(item.id)}" type="${type}" ${required} maxlength="${item.maxLength||180}" ${item.type==='date'&&item.id==='eventDate'?`value="${dayLocal()}"`:''}>`;
-  return `<label class="occurrence-field occurrence-field--${item.type}"><span>${label}</span>${control}</label>`;
+  const id=`occurrence-${item.id}`;
+  const hint=item.hint?`<small id="${id}-hint">(${escape(item.hint)})</small>`:'';
+  const description=item.hint?`aria-describedby="${id}-hint"`:'';
+  const control=item.type==='textarea'?`<textarea id="${id}" name="${escape(item.id)}" rows="3" maxlength="${item.maxLength||5000}" ${required} ${description}></textarea>`:
+    `<input id="${id}" name="${escape(item.id)}" type="${type}" ${required} ${description} maxlength="${item.maxLength||180}" ${item.type==='date'&&item.id==='eventDate'?`value="${dayLocal()}"`:''}>`;
+  return `<div class="occurrence-field occurrence-field--${item.type}"><div><label for="${id}">${label}</label> ${hint}</div>${control}</div>`;
 }
 
 export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
@@ -186,10 +284,7 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     if(direct)categoryDialog.close();
     host.innerHTML=occurrenceFormMarkup(form,catalogs,displayName);
     const dialog=host.querySelector('dialog'), formElement=host.querySelector('form'), status=host.querySelector('.occurrence-form-status'), saveButton=host.querySelector('[data-occurrence-save]'), cancelButton=host.querySelector('[data-occurrence-cancel]');
-    host.querySelectorAll('[data-filter-select]').forEach(input=>input.addEventListener('input',()=>{
-      const select=host.querySelector(`select[name="${CSS.escape(input.dataset.filterSelect)}"]`),filter=input.value.trim().toLocaleLowerCase('pt-BR');
-      for(const option of select?.options||[]) if(option.value) option.hidden=!option.text.toLocaleLowerCase('pt-BR').includes(filter);
-    }));
+    host.querySelectorAll('[data-occurrence-picker]').forEach(bindOccurrencePicker);
     cancelButton?.addEventListener('click',()=>{
       if(saving)return;
       if(formElement.dataset.dirty==='true'&&!globalThis.confirm('Descartar o preenchimento? O rascunho não foi salvo.'))return;
@@ -199,12 +294,23 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
       if(saving||(formElement.dataset.dirty==='true'&&!globalThis.confirm('Descartar o preenchimento? O rascunho não foi salvo.')))event.preventDefault();
     });
     dialog.addEventListener('close',()=>{if(dialog.returnValue!=='saved')pendingRecordId=null;});
-    formElement.addEventListener('input',()=>{formElement.dataset.dirty='true';});
+    const markEdited=event=>{
+      formElement.dataset.dirty='true';
+      event.target.removeAttribute('aria-invalid');
+    };
+    formElement.addEventListener('input',markEdited);
+    formElement.addEventListener('change',markEdited);
     formElement.addEventListener('submit',async event=>{
       event.preventDefault();if(saving||!isCurrent()||!canInteract())return;
       const values=Object.fromEntries([...new FormData(formElement)].filter(([key])=>key!=='anonymous').map(([key,value])=>[key,String(value)]));
       const check=validateOccurrenceValues(formId,values,catalogs);
-      if(!check.valid){status.textContent='Confira os campos obrigatórios e as opções selecionadas.';return;}
+      if(!check.valid){
+        status.textContent='Confira os campos obrigatórios e as opções selecionadas.';
+        const invalid=check.errors.map(error=>formElement.elements.namedItem(error.split(':')[1] || '')).filter(Boolean);
+        for(const control of invalid)control.setAttribute('aria-invalid','true');
+        invalid[0]?.focus();
+        return;
+      }
       saving=true;saveButton.disabled=true;if(cancelButton)cancelButton.disabled=true;saveButton.textContent='SALVANDO…';status.textContent='';
       try {pendingRecordId ||= idGenerator();const input={uid,displayName,anonymous:formElement.elements.anonymous.checked,formId,values,recordId:pendingRecordId,catalogs};
         const result=await submitOccurrenceWithFallback({repository,input,isCurrent});

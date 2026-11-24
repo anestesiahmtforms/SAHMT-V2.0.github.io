@@ -19,35 +19,38 @@ export const OCCURRENCE_CATALOG_SPECS = Object.freeze({
 
 const common = Object.freeze([
   {id: 'eventDate', label: 'Data da ocorrência', type: 'date', required: true},
-  {id: 'occurrence', label: 'Ocorrência', type: 'text', required: true, maxLength: 180},
-  {id: 'description', label: 'Descrição', type: 'textarea', required: true, maxLength: 5000}
+  {id: 'occurrence', label: 'Ocorrência', hint: 'Descreva o tipo de ocorrência de forma objetiva', type: 'text', required: true, maxLength: 180},
+  {id: 'description', label: 'Descrição', hint: 'Faça uma descrição detalhada e completa, passo a passo do ocorrido', type: 'textarea', required: true, maxLength: 5000}
 ]);
-const field = (id, label, type = 'text', required = true, extra = {}) => Object.freeze({id, label, type, required, ...extra});
-const select = (id, label, catalog, required = true) => field(id, label, 'select', required, {catalog});
-const date = (id, label, required = true) => field(id, label, 'date', required);
-const time = (id, label, required = true) => field(id, label, 'time', required);
-const long = (id, label, required = true) => field(id, label, 'textarea', required, {maxLength: 3000});
+const field = (id, label, type = 'text', extra = {}) => Object.freeze({id, label, type, required: true, ...extra});
+const select = (id, label, catalog) => field(id, label, 'select', {catalog});
+const date = (id, label) => field(id, label, 'date');
+const time = (id, label) => field(id, label, 'time');
+const long = (id, label) => field(id, label, 'textarea', {maxLength: 3000});
+const attendance = (id = 'attendance', maxLength = 180) => field(id, 'Atendimento', 'text', {
+  maxLength, hint: 'Conferir o número do atendimento, pois é imprescindível'
+});
 
 const forms = [
   {id: 'F01', group: 'A', title: 'Notificação de Farmacovigilância - Queixa Técnica de Medicamento', fields: [
-    field('attendance', 'Atendimento'), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
+    attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
     field('medicationName', 'Nome do Medicamento'), field('lotNumber', 'Número do Lote'),
     select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'),
     long('immediateAction', 'Disposição (ação imediata)'), select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F02', group: 'A', title: 'Notificação de Farmacovigilância - Reação Adversa ao Medicamento', fields: [
-    field('attendance', 'Atendimento'), select('eventSector', 'Local de ocorrência da RAM', 'SETORES_9'),
+    attendance(), select('eventSector', 'Local de ocorrência da RAM', 'SETORES_9'),
     select('reactionEvent', 'Qual incidente/evento aconteceu?', 'RAM_100'), field('medicationRegimen', 'Nome do Medicamento/Esquema QT'),
     date('suspectedReactionDate', 'Data suspeita RAM'), field('prescriptionNumber', 'Número Prescrição')
   ]},
   {id: 'F03', group: 'A', title: 'Notificação de Incidentes Assistenciais', fields: [
-    field('attendance', 'Atendimento'), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
-    select('admissionType', 'Tipo de internação', 'TIPO_INTERNAÇÃO'), select('incidentType', 'Tipo', 'TIPOS_INCIDENTES'),
+    attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
+    select('admissionType', 'Tipo de internação', 'TIPO_INTERNAÇÃO'), select('incidentType', 'Tipo de Evento', 'TIPOS_INCIDENTES'),
     select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), long('immediateAction', 'Disposição (ação imediata)'),
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F04', group: 'A', title: 'Notificação de Lesão por Pressão (LP)', fields: [
-    field('attendance', 'Atendimento'), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
+    attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
     select('originSector', 'Setor de Origem da LP', 'SETORES_55'), select('bradenRisk', 'Risco para LP (Escala de Braden)', 'BRADEN'),
     date('lesionOpeningDate', 'Data da Abertura da Lesão'), select('lesionType', 'Tipo de LP', 'TIPO_LP'),
     select('lesionStage', 'Estágio da Lesão', 'ESTAGIO_LP'), select('topography', 'Topografia', 'TOPOGRAFIA_LP'),
@@ -55,7 +58,7 @@ const forms = [
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F05', group: 'A', title: 'Notificação de Queda', fields: [
-    field('attendance', 'Atendimento'), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
+    attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
     date('fallDate', 'Data da Queda'), time('fallTime', 'Horário da Queda'), select('fallRisk', 'Classificação do Risco de Queda', 'RISCO_QUEDA'),
     select('fallRiskGuidance', 'Orientado quanto ao risco de queda?', 'SIM_NAO_NI'), date('lastAssessmentDate', 'Data da Última Avaliação'),
     select('redWristband', 'Portador de Pulseira Vermelha?', 'SIM_NAO_NI'), select('fallLocation', 'Local da Queda', 'LOCAL_QUEDA'),
@@ -65,7 +68,7 @@ const forms = [
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F06', group: 'A', title: 'Notificação de Tecnovigilância - Equipamentos', fields: [
-    field('attendance', 'Atendimento'), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
+    attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
     field('equipmentName', 'Nome do Equipamento'), field('tagNumber', 'Número TAG'), field('serialNumber', 'Número de Série'),
     field('serviceCallNumber', 'Número do chamado'), date('failureDate', 'Data falha do equipamento'), time('failureTime', 'Horário da falha do equipamento'),
     select('clinicalEngineeringCalled', 'Engenharia Clínica foi acionada?', 'SIM_NAO_NI'),
@@ -74,7 +77,7 @@ const forms = [
     select('eventPeriod', 'Em que período ocorreu o evento?', 'PERIODO')
   ]},
   {id: 'F07', group: 'A', title: 'Notificação de Tecnovigilância - Materiais', fields: [
-    field('attendance', 'Atendimento'), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
+    attendance(), select('causingSector', 'Setor que motivou/causou o incidente', 'SETORES_9'),
     field('materialName', 'Nome do Material'), field('manufacturerName', 'Nome do Fabricante'), field('lotNumber', 'Lote'),
     select('previousOccurrence', 'O Fato Ocorreu Anteriormente?', 'SIM_NAO_NI'), select('causedDamage', 'Causou Danos?', 'SIM_NAO_NI'),
     select('symptomAfterEvent', 'Apresentou sinal/sintoma após incidente?', 'SIM_NAO_NI'), long('immediateAction', 'Disposição (ação imediata)'),
@@ -88,8 +91,8 @@ const forms = [
   ]},
   {id: 'F10', group: 'D', title: 'Não Conformidade de Processo', classification: [
     select('sourceSector', 'Setor de Origem', 'SETORES_55'), select('destinationSector', 'Setor de Destino', 'SETORES_55'),
-    field('patientOrAttendance', 'Atendimento', 'text', false, {maxLength: 160}),
-    long('immediateAction', 'Disposição/ação imediata', false)
+    attendance('patientOrAttendance', 160),
+    long('immediateAction', 'Disposição/ação imediata')
   ], fields: [], noGeneralInformation: true}
 ].map(form => Object.freeze({...form, classification: Object.freeze(form.classification || []),
   fields: Object.freeze(form.noGeneralInformation ? form.fields : [...common, ...form.fields])}));
