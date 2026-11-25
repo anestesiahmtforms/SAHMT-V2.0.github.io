@@ -17,16 +17,17 @@ function birthDateField(field, value) {
 }
 
 const shortWorkLabels = {
- WEEKLY:'Sem.', FORTNIGHTLY:'Quin.', FULL:'Int.', ON_CALL:'Plant.'
+ FORTNIGHTLY:'Quin.', FULL:'Int.', ON_CALL:'Plant.'
 };
 
 function workGrid(field, value) {
  const selected = Array.isArray(value) ? value : [];
+ const columns = field.columns.filter(([option]) => option !== 'WEEKLY');
  const previousDays = field.options.filter(([day]) => selected.includes(day)).map(([,label]) => label);
  return `<fieldset class="reg-work-grid" data-field="${field.id}">
   <legend>${h(field.label)}${field.required?' *':''}</legend>
-  ${previousDays.length ? `<p class="reg-help">Dias do cadastro anterior: ${h(previousDays.join(', '))}. Marque a frequência e o turno de cada dia.</p>` : ''}
-  <table><thead><tr><th scope="col">Dia</th>${field.columns.map(([option,label]) => {
+  ${previousDays.length ? `<p class="reg-help">Dias do cadastro anterior: ${h(previousDays.join(', '))}. Marque os turnos e indique se algum dia é quinzenal.</p>` : ''}
+  <table><thead><tr><th scope="col">Dia</th>${columns.map(([option,label]) => {
    const shortLabel = shortWorkLabels[option];
    if (!shortLabel) return `<th scope="col">${h(label)}</th>`;
    return `<th scope="col" aria-label="${h(label)}">
@@ -34,17 +35,17 @@ function workGrid(field, value) {
     <span class="reg-work-label-short" aria-hidden="true">${h(shortLabel)}</span>
    </th>`;
   }).join('')}</tr></thead>
-  <tbody>${field.options.map(([day,label]) => `<tr><th scope="row">${h(label)}</th>${field.columns.map(([option,column]) => {
+  <tbody>${field.options.map(([day,label]) => `<tr><th scope="row">${h(label)}</th>${columns.map(([option,column]) => {
    const key = `${day}:${option}`;
    const sunday = day === WORK_SUNDAY;
    if (sunday && !SUNDAY_WORK_OPTIONS.includes(option)) {
     const previous = selected.includes(key) ? `<input type="hidden" name="${field.id}" value="${key}">` : '';
     return `<td>${previous}<span aria-hidden="true">—</span></td>`;
    }
-   const checked = selected.includes(key) && !(option === 'WEEKLY' && selected.includes(day + ':FORTNIGHTLY'));
+   const checked = selected.includes(key);
    return `<td><label><input type="checkbox" name="${field.id}" value="${key}" aria-label="${h(`${label}, ${column}`)}"${checked ? ' checked' : ''}></label></td>`;
   }).join('')}</tr>`).join('')}</tbody></table>
-  <p class="reg-help reg-work-key">Sem. = Semanal · Quin. = Quinzenal · Int. = Integral · Plant. = Plantão noturno</p>
+  <p class="reg-help reg-work-key">Quin. = Quinzenal · Int. = Integral · Plant. = Plantão noturno</p>
   <div class="reg-schedule-participation">
    <strong id="reg-schedule-participation-title">ÍNDICE DE PARTICIPAÇÃO NA ESCALA</strong>
    <output aria-labelledby="reg-schedule-participation-title" aria-describedby="reg-schedule-participation-help" data-reg-schedule-participation></output>

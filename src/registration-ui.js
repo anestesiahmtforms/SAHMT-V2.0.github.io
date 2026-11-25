@@ -94,8 +94,8 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    ? 'A preencher'
    : participationFormat.format(percent / 100);
   query('[data-reg-schedule-participation-help]').textContent = percent === null
-   ? 'Marque um turno habitual ou plantão noturno para calcular o índice.'
-   : '100% equivale a trabalhar em período integral e fazer plantão noturno nos sete dias da semana. Integral e plantão noturno valem um turno cada. Manhã e tarde valem meio turno cada. A frequência quinzenal reduz pela metade a contribuição do dia. Sem frequência marcada, o dia conta como semanal.';
+   ? 'Marque um turno habitual ou plantão noturno para calcular o índice. Marque Quinzenal nos dias em que trabalha a cada duas semanas.'
+   : '100% equivale a trabalhar em período integral e fazer plantão noturno nos sete dias da semana. Integral e plantão noturno valem um turno cada. Manhã e tarde valem meio turno cada. Cada dia conta como semanal. Marcar Quinzenal reduz pela metade a contribuição do dia.';
  }
 
  function formSnapshot(form) {
@@ -290,12 +290,6 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   updateAge(event);
   conditionals();
   if (target.name === 'workDays' && target.type === 'checkbox') {
-   const [day, option] = target.value.split(':');
-   if (target.checked && (option === 'WEEKLY' || option === 'FORTNIGHTLY')) {
-    const other = option === 'WEEKLY' ? 'FORTNIGHTLY' : 'WEEKLY';
-    const otherInput = query('input[type="checkbox"][name="workDays"][value="' + day + ':' + other + '"]');
-    if (otherInput) otherInput.checked = false;
-   }
    const workDays = Array.from(root.querySelectorAll('[name="workDays"]:checked'), input => input.value);
    updateScheduleParticipation(workDays);
   }

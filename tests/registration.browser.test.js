@@ -93,9 +93,9 @@ test('professional modal keeps a compact header and a fixed footer while the for
   const dialog=page.getByRole('dialog'),header=dialog.locator('header'),back=dialog.getByRole('button',{name:'VOLTAR'});
   const bounds=await dialog.boundingBox(),headerBounds=await header.boundingBox(),footerBounds=await back.boundingBox();
   const columns=dialog.locator('.reg-work-grid thead th');
-  assert.equal(await columns.count(),7);
-  assert.equal(await columns.nth(1).getAttribute('aria-label'),'Semanal');
-  assert.equal(await columns.nth(1).innerText(),width<=620?'Sem.':'Semanal');
+  assert.equal(await columns.count(),6);
+  assert.equal(await columns.nth(1).getAttribute('aria-label'),'Quinzenal');
+  assert.equal(await columns.nth(1).innerText(),width<=620?'Quin.':'Quinzenal');
   assert.equal(await dialog.locator('.reg-work-key').isVisible(),width<=620);
   assert.ok(await columns.evaluateAll(headers=>headers.every(header=>
    getComputedStyle(header).writingMode==='horizontal-tb'&&header.scrollWidth<=header.clientWidth)));
@@ -172,30 +172,21 @@ test('professional form saves the grid and uploads immediately after file select
  const participation=page.locator('[data-reg-schedule-participation]');
  assert.equal(await participation.textContent(),'A preencher');
  assert.ok((await participation.boundingBox()).y>(await grid.boundingBox()).y+(await grid.boundingBox()).height);
- assert.equal(await grid.locator('thead th').count(),7);
- assert.equal(await grid.getByRole('checkbox').count(),39);
+ assert.equal(await grid.locator('thead th').count(),6);
+ assert.equal(await grid.getByRole('checkbox').count(),33);
  const sunday=grid.getByRole('row',{name:/Domingo/});
  assert.deepEqual(await sunday.getByRole('checkbox').evaluateAll(checkboxes=>checkboxes.map(input=>input.getAttribute('aria-label'))),
   ['Domingo, Quinzenal','Domingo, Integral','Domingo, Plantão noturno']);
- const saturdayWeekly=grid.getByRole('checkbox',{name:'Sábado, Semanal'});
+ assert.equal(await grid.getByRole('checkbox',{name:/Semanal/}).count(),0);
+ const saturdayFull=grid.getByRole('checkbox',{name:'Sábado, Integral'});
  const saturdayFortnightly=grid.getByRole('checkbox',{name:'Sábado, Quinzenal'});
- const mondayToThursday=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira'];
- for(const day of mondayToThursday){
-  await grid.getByRole('checkbox',{name:day+', Semanal'}).check();
-  await grid.getByRole('checkbox',{name:day+', Integral'}).check();
- }
- await saturdayWeekly.check();
- assert.equal(await participation.textContent(),'28,57%');
+ await saturdayFull.check();
+ assert.equal(await participation.textContent(),'7,14%');
  await saturdayFortnightly.check();
- assert.equal(await saturdayWeekly.isChecked(),false);
- assert.equal(await participation.textContent(),'28,57%');
- await saturdayWeekly.check();
- assert.equal(await saturdayFortnightly.isChecked(),false);
- await saturdayWeekly.uncheck();
- for(const day of mondayToThursday){
-  await grid.getByRole('checkbox',{name:day+', Semanal'}).uncheck();
-  await grid.getByRole('checkbox',{name:day+', Integral'}).uncheck();
- }
+ assert.equal(await participation.textContent(),'3,57%');
+ await saturdayFortnightly.uncheck();
+ assert.equal(await participation.textContent(),'7,14%');
+ await saturdayFull.uncheck();
  assert.equal(await grid.evaluate(e=>e.getBoundingClientRect().right>e.closest('[data-hub-body]').getBoundingClientRect().right),false);
  const back=page.getByRole('button',{name:'VOLTAR',exact:true});
  const before=await back.boundingBox();
@@ -207,7 +198,6 @@ test('professional form saves the grid and uploads immediately after file select
   if(f.type==='select')await page.selectOption('[name="'+f.id+'"]',f.options[0][0]);
   if(f.required&&!f.options)await page.fill('[name="'+f.id+'"]',({fullName:'Pessoa Sintética',birthDate:'1990-01-01',cpf:'52998224725',crm:'12345',phone:'31999999999'}[f.id]||'Informação sintética'));
  }
- await page.getByRole('checkbox',{name:'Segunda-feira, Semanal'}).check();
  await page.getByLabel('Mãe',{exact:true}).fill('Mãe Sintética');
  await page.getByLabel('Pai',{exact:true}).fill('Pai Sintético');
  assert.equal(await page.locator('[name=filiation]').count(),0);
@@ -243,7 +233,7 @@ test('professional form saves the grid and uploads immediately after file select
  const answers=await page.evaluate(()=>window.calls.find(c=>c.action==='SAVE').input.answers);
  assert.equal(answers.motherName,'Mãe Sintética');
  assert.equal(answers.fatherName,'Pai Sintético');
- assert.deepEqual(answers.workDays,['0:WEEKLY','0:MORNING','6:FORTNIGHTLY','6:FULL','6:ON_CALL']);
+ assert.deepEqual(answers.workDays,['0:MORNING','6:FORTNIGHTLY','6:FULL','6:ON_CALL']);
  assert.deepEqual(answers.surgicalAreas,['CARDIOVASCULAR','UROLOGY']);
  assert.deepEqual(answers.formation,['TEA','MESTRADO']);
  assert.deepEqual(answers.institutionalParticipation,['COMISSOES','DIRECAO']);
