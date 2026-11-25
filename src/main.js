@@ -1589,18 +1589,22 @@ async function loadModule(route) {
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
     const [{mountManagementHub},{getFunctionalAccess,isEffectiveTeamMember}]=await Promise.all([import('./management-hub.js'),import('./functional-access.js')]);
     const functionalEnabled=deployment.target==='FA'&&import.meta.env.VITE_FK_FUNCTIONAL_ENABLED==='true';
-    const functionalAccess=functionalEnabled?await getFunctionalAccess(session):{allowed:false,group:null};
-    if(!content?.isConnected||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
+    if(!content?.isConnected||generation!==evaluationModuleGeneration||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
     const currentHub=()=>generation===evaluationModuleGeneration&&content.isConnected&&session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session);
     if(communicationAdminSession(session))preloadCommunicationModules({isCurrent:currentHub});
     const participantOnly=session.accountMode==='team';
-    const [consultationsAllowed,epidemiologicalAllowed]=await Promise.all([
+    const initialPanel=location.hash.split('/')[2]||'home';
+    const requiredActivity=initialPanel==='professional'?activeObligationId():null;
+    const [consultationsAllowed,epidemiologicalAllowed,functionalAccess]=await Promise.all([
       can('admin')||readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub}).catch(()=>false),
-      isEffectiveTeamMember(session.user).catch(()=>false)
+      isEffectiveTeamMember(session.user).catch(()=>false),
+      functionalEnabled?getFunctionalAccess(session):{allowed:false}
     ]);
     if(!content.isConnected||!currentHub())return;
-    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed;
-    const initialPanel=location.hash.split('/')[2]||'home';
+    // The required activity was issued to this authenticated recipient after
+    // source eligibility checks. The registration service still validates access.
+    const professionalConvocation=requiredActivity&&obligationBanner?.hasPendingProfessional(requiredActivity);
+    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed||Boolean(professionalConvocation);
     const canManageActivity=()=>typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&deployment.target==='FA'&&!participantOnly&&can('admin')&&currentHub();
     const activityAvailability=folder=>{
       const policy=operationalFolderPolicy();
@@ -1613,7 +1617,7 @@ async function loadModule(route) {
         if(!canManageActivity()||!isCurrent()||activityAvailability(folder)!==!enabled)throw Error('FOLDER_POLICY_CONFLICT');
         return fiControlRequest('folders.publish',{id:folder,enabled,revision:operationalFolderPolicy().revision},uid);
       },
-      surveySelection:communicationAdminSession(session)?activitySelectionFor(session.user,'SURVEY'):null,
+      surveySelection:!requiredActivity&&communicationAdminSession(session)?activitySelectionFor(session.user,'SURVEY'):null,
       connectYearEndAccess:async()=>{await signInGoogle();if(session.user?.uid===uid&&currentRoute()===route)void render();},
       onYearEndConfirmed:(record,participation)=>{yearEndStartup.confirm(uid,record,participation);},
       createYearEndRepository:async isCurrent=>{const {openYearEndScheduleRepository}=await import('./year-end-schedule-firebase.js');return openYearEndScheduleRepository({uid,isCurrent:()=>currentHub()&&isCurrent(),participantOnly});},

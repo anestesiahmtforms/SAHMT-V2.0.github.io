@@ -13,6 +13,7 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  const listen=(target,type,fn,options)=>{target.addEventListener(type,fn,options);listeners.push(()=>target.removeEventListener(type,fn,options));};
  const alive=()=>{if(disposed)return false;if(!uid||!isCurrent()){cleanup();return false;}return true;};
  const current=()=>items.find(item=>item.id===selectedId)||items[0];
+ const isProfessional=item=>item?.activity?.kind==='SURVEY'&&item.activity.id==='professional';
  const stage=()=>items.length&&serverNow!==null?Math.max(...items.map(item=>obligationStage(item.publishAt,serverNow,item.dueAt))):0;
  function restoreInert(){for(const [el,previous]of inertBefore)el.inert=previous;inertBefore.clear();}
  function applyBlocking(){
@@ -36,6 +37,14 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   for(const modal of open)if(!modals.includes(modal))modals.push(modal);
   const target=modals.at(-1)||root;
   if(node.parentElement!==target){restoreInert();node.remove();target.append(node);}
+  const editingRegistration=target.matches('dialog[data-panel="professional"]')&&
+    items.some(item=>item.id===activeId&&isProfessional(item));
+  node.hidden=editingRegistration;
+  if(editingRegistration){
+   if(typeof node.hidePopover==='function'&&node.matches(':popover-open'))node.hidePopover();
+   restoreInert();
+   return;
+  }
   // Popover enters the top layer after its containing modal and remains non-modal itself.
   if(typeof node.showPopover==='function'&&!node.matches(':popover-open'))try{node.showPopover();}catch{/* Older engines retain the positioned fallback. */}
   applyBlocking();bound();
@@ -57,7 +66,9 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   const clock=new Date(obligationDueAt(item)).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
   find('[data-deadline]').textContent=`Prazo: ${clock}.`;
   find('[data-status]').textContent=error||(item.unavailable?'Atividade indisponível. Procure o administrador.':'');
-  find('[data-open]').disabled=!item||interacting>0;
+  const button=find('[data-open]');
+  button.textContent=isProfessional(item)?'Abrir Cadastro Profissional':'Abrir atividade';
+  button.disabled=!item||interacting>0;
   const active=items.some(value=>value.id===activeId),currentStage=stage();
   blocking=currentStage===5&&!active&&!interacting;node.dataset.stage=String(currentStage);node.dataset.blocking=String(blocking);node.dataset.active=String(active||interacting>0);
   if(blocking){node.style.left='0px';node.style.top='0px';}
@@ -77,7 +88,7 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
     // Never verify a whole inbox on resume: one selected/opened obligation per refresh.
     const selected=items.find(item=>item.id===activeId)||current();
     if(selected?.activity){const receipt=await client.request('VERIFY_ACTIVITY',{id:selected.id},{activityKind:selected.activity.kind});if(!alive())return;confirmedClock(receipt.serverNow);
-     if(receipt.completed)items=items.filter(item=>item.id!==selected.id);
+     if(receipt.completed||receipt.reason==='ACTIVITY_CANCELLED')items=items.filter(item=>item.id!==selected.id);
      else selected.unavailable=Boolean(receipt.unavailable);
     }
    }catch{if(alive())error='Não foi possível verificar a conclusão agora.';}
@@ -108,7 +119,10 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  const gate=event=>{if(blocking&&!node.contains(event.target)){event.preventDefault();event.stopImmediatePropagation();}};
  listen(doc,'click',gate,true);listen(doc,'submit',gate,true);
  listen(win,'resize',bound);if(win.visualViewport){listen(win.visualViewport,'resize',bound);listen(win.visualViewport,'scroll',bound);}
- for(const type of ['pageshow','online'])listen(win,type,()=>void refresh());
+ for(const type of ['pageshow','online','focus'])listen(win,type,()=>void refresh());
+ if(win.navigator.serviceWorker)listen(win.navigator.serviceWorker,'message',event=>{
+  if(event.data?.source==='SAHMT_FF'&&event.data.type==='NEW_COMMUNICATION'&&event.data.communicationId?.startsWith('activity-'))void refresh();
+ });
  for(const type of ['communication:activity-completed','html-training-score-updated'])listen(win,type,()=>{
   if(inFlight)completionPending=true;
   else void refresh();
@@ -124,5 +138,5 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   render();
  }
  if(uid&&isCurrent())void refresh();else cleanup();
- return {cleanup,refresh,setActivityActive};
+ return {cleanup,refresh,setActivityActive,hasPendingProfessional:id=>alive()&&items.some(item=>item.id===id&&isProfessional(item))};
 }

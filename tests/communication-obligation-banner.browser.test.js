@@ -110,3 +110,27 @@ test('cleanup suppresses late responses and old-session resume events',async()=>
   const count=await page.evaluate(()=>fixture.calls.length);await page.evaluate(()=>window.dispatchEvent(new Event('online')));assert.equal(await page.evaluate(()=>fixture.calls.length),count);
  }finally{await page.close();}
 });
+
+test('Cadastro Profissional abre pela convocação e reaparece após sair sem enviar',async()=>{
+ const page=await pageFor({viewport:{width:320,height:568},hasTouch:true});
+ try{
+  await page.evaluate(()=>{
+   fixture.items=[{...fixture.items[1],id:'activity-registration',activity:{kind:'SURVEY',id:'professional',title:'Cadastro Profissional - SAHMT',cycle:'2026'}}];
+   window.dispatchEvent(new Event('focus'));
+  });
+  const open=panel(page).getByRole('button',{name:'Abrir Cadastro Profissional',exact:true});
+  await open.click();
+  assert.deepEqual(await page.evaluate(()=>fixture.destination),{
+   base:'/SAHMT-V2.0.github.io/',hash:'#/management-hub/professional/required/activity-registration'
+  });
+  await panel(page).waitFor({state:'hidden'});
+  await page.locator('#activity-control').click();
+  await page.evaluate(()=>{document.querySelector('#native').close();banner.setActivityActive(null);});
+  await open.waitFor();
+  await page.evaluate(()=>{
+   fixture.completed.push('activity-registration');
+   window.dispatchEvent(new Event('communication:activity-completed'));
+  });
+  await panel(page).waitFor({state:'detached'});
+ }finally{await page.close();}
+});

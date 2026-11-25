@@ -4,10 +4,11 @@
 <dialog id="native"><button id="activity-control">Enviar atividade</button></dialog>
 <script type="module">
 import {mountCommunicationObligationBanner} from '../../src/communication-obligation-banner.js';
+import {activityDestination} from '../../src/communication-activity-selection.js';
 const day=86400000, published=1700000000000;
 window.fixture={now:published,items:[{id:'old',title:'Atividade',message:'Acesse a atividade selecionada pelo link abaixo.\n\nAcesse a atividade: https://anestesiahmtforms.github.io/SAHMT-V2.0.github.io/gestao/#/management/area-gestao-de-documentos/required/training/old',publishAt:published,activity:{kind:'TRAINING',id:'training',title:'Treinamento seguro',version:1,minimumScore:7,maxScore:10}},{id:'new',title:'Atividade',publishAt:published+1000,activity:{kind:'SURVEY',id:'climate',title:'Pesquisa de Clima Organizacional',cycle:'2026'}}],calls:[],completed:[],fail:false,current:true,opens:[],general:0,submitted:0};
 const f=window.fixture;
-window.mount=()=>window.banner=mountCommunicationObligationBanner({uid:'synthetic-user',isCurrent:()=>f.current,client:{async request(action,input){f.calls.push({action,input});if(f.hold)await new Promise(resolve=>f.release=resolve);if(f.fail)throw Error('SOURCE_OFFLINE');return action==='PENDING_ACTIVITIES'?{items:f.items.filter(x=>!f.completed.includes(x.id)),serverNow:f.now}:{completed:f.completed.includes(input.id),serverNow:f.now,unavailable:f.unavailable};}},onOpenActivity:item=>{f.opens.push(item.id);window.banner.setActivityActive(item.id);document.querySelector('#native').showModal();}});
+window.mount=()=>window.banner=mountCommunicationObligationBanner({uid:'synthetic-user',isCurrent:()=>f.current,client:{async request(action,input){f.calls.push({action,input});if(f.hold)await new Promise(resolve=>f.release=resolve);if(f.fail)throw Error('SOURCE_OFFLINE');return action==='PENDING_ACTIVITIES'?{items:f.items.filter(x=>!f.completed.includes(x.id)),serverNow:f.now}:{completed:f.completed.includes(input.id),serverNow:f.now,unavailable:f.unavailable};}},onOpenActivity:item=>{f.opens.push(item.id);window.banner.setActivityActive(item.id);const dialog=document.querySelector('#native');if(item.activity.id==='professional'){f.destination=activityDestination(item.activity,item.id);dialog.dataset.panel='professional';}dialog.showModal();}});
 document.querySelector('#general').onclick=()=>f.general++;
 document.querySelector('#activity-control').onclick=()=>f.submitted++;
 window.age=async hours=>{f.now=published+hours*day/24;await window.banner.refresh();};

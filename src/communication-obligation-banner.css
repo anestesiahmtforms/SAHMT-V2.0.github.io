@@ -21,3 +21,4 @@
 .communication-obligation[data-active="true"] .communication-obligation__content{padding:8px;gap:5px}
 .communication-obligation[data-active="true"] [data-path],.communication-obligation[data-active="true"] [data-criterion],.communication-obligation[data-active="true"] [data-deadline]{display:none}
 @media(max-width:360px){.communication-obligation:not([data-blocking="true"]) .communication-obligation__content{padding:8px}}
+.communication-obligation[hidden]{display:none}
