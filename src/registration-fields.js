@@ -39,13 +39,14 @@ function workGrid(field, value) {
    const key = `${day}:${option}`;
    const sunday = day === WORK_SUNDAY;
    if (sunday && !SUNDAY_WORK_OPTIONS.includes(option)) {
-    const previous = selected.includes(key) ? `<input type="hidden" name="${field.id}" value="${key}">` : '';
+    const previous = option !== 'WEEKLY' && selected.includes(key) ? `<input type="hidden" name="${field.id}" value="${key}">` : '';
     return `<td>${previous}<span aria-hidden="true">—</span></td>`;
    }
    const previousFullDay = selected.includes(day + ':FULL');
    const previousFortnightly = selected.includes(day + ':FORTNIGHTLY');
    let checked = selected.includes(key);
    if (option === 'WEEKLY') checked = !previousFortnightly && (checked || previousFullDay);
+   if (sunday && option === 'FORTNIGHTLY') checked ||= previousFullDay || selected.includes(day + ':WEEKLY');
    if (previousFullDay && (option === 'MORNING' || option === 'AFTERNOON')) checked = false;
    return `<td><label><input type="checkbox" name="${field.id}" value="${key}" aria-label="${h(`${label}, ${column}`)}"${checked ? ' checked' : ''}></label></td>`;
   }).join('')}</tr>`).join('')}</tbody></table>

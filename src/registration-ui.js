@@ -290,7 +290,8 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    const [day, option] = target.value.split(':');
    if (target.checked && (option === 'WEEKLY' || option === 'FORTNIGHTLY')) {
     const other = option === 'WEEKLY' ? 'FORTNIGHTLY' : 'WEEKLY';
-    query('input[type="checkbox"][name="workDays"][value="' + day + ':' + other + '"]').checked = false;
+    const otherInput = query('input[type="checkbox"][name="workDays"][value="' + day + ':' + other + '"]');
+    if (otherInput) otherInput.checked = false;
    }
    const workDays = Array.from(root.querySelectorAll('[name="workDays"]:checked'), input => input.value);
    updateScheduleParticipation(workDays);

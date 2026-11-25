@@ -1950,9 +1950,9 @@ async function loadModule(route) {
       const [contactsResult,profilesResult]=await Promise.allSettled([listContactCatalog({uid}),readProfiles]);
       if(!current())return;
       const contacts=contactsResult.status==='fulfilled'?contactsResult.value:[];
-      const registrationRequest=adminCurrent()?async(action,input)=>{
+      const registrationRequest=adminCurrent()?async(action,input,kind='professional')=>{
         const {callRegistrationApi}=await import('./registration-client.js');
-        return callRegistrationApi({uid,isCurrent:adminCurrent,kind:'professional',action,input});
+        return callRegistrationApi({uid,isCurrent:adminCurrent,kind,action,input});
       }:null;
       const readTeamEntry=adminCurrent()&&import.meta.env.VITE_FK_FUNCTIONAL_ENABLED==='true'?async subjectUid=>{
         const [{readFunctionalTeamOverview},{auth:faAuth}]=await Promise.all([import('./functional-client.js'),import('./firebase-auth.js')]);
@@ -1972,6 +1972,8 @@ async function loadModule(route) {
         return enabled;
       }:null;
       mountPeopleDirectory(directory,{contacts,profiles:adminCurrent()&&profilesResult.value||[],registrationRequest,readTeamEntry,isCurrent:current,
+        registrationCurrent:adminCurrent,
+        readRegistrationFiles:registrationRequest?subjectUid=>registrationRequest('LIST_SUBJECT',{uid:subjectUid},'drive'):null,
         contactFailed:contactsResult.status==='rejected',profilesFailed:profilesResult.status==='rejected',
         occurrenceGrantAccess,
         roleLabel:role=>userRoles.find(([id])=>id===role)?.[1]||role,

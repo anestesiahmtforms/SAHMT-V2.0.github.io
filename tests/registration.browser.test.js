@@ -174,10 +174,10 @@ test('professional form saves the grid and uploads immediately after file select
  assert.equal(await participation.textContent(),'A preencher');
  assert.ok((await participation.boundingBox()).y>(await grid.boundingBox()).y+(await grid.boundingBox()).height);
  assert.equal(await grid.locator('thead th').count(),6);
- assert.equal(await grid.getByRole('checkbox').count(),33);
+ assert.equal(await grid.getByRole('checkbox').count(),32);
  const sunday=grid.getByRole('row',{name:/Domingo/});
  assert.deepEqual(await sunday.getByRole('checkbox').evaluateAll(checkboxes=>checkboxes.map(input=>input.getAttribute('aria-label'))),
-  ['Domingo, Semanal','Domingo, Quinzenal','Domingo, Plantão noturno']);
+  ['Domingo, Quinzenal','Domingo, Plantão noturno']);
  assert.equal(await grid.getByRole('checkbox',{name:/Integral/}).count(),0);
  const saturdayWeekly=grid.getByRole('checkbox',{name:'Sábado, Semanal'});
  const saturdayFortnightly=grid.getByRole('checkbox',{name:'Sábado, Quinzenal'});
@@ -211,8 +211,6 @@ test('professional form saves the grid and uploads immediately after file select
  await page.getByRole('checkbox',{name:'Segunda-feira, Manhã'}).check();
  await page.getByRole('checkbox',{name:'Domingo, Plantão noturno'}).check();
  assert.equal(await participation.textContent(),'10,71%');
- await sunday.getByRole('checkbox',{name:'Domingo, Semanal'}).check();
- assert.equal(await participation.textContent(),'17,86%');
  await sunday.getByRole('checkbox',{name:'Domingo, Quinzenal'}).check();
  assert.equal(await participation.textContent(),'10,71%');
  for(const field of PROFESSIONAL_FIELDS.filter(field=>field.type==='multi-select')){

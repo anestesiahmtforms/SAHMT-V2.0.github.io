@@ -1,6 +1,6 @@
-import {formatBirthDateAge,formatDisplayDate} from './date-format.js';
+import {formatDisplayDate} from './date-format.js';
 import {MEMBER_CATEGORIES} from './member-categories.js';
-import {PROFESSIONAL_FIELDS} from './registration-domain.js';
+import {renderProfessionalRegistration} from './functional-results.js';
 import {isSystemOwnerEmail} from './system-account-exclusions.js';
 
 const text=value=>typeof value==='string'?value.trim():'';
@@ -45,26 +45,6 @@ export function combinePeople(contacts,profiles) {
  for(const row of rows)row.canLinkProfessional=Boolean(row.email&&byDirectoryEmail.get(row.email)===row&&
   (!row.profile||byUid.get(row.profile.uid)===row.profile)&&!isSystemOwnerEmail(row.email));
  return rows.sort((a,b)=>a.name.localeCompare(b.name,'pt-BR',{sensitivity:'base'}));
-}
-
-const fieldIds=new Set(['fullName','motherName','fatherName','birthDate','cpf','crm','rqe','phone','address',
- 'formation','institutionalParticipation','lattes']);
-const personalFields=PROFESSIONAL_FIELDS.filter(field=>fieldIds.has(field.id));
-function professionalFields(record) {
- const answers=record.answers||{};
- const rows=personalFields.flatMap(field=>{
-  const value=answers[field.id];
-  if(!Array.isArray(value)&&!text(value))return [];
-  const output=field.id==='birthDate'?formatDisplayDate(value)
-   :field.id==='cpf'&&typeof value==='string'?value.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4')
-   :Array.isArray(value)?value.map(item=>field.options?.find(([key])=>key===item)?.[1]||'').filter(Boolean).join(', ')
-   :value;
-  const age=field.id==='birthDate'&&formatBirthDateAge(value);
-  return [[field.label,output],...(age?[['Idade atual',age]]:[])];
- });
- const oldFiliation=text(answers.filiation||record.legacyAnswers?.filiation);
- if(oldFiliation&&(!answers.motherName||!answers.fatherName))rows.push(['Filiação',oldFiliation]);
- return rows;
 }
 
 function fieldList(rows){
@@ -122,7 +102,7 @@ function renderPeopleGroups(rows,roleLabel,registrationRequest){
  }).join('');
 }
 
-export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest,readTeamEntry,occurrenceGrantAccess,contactFailed=false,profilesFailed=false,isCurrent,onEdit,roleLabel}) {
+export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest,readRegistrationFiles,readTeamEntry,occurrenceGrantAccess,contactFailed=false,profilesFailed=false,isCurrent,registrationCurrent=isCurrent,onEdit,roleLabel}) {
  const rows=combinePeople(contacts,profiles);
  const partial=[contactFailed&&'Contatos',profilesFailed&&'Contas do app'].filter(Boolean);
  host.innerHTML=`${partial.length?`<p role="status">${h(partial.join(' e '))} · consulta indisponível.</p>`:''}
@@ -187,7 +167,7 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
   const target=details.querySelector('[data-person-fc]');
   const status=details.querySelector('[data-registration-status]');
   const setStatus=(state,label)=>{
-   if(!isCurrent())return;
+   if(!registrationCurrent())return;
    details.dataset.registrationState=state;
    status.textContent=label;
   };
@@ -206,23 +186,25 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
   void readEntry().catch(()=>{});
   let loading=false,loaded=false;
   details.addEventListener('toggle',async()=>{
-   if(!details.open||!isCurrent()||loading||loaded)return;
+   if(!details.open||!registrationCurrent()||loading||loaded)return;
    loading=true;
    target.textContent='Consultando Cadastro Profissional…';
    try{
     const entry=await readEntry();
-    if(!isCurrent())return;
+    if(!registrationCurrent())return;
     if(entry===null){target.textContent='Há mais de um cadastro profissional para este e-mail.';}
     else if(!entry){target.textContent='Cadastro Profissional ainda não preenchido.';}
     else{
      const {record}=await registrationRequest('DETAIL',{uid:entry.uid});
-     if(!isCurrent())return;
+     if(!registrationCurrent())return;
      if(record?.uid!==entry.uid||address(record?.email)!==row.email)throw Error('PEOPLE_FC_IDENTITY');
-     target.innerHTML=fieldList(professionalFields(record))||'<p>Nenhuma informação preenchida no Cadastro Profissional.</p>';
+     const receipts=await readRegistrationFiles?.(entry.uid).catch(()=>null);
+     if(!registrationCurrent())return;
+     target.innerHTML=renderProfessionalRegistration({record,files:Array.isArray(receipts?.files)?receipts.files:null});
     }
     loaded=true;
    }catch{
-    if(isCurrent())target.textContent='Cadastro Profissional indisponível. Feche e reabra para tentar novamente.';
+    if(registrationCurrent())target.textContent='Cadastro Profissional indisponível. Feche e reabra para tentar novamente.';
    }finally{loading=false;}
   });
  });

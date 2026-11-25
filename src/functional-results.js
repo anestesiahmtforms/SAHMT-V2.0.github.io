@@ -2,7 +2,7 @@ import {requestFunctionalDosimetry} from './functional-client.js';
 import {dosimetryMonths} from './dosimetry-domain.js';
 import {callInstitutionalSurvey} from './institutional-survey-client.js';
 import {callRegistrationApi} from './registration-client.js';
-import {ATTACHMENT_SUBJECTS,PROFESSIONAL_FIELDS} from './registration-domain.js';
+import {ATTACHMENT_SUBJECTS,PROFESSIONAL_FIELDS,scheduleParticipationPercent} from './registration-domain.js';
 import {INSTITUTIONAL_GROUPS} from './institutional-group.js';
 import {formatBirthDateAge,formatDisplayDate,formatDisplayDateTime} from './date-format.js';
 import {createFunctionalOccupationalReader} from './vaccination-client.js';
@@ -81,7 +81,7 @@ function resultList(rows){
     '<div><dt>'+h(label)+'</dt><dd>'+h(value||'Não informado')+'</dd></div>').join('')+'</dl>';
 }
 
-function renderProfessionalRegistration({record,files=[]}){
+export function renderProfessionalRegistration({record,files=[]}){
   let details='<p>Nenhum cadastro profissional salvo até o momento.</p>';
   if(record){
     const answers=record.answers||{},previous=record.legacyAnswers||{},groups=new Map();
@@ -95,6 +95,11 @@ function renderProfessionalRegistration({record,files=[]}){
       if(field.id==='birthDate'&&value){
         const age=formatBirthDateAge(value);
         if(age)rows.push(['Idade atual',age]);
+      }
+      if(field.id==='workDays'){
+        const percent=scheduleParticipationPercent(value);
+        if(percent!==null)rows.push(['Índice de participação na escala',
+          (percent/100).toLocaleString('pt-BR',{style:'percent',maximumFractionDigits:2})]);
       }
     }
     const metadata=[['Situação','Cadastro registrado'],['Ciclo',record.cycle],['E-mail da conta',record.email],

@@ -51,8 +51,11 @@ test('Cadastro Profissional shows completion before opening and loads independen
    calls.push([action,input]);
    if(action==='LIST')return {rows:[{uid:'record-ana',email},
     {uid:'caio-1',email:'caio@example.test'},{uid:'caio-2',email:'caio@example.test'}]};
-   return {record:{uid:'record-ana',email,answers:{phone:'222'}}};
+   return {record:{uid:'record-ana',email,truth:true,
+    answers:{phone:'222',workDays:['0:WEEKLY'],surgicalAreas:['THORACIC'],outsideWork:'YES',outsideWorkDetails:'Atividade externa',additionalInfo:'<script>Teste</script>'},
+    legacyAnswers:{technicalSkills:'Competência anterior'}}};
   },
+  readRegistrationFiles:async uid=>{calls.push(['LIST_SUBJECT',{uid}]);return {files:[{subject:'QUALIFICATIONS',name:'Diploma.pdf'}]};},
   isCurrent:()=>true,roleLabel:role=>role
  });
  assert.match(host.innerHTML,/<div data-person-fk><\/div>\s*<\/details>\s*<details class="people-registration"[^>]*>\s*<summary>Cadastro Profissional /);
@@ -64,8 +67,10 @@ test('Cadastro Profissional shows completion before opening and loads independen
   [['complete','Preenchido'],['pending','Não preenchido'],['unknown','Vínculo ambíguo']]);
  await professional.toggle();
  await professional.toggle();
- assert.deepEqual(calls,[['LIST',{}],['DETAIL',{uid:'record-ana'}]]);
+ assert.deepEqual(calls,[['LIST',{}],['DETAIL',{uid:'record-ana'}],['LIST_SUBJECT',{uid:'record-ana'}]]);
  assert.match(professionalFields.innerHTML,/<dd>222<\/dd>/);
+ for(const expected of ['Dias habituais de trabalho','7,14%','Torácica','Atividade externa','&lt;script&gt;Teste&lt;/script&gt;',
+  'Competência anterior','Declaração de veracidade','Diploma.pdf'])assert.ok(professionalFields.innerHTML.includes(expected),expected);
  assert.doesNotMatch(professionalFields.innerHTML,/111|Entrada na equipe/);
 });
 const code=names.map(name=>{const start=source.indexOf('export async function '+name+'(');const end=source.indexOf('\nexport ',start+1);return source.slice(start,end).replace('export ','');}).join('\n');

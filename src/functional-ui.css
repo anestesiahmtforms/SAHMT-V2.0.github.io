@@ -234,7 +234,7 @@ body:has(.functional-dialog[open]) { overflow: hidden; overscroll-behavior: none
 .functional-professional h3 { margin: 0 0 8px; }
 .functional-professional .functional-result-list { margin: 0; }
 .functional-professional .functional-result-list > div { display: grid; gap: 4px; }
-.functional-professional dd { white-space: pre-wrap; }
+.functional-professional dd { white-space: pre-wrap; overflow-wrap: anywhere; }
 .functional-survey-result h3 { margin: 0 0 12px; }
 .functional-survey-result + .functional-survey-result { margin-top: 24px; }
 .functional-pie { display: grid; justify-items: center; gap: 12px; margin: 0 0 12px; padding: 14px; border: 1px solid #c5dbd7; border-radius: 12px; background: #fff; }
