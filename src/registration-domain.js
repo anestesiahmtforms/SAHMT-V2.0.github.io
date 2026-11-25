@@ -1,7 +1,34 @@
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 export const REGISTRATION_CYCLE='2026';
 export const WORK_DAYS=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'].map((label,day)=>[String(day),label]);
-export const WORK_OPTIONS=[['WEEKLY','Semanal'],['FORTNIGHTLY','Quinzenal'],['FULL','Integral'],['MORNING','Manhã'],['AFTERNOON','Tarde'],['ON_CALL','Plantão']];
+export const WORK_OPTIONS=[['WEEKLY','Semanal'],['FORTNIGHTLY','Quinzenal'],['FULL','Integral'],['MORNING','Manhã'],['AFTERNOON','Tarde'],['ON_CALL','Plantão noturno']];
+export const WORK_SUNDAY = '6';
+export const SUNDAY_WORK_OPTIONS = ['FORTNIGHTLY','FULL','ON_CALL'];
+const FULL_DAY_SHIFTS = 1;
+const PARTIAL_DAY_SHIFTS = 0.5;
+const NIGHT_ON_CALL_SHIFTS = 1;
+
+export function scheduleParticipationPercent(workDays) {
+ const selected = new Set(Array.isArray(workDays) ? workDays : []);
+ if (!selected.size || selected.has('7')) return null;
+
+ let weeklyShifts = 0;
+ for (const [day] of WORK_DAYS) {
+  const sunday = day === WORK_SUNDAY;
+  const weekly = !sunday && selected.has(day + ':WEEKLY');
+  const fortnightly = selected.has(day + ':FORTNIGHTLY');
+  const partialPeriods = sunday ? 0
+   : Number(selected.has(day + ':MORNING')) + Number(selected.has(day + ':AFTERNOON'));
+  const dayShifts = selected.has(day + ':FULL') ? FULL_DAY_SHIFTS : partialPeriods * PARTIAL_DAY_SHIFTS;
+  const shifts = dayShifts + (selected.has(day + ':ON_CALL') ? NIGHT_ON_CALL_SHIFTS : 0);
+
+  if (shifts && weekly && fortnightly) return null;
+  if (!shifts && (selected.has(day) || weekly || fortnightly)) return null;
+  weeklyShifts += fortnightly ? shifts / 2 : shifts;
+ }
+ if (!weeklyShifts) return null;
+ return 100 * weeklyShifts / (WORK_DAYS.length * (FULL_DAY_SHIFTS + NIGHT_ON_CALL_SHIFTS));
+}
 export const SURGICAL_AREAS=[
  ['ANGIOLOGY','Angiologia (varizes e outros)'],['OUTPATIENT','Bloco Ambulatorial'],['CARDIOVASCULAR','Cardiovascular'],['CDI','CDI'],
  ['SPINE','Cirurgia de Coluna'],['GENERAL','Cirurgia Geral'],['ENDOSCOPY','Endoscopia e ou Colonoscopia'],['GYNECOLOGY','Ginecologia/Mastologia'],

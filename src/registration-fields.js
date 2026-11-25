@@ -1,3 +1,5 @@
+import {WORK_SUNDAY, SUNDAY_WORK_OPTIONS} from './registration-domain.js';
+
 const h=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const isRegistrationList = field => ['checks','work-grid','multi-select'].includes(field.type);
 
@@ -23,8 +25,18 @@ function workGrid(field, value) {
   <table><thead><tr><th scope="col">Dia</th>${field.columns.map(([,label]) => `<th scope="col"><span>${h(label)}</span></th>`).join('')}</tr></thead>
   <tbody>${field.options.map(([day,label]) => `<tr><th scope="row">${h(label)}</th>${field.columns.map(([option,column]) => {
    const key = `${day}:${option}`;
+   const sunday = day === WORK_SUNDAY;
+   if (sunday && !SUNDAY_WORK_OPTIONS.includes(option)) {
+    const previous = selected.includes(key) ? `<input type="hidden" name="${field.id}" value="${key}">` : '';
+    return `<td>${previous}<span aria-hidden="true">—</span></td>`;
+   }
    return `<td><label><input type="checkbox" name="${field.id}" value="${key}" aria-label="${h(`${label}, ${column}`)}"${selected.includes(key) ? ' checked' : ''}></label></td>`;
   }).join('')}</tr>`).join('')}</tbody></table>
+  <div class="reg-schedule-participation">
+   <strong id="reg-schedule-participation-title">ÍNDICE DE PARTICIPAÇÃO NA ESCALA</strong>
+   <output aria-labelledby="reg-schedule-participation-title" aria-describedby="reg-schedule-participation-help" data-reg-schedule-participation></output>
+   <small class="reg-help" id="reg-schedule-participation-help" data-reg-schedule-participation-help></small>
+  </div>
  </fieldset>`;
 }
 

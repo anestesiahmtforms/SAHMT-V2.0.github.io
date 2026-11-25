@@ -1,11 +1,12 @@
 import './registration-ui.css';
 import {registrationField, isRegistrationList} from './registration-fields.js';
-import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers} from './registration-domain.js';
+import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers, scheduleParticipationPercent} from './registration-domain.js';
 import {prepareDocumentFile, documentBase64} from './document-image.js';
 import {formatBirthDateAge} from './date-format.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fileInput = '[data-reg-file]';
+const participationFormat = new Intl.NumberFormat('pt-BR', {style:'percent', maximumFractionDigits:2});
 
 function message(error) {
  const code = error.code || error.message;
@@ -85,6 +86,16 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   if (output.textContent !== age) output.textContent = age;
  }
 
+ function updateScheduleParticipation(workDays) {
+  const percent = scheduleParticipationPercent(workDays);
+  query('[data-reg-schedule-participation]').textContent = percent === null
+   ? 'A preencher'
+   : participationFormat.format(percent / 100);
+  query('[data-reg-schedule-participation-help]').textContent = percent === null && workDays?.length
+   ? 'Preencha os turnos habituais e deixe somente uma frequência por dia.'
+   : '100% equivale a trabalhar em período integral e fazer plantão noturno nos sete dias da semana. Integral e plantão noturno valem um turno cada. Manhã e tarde valem meio turno cada. A frequência quinzenal reduz pela metade a contribuição do dia. Sem frequência marcada, o dia conta como semanal.';
+ }
+
  function render() {
   const values = state.record?.answers || {};
   const formerFiliation = values.filiation || state.record?.legacyAnswers?.filiation;
@@ -110,6 +121,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    <div data-reg-files></div></section>`;
   conditionals();
   updateAge();
+  updateScheduleParticipation(values.workDays ?? state.record?.legacyAnswers?.workDays);
   void listFiles();
  }
 
@@ -205,6 +217,10 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   const target = event.target;
   updateAge(event);
   conditionals();
+  if (target.name === 'workDays') {
+   const workDays = Array.from(root.querySelectorAll('[name="workDays"]:checked'), input => input.value);
+   updateScheduleParticipation(workDays);
+  }
   const field = PROFESSIONAL_FIELDS.find(field => field.id === target.name);
   if (field?.none && target.checked) {
    for (const option of root.querySelectorAll('[name="' + field.id + '"]')) {

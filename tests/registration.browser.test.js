@@ -146,8 +146,14 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
  await page.locator('form').waitFor();
  const grid=page.locator('.reg-work-grid table');
+ const participation=page.locator('[data-reg-schedule-participation]');
+ assert.equal(await participation.textContent(),'A preencher');
+ assert.ok((await participation.boundingBox()).y>(await grid.boundingBox()).y+(await grid.boundingBox()).height);
  assert.equal(await grid.locator('thead th').count(),7);
- assert.equal(await grid.locator('tbody input').count(),42);
+ assert.equal(await grid.getByRole('checkbox').count(),39);
+ const sunday=grid.getByRole('row',{name:/Domingo/});
+ assert.deepEqual(await sunday.getByRole('checkbox').evaluateAll(checkboxes=>checkboxes.map(input=>input.getAttribute('aria-label'))),
+  ['Domingo, Quinzenal','Domingo, Integral','Domingo, Plantão noturno']);
  assert.equal(await grid.evaluate(e=>e.getBoundingClientRect().right>e.closest('[data-hub-body]').getBoundingClientRect().right),false);
  const back=page.getByRole('button',{name:'VOLTAR',exact:true});
  const before=await back.boundingBox();
@@ -164,7 +170,12 @@ test('professional form saves the grid and uploads immediately after file select
  await page.getByLabel('Pai',{exact:true}).fill('Pai Sintético');
  assert.equal(await page.locator('[name=filiation]').count(),0);
  await page.getByRole('checkbox',{name:'Segunda-feira, Manhã'}).check();
- await page.getByRole('checkbox',{name:'Domingo, Plantão'}).check();
+ await page.getByRole('checkbox',{name:'Domingo, Plantão noturno'}).check();
+ assert.equal(await participation.textContent(),'10,71%');
+ await sunday.getByRole('checkbox',{name:'Domingo, Integral'}).check();
+ assert.equal(await participation.textContent(),'17,86%');
+ await sunday.getByRole('checkbox',{name:'Domingo, Quinzenal'}).check();
+ assert.equal(await participation.textContent(),'10,71%');
  for(const field of PROFESSIONAL_FIELDS.filter(field=>field.type==='multi-select')){
   const group=page.locator(`[data-field="${field.id}"]`);
   assert.equal(await group.locator('summary').count(),0);
@@ -188,7 +199,7 @@ test('professional form saves the grid and uploads immediately after file select
  const answers=await page.evaluate(()=>window.calls.find(c=>c.action==='SAVE').input.answers);
  assert.equal(answers.motherName,'Mãe Sintética');
  assert.equal(answers.fatherName,'Pai Sintético');
- assert.deepEqual(answers.workDays,['0:WEEKLY','0:MORNING','6:ON_CALL']);
+ assert.deepEqual(answers.workDays,['0:WEEKLY','0:MORNING','6:FORTNIGHTLY','6:FULL','6:ON_CALL']);
  assert.deepEqual(answers.surgicalAreas,['CARDIOVASCULAR','UROLOGY']);
  assert.deepEqual(answers.formation,['TEA','MESTRADO']);
  assert.deepEqual(answers.institutionalParticipation,['COMISSOES','DIRECAO']);
@@ -220,6 +231,7 @@ test('professional form saves the grid and uploads immediately after file select
  assert.equal(await page.locator('[name=cpf]').inputValue(),'52998224725');
  assert.equal(await page.getByLabel('Mãe',{exact:true}).inputValue(),'Mãe Sintética');
  assert.equal(await page.getByLabel('Pai',{exact:true}).inputValue(),'Pai Sintético');
+ assert.equal(await participation.textContent(),'10,71%');
  assert.match(await page.locator('[data-reg-age-value]').textContent(),/\d+ anos, \d+ (?:mês|meses) e \d+ (?:dia|dias)/);
  for(const field of ['surgicalAreas','formation','institutionalParticipation']){
   const selected=await page.locator(`input[name="${field}"]:checked`).evaluateAll(inputs=>inputs.map(input=>input.value));
