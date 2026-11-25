@@ -27,32 +27,41 @@ test('Pessoas groups the directory in display order and keeps contacts without a
  assert.deepEqual([...host.innerHTML.matchAll(/data-person="(\d+)"/g)].map(match=>Number(match[1])),[0,1,5,4,3,2]);
 });
 const names=['listContactCatalog','syncEventMemberDirectory','saveContact','updateContactRegistrationFields'];
-test('Cadastro Profissional opens and loads independently of the contact details',async()=>{
+test('Cadastro Profissional shows completion before opening and loads independently of the contact details',async()=>{
  const contactFields={},professionalFields={},calls=[];
  const panel=(dataset,target)=>{
-  const details={dataset,open:true,querySelector:()=>target};
+  const status={};
+  const details={dataset,status,open:true,querySelector:selector=>selector==='[data-registration-status]'?status:target};
   details.addEventListener=(event,handler)=>{if(event==='toggle')details.toggle=handler;};
   return details;
  };
  const personal=panel({person:'0'},contactFields);
  const professional=panel({personRegistration:'0'},professionalFields);
- const host={querySelectorAll:selector=>({'[data-person]':[personal],'[data-person-registration]':[professional]})[selector]||[]};
+ const pending=panel({personRegistration:'1'},{});
+ const ambiguous=panel({personRegistration:'2'},{});
+ const host={querySelectorAll:selector=>({'[data-person]':[personal],'[data-person-registration]':[professional,pending,ambiguous]})[selector]||[]};
  const email='ana@example.test';
  mountPeopleDirectory(host,{
-  contacts:[{sigla:'AA',name:'Ana',phone:'111',email}],
+  contacts:[{sigla:'AA',name:'Ana',phone:'111',email},
+   {sigla:'BB',name:'Bia',email:'bia@example.test'},
+   {sigla:'CC',name:'Caio',email:'caio@example.test'}],
   profiles:[{uid:'ana',email,active:true,access:true}],
   readTeamEntry:async()=> '2024-02-20',
   registrationRequest:async(action,input)=>{
    calls.push([action,input]);
-   if(action==='LIST')return {rows:[{uid:'record-ana',email}]};
+   if(action==='LIST')return {rows:[{uid:'record-ana',email},
+    {uid:'caio-1',email:'caio@example.test'},{uid:'caio-2',email:'caio@example.test'}]};
    return {record:{uid:'record-ana',email,answers:{phone:'222'}}};
   },
   isCurrent:()=>true,roleLabel:role=>role
  });
- assert.match(host.innerHTML,/<div data-person-fk><\/div>\s*<\/details>\s*<details class="people-registration"[^>]*>\s*<summary>Cadastro Profissional<\/summary>/);
+ assert.match(host.innerHTML,/<div data-person-fk><\/div>\s*<\/details>\s*<details class="people-registration"[^>]*>\s*<summary>Cadastro Profissional /);
  await personal.toggle();
  assert.match(contactFields.innerHTML,/Entrada na equipe/);
- assert.deepEqual(calls,[]);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(calls,[['LIST',{}]]);
+ assert.deepEqual([professional,pending,ambiguous].map(({dataset,status})=>[dataset.registrationState,status.textContent]),
+  [['complete','Preenchido'],['pending','Não preenchido'],['unknown','Vínculo ambíguo']]);
  await professional.toggle();
  await professional.toggle();
  assert.deepEqual(calls,[['LIST',{}],['DETAIL',{uid:'record-ana'}]]);

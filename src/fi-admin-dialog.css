@@ -26,5 +26,8 @@ body:has(.fi-admin-dialog[open]){overflow:hidden}
 .people-fields dt{font-size:.74rem;font-weight:800}
 .people-fields dd{margin:3px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .people-directory .people-registration{padding-inline:12px;border:1px solid #cbdae0;border-radius:8px;background:#fffdf8}
+.people-directory .people-registration[data-registration-state="complete"]{background:#e4f3e6;border-color:#87ae90}
+.people-directory .people-registration[data-registration-state="pending"]{background:#fff2c7;border-color:#c7a354}
+.people-registration__status{margin-inline-start:.5em;font-weight:600}
 .people-registration[open] [data-person-fc]{margin-bottom:10px}
 .people-directory [data-person-fc]{font-size:.84rem}

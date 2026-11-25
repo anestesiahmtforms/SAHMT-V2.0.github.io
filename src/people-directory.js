@@ -87,7 +87,7 @@ function personCard({contact,profile,name,email},index,roleLabel,showRegistratio
    <div data-person-fk></div>
   </details>
   ${showRegistration?`<details class="people-registration" data-person-registration="${index}">
-   <summary>Cadastro Profissional</summary>
+   <summary>Cadastro Profissional <span class="people-registration__status" data-registration-status>Consultando…</span></summary>
    <div data-person-fc aria-live="polite"></div>
   </details>`:''}
  </li>`;
@@ -185,16 +185,35 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
  host.querySelectorAll('[data-person-registration]').forEach(details=>{
   const row=rows[Number(details.dataset.personRegistration)];
   const target=details.querySelector('[data-person-fc]');
+  const status=details.querySelector('[data-registration-status]');
+  const setStatus=(state,label)=>{
+   if(!isCurrent())return;
+   details.dataset.registrationState=state;
+   status.textContent=label;
+  };
+  const readEntry=async()=>{
+   try{
+    const entry=(await registrations()).get(row.email);
+    if(entry===null)setStatus('unknown','Vínculo ambíguo');
+    else if(entry)setStatus('complete','Preenchido');
+    else setStatus('pending','Não preenchido');
+    return entry;
+   }catch(error){
+    setStatus('unknown','Status indisponível');
+    throw error;
+   }
+  };
+  void readEntry().catch(()=>{});
   let loading=false,loaded=false;
   details.addEventListener('toggle',async()=>{
    if(!details.open||!isCurrent()||loading||loaded)return;
    loading=true;
    target.textContent='Consultando Cadastro Profissional…';
    try{
-    const entry=(await registrations()).get(row.email);
+    const entry=await readEntry();
     if(!isCurrent())return;
     if(entry===null){target.textContent='Há mais de um cadastro profissional para este e-mail.';}
-    else if(!entry){target.textContent='Cadastro Profissional ainda não vinculado.';}
+    else if(!entry){target.textContent='Cadastro Profissional ainda não preenchido.';}
     else{
      const {record}=await registrationRequest('DETAIL',{uid:entry.uid});
      if(!isCurrent())return;
