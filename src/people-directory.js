@@ -72,7 +72,7 @@ function fieldList(rows){
  return fields.length?`<dl class="people-fields">${fields.map(([label,value])=>`<div><dt>${h(label)}</dt><dd>${h(value)}</dd></div>`).join('')}</dl>`:'';
 }
 
-function personCard({contact,profile,name,email},index,roleLabel){
+function personCard({contact,profile,name,email},index,roleLabel,showRegistration){
  return `<li>
   <div class="contact-list-heading"><strong>${h([contact?.sigla||profile?.sigla,name].filter(Boolean).join(' · '))}</strong>
   ${contact?`<button class="secondary-button" type="button" data-contact-edit="${h(contact.sigla)}">Editar</button>`:''}</div>
@@ -84,8 +84,12 @@ function personCard({contact,profile,name,email},index,roleLabel){
     ['Grupo',Array.isArray(profile?.memberCategories)?profile.memberCategories.map(key=>MEMBER_CATEGORIES[key]).filter(Boolean).join(' · '):''],
     ['Contato',contact?(contact.active?'Ativo':'Inativo'):''],
     ['Acesso ao app',profile?(profile.active&&profile.access?'Ativo':'Bloqueado'):'']])}
-   <div data-person-fk></div><div data-person-fc aria-live="polite"></div>
+   <div data-person-fk></div>
   </details>
+  ${showRegistration?`<details class="people-registration" data-person-registration="${index}">
+   <summary>Cadastro Profissional</summary>
+   <div data-person-fc aria-live="polite"></div>
+  </details>`:''}
  </li>`;
 }
 
@@ -97,7 +101,7 @@ const peopleGroups=[
  ['SUBSTITUTO','Substituto',['substituto','substituta']]
 ];
 
-function renderPeopleGroups(rows,roleLabel){
+function renderPeopleGroups(rows,roleLabel,registrationRequest){
  if(!rows.length)return '<p class="empty-state">Nenhuma pessoa encontrada nas fontes consultadas.</p>';
  const unassigned='SEM_GRUPO';
  const groups=new Map([...peopleGroups.map(([id])=>[id,[]]),[unassigned,[]]]);
@@ -106,7 +110,7 @@ function renderPeopleGroups(rows,roleLabel){
   const assigned=peopleGroups.find(([id])=>Array.isArray(categories)&&categories.includes(id));
   const role=text(row.contact?.role).toLowerCase().replace(/\s+/g,' ');
   const group=assigned||peopleGroups.find(([, , roles])=>roles.includes(role));
-  groups.get(group?.[0]||unassigned).push(personCard(row,index,roleLabel));
+  groups.get(group?.[0]||unassigned).push(personCard(row,index,roleLabel,registrationRequest&&row.canLinkProfessional));
  });
  return [...peopleGroups,[unassigned,'Sem grupo definido']].map(([id,label])=>{
   const cards=groups.get(id);
@@ -122,7 +126,7 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
  const rows=combinePeople(contacts,profiles);
  const partial=[contactFailed&&'Contatos',profilesFailed&&'Contas do app'].filter(Boolean);
  host.innerHTML=`${partial.length?`<p role="status">${h(partial.join(' e '))} · consulta indisponível.</p>`:''}
- ${renderPeopleGroups(rows,roleLabel)}`;
+ ${renderPeopleGroups(rows,roleLabel,registrationRequest)}`;
  const bySigla=new Map(contacts.map(contact=>[contact.sigla,contact]));
  host.querySelectorAll('[data-contact-edit]').forEach(button=>button.addEventListener('click',()=>{
   const contact=bySigla.get(button.dataset.contactEdit);
@@ -136,7 +140,6 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
  host.querySelectorAll('[data-person]').forEach(details=>{
   const row=rows[Number(details.dataset.person)];
   let loading=false,loaded=false;
-  const target=details.querySelector('[data-person-fc]');
   const fk=details.querySelector('[data-person-fk]');
   if(occurrenceGrantAccess&&row.profile&&row.canLinkProfessional)for(const [kind,title,label] of [
    ['hospital','Núcleo de Segurança do Hospital','Pode registrar relatos no SAHMT'],
@@ -167,36 +170,41 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
    });
    checkbox.addEventListener('input',()=>{button.textContent='SALVAR PERMISSÃO';});
   }
+  if(readTeamEntry&&row.profile?.active===true&&row.profile?.access===true&&row.canLinkProfessional&&!formatDisplayDate(row.contact?.entryDate)){
+   details.addEventListener('toggle',async()=>{
+    if(!details.open||!isCurrent()||loading||loaded)return;
+    loading=true;
+    try{
+     const date=await readTeamEntry(row.profile.uid);
+     if(isCurrent()&&date)fk.innerHTML=fieldList([['Entrada na equipe',formatDisplayDate(date)]]);
+     loaded=true;
+    }catch{}finally{loading=false;}
+   });
+  }
+ });
+ host.querySelectorAll('[data-person-registration]').forEach(details=>{
+  const row=rows[Number(details.dataset.personRegistration)];
+  const target=details.querySelector('[data-person-fc]');
+  let loading=false,loaded=false;
   details.addEventListener('toggle',async()=>{
    if(!details.open||!isCurrent()||loading||loaded)return;
    loading=true;
-   let failed=false;
-   const requests=[];
-   if(readTeamEntry&&row.profile?.active===true&&row.profile?.access===true&&row.canLinkProfessional&&!formatDisplayDate(row.contact?.entryDate)){
-    requests.push(readTeamEntry(row.profile.uid).then(date=>{
-     if(isCurrent()&&date)fk.innerHTML=fieldList([['Entrada na equipe',formatDisplayDate(date)]]);
-    }).catch(()=>{}));
-   }
-   if(registrationRequest&&row.canLinkProfessional){
-    target.textContent='Consultando Cadastro Profissional…';
-    requests.push((async()=>{
-     try{
-      const entry=(await registrations()).get(row.email);
-      if(!isCurrent())return;
-      if(entry===null){target.textContent='Há mais de um cadastro profissional para este e-mail.';return;}
-      if(!entry){target.textContent='Cadastro Profissional ainda não vinculado.';return;}
-      const {record}=await registrationRequest('DETAIL',{uid:entry.uid});
-      if(!isCurrent())return;
-      if(record?.uid!==entry.uid||address(record?.email)!==row.email)throw Error('PEOPLE_FC_IDENTITY');
-      target.innerHTML='<h4>Cadastro Profissional · FC</h4>'+fieldList(professionalFields(record));
-     }catch{
-      failed=true;
-      if(isCurrent())target.textContent='Cadastro Profissional indisponível. Feche e reabra para tentar novamente.';
-     }
-    })());
-   }
-   await Promise.all(requests);
-   loading=false;loaded=!failed;
+   target.textContent='Consultando Cadastro Profissional…';
+   try{
+    const entry=(await registrations()).get(row.email);
+    if(!isCurrent())return;
+    if(entry===null){target.textContent='Há mais de um cadastro profissional para este e-mail.';}
+    else if(!entry){target.textContent='Cadastro Profissional ainda não vinculado.';}
+    else{
+     const {record}=await registrationRequest('DETAIL',{uid:entry.uid});
+     if(!isCurrent())return;
+     if(record?.uid!==entry.uid||address(record?.email)!==row.email)throw Error('PEOPLE_FC_IDENTITY');
+     target.innerHTML=fieldList(professionalFields(record))||'<p>Nenhuma informação preenchida no Cadastro Profissional.</p>';
+    }
+    loaded=true;
+   }catch{
+    if(isCurrent())target.textContent='Cadastro Profissional indisponível. Feche e reabra para tentar novamente.';
+   }finally{loading=false;}
   });
  });
 }
