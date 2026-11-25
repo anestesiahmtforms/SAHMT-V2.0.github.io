@@ -198,7 +198,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   if(!item||!itemNavigable(item))return;
   if(item.panel){panel=item.panel;render();}else if(item.route)onNavigate(item.route);
  };
- const backClick=()=>{if(!cleanupRegistration.goBack?.())goBack();};
+ const backClick=()=>{if(!cleanupRegistration.goBack?.(goBack))goBack();};
  const cancel=event=>{
   // File and camera inputs also emit a bubbling cancel event.
   if(event.target!==dialog)return;

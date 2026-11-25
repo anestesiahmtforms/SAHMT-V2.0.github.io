@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {chromium} from 'playwright';import {PROFESSIONAL_FIELDS,EPIDEMIOLOGICAL_FIELDS} from '../src/registration-domain.js';
 const url='http://127.0.0.1:5178/SAHMT-V2.0.github.io/tests/fixtures/registration-preview.html';
-async function run(fn){const browser=await chromium.launch({headless:true,channel:'msedge'});try{await fn(browser);}finally{await browser.close();}}
+async function run(fn){const browser=await chromium.launch({headless:true,...(process.env.REGISTRATION_BROWSER_EXECUTABLE ? {executablePath:process.env.REGISTRATION_BROWSER_EXECUTABLE} : {channel:'msedge'})});try{await fn(browser);}finally{await browser.close();}}
 const open=(page,name)=>page.getByRole('button',{name,exact:true}).click();
 test('epidemiological modal highlights start, requires a local BMI calculation and accepts a blank suggestion',()=>run(async browser=>{
  const page=await browser.newPage({isMobile:true,hasTouch:true});
@@ -145,6 +145,22 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'ACESSO RESTRITO');
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
  await page.locator('form').waitFor();
+ await open(page,'SALVAR MEU CADASTRO');
+ const feedback=page.locator('[data-reg-feedback]');
+ assert.equal(await feedback.getAttribute('data-kind'),'error');
+ assert.match(await feedback.innerText(),/CPF.*preenchimento obrigatório/);
+ assert.match(await feedback.innerText(),/declaração de veracidade/);
+ await open(page,'OK');
+ await page.locator('[name=crm]').fill('123');
+ await open(page,'VOLTAR');
+ assert.match(await feedback.innerText(),/Fechar sem salvar/);
+ await open(page,'Continuar editando');
+ assert.equal(await page.locator('[name=crm]').inputValue(),'123');
+ await page.keyboard.press('Escape');
+ await open(page,'Sair sem salvar');
+ await open(page,'CADASTRO PROFISSIONAL - SAHMT');
+ await page.locator('form').waitFor();
+ assert.equal(await page.locator('[name=crm]').inputValue(),'');
  const grid=page.locator('.reg-work-grid table');
  const participation=page.locator('[data-reg-schedule-participation]');
  assert.equal(await participation.textContent(),'A preencher');
@@ -215,6 +231,8 @@ test('professional form saves the grid and uploads immediately after file select
  await page.check('[name=truth]');
  await open(page,'SALVAR MEU CADASTRO');
  await page.getByText('Cadastro salvo com sucesso.',{exact:true}).waitFor();
+ assert.equal(await feedback.getAttribute('data-kind'),'success');
+ await open(page,'OK');
  const answers=await page.evaluate(()=>window.calls.find(c=>c.action==='SAVE').input.answers);
  assert.equal(answers.motherName,'Mãe Sintética');
  assert.equal(answers.fatherName,'Pai Sintético');
@@ -287,6 +305,7 @@ test('closing an attachment picker keeps the professional form and its draft ope
  assert.deepEqual(await page.evaluate(()=>window.calls.filter(call=>call.action==='UPLOAD').map(call=>call.input.mimeType)),
   ['application/pdf','image/jpeg']);
  await dialog.dispatchEvent('cancel',{bubbles:false,cancelable:true});
+ await open(page,'Sair sem salvar');
  assert.equal(await dialog.getAttribute('data-panel'),'institutional');
 }));
 test('duplicate participant cannot submit again and a late bootstrap cannot restore a closed banner',()=>run(async browser=>{const page=await browser.newPage();await page.goto(url+'?done');await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO EPIDEMIOLÓGICO - SAHMT');await page.getByText('Você já participou desta pesquisa neste ciclo. Não é possível enviar outra resposta.',{exact:true}).waitFor();assert.equal(await page.locator('form').isVisible(),false);await page.goto(url+'?late');await open(page,'ACESSO RESTRITO');await open(page,'CADASTRO PROFISSIONAL - SAHMT');await page.waitForFunction(()=>!!window.releaseLate);await open(page,'VOLTAR');await page.evaluate(()=>window.releaseLate());await page.waitForTimeout(50);assert.equal(await page.locator('form').count(),0);assert.equal(await page.locator('[data-hub-item]').count(),5);}));

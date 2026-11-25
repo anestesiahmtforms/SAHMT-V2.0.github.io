@@ -37,6 +37,8 @@ function message(error) {
 export function mountInstitutionalRegistration(root, {request, isCurrent = () => true} = {}) {
  const pending = new Set();
  let disposed = false, state, saving = false, uploading = false, attachment = null;
+ let savedForm, afterFeedback;
+ const browser = root.ownerDocument.defaultView;
  const query = selector => root.querySelector(selector);
  const live = () => !disposed && root.isConnected && isCurrent();
  root.classList.add('registration-app');
@@ -96,6 +98,56 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    : '100% equivale a trabalhar em período integral e fazer plantão noturno nos sete dias da semana. Integral e plantão noturno valem um turno cada. Manhã e tarde valem meio turno cada. A frequência quinzenal reduz pela metade a contribuição do dia. Sem frequência marcada, o dia conta como semanal.';
  }
 
+ function formSnapshot(form) {
+  const data = new FormData(form);
+  const answers = Object.fromEntries(PROFESSIONAL_FIELDS.map(field => [field.id,
+   isRegistrationList(field) ? data.getAll(field.id) : String(data.get(field.id) || '')]));
+  return {answers, truth:data.get('truth') === 'on'};
+ }
+
+ function hasUnsavedChanges() {
+  const form = query('.reg-form');
+  return form && (saving || uploading || attachment || JSON.stringify(formSnapshot(form)) !== savedForm);
+ }
+
+ function feedback(kind, title, details, onDiscard) {
+  const dialog = query('[data-reg-feedback]');
+  dialog.dataset.kind = kind;
+  query('#reg-feedback-title').textContent = title;
+  query('[data-reg-feedback-details]').replaceChildren(...details.map(text => {
+   const item = root.ownerDocument.createElement('li');
+   item.textContent = text;
+   return item;
+  }));
+  query('[data-reg-continue]').textContent = onDiscard ? 'Continuar editando' : 'OK';
+  query('[data-reg-discard]').hidden = !onDiscard;
+  afterFeedback = onDiscard;
+  if (!dialog.open) dialog.showModal();
+  query('[data-reg-continue]').focus();
+ }
+
+ function confirmExit(leave) {
+  if (!live() || !hasUnsavedChanges()) return false;
+  if (saving || uploading) {
+   feedback('error', 'Envio em andamento', ['Aguarde a confirmação antes de sair.']);
+  } else {
+   feedback('error', 'Fechar sem salvar?', ['As alterações e os comprovantes pendentes serão descartados.'], leave);
+  }
+  return true;
+ }
+
+ function beforeUnload(event) {
+  if (!live() || !hasUnsavedChanges()) return;
+  event.preventDefault();
+  event.returnValue = '';
+ }
+
+ function hashChange(event) {
+  if (!confirmExit(() => { browser.location.href = event.newURL; })) return;
+  event.stopImmediatePropagation();
+  browser.history.replaceState(browser.history.state, '', event.oldURL);
+ }
+
  function render() {
   const values = state.record?.answers || {};
   const formerFiliation = values.filiation || state.record?.legacyAnswers?.filiation;
@@ -107,7 +159,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    return registrationField(field,value) + note;
   }).join('');
   root.innerHTML = `<div class="reg-notice" data-reg-notice role="status" aria-live="polite"></div>
-   <form class="reg-form"><div class="reg-grid">${fields}</div>
+   <form class="reg-form" novalidate><div class="reg-grid">${fields}</div>
    <label class="reg-confirm"><input type="checkbox" name="truth" required>Confirmo que as informações declaradas são verdadeiras e se destinam ao cadastro institucional.</label>
    <button class="primary-button" type="submit" data-reg-save>SALVAR MEU CADASTRO</button></form>
    <section class="reg-attachments"><h3>Comprovantes</h3>
@@ -118,7 +170,16 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    <p class="reg-help">PDF até 5 MB. As fotos são convertidas para JPEG, com até 1.600 pixels.</p>
    <div class="reg-notice" data-reg-file-status role="status" aria-live="polite"></div>
    <button class="secondary-button" type="button" data-reg-retry hidden>TENTAR NOVAMENTE</button>
-   <div data-reg-files></div></section>`;
+   <div data-reg-files></div></section>
+   <dialog class="reg-feedback" data-reg-feedback aria-labelledby="reg-feedback-title" aria-describedby="reg-feedback-details">
+    <h3 id="reg-feedback-title"></h3>
+    <ul id="reg-feedback-details" data-reg-feedback-details></ul>
+    <div class="reg-feedback-actions">
+     <button type="button" class="secondary-button" data-reg-continue>OK</button>
+     <button type="button" class="secondary-button" data-reg-discard hidden>Sair sem salvar</button>
+    </div>
+   </dialog>`;
+  savedForm = JSON.stringify(formSnapshot(query('.reg-form')));
   conditionals();
   updateAge();
   updateScheduleParticipation(values.workDays ?? state.record?.legacyAnswers?.workDays);
@@ -142,31 +203,42 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
  async function submit(event) {
   event.preventDefault();
   if (saving || !live()) return;
-  const form = new FormData(event.target);
+  const snapshot = formSnapshot(event.target);
+  const {answers, truth} = snapshot;
+  const issues = PROFESSIONAL_FIELDS.filter(field => {
+   if (field.when && answers[field.when[0]] !== field.when[1]) return false;
+   const value = answers[field.id];
+   return field.required && (Array.isArray(value) ? value.length < (field.min || 1) : !value.trim());
+  }).map(field => field.label + ': preenchimento obrigatório.');
+  if (!truth) issues.push('Marque a declaração de veracidade das informações.');
+  if (uploading || attachment) issues.push('Aguarde ou conclua o envio do comprovante selecionado.');
+  if (issues.length) {
+   feedback('error', 'Cadastro com pendências', issues);
+   return;
+  }
   saving = true;
   query('[data-reg-save]').disabled = true;
   try {
-   const answers = Object.fromEntries(PROFESSIONAL_FIELDS.map(field => [field.id,
-    isRegistrationList(field) ? form.getAll(field.id) : String(form.get(field.id) || '')]));
    const input = {
     expectedVersion:state.record?.version || 0,
     answers:validateProfessionalAnswers(answers),
-    truth:form.get('truth') === 'on'
+    truth
    };
    notice('[data-reg-notice]', 'Confirmando envio…');
    const result = await call('professional', 'SAVE', input);
+   if (!result.record) throw Error('REGISTRATION_SAVE_UNCONFIRMED');
    state.record = result.record;
-   notice('[data-reg-notice]', 'Cadastro salvo com sucesso.');
+   savedForm = JSON.stringify(snapshot);
+   notice('[data-reg-notice]', '');
+   if (JSON.stringify(formSnapshot(event.target)) !== savedForm || uploading || attachment) {
+    feedback('error', 'Cadastro com pendências', ['A versão enviada foi salva. Ainda há alterações ou comprovantes pendentes neste formulário.']);
+   } else {
+    feedback('success', 'Cadastro salvo com sucesso.', ['O salvamento foi confirmado.']);
+   }
   } catch (error) {
    if (live()) {
-    notice('[data-reg-notice]', message(error), true);
-    const field = PROFESSIONAL_FIELDS.find(field => error.code === 'REGISTRATION_INVALID_' + field.id.toUpperCase());
-    if (field) {
-     const group = query('[data-field="' + field.id + '"]');
-     const details = group?.querySelector('details');
-     if (details) details.open = true;
-     group?.querySelector('input,select,textarea')?.focus();
-    }
+    notice('[data-reg-notice]', '');
+    feedback('error', 'Cadastro com pendências', [message(error)]);
    }
   } finally {
    saving = false;
@@ -245,9 +317,19 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
  }
 
  const click = event => {
+  if (event.target.closest('[data-reg-continue]')) query('[data-reg-feedback]').close();
+  if (event.target.closest('[data-reg-discard]')) {
+   const leave = afterFeedback;
+   query('[data-reg-feedback]').close();
+   savedForm = JSON.stringify(formSnapshot(query('.reg-form')));
+   attachment = null;
+   leave?.();
+  }
   if (event.target.closest('[data-reg-choose]')) query(fileInput).click();
   if (event.target.closest('[data-reg-retry]')) void upload();
  };
+ browser.addEventListener('beforeunload', beforeUnload);
+ browser.addEventListener('hashchange', hashChange, true);
  root.addEventListener('submit', submit);
  root.addEventListener('input', updateAge);
  root.addEventListener('change', change);
@@ -260,12 +342,14 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   if (live()) root.innerHTML = '<p role="alert">' + escape(message(error)) + '</p>';
  });
 
- return () => {
+ const cleanup = () => {
   disposed = true;
   for (const controller of pending) controller.abort();
   pending.clear();
   attachment = null;
   state = null;
+  browser.removeEventListener('beforeunload', beforeUnload);
+  browser.removeEventListener('hashchange', hashChange, true);
   root.removeEventListener('submit', submit);
   root.removeEventListener('input', updateAge);
   root.removeEventListener('change', change);
@@ -273,4 +357,6 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   root.replaceChildren();
   root.classList.remove('registration-app');
  };
+ cleanup.goBack = confirmExit;
+ return cleanup;
 }

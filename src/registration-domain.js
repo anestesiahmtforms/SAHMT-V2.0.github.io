@@ -143,7 +143,12 @@ export function validateProfessionalAnswers(input){
   if(field.required&&!text||text.length>(field.max||200)||field.options&&text&&!field.options.some(([id])=>id===text))error(code);
   out[field.id]=text;
  }
- if(!validCpf(out.cpf))error('REGISTRATION_INVALID_CPF');out.cpf=out.cpf.replace(/\D/g,'');if(out.fullName.split(/\s+/).length<2||!/^\d{1,12}$/.test(out.crm)||(!/^\+?[\d() .-]{10,40}$/.test(out.phone)||!/^\d{10,15}$/.test(out.phone.replace(/\D/g,'')))||!/^\d{4}-\d{2}-\d{2}$/.test(out.birthDate)||!Number.isFinite(Date.parse(out.birthDate+'T00:00:00Z'))||new Date(out.birthDate+'T00:00:00Z').toISOString().slice(0,10)!==out.birthDate||out.birthDate<'1900-01-01'||out.birthDate>new Date().toISOString().slice(0,10))error('REGISTRATION_INVALID_INPUT');
+ if(!validCpf(out.cpf))error('REGISTRATION_INVALID_CPF');
+ out.cpf=out.cpf.replace(/\D/g,'');
+ if(out.fullName.split(/\s+/).length<2)error('REGISTRATION_INVALID_FULLNAME');
+ if(!/^\d{1,12}$/.test(out.crm))error('REGISTRATION_INVALID_CRM');
+ if(!/^\+?[\d() .-]{10,40}$/.test(out.phone)||!/^\d{10,15}$/.test(out.phone.replace(/\D/g,'')))error('REGISTRATION_INVALID_PHONE');
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(out.birthDate)||!Number.isFinite(Date.parse(out.birthDate+'T00:00:00Z'))||new Date(out.birthDate+'T00:00:00Z').toISOString().slice(0,10)!==out.birthDate||out.birthDate<'1900-01-01'||out.birthDate>new Date().toISOString().slice(0,10))error('REGISTRATION_INVALID_BIRTHDATE');
  if(out.lattes){let url;try{url=new URL(out.lattes);}catch{error('REGISTRATION_INVALID_LATTES');}if(!['https:','http:'].includes(url.protocol)||url.hostname!=='lattes.cnpq.br'||url.username||url.password)error('REGISTRATION_INVALID_LATTES');}if(out.outsideWork!=='YES')out.outsideWorkDetails='';return out;
 }
 export function bmiBand(weight,height){const w=Number(String(weight).replace(',','.')),h=Number(String(height).replace(',','.'));if(!Number.isFinite(w)||!Number.isFinite(h)||w<10||w>500||h<50||h>250)return null;const value=w/(h/100)**2;return {value:Math.round(value*10)/10,band:value<18.5?'LOW':value<25?'MID':value<30?'UPPER':value<35?'B30':value<40?'B35':'B40'};}

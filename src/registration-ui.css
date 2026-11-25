@@ -57,3 +57,25 @@
  .reg-work-grid th:first-child{width:27%}
  .reg-work-grid th span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg)}
 }
+
+.reg-feedback {
+ position: fixed;
+ inset: 0;
+ margin: auto;
+ box-sizing: border-box;
+ width: min(30rem, calc(100% - 2rem));
+ max-height: min(85dvh, 36rem);
+ overflow: auto;
+ padding: 1.25rem;
+ border: 2px solid;
+ border-radius: 1rem;
+}
+.reg-feedback::backdrop { background: rgb(12 28 37 / 62%); }
+.reg-feedback[data-kind="success"] { color: #13543a; background: #e7f7ee; }
+.reg-feedback[data-kind="error"] { color: #831c2a; background: #fff0f1; }
+.reg-feedback h3 { margin: 0 0 .75rem; text-align: center; }
+.reg-feedback ul { padding-inline-start: 1.25rem; }
+.reg-feedback li + li { margin-block-start: .35rem; }
+.reg-feedback-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .5rem; }
+.reg-feedback-actions button { min-height: 44px; }
+.reg-feedback-actions [hidden] { display: none; }
