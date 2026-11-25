@@ -2160,6 +2160,17 @@ html:has(.app-shell--labels),body:has(.app-shell--labels){overflow:hidden;oversc
 .occurrence-confirmation::backdrop{background:#041c3088}
 .occurrence-confirmation strong{display:block;margin-bottom:12px;font-size:1.18rem}
 .occurrence-confirmation button{width:100%;min-height:44px}
+.occurrence-preparation-dialog{position:fixed;inset:0;width:min(90vw,380px);max-width:none;max-height:88dvh;margin:auto;padding:18px;overflow:hidden;border:2px solid #fff;border-radius:22px;background:linear-gradient(145deg,#fff,#e6eff2);color:#143254;box-shadow:0 24px 70px #07122577}
+.occurrence-preparation-dialog::backdrop{background:#041c3088}
+.occurrence-preparation-dialog>button{width:100%;min-height:48px}
+.occurrence-preparation-dialog [role="status"]:empty{display:none}
+.occurrence-preparation-dialog--review{width:min(92vw,620px);padding:0}
+.occurrence-preparation-dialog--review[open]{display:grid;grid-template-rows:minmax(0,auto) auto}
+.occurrence-preparation-content{padding:16px;min-height:0;overflow:auto;overscroll-behavior:contain}
+.occurrence-preparation-content h4{margin-top:0;text-align:center}
+.occurrence-preparation-content ol>li{margin-bottom:10px}
+.occurrence-preparation-content form{margin:0;border:0;padding:0}
+.occurrence-preparation-content :is(input,textarea){font-size:16px}
 .occurrence-result-actions{display:flex;flex-wrap:wrap;gap:8px}
 .occurrence-result-actions>button{flex:1 1 auto;min-height:44px}
 .occurrence-group__arrow{flex:0 0 auto;color:#1762a1;font-size:1.6rem}

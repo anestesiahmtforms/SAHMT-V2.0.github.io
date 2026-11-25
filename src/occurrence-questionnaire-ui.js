@@ -304,7 +304,7 @@ function bindOccurrenceResult(panel,{
   return draft=>open(draft);
 }
 
-function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWriting,setWriting},onSaved,edit) {
+function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWriting,setWriting},onSaved,edit,{review=false}={}) {
   let questionCount=0;
   const improvementVote=index=>entry.formId!=='F08'&&index===questionCount-1;
   const optionLimit=index=>improvementVote(index)?OCCURRENCE_IMPROVEMENT_OPTION_LIMIT:OCCURRENCE_OPTION_LIMIT;
@@ -317,24 +317,59 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
       '<label class="occurrence-field"><span>Alternativa '+(option+1)+(option<2?'':' (opcional)')+'</span>'+
       '<input name="option-'+index+'-'+option+'" maxlength="'+OCCURRENCE_OPTION_TEXT_LIMIT+'" '+(option<2?'required':'')+'></label>').join('')+
     '</fieldset>';
-  panel.innerHTML='<form class="occurrence-followup-analysis"><h4>'+(edit?'EDITAR PÁGINA DE INTERAÇÃO':'REVISAR PREPARAÇÃO')+'</h4>'+
+  if(review){
+    panel.classList.add('occurrence-preparation-dialog--review');
+    panel.setAttribute('aria-label','Pré-análise');
+  }
+  panel.innerHTML=(review?'<div class="occurrence-preparation-content"><article data-preparation-preview></article>':'')+
+    '<form class="occurrence-followup-analysis"'+(review?' hidden':'')+'><h4>'+
+    (edit?'EDITAR PÁGINA DE INTERAÇÃO':review?'EDITAR PRÉ-ANÁLISE':'REVISAR PREPARAÇÃO')+'</h4>'+
     '<fieldset><label class="occurrence-field"><span>Descrição para análise da equipe</span>'+
     '<textarea name="description" rows="5" maxlength="5000" required></textarea></label>'+
     '<div class="occurrence-followup-analysis" data-occurrence-question-fields></div>'+
-    '<button type="submit" class="primary-button">'+(edit?'SALVAR ALTERAÇÕES':'PUBLICAR OCORRÊNCIA E QUESTIONÁRIO')+'</button>'+
+    (review?'':'<button type="submit" class="primary-button">'+(edit?'SALVAR ALTERAÇÕES':'PUBLICAR OCORRÊNCIA E QUESTIONÁRIO')+'</button>')+
     (edit?'<button type="button" class="secondary-button" data-cancel-interaction>CANCELAR</button>':'')+'</fieldset>'+
-    '</form><p role="status"></p>';
-  panel.hidden=true;
+    '</form><p role="status"></p>'+(review?'</div><footer class="occurrence-dialog__footer">'+
+      '<button type="button" class="secondary-button" data-preparation-edit>EDITAR</button>'+
+      '<button type="button" class="primary-button" data-preparation-publish>PUBLICAR</button></footer>':'');
+  if(!review)panel.hidden=true;
   const form=panel.querySelector('form'),controls=form.querySelector('fieldset'),status=panel.querySelector('[role="status"]');
+  const preview=panel.querySelector('[data-preparation-preview]'),editButton=panel.querySelector('[data-preparation-edit]'),
+    publishButton=panel.querySelector('[data-preparation-publish]');
+  const readDraft=()=>({
+    description:form.elements.description.value.trim(),
+    questions:Array.from({length:questionCount},(_,index)=>({
+      prompt:form.elements['prompt-'+index].value.trim(),
+      options:Array.from({length:optionLimit(index)},(_,option)=>form.elements['option-'+index+'-'+option].value.trim()).filter(Boolean)
+    }))
+  });
+  function showPreview(){
+    const {description,questions}=readDraft();
+    form.hidden=true;
+    preview.hidden=false;
+    editButton.textContent='EDITAR';
+    preview.innerHTML='<h4 tabindex="-1">PRÉ-ANÁLISE</h4><p class="occurrence-poll-final-text">'+escape(description)+'</p>'+
+      '<ol>'+questions.map(({prompt,options})=>'<li><strong>'+escape(prompt)+'</strong><ul>'+
+      options.map(option=>'<li>'+escape(option)+'</li>').join('')+'</ul></li>').join('')+'</ol>';
+    preview.querySelector('h4').focus();
+  }
+  if(review){
+    editButton.addEventListener('click',()=>{
+      if(!isCurrent()||isWriting())return;
+      if(!form.hidden){if(form.reportValidity())showPreview();return;}
+      status.textContent='';
+      preview.hidden=true;
+      form.hidden=false;
+      editButton.textContent='VER PRÉ-ANÁLISE';
+      form.elements.description.focus();
+    });
+    publishButton.addEventListener('click',()=>{if(isCurrent()&&!isWriting())form.requestSubmit();});
+  }
   form.querySelector('[data-cancel-interaction]')?.addEventListener('click',()=>{if(!isWriting())panel.hidden=true;});
   form.addEventListener('submit',async event=>{
     event.preventDefault();
     if(!isCurrent()||isWriting())return;
-    const draft=Array.from({length:questionCount},(_,index)=>({
-      prompt:form.elements['prompt-'+index].value,
-      options:Array.from({length:optionLimit(index)},(_,option)=>form.elements['option-'+index+'-'+option].value.trim()).filter(Boolean)
-    }));
-    const description=form.elements.description.value.trim();
+    const {description,questions:draft}=readDraft();
     if(!description){status.textContent='Preencha a descrição para análise.';return;}
     let normalized;
     try {normalized=questionCount?normalizeOccurrencePreparationQuestions(draft,entry.formId):undefined;}
@@ -345,12 +380,16 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
       return;
     }
     setWriting(true);controls.disabled=true;status.textContent=edit?'Salvando alterações…':'Publicando ocorrência e questionário…';
+    if(review)editButton.disabled=publishButton.disabled=true;
     try {
       const saved=edit ? await repository.updateOccurrenceInteraction({uid,id,description,questions:normalized,
         expectedDescription:edit.description,expectedRevision:edit.revision})
         : {questions:await repository.publishOccurrenceQuestionnaire({uid,id,description,questions:normalized}),
           revision:0,canReviseQuestions:true};
-      if(isCurrent()){panel.replaceChildren();panel.hidden=true;onSaved(saved,description);}
+      if(isCurrent()){
+        if(review)panel.close();
+        panel.replaceChildren();panel.hidden=true;onSaved(saved,description);
+      }
     } catch(error) {
       if(!isCurrent())return;
       if(error.message==='OCCURRENCE_QUESTIONS_LOCKED'){
@@ -360,7 +399,10 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
       } else if(['OCCURRENCE_QUESTIONNAIRE_PUBLISHED','OCCURRENCE_INTERACTION_CHANGED'].includes(error.message)) {
         status.textContent='A página foi atualizada. Reabra a ocorrência para editar a versão atual.';
       } else status.textContent='Não foi possível salvar a página. Tente novamente.';
-    } finally {setWriting(false);controls.disabled=false;}
+    } finally {
+      setWriting(false);controls.disabled=false;
+      if(review)editButton.disabled=publishButton.disabled=false;
+    }
   });
   return ({description,questions=[]})=>{
     questionCount=questions.length;
@@ -373,6 +415,7 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
       }
     }
     panel.hidden=false;
+    if(review){showPreview();return true;}
     status.textContent=edit?(questionCount?'':'As perguntas estão fixas. Você pode ajustar a descrição.')
       :'Revise a descrição e as perguntas antes de publicar.';
     form.elements.description.focus();
@@ -461,7 +504,7 @@ export function mountOccurrenceQuestionnaire(host,options) {
         showResponse(questions,revision);
       }
       else if(canEdit&&entry.analysisClosed!==true) {
-        stagePreparation=bindQuestionnaireEditor(config,options,(saved,description)=>{
+        const savePreparation=(saved,description)=>{
           entry.analysisStarted=true;
           published=saved;
           stagePreparation=null;
@@ -469,13 +512,16 @@ export function mountOccurrenceQuestionnaire(host,options) {
           onPrepared?.();
           interaction.hidden=false;
           showResponse(saved.questions,saved.revision);
-        });
+        };
+        stagePreparation=sahmt?(draft,target)=>target?.open&&
+          bindQuestionnaireEditor(target,options,savePreparation,null,{review:true})(draft)
+          :bindQuestionnaireEditor(config,options,savePreparation);
       } else if(entry.analysisClosed!==true)response.innerHTML='<p>Questionário ainda não publicado.</p>';
       if(canEdit&&entry.analysisClosed!==true)onEditorReady?.({
         hasQuestionnaire:()=>Boolean(published),
         readResponses:()=>readOccurrenceResponses({...options,questions:published?.questions??[]}),
         stageDescription:editInteraction,
-        stagePreparation:draft=>stagePreparation?.(draft),stageResult
+        stagePreparation:(draft,target)=>stagePreparation?.(draft,target),stageResult
       });
     } catch {
       if(!isCurrent())return;

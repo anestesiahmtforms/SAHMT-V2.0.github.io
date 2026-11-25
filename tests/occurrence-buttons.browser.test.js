@@ -69,13 +69,13 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await server.listen();const origin='http://127.0.0.1:'+server.httpServer.address().port;
   browser=await(engine==='edge'?chromium.launch({channel:'msedge',headless:true}):webkit.launch({headless:true}));
   const page=await browser.newPage({viewport:{width:390,height:844}}),errors=[];page.on('pageerror',e=>errors.push(e.message));
-  if(engine==='webkit')await page.addInitScript(()=>{
-   Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'});
+  await page.addInitScript(isWebKit=>{
+   if(isWebKit)Object.defineProperty(navigator,'userAgent',{value:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'});
    Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
-    writeText:async text=>{window.shortcutOutput=text;},
+    writeText:async text=>{window.shortcutOutput=text;window.copiedPoll=text;},
     readText:async()=>window.shortcutOutput
    }});
-  });
+  },engine==='webkit');
   await page.route('**/*',r=>new URL(r.request().url()).origin===origin?r.continue():r.abort());await page.goto(origin+'/fixture');
   await page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'}).waitFor();
   assert.equal(await page.getByText(/Auditoria restrita|Registro autenticado/).count(),0);
@@ -331,12 +331,6 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   assert.equal(await editor.inputValue(),'Texto revisado');
   assert.equal(await followupBanner.locator('[data-occurrence-description]').textContent(),'Relato completo aqui');
   assert.equal(await page.evaluate(()=>window.preparations),undefined);
-  await page.evaluate(()=>{
-   Object.defineProperty(navigator,'clipboard',{configurable:true,value:{
-    write:async items=>{window.copiedPoll=await(await items[0].getType('text/plain')).text();},
-    writeText:async text=>{window.copiedPoll=text;}
-   }});
-  });
   const analyzeButton=actionFooter.getByRole('button',{name:'ANALISAR RESPOSTAS'});
   await analyzeButton.click();
   const analysis=followupBanner.locator('.occurrence-ai-pane:visible');
@@ -508,12 +502,33 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await pendingRecord.click();
   await followupBanner.getByText('Relato original privado',{exact:true}).waitFor();
   await actionFooter.getByRole('button',{name:'PREPARAR OCORRÊNCIA'}).click();
-  await prep.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
-  await prep.getByRole('textbox',{name:'Resposta da IA em JSON'}).fill(JSON.stringify({
-   protocolo:'GRA 002',descricao:'Pré-análise revisada pela administração',perguntas:GRA_001_QUESTIONS
+  const preparationLauncher=page.getByRole('dialog',{name:'Preparar ocorrência',exact:true});
+  assert.deepEqual(await preparationLauncher.getByRole('button').allTextContents(),['EXECUTAR NO CHATGPT']);
+  assert.equal(await preparationLauncher.getByRole('textbox').count(),0);
+  await preparationLauncher.getByRole('button',{name:'EXECUTAR NO CHATGPT'}).click();
+  assert.match(await page.evaluate(()=>window.shortcutOutput),/"protocolo": "GRA 002"/);
+  const bringResponse=preparationLauncher.getByRole('button',{name:'IMPORTAR RESPOSTA DO IPHONE'});
+  await bringResponse.click();
+  await preparationLauncher.getByText(/A resposta ainda não chegou/).waitFor({timeout:4000});
+  await page.evaluate(text=>{window.shortcutOutput=text;},JSON.stringify({
+   protocolo:'GRA 002',descricao:'Pré-análise gerada',perguntas:GRA_001_QUESTIONS
   }));
-  await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
-  await followupBanner.getByRole('button',{name:'PUBLICAR OCORRÊNCIA E QUESTIONÁRIO'}).click();
+  await bringResponse.click();
+  const preview=page.getByRole('dialog',{name:'Pré-análise',exact:true});
+  await preview.getByText('Pré-análise gerada',{exact:true}).waitFor();
+  assert.deepEqual(await preview.getByRole('button').allTextContents(),['EDITAR','PUBLICAR']);
+  assert.equal(await preview.getByRole('textbox').count(),0);
+  assert.equal(await page.evaluate(()=>window.preparations?.['ethical-test']),undefined);
+  await page.setViewportSize({width:320,height:470});
+  const reviewFooter=await preview.locator('footer').boundingBox();
+  assert.ok(reviewFooter.y+reviewFooter.height<=470);
+  await preview.getByRole('button',{name:'EDITAR',exact:true}).click();
+  await preview.getByRole('textbox',{name:'Descrição para análise da equipe'}).fill('Pré-análise revisada pela administração');
+  await preview.getByRole('button',{name:'VER PRÉ-ANÁLISE',exact:true}).click();
+  await preview.getByText('Pré-análise revisada pela administração',{exact:true}).waitFor();
+  await preview.getByRole('button',{name:'PUBLICAR'}).click();
+  await preview.waitFor({state:'hidden'});
+  await page.setViewportSize({width:390,height:844});
   await followupBanner.getByText('Pré-análise revisada pela administração',{exact:true}).waitFor();
   await back.click();
   await page.evaluate(()=>window.isOccurrenceAdmin=false);

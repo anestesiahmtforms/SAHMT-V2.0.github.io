@@ -4,6 +4,80 @@ import {buildPreparationPrompt,buildAnalysisPrompt,readPreparationDraft,readAnal
 
 const shortcutUrl='shortcuts://run-shortcut?name='+encodeURIComponent('SAHMT Ocorrências')+'&input=clipboard';
 
+function draftErrorMessage(error,{formId,protocol,fallback='Confira se o JSON retornado segue o formato solicitado no prompt.'}){
+  switch(error.message){
+    case 'OCCURRENCE_IMPROVEMENT_VOTE_INVALID':return 'Use duas ou três ações distintas na última pergunta.';
+    case 'OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID':return formId==='F08'?'Inclua as quatro perguntas do roteiro IDEA.'
+      :'Inclua de cinco a dez perguntas, contando a votação final.';
+    case 'OCCURRENCE_ANALYSIS_DATE_INVALID':return 'Confira o prazo sugerido. Use uma data válida ou deixe o campo vazio.';
+    case 'OCCURRENCE_DRAFT_PROTOCOL':return 'O protocolo do rascunho deve ser '+protocol+'.';
+    default:return fallback;
+  }
+}
+
+function openSahmtPreparation(host,{mode,isCurrent,isWriting,formId,protocol}){
+  const dialog=document.createElement('dialog');
+  dialog.className='occurrence-preparation-dialog';
+  dialog.setAttribute('aria-label','Preparar ocorrência');
+  dialog.innerHTML='<button class="primary-button" type="button">EXECUTAR NO CHATGPT</button>'+
+    '<p role="status"></p>';
+  host.append(dialog);
+  const button=dialog.querySelector('button'),status=dialog.querySelector('[role="status"]');
+  const current=()=>isCurrent()&&dialog.open;
+  let prompt='',launched=false;
+  dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+  dialog.addEventListener('cancel',event=>{if(isWriting())event.preventDefault();});
+  dialog.addEventListener('click',event=>{
+    if(event.target!==dialog||isWriting())return;
+    const rect=dialog.getBoundingClientRect();
+    if(event.clientX<rect.left||event.clientX>rect.right||event.clientY<rect.top||event.clientY>rect.bottom)dialog.close();
+  });
+  async function prepare(){
+    button.disabled=true;
+    status.textContent='';
+    try{prompt=await mode.prepare();}catch{
+      if(current())status.textContent='Não foi possível preparar a ocorrência. Toque no botão para tentar novamente.';
+    }finally{if(current())button.disabled=false;}
+  }
+  button.addEventListener('click',async()=>{
+    if(!current()||isWriting()||button.disabled)return;
+    if(!prompt){void prepare();return;}
+    button.disabled=true;
+    status.textContent='';
+    try{
+      if(!launched){
+        try{await navigator.clipboard.writeText(prompt);}catch{
+          if(current())status.textContent='Não foi possível acessar a área de transferência. Toque para tentar novamente.';
+          return;
+        }
+        if(!current())return;
+        launched=true;
+        button.textContent='IMPORTAR RESPOSTA DO IPHONE';
+        try{window.location.assign(shortcutUrl);}catch{
+          status.textContent='Abra SAHMT Ocorrências no app Atalhos e volte para importar.';
+        }
+        return;
+      }
+      let text;
+      try{text=await navigator.clipboard.readText();}catch{
+        if(current())status.textContent='Permita a colagem no iPhone e toque no botão novamente.';
+        return;
+      }
+      if(!current())return;
+      if(!text.trim()||text.trim()===prompt.trim()){
+        status.textContent='A resposta ainda não chegou. Se o atalho não abriu, execute SAHMT Ocorrências no app Atalhos.';
+        return;
+      }
+      if(!await mode.stage(text,dialog)&&current())status.textContent='Não foi possível abrir a pré-análise. Tente novamente.';
+    }catch(error){
+      if(current())status.textContent=draftErrorMessage(error,{formId,protocol,fallback:'A resposta não segue o formato esperado.'});
+    }finally{if(current()&&button.isConnected)button.disabled=false;}
+  });
+  dialog.showModal();
+  void prepare();
+  return dialog;
+}
+
 export function bindOccurrencePromptActions(footer,host,{
   entry,original=entry,isCurrent,isWriting,hasQuestionnaire,readPreparationContext,readResponses,stageDescription,stagePreparation,stageResult
 }) {
@@ -14,9 +88,9 @@ export function bindOccurrencePromptActions(footer,host,{
     preparation:{
       label:'PREPARAR OCORRÊNCIA',
       prepare:async()=>buildPreparationPrompt(promptEntry(),hasQuestionnaire(),await readPreparationContext()),
-      async stage(text) {
+      async stage(text,target) {
         const draft=readPreparationDraft(text,protocol,hasQuestionnaire(),entry.formId);
-        return draft.questions ? stagePreparation(draft) : stageDescription(draft.description);
+        return draft.questions ? stagePreparation(draft,target) : stageDescription(draft.description);
       },
       success:'Rascunho carregado. Revise a preparação antes de publicar.'
     },
@@ -31,7 +105,8 @@ export function bindOccurrencePromptActions(footer,host,{
     }
   };
   footer.innerHTML=Object.entries(modes).map(([key,{label}])=>
-    '<button type="button" class="secondary-button" data-ai-action="'+key+'" aria-expanded="false">'+label+'</button>'
+    '<button type="button" class="secondary-button" data-ai-action="'+key+'" '+
+    (sahmt&&key==='preparation'?'aria-haspopup="dialog"':'aria-expanded="false"')+'>'+label+'</button>'
   ).join('');
   footer.hidden=false;
   const actions=[...footer.querySelectorAll('button')];
@@ -46,8 +121,14 @@ export function bindOccurrencePromptActions(footer,host,{
     }
   }
   updateActions();
+  let preparationDialog;
+  if(sahmt)preparation.addEventListener('click',()=>{
+    if(!isCurrent()||isWriting()||preparationDialog?.open)return;
+    preparationDialog=openSahmtPreparation(host,{mode:modes.preparation,isCurrent,isWriting,formId:entry.formId,protocol});
+  });
   const panes=new Map();
   for(const [key,mode] of Object.entries(modes)) {
+    if(sahmt&&key==='preparation')continue;
     const pane=document.createElement('section');
     pane.className='occurrence-followup-analysis occurrence-ai-pane';
     pane.hidden=true;
@@ -171,32 +252,23 @@ export function bindOccurrencePromptActions(footer,host,{
         } else if(isCurrent())status.textContent='Não foi possível abrir o editor. Tente novamente.';
       } catch(error) {
         if(!isCurrent())return;
-        if(error.message==='OCCURRENCE_IMPROVEMENT_VOTE_INVALID') {
-          status.textContent='Use duas ou três ações distintas na última pergunta.';
-        } else if(error.message==='OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID') {
-          status.textContent=entry.formId==='F08'?'Inclua as quatro perguntas do roteiro IDEA.'
-            :'Inclua de cinco a dez perguntas, contando a votação final.';
-        } else if(error.message==='OCCURRENCE_ANALYSIS_DATE_INVALID') {
-          status.textContent='Confira o prazo sugerido. Use uma data válida ou deixe o campo vazio.';
-        } else {
-          status.textContent=error.message==='OCCURRENCE_DRAFT_PROTOCOL'
-            ?'O protocolo do rascunho deve ser '+protocol+'.'
-            :'Confira se o JSON retornado segue o formato solicitado no prompt.';
-        }
+        status.textContent=draftErrorMessage(error,{formId:entry.formId,protocol});
       } finally {button.disabled=false;}
     });
   }
-  for(const action of actions)action.addEventListener('click',()=>{
+  const inlineActions=actions.filter(button=>panes.has(button.dataset.aiAction));
+  for(const action of inlineActions)action.addEventListener('click',()=>{
     if(!isCurrent()||isWriting())return;
     const selected=panes.get(action.dataset.aiAction);
     const opening=selected.pane.hidden;
-    for(const button of actions)button.setAttribute('aria-expanded',String(opening&&button===action));
+    for(const button of inlineActions)button.setAttribute('aria-expanded',String(opening&&button===action));
     for(const pane of panes.values())pane.pane.hidden=!opening||pane!==selected;
     if(opening)void selected.open();
   });
   return ()=>{
     updateActions();
-    for(const button of actions)button.setAttribute('aria-expanded','false');
+    if(preparationDialog?.open)preparationDialog.close();
+    for(const button of inlineActions)button.setAttribute('aria-expanded','false');
     for(const {pane} of panes.values())pane.hidden=true;
   };
 }
