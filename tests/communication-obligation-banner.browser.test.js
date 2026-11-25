@@ -134,3 +134,59 @@ test('Cadastro Profissional abre pela convocação e reaparece após sair sem en
   await panel(page).waitFor({state:'detached'});
  }finally{await page.close();}
 });
+
+test('sexta-feira bloqueia a navegação até confirmar o Cadastro Profissional',async()=>{
+ const page=await pageFor({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+ try{
+  await page.clock.install();
+  const item=await page.evaluate(async()=>{
+   const cutoff=Date.parse('2026-11-27T00:00:00-03:00');
+   fixture.now=cutoff-500;
+   const registration={id:'activity-registration',publishAt:cutoff-86400000,dueAt:cutoff+86400000,
+    activity:{kind:'SURVEY',id:'professional',title:'Cadastro Profissional - SAHMT',cycle:'2026'}};
+   fixture.items=[{...fixture.items[0],publishAt:cutoff-86400000},registration];
+   await banner.refresh();
+   return registration;
+  });
+  assert.equal(await panel(page).getAttribute('data-blocking'),'false');
+  await page.evaluate(()=>{fixture.now+=500;});
+  await page.clock.runFor(550);
+  const banner=panel(page);
+  assert.equal(await banner.getAttribute('data-blocking'),'true');
+  assert.equal(await banner.getByLabel('Atividade pendente').inputValue(),item.id);
+  const bounds=await banner.boundingBox();
+  assert.equal(bounds.width,390);
+  assert.equal(bounds.height,844);
+  await page.evaluate(()=>{banner.setActivityActive('old');document.querySelector('#general').click();});
+  assert.equal(await page.evaluate(()=>fixture.general),0);
+  await banner.getByRole('button',{name:'Abrir Cadastro Profissional'}).click();
+  await banner.waitFor({state:'hidden'});
+  await page.evaluate(()=>{
+   const feedback=document.createElement('dialog');
+   feedback.id='save-feedback';
+   feedback.innerHTML='<button>Confirmar</button>';
+   document.querySelector('#native').append(feedback);
+   feedback.showModal();
+  });
+  await page.getByRole('button',{name:'Confirmar'}).click();
+  assert.equal(await banner.isVisible(),false);
+  await page.evaluate(()=>{
+   document.querySelector('#save-feedback').close();
+   document.querySelector('#native').close();
+  });
+  await banner.waitFor();
+  assert.equal(await banner.getAttribute('data-blocking'),'true');
+  await page.goto(url+'?offline');
+  await banner.waitFor();
+  assert.equal(await banner.getAttribute('data-blocking'),'true');
+  await page.evaluate(async item=>{
+   fixture.fail=false;
+   fixture.now=Date.parse('2026-11-27T00:00:00-03:00');
+   fixture.items=[item];
+   fixture.completed=[item.id];
+   await banner.refresh();
+  },item);
+  assert.equal(await banner.count(),0);
+  assert.equal(await page.locator('#route').evaluate(el=>el.inert),false);
+ }finally{await page.close();}
+});

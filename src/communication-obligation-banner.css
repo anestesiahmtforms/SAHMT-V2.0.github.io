@@ -14,7 +14,7 @@
 .communication-obligation[data-stage="2"]{min-height:min(275px,50dvh)}
 .communication-obligation[data-stage="3"]{min-height:min(305px,55dvh)}
 .communication-obligation[data-stage="4"]{min-height:min(350px,65dvh)}
-.communication-obligation[data-blocking="true"]{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;display:flex;flex-direction:column;justify-content:center}
+.communication-obligation[data-blocking="true"]{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;display:flex;flex-direction:column;justify-content:center;overscroll-behavior:contain}
 .communication-obligation[data-blocking="true"] .communication-obligation__move{cursor:default}
 .communication-obligation[data-blocking="true"] .communication-obligation__content{width:100%;max-width:640px;align-self:center;padding:20px;overflow:auto}
 .communication-obligation[data-active="true"]{min-height:0}

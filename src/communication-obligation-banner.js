@@ -2,19 +2,58 @@ import {obligationDueAt,obligationStage} from '../communication/obligations.js';
 import {activityBreadcrumb} from './communication-activity-selection.js';
 import './communication-obligation-banner.css';
 
+const registrationLockAt=Date.parse('2026-11-27T00:00:00-03:00');
+const isProfessional=item=>item?.activity?.kind==='SURVEY'&&item.activity.id==='professional';
+const isRegistrationCampaign=item=>isProfessional(item)&&item.activity.cycle==='2026';
+const registrationDueAt=item=>isRegistrationCampaign(item)?registrationLockAt:obligationDueAt(item);
+
 /** One controller per authenticated session. Responses, never the device clock, advance age. */
 export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>true,onOpenActivity,root=document.body}={}){
  const doc=root.ownerDocument,win=doc.defaultView;
  let disposed=false,items=[],selectedId=null,activeId=null,serverNow=null,error='',inFlight=null,position=null,drag=null,blocking=false,interacting=0,completionPending=false;
+ let confirmedAt=win.performance.now(),refreshTimer;
+ const cacheKey='sahmt:professional-obligation:2026:'+uid;
  const inertBefore=new Map(),modals=[],listeners=[];
  const node=doc.createElement('section');node.className='communication-obligation';node.dataset.obligationBanner='';node.setAttribute('aria-label','Atividades obrigatórias');node.setAttribute('popover','manual');
  node.innerHTML='<div class="communication-obligation__move" role="group" tabindex="0" aria-label="Mover aviso com as setas do teclado">⋮⋮ ATIVIDADE OBRIGATÓRIA</div><div class="communication-obligation__content"><label class="communication-obligation__selection"><span>Atividade pendente</span><select aria-label="Atividade pendente"></select></label><p data-path></p><p data-criterion></p><p data-deadline></p><p role="status" aria-live="polite" data-status></p><button type="button" data-open>Abrir atividade</button></div>';
  const find=selector=>node.querySelector(selector),select=find('select'),handle=find('.communication-obligation__move');
  const listen=(target,type,fn,options)=>{target.addEventListener(type,fn,options);listeners.push(()=>target.removeEventListener(type,fn,options));};
  const alive=()=>{if(disposed)return false;if(!uid||!isCurrent()){cleanup();return false;}return true;};
- const current=()=>items.find(item=>item.id===selectedId)||items[0];
- const isProfessional=item=>item?.activity?.kind==='SURVEY'&&item.activity.id==='professional';
- const stage=()=>items.length&&serverNow!==null?Math.max(...items.map(item=>obligationStage(item.publishAt,serverNow,item.dueAt))):0;
+ const registrationNow=()=>serverNow===null?0:serverNow+Math.floor(win.performance.now()-confirmedAt);
+ const mandatoryRegistration=()=>registrationNow()>=registrationLockAt?items.find(isRegistrationCampaign):null;
+ const current=()=>mandatoryRegistration()||items.find(item=>item.id===selectedId)||items[0];
+ const stage=()=>items.length&&serverNow!==null?Math.max(...items.map(item=>{
+  if(!isRegistrationCampaign(item))return obligationStage(item.publishAt,serverNow,item.dueAt);
+  if(registrationNow()>=registrationLockAt)return 5;
+  return Math.min(4,obligationStage(item.publishAt,serverNow,registrationLockAt));
+ })):0;
+ function restoreRegistration(){
+  try{
+   const saved=JSON.parse(win.localStorage.getItem(cacheKey));
+   if(!isCurrent()||!Number.isSafeInteger(saved?.serverNow)||saved.serverNow<0||!Array.isArray(saved.items))return;
+   items=saved.items.filter(item=>isRegistrationCampaign(item)&&/^activity-[a-zA-Z0-9-]{1,100}$/.test(item.id)&&
+    Number.isSafeInteger(item.publishAt)&&item.publishAt>=0&&item.publishAt<=saved.serverNow);
+   if(items.length)confirmedClock(saved.serverNow);
+  }catch{/* Storage can be unavailable on this device. */}
+ }
+ function persistRegistration(){
+  try{
+   const pending=items.filter(isRegistrationCampaign).map(({id,publishAt,activity})=>({id,publishAt,activity}));
+   if(pending.length)win.localStorage.setItem(cacheKey,JSON.stringify({items:pending,serverNow:registrationNow()}));
+   else win.localStorage.removeItem(cacheKey);
+  }catch{/* The live inbox remains authoritative. */}
+ }
+ function scheduleRefresh(){
+  win.clearTimeout(refreshTimer);
+  if(!items.some(isRegistrationCampaign))return;
+  const remaining=registrationLockAt-registrationNow();
+  refreshTimer=win.setTimeout(()=>{
+   if(!alive())return;
+   if(mandatoryRegistration()){persistRegistration();render();}
+   if(doc.visibilityState!=='hidden'&&win.navigator.onLine!==false)void refresh();
+   else scheduleRefresh();
+  },remaining>0?Math.min(remaining,60_000):60_000);
+ }
  function restoreInert(){for(const [el,previous]of inertBefore)el.inert=previous;inertBefore.clear();}
  function applyBlocking(){
   restoreInert();if(!blocking||!node.isConnected)return;
@@ -37,8 +76,15 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   for(const modal of open)if(!modals.includes(modal))modals.push(modal);
   const target=modals.at(-1)||root;
   if(node.parentElement!==target){restoreInert();node.remove();target.append(node);}
-  const editingRegistration=target.matches('dialog[data-panel="professional"]')&&
-    items.some(item=>item.id===activeId&&isProfessional(item));
+  const required=mandatoryRegistration();
+  const editingRegistration=Boolean(target.closest('dialog:modal[data-panel="professional"]')&&
+    (required||items.some(item=>item.id===activeId&&isProfessional(item))));
+  const active=items.some(item=>item.id===activeId);
+  blocking=Boolean(required?!editingRegistration:stage()===5&&!active&&!interacting);
+  node.dataset.blocking=String(blocking);
+  node.dataset.active=String(!blocking&&(active||interacting>0));
+  handle.tabIndex=blocking?-1:0;
+  if(blocking){node.style.left='0px';node.style.top='0px';}
   node.hidden=editingRegistration;
   if(editingRegistration){
    if(typeof node.hidePopover==='function'&&node.matches(':popover-open'))node.hidePopover();
@@ -57,24 +103,24 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   if(!items.length){blocking=false;restoreInert();node.remove();return;}
   if(!node.isConnected)root.append(node);
   const item=current();selectedId=item?.id||null;
-  const options=items.map(value=>{const option=doc.createElement('option');option.value=value.id;option.textContent=value.activity?.title||value.title||'Atividade';return option;});
-  select.replaceChildren(...options);select.value=selectedId||'';select.disabled=!item;
+  const required=mandatoryRegistration();
+  const options=(required?[required]:items).map(value=>{const option=doc.createElement('option');option.value=value.id;option.textContent=value.activity?.title||value.title||'Atividade';return option;});
+  select.replaceChildren(...options);select.value=selectedId||'';select.disabled=!item||Boolean(required);
   const activity=item?.activity;
   const savedPath=item.message?.match(/^Caminho no app: (Home › [^\r\n]+)$/m)?.[1];
   find('[data-path]').textContent=savedPath||activityBreadcrumb(activity);
   find('[data-criterion]').textContent=activity?.kind==='TRAINING'?`Nota mínima: ${activity.minimumScore} de ${activity.maxScore}.`:'';
-  const clock=new Date(obligationDueAt(item)).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
+  const clock=new Date(registrationDueAt(item)).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',dateStyle:'short',timeStyle:'short'});
   find('[data-deadline]').textContent=`Prazo: ${clock}.`;
-  find('[data-status]').textContent=error||(item.unavailable?'Atividade indisponível. Procure o administrador.':'');
+  find('[data-status]').textContent=error||(item.unavailable?'Atividade indisponível. Procure o administrador.':
+    required?'Preencha e salve o Cadastro Profissional para liberar o acesso ao aplicativo.':'');
   const button=find('[data-open]');
   button.textContent=isProfessional(item)?'Abrir Cadastro Profissional':'Abrir atividade';
   button.disabled=!item||interacting>0;
-  const active=items.some(value=>value.id===activeId),currentStage=stage();
-  blocking=currentStage===5&&!active&&!interacting;node.dataset.stage=String(currentStage);node.dataset.blocking=String(blocking);node.dataset.active=String(active||interacting>0);
-  if(blocking){node.style.left='0px';node.style.top='0px';}
+  node.dataset.stage=String(stage());
   host();
  }
- function confirmedClock(value){if(!Number.isSafeInteger(value)||value<0)throw Error('COMM_INVALID_SERVER_TIME');serverNow=value;}
+ function confirmedClock(value){if(!Number.isSafeInteger(value)||value<0)throw Error('COMM_INVALID_SERVER_TIME');serverNow=value;confirmedAt=win.performance.now();}
  async function refresh(){
   if(!alive())return;if(inFlight)return inFlight;
   const run=async()=>{
@@ -84,11 +130,11 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
     if(!Array.isArray(pending.items))throw Error('COMM_INVALID_PENDING');
     items=pending.items.filter(item=>typeof item?.id==='string'&&Number.isSafeInteger(item.publishAt)&&item.publishAt>=0&&!['COMPLETED','CANCELLED'].includes(item.status)).sort((a,b)=>a.publishAt-b.publishAt||a.id.localeCompare(b.id));
     if(!items.some(item=>item.id===selectedId))selectedId=items[0]?.id||null;
-    error='';render();
+    error='';persistRegistration();render();
     // Never verify a whole inbox on resume: one selected/opened obligation per refresh.
-    const selected=items.find(item=>item.id===activeId)||current();
+    const selected=mandatoryRegistration()||items.find(item=>item.id===activeId)||items.find(isRegistrationCampaign)||current();
     if(selected?.activity){const receipt=await client.request('VERIFY_ACTIVITY',{id:selected.id},{activityKind:selected.activity.kind});if(!alive())return;confirmedClock(receipt.serverNow);
-     if(receipt.completed||receipt.reason==='ACTIVITY_CANCELLED')items=items.filter(item=>item.id!==selected.id);
+     if(receipt.completed||receipt.reason==='ACTIVITY_CANCELLED'){items=items.filter(item=>item.id!==selected.id);persistRegistration();}
      else selected.unavailable=Boolean(receipt.unavailable);
     }
    }catch{if(alive())error='Não foi possível verificar a conclusão agora.';}
@@ -97,7 +143,7 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   try{await inFlight;}finally{
    inFlight=null;
    if(alive()){
-    render();
+    render();scheduleRefresh();
     if(completionPending){completionPending=false;void refresh();}
    }
   }
@@ -130,13 +176,13 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  listen(doc,'visibilitychange',()=>{if(doc.visibilityState==='visible')void refresh();});
  const observer=new MutationObserver(records=>{if(!alive())return;for(const record of records){if(record.type==='attributes'&&record.target.matches('dialog')){const index=modals.indexOf(record.target);if(index>=0)modals.splice(index,1);if(record.target.matches(':modal'))modals.push(record.target);}}const relevant=records.some(record=>record.type==='attributes'||[...record.addedNodes,...record.removedNodes].some(el=>el!==node&&!node.contains(el)));if(relevant){if(node.isConnected)host();else if(items.length||error)render();}});
  observer.observe(doc.body,{subtree:true,childList:true,attributes:true,attributeFilter:['open']});
- function cleanup(){if(disposed)return;disposed=true;observer.disconnect();for(const remove of listeners)remove();restoreInert();node.remove();items=[];serverNow=null;activeId=selectedId=null;position=drag=null;blocking=false;}
+ function cleanup(){if(disposed)return;disposed=true;win.clearTimeout(refreshTimer);observer.disconnect();for(const remove of listeners)remove();restoreInert();node.remove();items=[];serverNow=null;activeId=selectedId=null;position=drag=null;blocking=false;}
  function setActivityActive(idOrNull){
   if(!alive()||activeId===idOrNull)return;
   activeId=idOrNull||null;
   if(activeId)position=null;
   render();
  }
- if(uid&&isCurrent())void refresh();else cleanup();
+ if(uid&&isCurrent()){restoreRegistration();render();scheduleRefresh();void refresh();}else cleanup();
  return {cleanup,refresh,setActivityActive,hasPendingProfessional:id=>alive()&&items.some(item=>item.id===id&&isProfessional(item))};
 }
