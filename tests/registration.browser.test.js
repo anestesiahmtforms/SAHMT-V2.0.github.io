@@ -154,6 +154,25 @@ test('professional form saves the grid and uploads immediately after file select
  const sunday=grid.getByRole('row',{name:/Domingo/});
  assert.deepEqual(await sunday.getByRole('checkbox').evaluateAll(checkboxes=>checkboxes.map(input=>input.getAttribute('aria-label'))),
   ['Domingo, Quinzenal','Domingo, Integral','Domingo, Plantão noturno']);
+ const saturdayWeekly=grid.getByRole('checkbox',{name:'Sábado, Semanal'});
+ const saturdayFortnightly=grid.getByRole('checkbox',{name:'Sábado, Quinzenal'});
+ const mondayToThursday=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira'];
+ for(const day of mondayToThursday){
+  await grid.getByRole('checkbox',{name:day+', Semanal'}).check();
+  await grid.getByRole('checkbox',{name:day+', Integral'}).check();
+ }
+ await saturdayWeekly.check();
+ assert.equal(await participation.textContent(),'28,57%');
+ await saturdayFortnightly.check();
+ assert.equal(await saturdayWeekly.isChecked(),false);
+ assert.equal(await participation.textContent(),'28,57%');
+ await saturdayWeekly.check();
+ assert.equal(await saturdayFortnightly.isChecked(),false);
+ await saturdayWeekly.uncheck();
+ for(const day of mondayToThursday){
+  await grid.getByRole('checkbox',{name:day+', Semanal'}).uncheck();
+  await grid.getByRole('checkbox',{name:day+', Integral'}).uncheck();
+ }
  assert.equal(await grid.evaluate(e=>e.getBoundingClientRect().right>e.closest('[data-hub-body]').getBoundingClientRect().right),false);
  const back=page.getByRole('button',{name:'VOLTAR',exact:true});
  const before=await back.boundingBox();

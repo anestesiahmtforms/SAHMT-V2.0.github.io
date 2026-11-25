@@ -30,7 +30,8 @@ function workGrid(field, value) {
     const previous = selected.includes(key) ? `<input type="hidden" name="${field.id}" value="${key}">` : '';
     return `<td>${previous}<span aria-hidden="true">—</span></td>`;
    }
-   return `<td><label><input type="checkbox" name="${field.id}" value="${key}" aria-label="${h(`${label}, ${column}`)}"${selected.includes(key) ? ' checked' : ''}></label></td>`;
+   const checked = selected.includes(key) && !(option === 'WEEKLY' && selected.includes(day + ':FORTNIGHTLY'));
+   return `<td><label><input type="checkbox" name="${field.id}" value="${key}" aria-label="${h(`${label}, ${column}`)}"${checked ? ' checked' : ''}></label></td>`;
   }).join('')}</tr>`).join('')}</tbody></table>
   <div class="reg-schedule-participation">
    <strong id="reg-schedule-participation-title">ÍNDICE DE PARTICIPAÇÃO NA ESCALA</strong>

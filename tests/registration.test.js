@@ -31,7 +31,9 @@ test('100% de participação exige sete dias integrais e sete plantões noturnos
  assert.equal(scheduleParticipationPercent([...mondayToSaturday,'6:WEEKLY','6:MORNING','6:AFTERNOON']),percent(6));
  assert.equal(scheduleParticipationPercent(['6:WEEKLY','6:MORNING']),null);
  assert.equal(scheduleParticipationPercent(['6:FORTNIGHTLY']),null);
- assert.equal(scheduleParticipationPercent(['0:FULL','0:WEEKLY','0:FORTNIGHTLY']),null);
+ assert.equal(scheduleParticipationPercent(['0:FULL','0:WEEKLY','0:FORTNIGHTLY']),percent(0.5));
+ const mondayToThursday = Array.from({length:4},(_,day)=>[day+':WEEKLY',day+':FULL']).flat();
+ assert.equal(scheduleParticipationPercent([...mondayToThursday,'5:WEEKLY','5:FORTNIGHTLY']),percent(4));
  assert.equal(scheduleParticipationPercent(['0:WEEKLY']),null);
  assert.equal(scheduleParticipationPercent(['0','5']),null);
  assert.equal(scheduleParticipationPercent([]),null);
