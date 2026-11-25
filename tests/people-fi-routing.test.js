@@ -1,11 +1,31 @@
 import test from 'node:test';
-import {combinePeople} from '../src/people-directory.js';
+import {combinePeople,mountPeopleDirectory} from '../src/people-directory.js';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
 import {canEnterModule} from '../worker-operational-domain/identity.js';
 import {createOperationalDomainWorker} from '../worker-operational-domain/worker.js';
 const source=readFileSync(new URL('../src/data.js',import.meta.url),'utf8');
+test('Pessoas groups the directory in display order and keeps contacts without a group visible',()=>{
+ const host={querySelectorAll:()=>[]};
+ const contacts=[
+  {sigla:'ZZ',name:'Zélia',role:'R3'},
+  {sigla:'BB',name:'Bruno',role:'Residente R3'},
+  {sigla:'AA',name:'Ana',role:'Substituto',email:'ana@example.test'},
+  {sigla:'CC',name:'Caio',role:'Residente'}
+ ];
+ const profiles=[
+  {uid:'ana',email:'ana@example.test',memberCategories:['EFETIVO','GESTOR']},
+  {uid:'davi',email:'davi@example.test',displayName:'Davi',memberCategories:['SUBSTITUTO']},
+  {uid:'elio',email:'elio@example.test',displayName:'Élio',memberCategories:['RESIDENTE_2']}
+ ];
+ mountPeopleDirectory(host,{contacts,profiles,roleLabel:role=>role});
+ assert.deepEqual([...host.innerHTML.matchAll(/<h3[^>]*>([^<]+)<\/h3>/g)].map(match=>match[1]),
+  ['Equipe','R3','R2','R1','Substituto','Sem grupo definido']);
+ assert.deepEqual([...host.innerHTML.matchAll(/<strong>([^<]+)<\/strong>/g)].map(match=>match[1]),
+  ['AA · Ana','BB · Bruno','ZZ · Zélia','Élio','Davi','CC · Caio']);
+ assert.deepEqual([...host.innerHTML.matchAll(/data-person="(\d+)"/g)].map(match=>Number(match[1])),[0,1,5,4,3,2]);
+});
 const names=['listContactCatalog','syncEventMemberDirectory','saveContact','updateContactRegistrationFields'];
 const code=names.map(name=>{const start=source.indexOf('export async function '+name+'(');const end=source.indexOf('\nexport ',start+1);return source.slice(start,end).replace('export ','');}).join('\n');
 function fixture({deny=false,missing=false,failCommit=false}={}){

@@ -89,11 +89,40 @@ function personCard({contact,profile,name,email},index,roleLabel){
  </li>`;
 }
 
+const peopleGroups=[
+ ['EFETIVO','Equipe',['equipe','efetivo']],
+ ['RESIDENTE_3','R3',['r3','residente 3','residente r3']],
+ ['RESIDENTE_2','R2',['r2','residente 2','residente r2']],
+ ['RESIDENTE_1','R1',['r1','residente 1','residente r1']],
+ ['SUBSTITUTO','Substituto',['substituto','substituta']]
+];
+
+function renderPeopleGroups(rows,roleLabel){
+ if(!rows.length)return '<p class="empty-state">Nenhuma pessoa encontrada nas fontes consultadas.</p>';
+ const unassigned='SEM_GRUPO';
+ const groups=new Map([...peopleGroups.map(([id])=>[id,[]]),[unassigned,[]]]);
+ rows.forEach((row,index)=>{
+  const categories=row.profile?.memberCategories;
+  const assigned=peopleGroups.find(([id])=>Array.isArray(categories)&&categories.includes(id));
+  const role=text(row.contact?.role).toLowerCase().replace(/\s+/g,' ');
+  const group=assigned||peopleGroups.find(([, , roles])=>roles.includes(role));
+  groups.get(group?.[0]||unassigned).push(personCard(row,index,roleLabel));
+ });
+ return [...peopleGroups,[unassigned,'Sem grupo definido']].map(([id,label])=>{
+  const cards=groups.get(id);
+  if(id===unassigned&&!cards.length)return '';
+  return `<section aria-labelledby="people-group-${id}">
+   <h3 id="people-group-${id}">${label}</h3>
+   ${cards.length?`<ul class="record-list people-directory">${cards.join('')}</ul>`:'<p class="empty-state">Nenhuma pessoa neste grupo.</p>'}
+  </section>`;
+ }).join('');
+}
+
 export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest,readTeamEntry,occurrenceGrantAccess,contactFailed=false,profilesFailed=false,isCurrent,onEdit,roleLabel}) {
  const rows=combinePeople(contacts,profiles);
  const partial=[contactFailed&&'Contatos',profilesFailed&&'Contas do app'].filter(Boolean);
  host.innerHTML=`${partial.length?`<p role="status">${h(partial.join(' e '))} · consulta indisponível.</p>`:''}
- ${rows.length?`<ul class="record-list people-directory">${rows.map((row,index)=>personCard(row,index,roleLabel)).join('')}</ul>`:'<p class="empty-state">Nenhuma pessoa encontrada nas fontes consultadas.</p>'}`;
+ ${renderPeopleGroups(rows,roleLabel)}`;
  const bySigla=new Map(contacts.map(contact=>[contact.sigla,contact]));
  host.querySelectorAll('[data-contact-edit]').forEach(button=>button.addEventListener('click',()=>{
   const contact=bySigla.get(button.dataset.contactEdit);
