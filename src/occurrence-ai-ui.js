@@ -5,13 +5,15 @@ import {buildPreparationPrompt,buildAnalysisPrompt,readPreparationDraft,readAnal
 const shortcutUrl='shortcuts://run-shortcut?name='+encodeURIComponent('SAHMT Ocorrências')+'&input=clipboard';
 
 export function bindOccurrencePromptActions(footer,host,{
-  entry,isCurrent,isWriting,hasQuestionnaire,readPreparationContext,readResponses,stageDescription,stagePreparation,stageResult
+  entry,original=entry,isCurrent,isWriting,hasQuestionnaire,readPreparationContext,readResponses,stageDescription,stagePreparation,stageResult
 }) {
   const protocol=occurrenceProtocol(entry);
+  const sahmt=entry.origin==='app';
+  const promptEntry=()=>({...original,...entry});
   const modes={
     preparation:{
       label:'PREPARAR OCORRÊNCIA',
-      prepare:async()=>buildPreparationPrompt(entry,hasQuestionnaire(),await readPreparationContext()),
+      prepare:async()=>buildPreparationPrompt(promptEntry(),hasQuestionnaire(),await readPreparationContext()),
       async stage(text) {
         const draft=readPreparationDraft(text,protocol,hasQuestionnaire(),entry.formId);
         return draft.questions ? stagePreparation(draft) : stageDescription(draft.description);
@@ -19,10 +21,10 @@ export function bindOccurrencePromptActions(footer,host,{
       success:'Rascunho carregado. Revise a preparação antes de publicar.'
     },
     analysis:{
-      label:'ANALISAR RESPOSTAS',
+      label:sahmt?'ANÁLISE FINAL':'ANALISAR RESPOSTAS',
       async prepare() {
         const [responses,context]=await Promise.all([readResponses(),readPreparationContext(true)]);
-        return buildAnalysisPrompt(entry,responses,context);
+        return buildAnalysisPrompt(promptEntry(),responses,context);
       },
       stage:text=>stageResult(readAnalysisDraft(text,protocol)),
       success:'Rascunho carregado em Resultado da análise pelo serviço. Revise antes de publicar.'
@@ -33,7 +35,17 @@ export function bindOccurrencePromptActions(footer,host,{
   ).join('');
   footer.hidden=false;
   const actions=[...footer.querySelectorAll('button')];
-  if(entry.responsesClosedAt)footer.querySelector('[data-ai-action="preparation"]').disabled=true;
+  const preparation=footer.querySelector('[data-ai-action="preparation"]');
+  const analysis=footer.querySelector('[data-ai-action="analysis"]');
+  function updateActions(){
+    preparation.disabled=!!entry.responsesClosedAt;
+    if(sahmt){
+      preparation.hidden=entry.analysisStarted===true;
+      analysis.hidden=!hasQuestionnaire();
+      analysis.disabled=!entry.responsesClosedAt;
+    }
+  }
+  updateActions();
   const panes=new Map();
   for(const [key,mode] of Object.entries(modes)) {
     const pane=document.createElement('section');
@@ -72,7 +84,8 @@ export function bindOccurrencePromptActions(footer,host,{
           status.textContent='Publique a preparação para abrir as respostas da equipe.';
           return;
         }
-        status.textContent='Use Encerrar interação na página de respostas para iniciar a análise.';
+        status.textContent=sahmt?'Finalize a pré-análise para abrir a análise final.'
+          :'Use Encerrar interação na página de respostas para iniciar a análise.';
         return;
       }
       status.textContent='Preparando prompt…';
@@ -182,7 +195,7 @@ export function bindOccurrencePromptActions(footer,host,{
     if(opening)void selected.open();
   });
   return ()=>{
-    footer.querySelector('[data-ai-action="preparation"]').disabled=true;
+    updateActions();
     for(const button of actions)button.setAttribute('aria-expanded','false');
     for(const {pane} of panes.values())pane.hidden=true;
   };

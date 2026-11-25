@@ -12,6 +12,7 @@ const AUDIT = 'occurrenceAudit';
 const SCORE_CLAIMS = 'occurrenceScoreClaims';
 const CATALOGS = 'occurrenceCatalogs';
 const FOLLOWUPS = 'occurrenceFollowups';
+const CARDS = 'occurrenceAnalysisCards';
 const QUESTIONNAIRE_RESPONSES = 'ethicalPollResponses';
 const GRANTS = new Map([
   ['hospital','occurrenceHospitalGrants'],
@@ -184,14 +185,15 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const preparation = preparationAdditions(form,details.actionFollowup,redact);
     try {
       const result = await api.runTransaction(db, async transaction => {
-        const [priorReport, priorAudit, priorScore] = await Promise.all([
-          transaction.get(reportRef), transaction.get(auditRef), transaction.get(scoreRef)
+        const [priorAudit, priorScore] = await Promise.all([
+          transaction.get(auditRef), transaction.get(scoreRef)
         ]);
-        if (priorReport.exists() || priorAudit.exists() || priorScore.exists()) {
-          if (priorReport.exists() && priorAudit.exists() && priorScore.exists()
-            && priorAudit.data()?.uid === uid && priorReport.data()?.formId === formId
+        if (priorAudit.exists() || priorScore.exists()) {
+          const priorCard=await transaction.get(cardRef(recordId));
+          if (priorCard.exists() && priorAudit.exists() && priorScore.exists()
+            && priorAudit.data()?.uid === uid && priorCard.data()?.formId === formId
             && priorScore.data()?.uid === uid && priorScore.data()?.sourceId === recordId) {
-            return {status:'already-saved',sequence:priorReport.data().sequence};
+            return {status:'already-saved',sequence:priorCard.data().sequence};
           }
           throw new Error('OCCURRENCE_RECONCILIATION_REQUIRED');
         }
@@ -203,6 +205,8 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
         transaction.set(reportRef, {...report,sequence});
         transaction.set(followupRef,{schemaVersion:1,id:recordId,origin:'app',formId,sequence,
           occurredOn:report.occurredOn,...safe,createdAt:api.serverTimestamp()});
+        transaction.set(api.doc(db,CARDS,recordId),{id:recordId,origin:'app',formId,sequence,
+          analysisStarted:false,responsesClosedAt:false,analysisClosed:false,preparedDescription:''});
         if(Object.keys(preparation).length) {
           transaction.set(api.doc(db,FOLLOWUPS,recordId,'preparationContext','current'),{
             fields:preparation,clinical:analysisClinicalFields(details,redact),
@@ -262,11 +266,23 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     return grant.exists() && grant.data().enabled === true;
   };
   const hospitalAccess = ({uid} = {}) => hasGrant(uid,'hospital');
-  const descriptionAccess = ({uid} = {}) => hasGrant(uid,'descriptions');
+  const descriptionAccess = async ({uid,id} = {}) => id&&!id.startsWith('gr-')
+    ? fcAdministrator((await requirePermission(uid)).profile) : hasGrant(uid,'descriptions');
+  const cardRef = id => api.doc(db,CARDS,id);
+  const isApp = id => !id.startsWith('gr-');
+  const readOccurrenceFollowup = async ({uid,id,includeOriginal=false} = {}) => {
+    if(!followupId(id)||!await descriptionAccess({uid,id}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const [row,report]=await Promise.all([
+      api.getDocFromServer(api.doc(db,FOLLOWUPS,id)),
+      includeOriginal?api.getDocFromServer(api.doc(db,REPORTS,id)):null
+    ]);
+    if(!isCurrent()||auth.currentUser?.uid!==uid)throw new Error('OCCURRENCE_SESSION_CHANGED');
+    return {entry:row.data(),original:report?.data()};
+  };
   const readAnalysisAttendance = async ({uid,id} = {}) => {
     if(!followupId(id)||id.startsWith('gr-'))return null;
     const user=auth.currentUser;
-    if(!await descriptionAccess({uid}))return null;
+    if(!await descriptionAccess({uid,id}))return null;
     const context=await api.getDocFromServer(api.doc(db,FOLLOWUPS,id,'preparationContext','current'));
     if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
     const attendance=context.exists()?context.data().attendance:null;
@@ -283,7 +299,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const form=getOccurrenceForm(formId);
     if(!form?.actionFollowup||!followupId(id)||id.startsWith('gr-'))return {};
     const user=auth.currentUser;
-    if(!await descriptionAccess({uid}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if(!await descriptionAccess({uid,id}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const row=await api.getDocFromServer(api.doc(db,FOLLOWUPS,id,'preparationContext','current'));
     if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
     const stored=row.exists()?row.data():null;
@@ -356,7 +372,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   const publishOccurrenceQuestionnaire = async ({uid,id,description,questions} = {}) => {
     if(!boundedText(description,5000))throw new Error('OCCURRENCE_INPUT_INVALID');
     const next=normalizeOccurrenceQuestions(questions);
-    if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if (!await descriptionAccess({uid,id})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const ref=analysisRef(id,'analysisQuestionnaire'),record=api.doc(db,FOLLOWUPS,id);
     await api.runTransaction(db,async tx => {
       const row=await tx.get(ref);
@@ -364,12 +380,13 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       if (row.exists()) throw new Error('OCCURRENCE_QUESTIONNAIRE_PUBLISHED');
       tx.set(ref,{questions:next,publishedAt:api.serverTimestamp(),canRevise:true});
       tx.update(record,{analysisStarted:true,preparedDescription:description.trim()});
+      if(isApp(id))tx.update(cardRef(id),{analysisStarted:true,preparedDescription:description.trim()});
     });
     return next;
   };
   const updateOccurrenceInteraction = async ({uid,id,description,expectedDescription,questions,expectedRevision} = {}) => {
     if(!boundedText(description,5000))throw new Error('OCCURRENCE_INPUT_INVALID');
-    if(!await descriptionAccess({uid}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if(!await descriptionAccess({uid,id}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const ref=analysisRef(id,'analysisQuestionnaire'),record=api.doc(db,FOLLOWUPS,id);
     return api.runTransaction(db,async tx=>{
       const [config,parent]=await Promise.all([tx.get(ref),tx.get(record)]);
@@ -385,12 +402,15 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
         if(current.canRevise!==true||current.lockedAt)throw new Error('OCCURRENCE_QUESTIONS_LOCKED');
         tx.update(ref,{questions:next,revision:revision+1});
       }
-      if(entry.preparedDescription!==description.trim())tx.update(record,{preparedDescription:description.trim()});
+      if(entry.preparedDescription!==description.trim()){
+        tx.update(record,{preparedDescription:description.trim()});
+        if(isApp(id))tx.update(cardRef(id),{preparedDescription:description.trim()});
+      }
       return {questions:next,revision:revision+Number(changed),canReviseQuestions:current.canRevise===true&&!current.lockedAt};
     });
   };
   const closeOccurrenceResponses = async ({uid,id} = {}) => {
-    if(!followupId(id)||!await descriptionAccess({uid}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if(!followupId(id)||!await descriptionAccess({uid,id}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const ref=api.doc(db,FOLLOWUPS,id);
     await api.runTransaction(db,async tx=>{
       const snapshot=await tx.get(ref);
@@ -399,6 +419,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       if(record?.responsesClosedAt)return;
       if(record?.analysisStarted!==true||record.analysisClosed===true)throw new Error('OCCURRENCE_RESPONSES_UNAVAILABLE');
       tx.update(ref,{responsesClosedAt:api.serverTimestamp()});
+      if(isApp(id))tx.update(cardRef(id),{responsesClosedAt:true});
     });
   };
   const readOccurrenceResult = async ({uid,id} = {}) => {
@@ -407,6 +428,30 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     if (!isCurrent()||auth.currentUser!==user) throw new Error('OCCURRENCE_SESSION_CHANGED');
     const row=snapshot.data();
     return row ? {text:row.text,updatedAt:row.updatedAt,...(row.dueDate?{dueDate:row.dueDate}:{})} : null;
+  };
+  const readOccurrenceResultDraft = async ({uid,id} = {}) => {
+    const {user}=await requirePermission(uid);
+    const row=await api.getDocFromServer(analysisRef(id,'analysisResultDraft'));
+    if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
+    return row.data()??null;
+  };
+  const saveOccurrenceResultDraft=({uid,id,text,dueDate='',expectedText,expectedDueDate}={})=>
+    saveEthicalText({uid,ref:analysisRef(id,'analysisResultDraft'),text,dueDate,expectedText,expectedDueDate});
+  const releaseOccurrenceResult = async ({uid,id,expectedText,expectedDueDate} = {}) => {
+    if(!followupId(id)||!isApp(id)||!await descriptionAccess({uid,id}))throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    const record=api.doc(db,FOLLOWUPS,id),draft=analysisRef(id,'analysisResultDraft'),result=analysisRef(id,'ethicalPollResult');
+    await api.runTransaction(db,async tx=>{
+      const [parent,row]=await Promise.all([tx.get(record),tx.get(draft)]);
+      if(!isCurrent()||auth.currentUser?.uid!==uid)throw new Error('OCCURRENCE_SESSION_CHANGED');
+      const saved=row.data();
+      if(!saved||saved.text!==expectedText||(saved.dueDate??'')!==expectedDueDate)
+        throw new Error('OCCURRENCE_RESULT_CHANGED');
+      if(!parent.data()?.responsesClosedAt)throw new Error('OCCURRENCE_RESPONSES_UNAVAILABLE');
+      if(parent.data().analysisClosed===true)return;
+      tx.set(result,{...saved,updatedAt:api.serverTimestamp()});
+      tx.update(record,{analysisClosed:true});
+      tx.update(cardRef(id),{analysisClosed:true,resultAt:api.serverTimestamp()});
+    });
   };
   const readOccurrenceAcknowledgement = async ({uid,id,resultAt} = {}) => {
     const {user}=await requirePermission(uid);
@@ -428,7 +473,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     sendScore('ack-'+id+'_'+uid,uid);
   };
   const finalizeOccurrence = async ({uid,id,resultAt} = {}) => {
-    if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if (!await descriptionAccess({uid,id})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const result=analysisRef(id,'ethicalPollResult'),record=api.doc(db,FOLLOWUPS,id);
     await api.runTransaction(db,async tx=>{
       const parent=await tx.get(record),published=await tx.get(result);
@@ -443,7 +488,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   const saveDescription = async ({uid,id,description,expectedDescription} = {}) => {
     if (!followupId(id) || !boundedText(description,5000) ||
       (expectedDescription !== null && typeof expectedDescription !== 'string')) throw new Error('OCCURRENCE_INPUT_INVALID');
-    if (!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if (!await descriptionAccess({uid,id})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const next = description.trim(),ref=api.doc(db,FOLLOWUPS,id);
     await api.runTransaction(db,async tx => {
       const snapshot = await tx.get(ref);
@@ -453,6 +498,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
       if (previous === next) return;
       if (previous !== expectedDescription) throw new Error('OCCURRENCE_DESCRIPTION_CHANGED');
       tx.update(ref,{preparedDescription:next});
+      if(isApp(id))tx.update(cardRef(id),{preparedDescription:next});
     });
     return next;
   };
@@ -462,11 +508,21 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     const pageSize = 30;
     const criteria = [api.orderBy(api.documentId()),api.limit(pageSize)];
     if (formId !== undefined) criteria.unshift(api.where('formId','==',formId));
-    if (origin !== undefined) criteria.unshift(api.where('origin','==',origin));
+    if (origin === 'hospital') criteria.unshift(api.where('origin','==',origin));
     if (after) criteria.push(api.startAfter(after));
-    const page = await api.getDocsFromServer(api.query(api.collection(db,FOLLOWUPS),...criteria));
+    const page = await api.getDocsFromServer(api.query(api.collection(db,origin==='hospital'?FOLLOWUPS:CARDS),...criteria));
     if (!isCurrent() || auth.currentUser !== user) throw new Error('OCCURRENCE_SESSION_CHANGED');
-    return {entries:page.docs.map(doc => doc.data()),next:page.docs.length === pageSize ? page.docs.at(-1) : null};
+    const entries=page.docs.map(doc=>doc.data());
+    if(origin!=='hospital'){
+      await Promise.all(entries.filter(entry=>entry.resultAt).map(async entry=>{
+        try{
+          const receipt=await api.getDocFromServer(analysisRef(entry.id,'analysisAcknowledgements',uid));
+          entry.acknowledged=receipt.data()?.resultAt?.isEqual(entry.resultAt)===true;
+        }catch{/* Sem confirmação, a ciência permanece pendente. */}
+      }));
+    }
+    if(!isCurrent()||auth.currentUser!==user)throw new Error('OCCURRENCE_SESSION_CHANGED');
+    return {entries,next:page.docs.length===pageSize?page.docs.at(-1):null};
   };
   const readOccurrenceResponse = async ({uid,id} = {}) => {
     const {user} = await requirePermission(uid);
@@ -498,7 +554,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     return status;
   };
   const listOccurrenceResponses = async ({uid,id,after} = {}) => {
-    if(!followupId(id)||!await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if(!followupId(id)||!await descriptionAccess({uid,id})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const pageSize=30;
     const criteria=[api.orderBy(api.documentId()),api.limit(pageSize)];
     if(after)criteria.push(api.startAfter(after));
@@ -523,7 +579,7 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
     return true;
   };
   const listAnalyses = async ({uid,id,after} = {}) => {
-    if (!followupId(id) || !await descriptionAccess({uid})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
+    if (!followupId(id) || !await descriptionAccess({uid,id})) throw new Error('OCCURRENCE_PERMISSION_DENIED');
     const pageSize = 30;
     const criteria = [api.orderBy(api.documentId()),api.limit(pageSize)];
     if (after) criteria.push(api.startAfter(after));
@@ -572,7 +628,8 @@ export function createOccurrenceRepository({db, auth, firestore = {}, idGenerato
   };
 
   return Object.freeze({loadCatalog,save,list,listAudit,listFollowups,readAnalysis,saveAnalysis,listAnalyses,
-    hospitalAccess,saveHospital,descriptionAccess,readPreparationContext,readAnalysisAttendance,saveDescription,readEthicalReview,saveEthicalReview,
+    hospitalAccess,saveHospital,descriptionAccess,readOccurrenceFollowup,readPreparationContext,readAnalysisAttendance,saveDescription,readEthicalReview,saveEthicalReview,
+    readOccurrenceResultDraft,saveOccurrenceResultDraft,releaseOccurrenceResult,
     readOccurrenceQuestionnaire,publishOccurrenceQuestionnaire,updateOccurrenceInteraction,readOccurrenceResponse,submitOccurrenceResponse,listOccurrenceResponses,readOccurrenceResult,saveOccurrenceResult,readOccurrenceAcknowledgement,acknowledgeOccurrence,finalizeOccurrence,closeOccurrenceResponses,getGrant,saveGrant,
     clear:()=>{catalogCache=null;}});
 }

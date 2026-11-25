@@ -4,6 +4,7 @@ import {createOccurrenceRepository} from './occurrence-data.js';
 import {withinDeadline} from './async-deadline.js';
 import {mountOccurrenceFollowup} from './occurrence-followup-ui.js';
 import {readOccurrenceChain,setOccurrenceAnalysisState} from './occurrence-analysis-state.js';
+import {showOccurrenceConfirmation} from './occurrence-confirmation.js';
 
 const FORM_ORDER = Object.freeze({A:['F01','F02','F03','F04','F05','F06','F07'],B:['F08'],C:['F09'],D:['F10']});
 const ICONS = Object.freeze({
@@ -225,7 +226,7 @@ export function createOccurrenceSessionGate({auth,uid,isCurrent}={}) {
 }
 
 export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions={},isCurrent=()=>false,idGenerator=()=>crypto.randomUUID(),
-  followupAllowed=false,canInteract=()=>true,canShowHospital=()=>true}={}) {
+  followupAllowed=false,canInteract=()=>true,canShowHospital=()=>true,isAdministrator=()=>false}={}) {
   const pageCurrent=isCurrent;
   let disposed=false;
   isCurrent=()=>!disposed&&root.isConnected&&pageCurrent();
@@ -260,7 +261,8 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
     const module=root.querySelector('.occurrence-module');
     module.insertAdjacentHTML('beforeend','<div data-occurrence-followup-host></div>');
     const openFollowup=mountOccurrenceFollowup(module.querySelector('[data-occurrence-followup-host]'),
-      {repository,uid,isCurrent,groupsMarkup:occurrenceGroupMarkup,canInteract,canShowHospital,onChainChanged:refreshAnalysisButtons});
+      {repository,uid,isCurrent,groupsMarkup:occurrenceGroupMarkup,canInteract,canShowHospital,isAdministrator,
+        onChainChanged:refreshAnalysisButtons});
     for(const button of analysisButtons) {
       button.addEventListener('click',()=>openFollowup(button.dataset.occurrenceFollowup));
     }
@@ -328,14 +330,15 @@ export function mountOccurrenceModule(root,{uid,displayName,auth,db,permissions=
       }
       saving=true;saveButton.disabled=true;if(cancelButton)cancelButton.disabled=true;saveButton.textContent='SALVANDO…';status.textContent='';
       try {pendingRecordId ||= idGenerator();const input={uid,displayName,anonymous:formElement.elements.anonymous.checked,formId,values,recordId:pendingRecordId,catalogs};
-        const result=await submitOccurrenceWithFallback({repository,input,isCurrent});
+        await submitOccurrenceWithFallback({repository,input,isCurrent});
         if(!isCurrent())return;pendingRecordId=null;
-        const reference=result.protocol?` ${result.protocol}.`:'';
-        moduleStatus.textContent=result.status==='already-saved'?`Este envio já havia sido confirmado.${reference}`:`Registro confirmado pelo servidor.${reference} Pontuação aguardando validação.`;
+        moduleStatus.textContent='';
         const appAnalysis=analysisButtons.find(button=>button.dataset.occurrenceFollowup==='app');
-        if(appAnalysis){++analysisRefresh;setOccurrenceAnalysisState(appAnalysis,'pending');}
+        if(appAnalysis&&appAnalysis.dataset.analysisState!=='pre-analysis')setOccurrenceAnalysisState(appAnalysis,'awaiting-preparation');
+        refreshAnalysisButtons();
         status.textContent='';
         dialog.close('saved');formElement.reset();formElement.dataset.dirty='false';
+        showOccurrenceConfirmation(root,'REGISTRO SALVO');
       } catch(error) {if(isCurrent())status.textContent=occurrenceWriteFailureMessage(error);}
       finally {saving=false;if(saveButton.isConnected){saveButton.disabled=false;saveButton.textContent='SALVAR';}if(cancelButton?.isConnected)cancelButton.disabled=false;}
     });

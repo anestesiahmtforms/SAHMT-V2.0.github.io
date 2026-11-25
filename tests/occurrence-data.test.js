@@ -90,7 +90,7 @@ test('grava relatório anonimizado, auditoria restrita e claim pendente em um co
   const first=await repository.save({...input,anonymous:true,displayName:''});
   const retry=await repository.save({...input,anonymous:true,displayName:''});
   assert.equal(first.status,'saved'); assert.equal(retry.status,'already-saved');
-  assert.equal(store.size,6);
+  assert.equal(store.size,7);
   assert.equal(first.protocol,'GRA 001');
   assert.equal(retry.protocol,first.protocol);
   const report=store.get(`occurrenceReports/${input.recordId}`);
@@ -101,6 +101,10 @@ test('grava relatório anonimizado, auditoria restrita e claim pendente em um co
   const score=store.get(`occurrenceScoreClaims/${input.recordId}`);
   assert.equal(report.pointsClaimed,3);
   assert.equal(score.points,3); assert.equal(score.status,'PENDING_VALIDATION');
+  assert.deepEqual(store.get(`occurrenceAnalysisCards/${input.recordId}`),{
+    id:input.recordId,origin:'app',sequence:1,formId:'F01',
+    preparedDescription:'',analysisStarted:false,responsesClosedAt:false,analysisClosed:false
+  });
 });
 
 test('resposta e ciência enfileiram um ponto cada, sem duplicar ao rever o resultado',async()=>{

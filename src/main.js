@@ -1791,7 +1791,7 @@ async function loadModule(route) {
     cleanupCurrentModule = mountOccurrenceModule(content,{uid:requestUid,displayName:session.profile?.displayName||session.user?.displayName||'Usuário',
       auth,db,permissions:{...session.profile.permissions,occurrencesWrite:can('admin') || session.profile.permissions?.occurrencesWrite === true},isCurrent:current,
       followupAllowed:true,canInteract:()=>operationalRouteActivityAllowed('occurrences'),
-      canShowHospital:()=>session.accountMode!=='team',isAdministrator:can('admin')&&session.accountMode!=='team'});
+      canShowHospital:()=>session.accountMode!=='team',isAdministrator:()=>can('admin')&&session.accountMode!=='team'});
     return;
   }
   if (route === 'management' && hasFinanceOnlyManagementAccess(session.profile)) {

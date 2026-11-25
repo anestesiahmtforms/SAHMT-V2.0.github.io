@@ -8,14 +8,16 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
  catalogs.TIPOS_INCIDENTES[15]='Evento anestésico';
  const stubs={
   'occurrence-data.js':`export function createOccurrenceRepository(){return {clear(){},list:async()=>{window.recentReads++;return [{formTitle:'Dilema Ético'}];},listAudit:async()=>{window.auditReads++;return [{formId:'F08',reportId:'synthetic',anonymous:false}];},loadCatalog:async()=>{window.calls++;if(window.hang)return new Promise(resolve=>window.release=()=>resolve({catalogs:{}}));return {catalogs:${JSON.stringify(catalogs)}};},
+   save:async input=>{window.savedOccurrence=input;return {status:'saved',protocol:'GRA 004'};},
    listFollowups:async({after,origin})=>after?{entries:origin==='app'?[
       {id:'49de5878-28c7-40b5-81e6-f416d58b2433',formId:'F08',origin:'app',sequence:1,title:'Enquete de teste',
-      description:'Relato com questionário',classification:{},details:{},analysisStarted:true,responsesClosedAt:window.closedReplies?.['49de5878-28c7-40b5-81e6-f416d58b2433'],analysisClosed:!!window.pollResult,eventClosed:!!window.eventClosed},
+      preparedDescription:'Relato com questionário',classification:{},details:{},analysisStarted:true,responsesClosedAt:window.closedReplies?.['49de5878-28c7-40b5-81e6-f416d58b2433'],analysisClosed:!!window.pollResult,acknowledged:!!window.acknowledgement},
       {id:'ethical-finalized',formId:'F08',origin:'app',sequence:3,title:'Ocorrência finalizada',
-      description:'Relato finalizado',classification:{},details:{},analysisClosed:true,eventClosed:true}
+      preparedDescription:'Relato finalizado',classification:{},details:{},analysisClosed:true,acknowledged:true}
     ]:[],next:null}:{entries:origin==='app'?
     [{id:'ethical-test',formId:'F08',origin:'app',sequence:2,title:'Dilema de teste',
-      description:'Relato do dilema',classification:{},details:{},analysisClosed:!!window.closedOther,eventClosed:!!window.closedOther}]
+      preparedDescription:window.preparations?.['ethical-test'],classification:{},details:{},analysisStarted:!!window.questionnaires?.['ethical-test'],
+      analysisClosed:!!window.closedOther,acknowledged:!!window.closedOther}]
     :origin==='hospital'&&window.followupPublished?
     [{id:'gr-1',formId:'F03',origin:'hospital',hospitalNumber:'1',title:'Evento externo',
       occurredOn:'2026-11-20',description:'Relato completo aqui',preparedDescription:window.preparations?.['gr-1'],classification:{},details:{},analysisStarted:!!window.questionnaires?.['gr-1'],responsesClosedAt:window.closedReplies?.['gr-1']}]
@@ -23,6 +25,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    readAnalysis:async()=>null,listAnalyses:async({id})=>({entries:id==='gr-1'?
      [{analysis:{problem:'Linha um.\\nLinha dois.',cause:'Causa',review:'Revisão',correction:'Correção',plan:'Plano'}}]:[],next:null}),
    descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;},
+   readOccurrenceFollowup:async({id})=>({entry:{id,formId:'F08',origin:'app',title:'Registro administrativo',
+     description:'Relato original privado',details:{},classification:{}}}),
    readOccurrenceQuestionnaire:async({id})=>id===${JSON.stringify(GRA_001_RECORD_ID)}?
     {questions:${JSON.stringify(GRA_001_QUESTIONS)},revision:2}:
     window.questionnaires?.[id]?{questions:window.questionnaires[id],revision:window.questionnaireRevision??0,canReviseQuestions:true}:null,
@@ -38,6 +42,9 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    readOccurrenceResponse:async({id})=>!!window.responses?.[id],
    submitOccurrenceResponse:async input=>{(window.responses??={})[input.id]=input;return 'submitted';},
    readOccurrenceResult:async({id})=>window.pollResult?.id===id?{text:window.pollResult.text,updatedAt:window.resultGeneration}:null,
+   readOccurrenceResultDraft:async({id})=>window.preparedResult?.id===id?window.preparedResult:null,
+   saveOccurrenceResultDraft:async input=>{window.preparedResult=input;return input.text;},
+   releaseOccurrenceResult:async({uid,id})=>{window.pollResult={uid,id,text:window.preparedResult.text};window.resultGeneration=1;},
    readOccurrenceAcknowledgement:async({id,resultAt})=>window.acknowledgement?.id===id&&window.acknowledgement.resultAt===resultAt,
    acknowledgeOccurrence:async input=>{window.acknowledgement=input;},
    finalizeOccurrence:async input=>{window.finalized=input;window.eventClosed=true;},
@@ -47,7 +54,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
      {entries:window.responses?.[id]?[window.responses[id]]:[],next:window.exportPollPages?'next':null}};}`,
   'outbox.js':`export async function enqueueOccurrenceSubmission(){throw Error('No writes in this fixture');}export async function listUnsettledOperations(){return [];}`
  };
- const fixture=`import {mountOccurrenceModule} from '/src/occurrences-ui.js';window.calls=0;window.recentReads=0;window.auditReads=0;window.hang=false;const uid='synthetic';window.dispose=mountOccurrenceModule(document.querySelector('#root'),{uid,displayName:'Teste',auth:{currentUser:{uid}},db:{},permissions:{occurrencesRead:true,occurrencesWrite:true,occurrencesAuditRead:true},isCurrent:()=>true,followupAllowed:true});`;
+ const fixture=`import {mountOccurrenceModule} from '/src/occurrences-ui.js';window.calls=0;window.recentReads=0;window.auditReads=0;window.hang=false;const uid='synthetic';window.dispose=mountOccurrenceModule(document.querySelector('#root'),{uid,displayName:'Teste',auth:{currentUser:{uid}},db:{},permissions:{occurrencesRead:true,occurrencesWrite:true,occurrencesAuditRead:true},isCurrent:()=>true,followupAllowed:true,isAdministrator:()=>window.isOccurrenceAdmin===true});`;
  const fixtureMarkup='<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
   '<link rel="stylesheet" href="/src/styles.css"><div class="app-shell app-shell--occurrences"><header class="topbar">'+
   '<div class="identity-card"><button class="brand">SAHMT</button><div class="identity-card__user-row"><div class="identity-card__user">Pessoa de teste</div></div>'+
@@ -216,9 +223,20 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await page.locator('[data-occurrence-cancel]').click();await page.locator('[data-occurrence-group-cancel]').click();
   assert.equal(await page.getByRole('heading',{name:'Registros recentes'}).count(),0);
   assert.equal(await page.evaluate(()=>window.recentReads),0);
+  await page.locator('.occurrence-groups [data-occurrence-group="D"]').click();
+  const registration=page.locator('[data-occurrence-dialog-host] dialog[open]');
+  await registration.locator('form').evaluate((form,values)=>{
+   for(const [name,value] of Object.entries(values))form.elements.namedItem(name).value=value;
+  },{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],patientOrAttendance:'7319',
+   sex:'Outro',age:'31',diagnosisOrTreatment:'Tratamento sintético',immediateAction:'Ação de teste',
+   chartDisclosure:'Sim',patientFactors:'Nenhum',taskFactors:'Nenhum',individualFactors:'Nenhum',
+   teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma'});
+  await registration.getByRole('button',{name:'SALVAR'}).click();
+  await page.getByRole('dialog',{name:'REGISTRO SALVO'}).getByRole('button',{name:'OK'}).click();
+  assert.equal(await page.evaluate(()=>window.savedOccurrence.formId),'F10');
   const appLaunch=page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'});
   const hospitalLaunch=page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - NSP'});
-  await appLaunch.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
+  await appLaunch.locator('xpath=self::*[@data-analysis-state="pre-analysis"]').waitFor();
   await appLaunch.click();
   const followup=page.getByRole('dialog',{name:'OCORRÊNCIAS - SAHMT'});
   const hospitalFollowup=page.getByRole('dialog',{name:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'});
@@ -241,7 +259,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   assert.equal(await followup.locator('[data-occurrence-group]').count(),4);
   assert.equal(await followup.getByRole('button',{name:'OCORRÊNCIAS - NÚCLEO DE SEGURANÇA'}).count(),0);
   const appEthics=followup.locator('[data-occurrence-group="B"]');
-  await appEthics.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
+  await appEthics.locator('xpath=self::*[@data-analysis-state="pre-analysis"]').waitFor();
   for(const group of ['A','C','D']){
    await followup.locator('[data-occurrence-group="'+group+'"]').click();
    await checkFollowupBanner();
@@ -394,10 +412,10 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await followupBanner.getByRole('button',{name:'GRA 002 · Dilema de teste'})
     .locator('xpath=self::*[@data-analysis-state="preparing"][@disabled]').waitFor();
   const pollRecord=followupBanner.getByRole('button',{name:'GRA 001 · Enquete de teste'});
-  await pollRecord.locator('xpath=self::*[@data-analysis-state="open"]').waitFor();
+  await pollRecord.locator('xpath=self::*[@data-analysis-state="pre-analysis"]').waitFor();
   assert.deepEqual(await followupBanner.locator('[data-followup-record] strong').allTextContents(),
    ['GRA 003','GRA 002','GRA 001']);
-  assert.match(await pollRecord.evaluate(element=>getComputedStyle(element).backgroundImage),/249, 218, 134/);
+  assert.match(await pollRecord.evaluate(element=>getComputedStyle(element).backgroundImage),/244, 185, 180/);
   await pollRecord.click();
   const poll=followupBanner.locator('[data-ethical-poll]');
   for(const [index,count] of [5,5,4,4].entries()){
@@ -410,7 +428,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    await poll.getByRole('radio').last().check();
    if(index<3)await poll.getByRole('button',{name:'PRÓXIMA'}).click();
    else {
-    await poll.getByRole('textbox',{name:'Comentário opcional'}).fill('Comentário de teste.');
+    await poll.getByRole('textbox',{name:'Opiniões e propostas (opcional)'}).fill('Comentário de teste.');
     await poll.getByRole('button',{name:'ENVIAR RESPOSTA'}).click();
    }
   }
@@ -421,17 +439,18 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    {uid:'synthetic',id:GRA_001_RECORD_ID,answers:[5,5,4,4],comment:'Comentário de teste.',questionnaireRevision:2});
   assert.equal(await followupBanner.getByText('RESPOSTAS DA ABORDAGEM').count(),0);
   await back.click();
-  await page.evaluate(()=>window.canEditDescription=true);
+  await page.evaluate(()=>window.isOccurrenceAdmin=true);
   await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click();
   await pollRecord.click();
   await poll.getByText('Sua resposta foi registrada.').waitFor();
   assert.equal(await followupBanner.getByText('RESPOSTAS DA ABORDAGEM',{exact:true}).count(),0);
   assert.equal(await resultButton.count(),0);
   await page.evaluate(()=>window.exportPollPages=true);
-  await analyzeButton.click();
-  await closeReplies.click();
+  const sahmtAnalysisButton=actionFooter.getByRole('button',{name:'ANÁLISE FINAL',exact:true});
+  assert.equal(await sahmtAnalysisButton.isEnabled(),false);
+  await actionFooter.getByRole('button',{name:'FINALIZAR PRÉ-ANÁLISE'}).click();
   await followupBanner.getByText('Respostas da equipe encerradas.',{exact:true}).waitFor();
-  await analyzeButton.click();
+  await sahmtAnalysisButton.click();
   await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
   assert.equal(await page.evaluate(id=>window.closedReplies[id],GRA_001_RECORD_ID),true);
   await analysis.getByRole('button',{name:'COPIAR PROMPT'}).click();
@@ -447,49 +466,67 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    protocolo:'GRA 001',resultado:'Primeiro parágrafo.\nSegundo parágrafo.'
   }));
   await analysis.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
-  await analysis.getByText(/Rascunho carregado em Resultado/).waitFor();
+  await followupBanner.getByRole('heading',{name:'ANÁLISE FINAL · RASCUNHO'}).waitFor();
   assert.equal(await page.evaluate(()=>window.pollResult),undefined);
-  assert.equal(await followupBanner.getByRole('textbox',{name:'Resultado final'}).inputValue(),'Primeiro parágrafo.\nSegundo parágrafo.');
-  await followupBanner.getByRole('button',{name:'PUBLICAR RESULTADO'}).click();
-  await followupBanner.getByText('Resultado publicado. A equipe já pode registrar ciência.',{exact:true}).waitFor();
-  assert.deepEqual(await page.evaluate(()=>window.pollResult),
-   {uid:'synthetic',id:GRA_001_RECORD_ID,text:'Primeiro parágrafo.\nSegundo parágrafo.',expectedText:''});
   await back.click();
-  await page.evaluate(()=>window.canEditDescription=false);
+  await pollRecord.click();
+  await actionFooter.getByRole('button',{name:'EDITAR',exact:true}).click();
+  assert.equal(await followupBanner.getByRole('textbox',{name:'Resultado final'}).inputValue(),'Primeiro parágrafo.\nSegundo parágrafo.');
+  await followupBanner.getByRole('textbox',{name:'Resultado final'}).fill('Resultado revisado.');
+  await followupBanner.getByRole('button',{name:'SALVAR ALTERAÇÕES'}).click();
+  await actionFooter.getByRole('button',{name:'LIBERAR',exact:true}).click();
+  await followupBanner.getByText('Análise liberada. A equipe já pode registrar ciência.',{exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.pollResult),
+   {uid:'synthetic',id:GRA_001_RECORD_ID,text:'Resultado revisado.'});
+  await back.click();
+  await page.evaluate(()=>window.isOccurrenceAdmin=false);
   await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click();
-  await pollRecord.locator('xpath=self::*[@data-analysis-state="published"]').waitFor();
+  await pollRecord.locator('xpath=self::*[@data-analysis-state="awaiting-acknowledgement"]').waitFor();
   await pollRecord.click();
   await followupBanner.locator('.occurrence-poll-final-text').waitFor();
   assert.equal(await resultButton.count(),0);
-  assert.equal(await followupBanner.locator('.occurrence-poll-final-text').textContent(),'Primeiro parágrafo.\nSegundo parágrafo.');
-  const ack=followupBanner.getByRole('button',{name:'CIÊNCIA',exact:true});
+  assert.equal(await followupBanner.locator('.occurrence-poll-final-text').textContent(),'Resultado revisado.');
+  const ack=actionFooter.getByRole('button',{name:'DAR CIÊNCIA',exact:true});
   await ack.click();
+  const aware=page.getByRole('dialog',{name:'VOCÊ ESTÁ CIENTE!'});
+  await aware.getByRole('button',{name:'OK'}).click();
   await followupBanner.getByRole('button',{name:'CIÊNCIA REGISTRADA',exact:true}).locator('xpath=self::*[@disabled]').waitFor();
   assert.deepEqual(await page.evaluate(()=>window.acknowledgement),{uid:'synthetic',id:GRA_001_RECORD_ID,resultAt:1});
   assert.equal(await followupBanner.getByRole('button',{name:'FINALIZAR ANÁLISE'}).count(),0);
   assert.equal(await followupBanner.getByRole('button',{name:'EDITAR ANÁLISE FINAL'}).count(),0);
   assert.equal(await followupBanner.getByRole('button',{name:'PUBLICAR RESULTADO'}).count(),0);
   await back.click();
-  await page.evaluate(()=>window.canEditDescription=true);
-  await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click();
-  await pollRecord.click();
-  await followupBanner.getByRole('button',{name:'EDITAR ANÁLISE FINAL'}).click();
-  await followupBanner.getByRole('textbox',{name:'Resultado final'}).fill('Resultado revisado.');
-  await followupBanner.getByRole('button',{name:'PUBLICAR RESULTADO'}).click();
-  await followupBanner.getByText('Resultado revisado.',{exact:true}).waitFor();
-  await followupBanner.getByRole('button',{name:'FINALIZAR ANÁLISE'}).click();
-  await followupBanner.getByText('Evento finalizado.',{exact:true}).waitFor();
-  assert.deepEqual(await page.evaluate(()=>window.finalized),{uid:'synthetic',id:GRA_001_RECORD_ID,resultAt:2});
-  await back.click();
-  await pollRecord.locator('xpath=self::*[@data-analysis-state="finalized"]').waitFor();
+  await pollRecord.locator('xpath=self::*[@data-analysis-state="acknowledged"]').waitFor();
   await back.click();
   await followup.waitFor();
-  await appEthics.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
+  await appEthics.locator('xpath=self::*[@data-analysis-state="awaiting-preparation"]').waitFor();
   await appEthics.click();
+  const pendingRecord=followupBanner.getByRole('button',{name:'GRA 002 · Dilema de teste'});
+  await pendingRecord.locator('xpath=self::*[@disabled]').waitFor();
+  await page.evaluate(()=>window.isOccurrenceAdmin=true);
+  await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click();
+  await pendingRecord.click();
+  await followupBanner.getByText('Relato original privado',{exact:true}).waitFor();
+  await actionFooter.getByRole('button',{name:'PREPARAR OCORRÊNCIA'}).click();
+  await prep.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
+  await prep.getByRole('textbox',{name:'Resposta da IA em JSON'}).fill(JSON.stringify({
+   protocolo:'GRA 002',descricao:'Pré-análise revisada pela administração',perguntas:GRA_001_QUESTIONS
+  }));
+  await prep.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
+  await followupBanner.getByRole('button',{name:'PUBLICAR OCORRÊNCIA E QUESTIONÁRIO'}).click();
+  await followupBanner.getByText('Pré-análise revisada pela administração',{exact:true}).waitFor();
+  await back.click();
+  await page.evaluate(()=>window.isOccurrenceAdmin=false);
+  await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click();
+  await pendingRecord.locator('xpath=self::*[@data-analysis-state="pre-analysis"]').click();
+  await followupBanner.getByText('Pré-análise revisada pela administração',{exact:true}).waitFor();
+  assert.equal(await followupBanner.getByText('Relato original privado',{exact:true}).count(),0);
+  assert.equal(await actionFooter.getByRole('button',{name:'FINALIZAR PRÉ-ANÁLISE'}).count(),0);
+  await back.click();
   await page.evaluate(()=>window.closedOther=true);
   await page.getByRole('button',{name:'ATUALIZAR REGISTROS'}).click();
   await followupBanner.getByRole('button',{name:'GRA 002 · Dilema de teste'})
-    .locator('xpath=self::*[@data-analysis-state="finalized"]').waitFor();
+    .locator('xpath=self::*[@data-analysis-state="acknowledged"]').waitFor();
   await back.click();
   await appEthics.locator('xpath=self::*[@data-analysis-state="clear"]').waitFor();
   await back.click();

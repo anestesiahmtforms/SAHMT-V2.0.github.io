@@ -72,10 +72,13 @@ const end=output.indexOf('    match /indicators/',begin);
 if(begin<0||end<0)throw Error('FC_RECORDS_RULE_SCOPE_MISSING');
 const occurrenceRules=output.slice(begin,end).replace('validReport(reportId, request.resource.data) && pairedAfter(reportId);',
   "validReport(reportId, request.resource.data) && pairedAfter(reportId) &&\n        (!request.resource.data.keys().hasAny(['sequence']) || validOccurrenceNumber(reportId,request.resource.data));")
-  .replace('allow get: if canReadReport(reportId);','allow get: if canReadReport(reportId) || occurrenceAdministrator();')
+  .replace('allow get: if canReadReport(reportId);','allow get: if occurrenceAdministrator();')
+  .replace('allow list: if canRead() && request.query.limit != null && request.query.limit <= 50;',
+    'allow list: if occurrenceAdministrator() && request.query.limit != null && request.query.limit <= 50;')
   .replace(/(allow [a-z, ]+: if )(?!false\s*;)([^;]+);/g,
   (_,prefix,condition)=>prefix+"fcRecordsFolderOpen_('registros/ocorrencias') && ("+condition+");");
 output=output.slice(0,begin)+folderRules+occurrenceRules+output.slice(end);
+output=output.replace(/    function canRead(?:Report\(id\)|\(\)) \{[^}]+\}\n/g,'');
 output=output.replace("'anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt']) &&",
   "'anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt','sequence']) &&");
 output=output.replace('data.pointsClaimed == 2','data.pointsClaimed in [2, 3]')

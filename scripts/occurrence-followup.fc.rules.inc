@@ -27,6 +27,39 @@
         (permissions is map && permissions.get('admin',false) == true) ||
         (exists(grant) && get(grant).data.enabled == true));
     }
+    function canManageOccurrence(id) {
+      return id.matches('^gr-[1-9][0-9]{0,11}$') ? canEditOccurrenceDescription() : occurrenceAdministrator();
+    }
+    function occurrenceCardPath(id) {
+      return /databases/$(database)/documents/occurrenceAnalysisCards/$(id);
+    }
+    function occurrenceResultDraftPath(id) {
+      return /databases/$(database)/documents/occurrenceFollowups/$(id)/analysisResultDraft/current;
+    }
+    function validOccurrenceCard(id, card, entry) {
+      let opened = entry.get('analysisStarted',false);
+      let published = entry.get('analysisClosed',false);
+      return entry.origin == 'app' && card.id == id && card.origin == 'app' &&
+        card.formId == entry.formId && card.sequence == entry.sequence &&
+        card.analysisStarted == opened && card.analysisClosed == published &&
+        card.responsesClosedAt == (entry.get('responsesClosedAt',null) != null) &&
+        card.preparedDescription == (opened ? entry.get('preparedDescription','') : '') &&
+        card.keys().hasOnly(['id','origin','formId','sequence','analysisStarted','responsesClosedAt','analysisClosed','preparedDescription','resultAt']) &&
+        (published ? card.resultAt == getAfter(occurrenceResultPath(id)).data.updatedAt :
+          !card.keys().hasAny(['resultAt']));
+    }
+    function occurrenceCardMatches(id, entry) {
+      return entry.origin == 'hospital' || validOccurrenceCard(id,getAfter(occurrenceCardPath(id)).data,entry);
+    }
+    match /occurrenceAnalysisCards/{id} {
+      allow get: if activeUser();
+      allow list: if activeUser() && request.query.limit != null && request.query.limit <= 30;
+      allow create: if canWrite() && getAfter(occurrenceFollowupPath(id)).data.createdAt == request.time &&
+        validOccurrenceCard(id,request.resource.data,getAfter(occurrenceFollowupPath(id)).data);
+      allow update: if occurrenceAdministrator() &&
+        validOccurrenceCard(id,request.resource.data,getAfter(occurrenceFollowupPath(id)).data);
+      allow delete: if false;
+    }
     function validOccurrenceNumber(id, data) {
       let counter = getAfter(occurrenceCounterPath()).data;
       let entry = getAfter(occurrenceFollowupPath(id)).data;
@@ -86,12 +119,14 @@
         occurrenceText(analysis.review,3000) && occurrenceText(analysis.correction,3000) && occurrenceText(analysis.plan,3000);
     }
     match /occurrenceFollowups/{id} {
-      allow get: if activeUser();
-      allow list: if activeUser() && request.query.limit != null && request.query.limit <= 30;
+      allow get: if activeUser() && (id.matches('^gr-[1-9][0-9]{0,11}$') || occurrenceAdministrator());
+      allow list: if activeUser() && (resource.data.origin == 'hospital' || occurrenceAdministrator()) &&
+        request.query.limit != null && request.query.limit <= 30;
       allow create: if fcRecordsFolderOpen_('registros/ocorrencias') && validOccurrenceFollowup(id,request.resource.data) &&
+        occurrenceCardMatches(id,request.resource.data) &&
         ((request.resource.data.origin == 'app' && canWrite() && validAppOccurrenceFollowup(id,request.resource.data)) ||
           (request.resource.data.origin == 'hospital' && canRegisterHospitalOccurrence() && validHospitalOccurrenceFollowup(id,request.resource.data)));
-      allow update: if canEditOccurrenceDescription() && (
+      allow update: if canManageOccurrence(id) && occurrenceCardMatches(id,request.resource.data) && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['preparedDescription']) &&
           resource.data.get('analysisStarted',false) && !resource.data.get('analysisClosed',false) &&
           resource.data.get('responsesClosedAt',null) == null && occurrenceText(request.resource.data.preparedDescription,5000)) ||
@@ -111,7 +146,7 @@
       );
       allow delete: if false;
       match /preparationContext/current {
-        allow get: if canEditOccurrenceDescription();
+        allow get: if canManageOccurrence(id);
         allow create: if canWrite() && !exists(reportPath(id)) &&
           getAfter(occurrenceFollowupPath(id)).data.origin == 'app' &&
           getAfter(auditPath(id)).data.uid == request.auth.uid &&
@@ -131,30 +166,33 @@
       }
       match /analyses/{uid} {
         allow get: if activeUser() && (request.auth.uid == uid || occurrenceAdministrator());
-        allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
+        allow list: if canManageOccurrence(id) && request.query.limit != null && request.query.limit <= 30;
         allow create, update: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
+          get(occurrenceFollowupPath(id)).data.origin == 'hospital' &&
           get(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) == null &&
           !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
           get(occurrenceFollowupPath(id)).data.formId != 'F08' && !exists(occurrenceQuestionnairePath(id)) && validOccurrenceAnalysis(request.resource.data);
         allow delete: if false;
       }
       match /ethicalReview/current {
-        allow get: if canEditOccurrenceDescription() && get(occurrenceFollowupPath(id)).data.formId == 'F08';
-        allow create, update: if canEditOccurrenceDescription() && get(occurrenceFollowupPath(id)).data.formId == 'F08' &&
+        allow get: if canManageOccurrence(id) && get(occurrenceFollowupPath(id)).data.formId == 'F08';
+        allow create, update: if canManageOccurrence(id) && get(occurrenceFollowupPath(id)).data.formId == 'F08' &&
           request.resource.data.keys().hasOnly(['text','updatedAt']) &&
           request.resource.data.text is string && request.resource.data.text.size() <= 20000 &&
           request.resource.data.updatedAt == request.time;
         allow delete: if false;
       }
       match /analysisQuestionnaire/current {
-        allow get: if activeUser() && exists(occurrenceFollowupPath(id));
-        allow create: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+        allow get: if activeUser() && (canManageOccurrence(id) ||
+          get(occurrenceFollowupPath(id)).data.get('analysisStarted',false) ||
+          get(occurrenceFollowupPath(id)).data.origin == 'hospital');
+        allow create: if canManageOccurrence(id) && exists(occurrenceFollowupPath(id)) &&
           !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
           getAfter(occurrenceFollowupPath(id)).data.get('analysisStarted',false) && validOccurrenceQuestionnaire(id,request.resource.data);
         allow update: if resource.data.get('canRevise',false) && resource.data.get('lockedAt',null) == null &&
           (validOccurrenceQuestionLock(id) ||
             (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['questions','revision']) &&
-              canEditOccurrenceDescription() && get(occurrenceFollowupPath(id)).data.get('analysisStarted',false) &&
+              canManageOccurrence(id) && get(occurrenceFollowupPath(id)).data.get('analysisStarted',false) &&
               !getAfter(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
               getAfter(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) == null &&
               request.resource.data.revision == resource.data.get('revision',0)+1 &&
@@ -163,24 +201,32 @@
       }
       match /ethicalPollResponses/{uid} {
         allow get: if activeUser() && request.auth.uid == uid && exists(occurrenceFollowupPath(id));
-        allow list: if canEditOccurrenceDescription() && request.query.limit != null && request.query.limit <= 30;
+        allow list: if canManageOccurrence(id) && request.query.limit != null && request.query.limit <= 30;
         allow create: if activeUser() && request.auth.uid == uid && fcRecordsFolderOpen_('registros/ocorrencias') &&
           exists(occurrenceFollowupPath(id)) && !getAfter(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
+          (id.matches('^gr-[1-9][0-9]{0,11}$') || getAfter(occurrenceFollowupPath(id)).data.get('analysisStarted',false)) &&
           getAfter(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) == null && validOccurrenceResponse(id,request.resource.data);
         allow update, delete: if false;
       }
       match /ethicalPollResult/current {
-        allow get: if activeUser() && (canEditOccurrenceDescription() ||
+        allow get: if activeUser() && (canManageOccurrence(id) ||
           get(occurrenceFollowupPath(id)).data.get('analysisClosed',false));
-        allow create, update: if canEditOccurrenceDescription() && exists(occurrenceFollowupPath(id)) &&
+        allow create, update: if canManageOccurrence(id) && exists(occurrenceFollowupPath(id)) &&
           (get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) ||
             get(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) is timestamp) &&
           !get(occurrenceFollowupPath(id)).data.get('eventClosed',false) &&
           getAfter(occurrenceFollowupPath(id)).data.analysisClosed == true &&
-          request.resource.data.keys().hasOnly(['text','updatedAt','dueDate']) &&
-          request.resource.data.get('dueDate','2000-01-01') is string &&
-          request.resource.data.get('dueDate','2000-01-01').matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$') &&
-          occurrenceText(request.resource.data.text,20000) && request.resource.data.updatedAt == request.time;
+          (id.matches('^gr-[1-9][0-9]{0,11}$') ||
+            (!get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) &&
+              request.resource.data.diff(get(occurrenceResultDraftPath(id)).data).affectedKeys().hasOnly(['updatedAt']))) &&
+          validOccurrenceResultText(request.resource.data);
+        allow delete: if false;
+      }
+      match /analysisResultDraft/current {
+        allow get: if occurrenceAdministrator();
+        allow create, update: if occurrenceAdministrator() && get(occurrenceFollowupPath(id)).data.origin == 'app' &&
+          get(occurrenceFollowupPath(id)).data.get('responsesClosedAt',null) is timestamp &&
+          !get(occurrenceFollowupPath(id)).data.get('analysisClosed',false) && validOccurrenceResultText(request.resource.data);
         allow delete: if false;
       }
       match /analysisAcknowledgements/{uid} {
@@ -193,6 +239,12 @@
           (resource == null || resource.data.resultAt != request.resource.data.resultAt);
         allow list, delete: if false;
       }
+    }
+    function validOccurrenceResultText(data) {
+      let date = data.get('dueDate','2000-01-01');
+      return data.keys().hasOnly(['text','updatedAt','dueDate']) && date is string &&
+        date.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$') &&
+        occurrenceText(data.text,20000) && data.updatedAt == request.time;
     }
     function newOccurrenceScoreEvidence(id, subcollection, timeField) {
       let event = /databases/$(database)/documents/occurrenceFollowups/$(id)/$(subcollection)/$(request.auth.uid);
