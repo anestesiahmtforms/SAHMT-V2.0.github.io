@@ -147,6 +147,23 @@ test('professional birth date shows calendar age alongside it using the Sao Paul
  assert.equal(await age.textContent(),'24 anos, 0 meses e 0 dias');
 }));
 
+test('professional form refreshes saved changes from another session and preserves a local draft',()=>run(async browser=>{
+ const page=await browser.newPage();
+ await page.goto(url);
+ await open(page,'ACESSO RESTRITO');
+ await open(page,'CADASTRO PROFISSIONAL - SAHMT');
+ const crm=page.locator('[name=crm]');
+ await crm.waitFor();
+ await page.evaluate(()=>window.updateRegistration({version:1,answers:{crm:'12345'}}));
+ await page.waitForFunction(()=>document.querySelector('[name=crm]')?.value==='12345');
+ await crm.fill('65432');
+ await page.evaluate(async()=>{
+  window.updateRegistration({version:2,answers:{crm:'11111'}});
+  await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+ });
+ assert.equal(await crm.inputValue(),'65432');
+}));
+
 test('professional form saves the grid and uploads immediately after file selection',()=>run(async browser=>{
  const page=await browser.newPage({viewport:{width:320,height:700}});
  await page.goto(url+'?retry');

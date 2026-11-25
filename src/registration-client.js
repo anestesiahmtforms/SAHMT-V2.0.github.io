@@ -1,5 +1,6 @@
 import {feSurveyEndpoint} from './institutional-survey-client.js';
 import {fcProfessionalRegistrationEnabled,fcProfessionalRegistrationEndpoint} from './fc-integration-config.js';
+import {announceRegistrationChange} from './registration-refresh.js';
 
 const legacyOrigin = 'https://sahmt-html-training.anestesiahmtforms.workers.dev';
 
@@ -34,6 +35,9 @@ export async function callRegistrationApi({uid,isCurrent,kind,action,input={},si
  });
  if (!valid()) throw Error('Sua sessão mudou. Entre novamente.');
  const data = await response.json();
+ if (!valid()) throw Error('Sua sessão mudou. Entre novamente.');
  if (!response.ok) throw Object.assign(Error(data.code || 'UNAVAILABLE'),{code:data.code,status:response.status});
+ if (kind === 'professional' && action === 'SAVE' && data.record?.uid === uid ||
+     kind === 'drive' && action === 'UPLOAD' && data.file?.status === 'STORED') announceRegistrationChange();
  return data;
 }

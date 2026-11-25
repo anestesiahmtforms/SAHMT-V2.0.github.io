@@ -3,6 +3,7 @@ import {registrationField, isRegistrationList} from './registration-fields.js';
 import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers, scheduleParticipationPercent} from './registration-domain.js';
 import {prepareDocumentFile, documentBase64} from './document-image.js';
 import {formatBirthDateAge} from './date-format.js';
+import {watchRegistrationChanges} from './registration-refresh.js';
 
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fileInput = '[data-reg-file]';
@@ -37,7 +38,7 @@ function message(error) {
 export function mountInstitutionalRegistration(root, {request, isCurrent = () => true} = {}) {
  const pending = new Set();
  let disposed = false, state, saving = false, uploading = false, attachment = null;
- let savedForm, afterFeedback;
+ let savedForm, afterFeedback, stopRegistrationWatch=()=>{};
  const browser = root.ownerDocument.defaultView;
  const query = selector => root.querySelector(selector);
  const live = () => !disposed && root.isConnected && isCurrent();
@@ -333,14 +334,25 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
  root.addEventListener('click', click);
  root.innerHTML = '<p role="status">Preparando cadastro…</p>';
  void call('professional', 'BOOTSTRAP').then(data => {
+  if (!live()) return;
   state = data;
-  if (live()) render();
+  render();
+  stopRegistrationWatch = watchRegistrationChanges(async () => {
+   if (hasUnsavedChanges() || query('[data-reg-feedback]').open) return;
+   const updated = await call('professional', 'BOOTSTRAP');
+   if (hasUnsavedChanges() || query('[data-reg-feedback]').open) return;
+   if (updated.record?.version > (state.record?.version || 0)) {
+    state = updated;
+    render();
+   } else await listFiles();
+  }, {isCurrent:live,document:root.ownerDocument});
  }).catch(error => {
   if (live()) root.innerHTML = '<p role="alert">' + escape(message(error)) + '</p>';
  });
 
  const cleanup = () => {
   disposed = true;
+  stopRegistrationWatch();
   for (const controller of pending) controller.abort();
   pending.clear();
   attachment = null;

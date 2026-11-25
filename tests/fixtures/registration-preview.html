@@ -1,6 +1,8 @@
 <!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Demonstração de cadastros</title><div id="app"></div><script type="module">
 import '/src/styles.css';import {mountManagementHub} from '/src/management-hub.js';
+import {announceRegistrationChange} from '/src/registration-refresh.js';
 let record=null,valid=true,uploads=0;const params=new URL(location.href).searchParams;window.calls=[];
+window.updateRegistration=next=>{record=next;announceRegistrationChange();};
 const request=async(kind,action,input,signal)=>{
  window.calls.push({kind,action,input:structuredClone(input)});
  if(params.has('late')&&action==='BOOTSTRAP')await new Promise(resolve=>window.releaseLate=resolve);

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import {combinePeople,mountPeopleDirectory} from '../src/people-directory.js';
+import {announceRegistrationChange} from '../src/registration-refresh.js';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFileSync} from 'node:fs';
@@ -39,8 +40,12 @@ test('Cadastro Profissional shows completion before opening and loads independen
  const professional=panel({personRegistration:'0'},professionalFields);
  const pending=panel({personRegistration:'1'},{});
  const ambiguous=panel({personRegistration:'2'},{});
- const host={querySelectorAll:selector=>({'[data-person]':[personal],'[data-person-registration]':[professional,pending,ambiguous]})[selector]||[]};
+ let poll;
+ const appWindow=Object.assign(new EventTarget(),{Event,setInterval:callback=>{poll=callback;return 1;},clearInterval(){}});
+ const ownerDocument=Object.assign(new EventTarget(),{defaultView:appWindow,visibilityState:'visible'});
+ const host={isConnected:true,ownerDocument,querySelectorAll:selector=>({'[data-person]':[personal],'[data-person-registration]':[professional,pending,ambiguous]})[selector]||[]};
  const email='ana@example.test';
+ let phone='222';
  mountPeopleDirectory(host,{
   contacts:[{sigla:'AA',name:'Ana',phone:'111',email},
    {sigla:'BB',name:'Bia',email:'bia@example.test'},
@@ -52,7 +57,7 @@ test('Cadastro Profissional shows completion before opening and loads independen
    if(action==='LIST')return {rows:[{uid:'record-ana',email},
     {uid:'caio-1',email:'caio@example.test'},{uid:'caio-2',email:'caio@example.test'}]};
    return {record:{uid:'record-ana',email,truth:true,
-    answers:{phone:'222',workDays:['0:WEEKLY'],surgicalAreas:['THORACIC'],outsideWork:'YES',outsideWorkDetails:'Atividade externa',additionalInfo:'<script>Teste</script>'},
+    answers:{phone,workDays:['0:WEEKLY'],surgicalAreas:['THORACIC'],outsideWork:'YES',outsideWorkDetails:'Atividade externa',additionalInfo:'<script>Teste</script>'},
     legacyAnswers:{technicalSkills:'Competência anterior'}}};
   },
   readRegistrationFiles:async uid=>{calls.push(['LIST_SUBJECT',{uid}]);return {files:[{subject:'QUALIFICATIONS',name:'Diploma.pdf'}]};},
@@ -66,12 +71,26 @@ test('Cadastro Profissional shows completion before opening and loads independen
  assert.deepEqual([professional,pending,ambiguous].map(({dataset,status})=>[dataset.registrationState,status.textContent]),
   [['complete','Preenchido'],['pending','Não preenchido'],['unknown','Vínculo ambíguo']]);
  await professional.toggle();
- await professional.toggle();
- assert.deepEqual(calls,[['LIST',{}],['DETAIL',{uid:'record-ana'}],['LIST_SUBJECT',{uid:'record-ana'}]]);
+ assert.deepEqual(calls,[['LIST',{}],['LIST',{}],['DETAIL',{uid:'record-ana'}],['LIST_SUBJECT',{uid:'record-ana'}]]);
  assert.match(professionalFields.innerHTML,/<dd>222<\/dd>/);
  for(const expected of ['Dias habituais de trabalho','7,14%','Torácica','Atividade externa','&lt;script&gt;Teste&lt;/script&gt;',
   'Competência anterior','Declaração de veracidade','Diploma.pdf'])assert.ok(professionalFields.innerHTML.includes(expected),expected);
  assert.doesNotMatch(professionalFields.innerHTML,/111|Entrada na equipe/);
+ phone='333';
+ announceRegistrationChange(appWindow);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(professionalFields.innerHTML,/<dd>333<\/dd>/);
+ phone='444';
+ await poll();
+ assert.match(professionalFields.innerHTML,/<dd>444<\/dd>/);
+ phone='445';
+ await professional.toggle();
+ assert.match(professionalFields.innerHTML,/<dd>445<\/dd>/);
+ host.isConnected=false;
+ phone='555';
+ announceRegistrationChange(appWindow);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.match(professionalFields.innerHTML,/<dd>445<\/dd>/);
 });
 const code=names.map(name=>{const start=source.indexOf('export async function '+name+'(');const end=source.indexOf('\nexport ',start+1);return source.slice(start,end).replace('export ','');}).join('\n');
 function fixture({deny=false,missing=false,failCommit=false}={}){

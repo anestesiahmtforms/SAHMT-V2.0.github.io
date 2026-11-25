@@ -12,6 +12,7 @@ import {listFunctionalTeam} from './functional-access.js';
 import {renderOperationalFolderDirectory} from './operational-folder-directory.js';
 import {operationalContentAllowed,operationalFolderState} from './operational-folder-runtime.js';
 import {loadFunctionalResult,renderFunctionalResult,resultYears} from './functional-results.js';
+import {watchRegistrationChanges} from './registration-refresh.js';
 
 let activeFunctionalMountCleanup = null;
 const waitWithTimeout = (promise, milliseconds, code) => {
@@ -91,7 +92,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   let disposed = false;
   let stopAuth = () => {};
   let detailDialog, openSource = '', visibleSources = null;
-  let resultRequest=0,cleanupDosimetry=()=>{};
+  let resultRequest=0,cleanupDosimetry=()=>{},stopRegistrationWatch=()=>{};
   let subjectRevision = 0, selection = '', roster = [], loadingRoster = false, ownSources = {}, ownStatus = '', ownRecognition = 'Sua dedicação e seu trabalho fazem a diferença na nossa equipe.', ownPerformance = {state:'PREPARING'};
   const functionalDialog=root.closest('.functional-dialog');
   const header=functionalDialog?.querySelector('[data-fk-header]');
@@ -106,7 +107,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
   const paint = markup => { if (current() && root?.isConnected) root.innerHTML = markup; };
   const cleanup = () => {
     if (disposed) return;
-    disposed = true;cleanupDosimetry();
+    disposed = true;cleanupDosimetry();stopRegistrationWatch();
     if(detailDialog?.open)detailDialog.close();
     showOwner('');
     showRecognition('');
@@ -176,6 +177,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     detailDialog?.addEventListener('close',()=>{
       if(detailDialog.open)return;
       resultRequest++;cleanupDosimetry();cleanupDosimetry=()=>{};
+      stopRegistrationWatch();stopRegistrationWatch=()=>{};
       const key=openSource;
       openSource='';
       detailDialog.querySelector('[data-fk-detail-body]').replaceChildren();
@@ -257,22 +259,25 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       ?performanceDetail(value.data):'<p>Aguardando a consolidação dos pontos de FB, FC, FE, FG e FJ.</p>';
   }
 
-  async function fetchResult(year) {
+  async function fetchResult(year,{refresh=false}={}) {
     const key=openSource, ticket=++resultRequest,subjectUid=selection||uid;
     const current=()=>ownSession()&&operationalContentAllowed(sourceFolders[key])&&detailDialog.open&&openSource===key&&resultRequest===ticket&&(selection||uid)===subjectUid;
     const body=detailDialog.querySelector('[data-fk-detail-body]');
     const output=body.querySelector('[data-fk-result]');
     if(!output)return;
-    output.textContent='Consultando…';
+    if(!refresh)output.textContent='Consultando…';
     try{
       const result=await loadFunctionalResult({key,year,uid,subjectUid,administrator,faAuth,isCurrent:current});
-      if(current())output.innerHTML=renderFunctionalResult(key,result);
+      if(current()){
+        const markup=renderFunctionalResult(key,result);
+        if(output.innerHTML!==markup)output.innerHTML=markup;
+      }
     }catch(error){
       if(!current())return;
       if(error?.code?.endsWith('_FOLDER_DISABLED')){
         detailDialog.querySelector('#fk-detail-title').setAttribute('data-folder-state','inactive');
         output.textContent='';
-      }else output.textContent='Não foi possível confirmar o resultado agora. Feche e reabra o painel para tentar novamente.';
+      }else if(!refresh||[401,403].includes(error?.status))output.textContent='Não foi possível confirmar o resultado agora. Feche e reabra o painel para tentar novamente.';
     }
   }
 
@@ -416,6 +421,10 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
       }
       detailDialog.showModal();
       if(key!=='performance')void fetchResult(resultYears(key)[0]);
+      if(key==='professionalRegistration')stopRegistrationWatch=watchRegistrationChanges(
+        ()=>fetchResult(undefined,{refresh:true}),
+        {isCurrent:()=>ownSession()&&detailDialog.open&&openSource===key&&operationalContentAllowed(sourceFolders[key]),document:root.ownerDocument}
+      );
     }
   }
 }

@@ -1,6 +1,7 @@
 import {formatDisplayDate} from './date-format.js';
 import {MEMBER_CATEGORIES} from './member-categories.js';
 import {renderProfessionalRegistration} from './functional-results.js';
+import {watchRegistrationChanges} from './registration-refresh.js';
 import {isSystemOwnerEmail} from './system-account-exclusions.js';
 
 const text=value=>typeof value==='string'?value.trim():'';
@@ -112,11 +113,11 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
   const contact=bySigla.get(button.dataset.contactEdit);
   if(contact&&isCurrent())onEdit(contact);
  }));
- let catalog;
- const registrations=()=>catalog||=(registrationRequest('LIST',{}).then(({rows})=>{
+ let catalogRequest;
+ const registrations=()=>catalogRequest||=(registrationRequest('LIST',{}).then(({rows})=>{
   if(!Array.isArray(rows))throw Error('PEOPLE_FC_LIST');
   return uniqueBy(rows,row=>address(row.email));
- }).catch(error=>{catalog=null;throw error;}));
+ }).finally(()=>{catalogRequest=null;}));
  host.querySelectorAll('[data-person]').forEach(details=>{
   const row=rows[Number(details.dataset.person)];
   let loading=false,loaded=false;
@@ -162,14 +163,14 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
    });
   }
  });
- host.querySelectorAll('[data-person-registration]').forEach(details=>{
+ const refreshPanels = Array.from(host.querySelectorAll('[data-person-registration]'), details=>{
   const row=rows[Number(details.dataset.personRegistration)];
   const target=details.querySelector('[data-person-fc]');
   const status=details.querySelector('[data-registration-status]');
   const setStatus=(state,label)=>{
    if(!registrationCurrent())return;
-   details.dataset.registrationState=state;
-   status.textContent=label;
+   if(details.dataset.registrationState!==state)details.dataset.registrationState=state;
+   if(status.textContent!==label)status.textContent=label;
   };
   const readEntry=async()=>{
    try{
@@ -183,29 +184,43 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
     throw error;
    }
   };
-  void readEntry().catch(()=>{});
-  let loading=false,loaded=false;
-  details.addEventListener('toggle',async()=>{
-   if(!details.open||!registrationCurrent()||loading||loaded)return;
+  let loading=false,hasResult=false,lastMarkup;
+  async function refreshPanel({openOnly=false}={}){
+   if(!registrationCurrent()||(openOnly&&!details.open))return;
+   if(loading)return;
    loading=true;
-   target.textContent='Consultando Cadastro Profissional…';
+   if(details.open&&!hasResult)target.textContent='Consultando Cadastro Profissional…';
    try{
     const entry=await readEntry();
-    if(!registrationCurrent())return;
-    if(entry===null){target.textContent='Há mais de um cadastro profissional para este e-mail.';}
-    else if(!entry){target.textContent='Cadastro Profissional ainda não preenchido.';}
+    if(!registrationCurrent()||!details.open)return;
+    let markup;
+    if(entry===null)markup='<p>Há mais de um cadastro profissional para este e-mail.</p>';
+    else if(!entry)markup='<p>Cadastro Profissional ainda não preenchido.</p>';
     else{
      const {record}=await registrationRequest('DETAIL',{uid:entry.uid});
-     if(!registrationCurrent())return;
+     if(!registrationCurrent()||!details.open)return;
      if(record?.uid!==entry.uid||address(record?.email)!==row.email)throw Error('PEOPLE_FC_IDENTITY');
      const receipts=await readRegistrationFiles?.(entry.uid).catch(()=>null);
-     if(!registrationCurrent())return;
-     target.innerHTML=renderProfessionalRegistration({record,files:Array.isArray(receipts?.files)?receipts.files:null});
+     if(!registrationCurrent()||!details.open)return;
+     markup=renderProfessionalRegistration({record,files:Array.isArray(receipts?.files)?receipts.files:null});
     }
-    loaded=true;
-   }catch{
-    if(registrationCurrent())target.textContent='Cadastro Profissional indisponível. Feche e reabra para tentar novamente.';
+    if(markup!==lastMarkup)target.innerHTML=markup;
+    lastMarkup=markup;
+    hasResult=true;
+   }catch(error){
+    if(registrationCurrent()&&details.open&&(!hasResult||[401,403].includes(error?.status)||error?.message==='PEOPLE_FC_IDENTITY')){
+     target.textContent='Cadastro Profissional indisponível. Feche e reabra para tentar novamente.';
+     lastMarkup=undefined;
+     hasResult=false;
+    }
    }finally{loading=false;}
-  });
+  }
+  void readEntry().catch(()=>{});
+  details.addEventListener('toggle',()=>refreshPanel({openOnly:true}));
+  return refreshPanel;
  });
+ if(refreshPanels.length)watchRegistrationChanges(
+  ()=>Promise.all(refreshPanels.map(refresh=>refresh())),
+  {isCurrent:()=>host.isConnected&&registrationCurrent(),document:host.ownerDocument}
+ );
 }
