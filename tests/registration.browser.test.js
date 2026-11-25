@@ -167,12 +167,25 @@ test('professional form refreshes saved changes from another session and preserv
 test('professional form saves the grid and uploads immediately after file selection',()=>run(async browser=>{
  const page=await browser.newPage({viewport:{width:320,height:700}});
  await page.goto(url+'?retry');
+ await page.locator('body').evaluate(body=>body.classList.add('app-shell'));
  await open(page,'ACESSO RESTRITO');
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
  await page.locator('form').waitFor();
  await open(page,'SALVAR MEU CADASTRO');
  const feedback=page.locator('[data-reg-feedback]');
+ async function assertCompactFeedback(){
+  const geometry=await feedback.evaluate(dialog=>{
+   const {x,y,width,height,bottom}=dialog.getBoundingClientRect();
+   const actions=dialog.querySelector('.reg-feedback-actions').getBoundingClientRect();
+   return {x,y,width,height,viewportWidth:innerWidth,viewportHeight:innerHeight,bottomGap:bottom-actions.bottom};
+  });
+  assert.ok(Math.abs(geometry.x+geometry.width/2-geometry.viewportWidth/2)<2);
+  assert.ok(Math.abs(geometry.y+geometry.height/2-geometry.viewportHeight/2)<2);
+  assert.ok(geometry.width<=geometry.viewportWidth-32);
+  assert.ok(geometry.bottomGap>=0&&geometry.bottomGap<=20);
+ }
  assert.equal(await feedback.getAttribute('data-kind'),'error');
+ await assertCompactFeedback();
  assert.match(await feedback.innerText(),/CPF.*preenchimento obrigatório/);
  assert.match(await feedback.innerText(),/declaração de veracidade/);
  await open(page,'OK');
@@ -251,6 +264,12 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'SALVAR MEU CADASTRO');
  await page.getByText('Cadastro salvo com sucesso.',{exact:true}).waitFor();
  assert.equal(await feedback.getAttribute('data-kind'),'success');
+ assert.equal(await feedback.locator('[data-reg-feedback-details]').isVisible(),false);
+ assert.equal(await feedback.getByRole('button').count(),1);
+ await assertCompactFeedback();
+ await page.setViewportSize({width:740,height:320});
+ await assertCompactFeedback();
+ await page.setViewportSize({width:320,height:700});
  await open(page,'OK');
  const answers=await page.evaluate(()=>window.calls.find(c=>c.action==='SAVE').input.answers);
  assert.equal(answers.motherName,'Mãe Sintética');

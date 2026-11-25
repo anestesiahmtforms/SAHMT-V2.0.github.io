@@ -110,9 +110,13 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
 
  function feedback(kind, title, details, onDiscard) {
   const dialog = query('[data-reg-feedback]');
+  const list = query('[data-reg-feedback-details]');
   dialog.dataset.kind = kind;
   query('#reg-feedback-title').textContent = title;
-  query('[data-reg-feedback-details]').replaceChildren(...details.map(text => {
+  list.hidden = details.length === 0;
+  if (list.hidden) dialog.removeAttribute('aria-describedby');
+  else dialog.setAttribute('aria-describedby',list.id);
+  list.replaceChildren(...details.map(text => {
    const item = root.ownerDocument.createElement('li');
    item.textContent = text;
    return item;
@@ -231,7 +235,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    if (JSON.stringify(formSnapshot(event.target)) !== savedForm || uploading || attachment) {
     feedback('error', 'Cadastro com pendências', ['A versão enviada foi salva. Ainda há alterações ou comprovantes pendentes neste formulário.']);
    } else {
-    feedback('success', 'Cadastro salvo com sucesso.', ['O salvamento foi confirmado.']);
+    feedback('success', 'Cadastro salvo com sucesso.', []);
    }
   } catch (error) {
    if (live()) {
