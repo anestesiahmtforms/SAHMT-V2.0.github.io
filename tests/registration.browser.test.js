@@ -92,6 +92,13 @@ test('professional modal keeps a compact header and a fixed footer while the for
   await page.locator('form').waitFor();
   const dialog=page.getByRole('dialog'),header=dialog.locator('header'),back=dialog.getByRole('button',{name:'VOLTAR'});
   const bounds=await dialog.boundingBox(),headerBounds=await header.boundingBox(),footerBounds=await back.boundingBox();
+  const columns=dialog.locator('.reg-work-grid thead th');
+  assert.equal(await columns.count(),7);
+  assert.equal(await columns.nth(1).getAttribute('aria-label'),'Semanal');
+  assert.equal(await columns.nth(1).innerText(),width<=620?'Sem.':'Semanal');
+  assert.equal(await dialog.locator('.reg-work-key').isVisible(),width<=620);
+  assert.ok(await columns.evaluateAll(headers=>headers.every(header=>
+   getComputedStyle(header).writingMode==='horizontal-tb'&&header.scrollWidth<=header.clientWidth)));
   assert.equal(await dialog.evaluate(element=>getComputedStyle(element).position),'fixed');
   assert.ok(headerBounds.height<=headerLimit,`Cabeçalho de ${headerBounds.height}px a ${width}px`);
   assert.ok(bounds.y>=0&&bounds.y+bounds.height<=height);

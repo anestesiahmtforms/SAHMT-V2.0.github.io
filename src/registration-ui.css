@@ -52,10 +52,17 @@
 .reg-multi-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:4px;margin-top:6px}
 .reg-multi-options label{display:flex;align-items:center;gap:8px;min-height:36px;font-size:.85rem;cursor:pointer}
 .reg-multi-options input{flex:none}
+.reg-work-grid th{overflow-wrap:anywhere}
+.reg-work-label-short,.reg-work-key{display:none}
 @media(max-width:620px){
  .reg-work-grid{padding:6px}
  .reg-work-grid th:first-child{width:27%}
- .reg-work-grid th span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg)}
+ .reg-work-grid thead th{font-size:.7rem;line-height:1.2;padding:8px 1px}
+ .reg-work-grid tbody th{hyphens:manual}
+ .reg-work-grid td label{min-height:44px}
+ .reg-work-label-full{display:none}
+ .reg-work-label-short,.reg-work-key{display:block}
+ .reg-work-key{margin:8px 0 0}
 }
 
 .reg-feedback {

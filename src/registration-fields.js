@@ -16,13 +16,24 @@ function birthDateField(field, value) {
  </div>`;
 }
 
+const shortWorkLabels = {
+ WEEKLY:'Sem.', FORTNIGHTLY:'Quin.', FULL:'Int.', ON_CALL:'Plant.'
+};
+
 function workGrid(field, value) {
  const selected = Array.isArray(value) ? value : [];
  const previousDays = field.options.filter(([day]) => selected.includes(day)).map(([,label]) => label);
  return `<fieldset class="reg-work-grid" data-field="${field.id}">
   <legend>${h(field.label)}${field.required?' *':''}</legend>
   ${previousDays.length ? `<p class="reg-help">Dias do cadastro anterior: ${h(previousDays.join(', '))}. Marque a frequência e o turno de cada dia.</p>` : ''}
-  <table><thead><tr><th scope="col">Dia</th>${field.columns.map(([,label]) => `<th scope="col"><span>${h(label)}</span></th>`).join('')}</tr></thead>
+  <table><thead><tr><th scope="col">Dia</th>${field.columns.map(([option,label]) => {
+   const shortLabel = shortWorkLabels[option];
+   if (!shortLabel) return `<th scope="col">${h(label)}</th>`;
+   return `<th scope="col" aria-label="${h(label)}">
+    <span class="reg-work-label-full" aria-hidden="true">${h(label)}</span>
+    <span class="reg-work-label-short" aria-hidden="true">${h(shortLabel)}</span>
+   </th>`;
+  }).join('')}</tr></thead>
   <tbody>${field.options.map(([day,label]) => `<tr><th scope="row">${h(label)}</th>${field.columns.map(([option,column]) => {
    const key = `${day}:${option}`;
    const sunday = day === WORK_SUNDAY;
@@ -33,6 +44,7 @@ function workGrid(field, value) {
    const checked = selected.includes(key) && !(option === 'WEEKLY' && selected.includes(day + ':FORTNIGHTLY'));
    return `<td><label><input type="checkbox" name="${field.id}" value="${key}" aria-label="${h(`${label}, ${column}`)}"${checked ? ' checked' : ''}></label></td>`;
   }).join('')}</tr>`).join('')}</tbody></table>
+  <p class="reg-help reg-work-key">Sem. = Semanal · Quin. = Quinzenal · Int. = Integral · Plant. = Plantão noturno</p>
   <div class="reg-schedule-participation">
    <strong id="reg-schedule-participation-title">ÍNDICE DE PARTICIPAÇÃO NA ESCALA</strong>
    <output aria-labelledby="reg-schedule-participation-title" aria-describedby="reg-schedule-participation-help" data-reg-schedule-participation></output>
