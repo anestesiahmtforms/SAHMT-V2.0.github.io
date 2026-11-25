@@ -17,16 +17,16 @@ function birthDateField(field, value) {
 }
 
 const shortWorkLabels = {
- FORTNIGHTLY:'Quin.', FULL:'Int.', ON_CALL:'Plant.'
+ WEEKLY:'Sem.', FORTNIGHTLY:'Quin.', ON_CALL:'Plant.'
 };
 
 function workGrid(field, value) {
  const selected = Array.isArray(value) ? value : [];
- const columns = field.columns.filter(([option]) => option !== 'WEEKLY');
+ const columns = field.columns.filter(([option]) => option !== 'FULL');
  const previousDays = field.options.filter(([day]) => selected.includes(day)).map(([,label]) => label);
  return `<fieldset class="reg-work-grid" data-field="${field.id}">
   <legend>${h(field.label)}${field.required?' *':''}</legend>
-  ${previousDays.length ? `<p class="reg-help">Dias do cadastro anterior: ${h(previousDays.join(', '))}. Marque os turnos e indique se algum dia é quinzenal.</p>` : ''}
+  ${previousDays.length ? `<p class="reg-help">Dias do cadastro anterior: ${h(previousDays.join(', '))}. Marque a frequência e os turnos habituais.</p>` : ''}
   <table><thead><tr><th scope="col">Dia</th>${columns.map(([option,label]) => {
    const shortLabel = shortWorkLabels[option];
    if (!shortLabel) return `<th scope="col">${h(label)}</th>`;
@@ -42,14 +42,18 @@ function workGrid(field, value) {
     const previous = selected.includes(key) ? `<input type="hidden" name="${field.id}" value="${key}">` : '';
     return `<td>${previous}<span aria-hidden="true">—</span></td>`;
    }
-   const checked = selected.includes(key);
+   const previousFullDay = selected.includes(day + ':FULL');
+   const previousFortnightly = selected.includes(day + ':FORTNIGHTLY');
+   let checked = selected.includes(key);
+   if (option === 'WEEKLY') checked = !previousFortnightly && (checked || previousFullDay);
+   if (previousFullDay && (option === 'MORNING' || option === 'AFTERNOON')) checked = false;
    return `<td><label><input type="checkbox" name="${field.id}" value="${key}" aria-label="${h(`${label}, ${column}`)}"${checked ? ' checked' : ''}></label></td>`;
   }).join('')}</tr>`).join('')}</tbody></table>
-  <p class="reg-help reg-work-key">Quin. = Quinzenal · Int. = Integral · Plant. = Plantão noturno</p>
+  <p class="reg-help reg-work-key">Sem. = Semanal · Quin. = Quinzenal · Plant. = Plantão noturno</p>
   <div class="reg-schedule-participation">
    <strong id="reg-schedule-participation-title">ÍNDICE DE PARTICIPAÇÃO NA ESCALA</strong>
    <output aria-labelledby="reg-schedule-participation-title" aria-describedby="reg-schedule-participation-help" data-reg-schedule-participation></output>
-   <small class="reg-help" id="reg-schedule-participation-help" data-reg-schedule-participation-help></small>
+   <small class="reg-help" id="reg-schedule-participation-help">Semanal ou Quinzenal sem Manhã nem Tarde indica período integral. Integral e plantão noturno valem um turno cada. Manhã e tarde valem meio turno cada. Quinzenal reduz pela metade a contribuição do dia. Uma semana completa tem 14 turnos (100%).</small>
   </div>
  </fieldset>`;
 }

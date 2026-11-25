@@ -3,7 +3,7 @@ export const REGISTRATION_CYCLE='2026';
 export const WORK_DAYS=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'].map((label,day)=>[String(day),label]);
 export const WORK_OPTIONS=[['WEEKLY','Semanal'],['FORTNIGHTLY','Quinzenal'],['FULL','Integral'],['MORNING','Manhã'],['AFTERNOON','Tarde'],['ON_CALL','Plantão noturno']];
 export const WORK_SUNDAY = '6';
-export const SUNDAY_WORK_OPTIONS = ['FORTNIGHTLY','FULL','ON_CALL'];
+export const SUNDAY_WORK_OPTIONS = ['WEEKLY','FORTNIGHTLY','ON_CALL'];
 const FULL_DAY_SHIFTS = 1;
 const PARTIAL_DAY_SHIFTS = 0.5;
 const NIGHT_ON_CALL_SHIFTS = 1;
@@ -14,9 +14,11 @@ export function scheduleParticipationPercent(workDays) {
  let weeklyShifts = 0;
  for (const [day] of WORK_DAYS) {
   const fortnightly = selected.has(day + ':FORTNIGHTLY');
+  const weekly = selected.has(day + ':WEEKLY');
   const partialPeriods = day === WORK_SUNDAY ? 0
    : Number(selected.has(day + ':MORNING')) + Number(selected.has(day + ':AFTERNOON'));
-  const dayShifts = selected.has(day + ':FULL') ? FULL_DAY_SHIFTS : partialPeriods * PARTIAL_DAY_SHIFTS;
+  const fullDay = selected.has(day + ':FULL') || (!partialPeriods && (weekly || fortnightly));
+  const dayShifts = fullDay ? FULL_DAY_SHIFTS : partialPeriods * PARTIAL_DAY_SHIFTS;
   const shifts = dayShifts + (selected.has(day + ':ON_CALL') ? NIGHT_ON_CALL_SHIFTS : 0);
 
   weeklyShifts += fortnightly ? shifts / 2 : shifts;

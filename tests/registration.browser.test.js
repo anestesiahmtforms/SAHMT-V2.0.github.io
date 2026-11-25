@@ -94,8 +94,9 @@ test('professional modal keeps a compact header and a fixed footer while the for
   const bounds=await dialog.boundingBox(),headerBounds=await header.boundingBox(),footerBounds=await back.boundingBox();
   const columns=dialog.locator('.reg-work-grid thead th');
   assert.equal(await columns.count(),6);
-  assert.equal(await columns.nth(1).getAttribute('aria-label'),'Quinzenal');
-  assert.equal(await columns.nth(1).innerText(),width<=620?'Quin.':'Quinzenal');
+  assert.equal(await columns.nth(1).getAttribute('aria-label'),'Semanal');
+  assert.equal(await columns.nth(1).innerText(),width<=620?'Sem.':'Semanal');
+  assert.equal(await columns.nth(2).getAttribute('aria-label'),'Quinzenal');
   assert.equal(await dialog.locator('.reg-work-key').isVisible(),width<=620);
   assert.ok(await columns.evaluateAll(headers=>headers.every(header=>
    getComputedStyle(header).writingMode==='horizontal-tb'&&header.scrollWidth<=header.clientWidth)));
@@ -176,17 +177,23 @@ test('professional form saves the grid and uploads immediately after file select
  assert.equal(await grid.getByRole('checkbox').count(),33);
  const sunday=grid.getByRole('row',{name:/Domingo/});
  assert.deepEqual(await sunday.getByRole('checkbox').evaluateAll(checkboxes=>checkboxes.map(input=>input.getAttribute('aria-label'))),
-  ['Domingo, Quinzenal','Domingo, Integral','Domingo, Plantão noturno']);
- assert.equal(await grid.getByRole('checkbox',{name:/Semanal/}).count(),0);
- const saturdayFull=grid.getByRole('checkbox',{name:'Sábado, Integral'});
+  ['Domingo, Semanal','Domingo, Quinzenal','Domingo, Plantão noturno']);
+ assert.equal(await grid.getByRole('checkbox',{name:/Integral/}).count(),0);
+ const saturdayWeekly=grid.getByRole('checkbox',{name:'Sábado, Semanal'});
  const saturdayFortnightly=grid.getByRole('checkbox',{name:'Sábado, Quinzenal'});
- await saturdayFull.check();
+ await saturdayWeekly.check();
  assert.equal(await participation.textContent(),'7,14%');
  await saturdayFortnightly.check();
+ assert.equal(await saturdayWeekly.isChecked(),false);
  assert.equal(await participation.textContent(),'3,57%');
- await saturdayFortnightly.uncheck();
+ const saturdayMorning=grid.getByRole('checkbox',{name:'Sábado, Manhã'});
+ await saturdayMorning.check();
+ assert.equal(await participation.textContent(),'1,79%');
+ await saturdayMorning.uncheck();
+ await saturdayWeekly.check();
+ assert.equal(await saturdayFortnightly.isChecked(),false);
  assert.equal(await participation.textContent(),'7,14%');
- await saturdayFull.uncheck();
+ await saturdayWeekly.uncheck();
  assert.equal(await grid.evaluate(e=>e.getBoundingClientRect().right>e.closest('[data-hub-body]').getBoundingClientRect().right),false);
  const back=page.getByRole('button',{name:'VOLTAR',exact:true});
  const before=await back.boundingBox();
@@ -204,7 +211,7 @@ test('professional form saves the grid and uploads immediately after file select
  await page.getByRole('checkbox',{name:'Segunda-feira, Manhã'}).check();
  await page.getByRole('checkbox',{name:'Domingo, Plantão noturno'}).check();
  assert.equal(await participation.textContent(),'10,71%');
- await sunday.getByRole('checkbox',{name:'Domingo, Integral'}).check();
+ await sunday.getByRole('checkbox',{name:'Domingo, Semanal'}).check();
  assert.equal(await participation.textContent(),'17,86%');
  await sunday.getByRole('checkbox',{name:'Domingo, Quinzenal'}).check();
  assert.equal(await participation.textContent(),'10,71%');
@@ -233,7 +240,7 @@ test('professional form saves the grid and uploads immediately after file select
  const answers=await page.evaluate(()=>window.calls.find(c=>c.action==='SAVE').input.answers);
  assert.equal(answers.motherName,'Mãe Sintética');
  assert.equal(answers.fatherName,'Pai Sintético');
- assert.deepEqual(answers.workDays,['0:MORNING','6:FORTNIGHTLY','6:FULL','6:ON_CALL']);
+ assert.deepEqual(answers.workDays,['0:MORNING','6:FORTNIGHTLY','6:ON_CALL']);
  assert.deepEqual(answers.surgicalAreas,['CARDIOVASCULAR','UROLOGY']);
  assert.deepEqual(answers.formation,['TEA','MESTRADO']);
  assert.deepEqual(answers.institutionalParticipation,['COMISSOES','DIRECAO']);

@@ -10,7 +10,7 @@ export const identity={uid:'synthetic-registration',email:'synthetic@example.inv
 export function professionalAnswers(){return {...Object.fromEntries(PROFESSIONAL_FIELDS.map(f=>[f.id,['checks','multi-select'].includes(f.type)?f.options.slice(0,f.min||1).map(([v])=>v):f.options?f.options[0][0]:f.required?'Informação sintética':''])),fullName:'Pessoa Sintética',birthDate:'1990-01-01',cpf:'52998224725',crm:'12345',workDays:['0:WEEKLY'],phone:'31999999999',lattes:'https://lattes.cnpq.br/1234567890123456'};}
 
 test('100% de participação exige sete dias integrais e sete plantões noturnos semanais',()=>{
- const fullWeek = Array.from({length:7},(_,day)=>[day+':FULL',day+':ON_CALL']).flat();
+ const fullWeek = Array.from({length:7},(_,day)=>[day+':WEEKLY',day+':ON_CALL']).flat();
  const mondayToSaturday = Array.from({length:6},(_,day)=>day+':FULL');
  const percent = shifts => 100 * shifts / 14;
  assert.equal(scheduleParticipationPercent(fullWeek),100);
@@ -22,19 +22,19 @@ test('100% de participação exige sete dias integrais e sete plantões noturnos
  assert.equal(scheduleParticipationPercent(['5:MORNING','5:FORTNIGHTLY']),percent(0.25));
  assert.equal(scheduleParticipationPercent(['0:MORNING','0:AFTERNOON']),percent(1));
  assert.equal(scheduleParticipationPercent(['0:FULL','0:MORNING','0:AFTERNOON','0:ON_CALL']),percent(2));
- assert.equal(scheduleParticipationPercent(['1:WEEKLY','1:ON_CALL']),percent(1));
- assert.equal(scheduleParticipationPercent(['1:FORTNIGHTLY','1:ON_CALL']),percent(0.5));
+ assert.equal(scheduleParticipationPercent(['1:WEEKLY','1:ON_CALL']),percent(2));
+ assert.equal(scheduleParticipationPercent(['1:FORTNIGHTLY','1:ON_CALL']),percent(1));
  assert.equal(scheduleParticipationPercent(['6:FULL']),percent(1));
  assert.equal(scheduleParticipationPercent(['6:ON_CALL']),percent(1));
  assert.equal(scheduleParticipationPercent(['6:FORTNIGHTLY','6:FULL','6:ON_CALL']),percent(1));
  assert.equal(scheduleParticipationPercent([...fullWeek,'6:FORTNIGHTLY']),percent(13));
- assert.equal(scheduleParticipationPercent([...mondayToSaturday,'6:WEEKLY','6:MORNING','6:AFTERNOON']),percent(6));
- assert.equal(scheduleParticipationPercent(['6:WEEKLY','6:MORNING']),null);
- assert.equal(scheduleParticipationPercent(['6:FORTNIGHTLY']),null);
+ assert.equal(scheduleParticipationPercent([...mondayToSaturday,'6:WEEKLY','6:MORNING','6:AFTERNOON']),50);
+ assert.equal(scheduleParticipationPercent(['6:MORNING']),null);
+ assert.equal(scheduleParticipationPercent(['6:FORTNIGHTLY']),percent(0.5));
  assert.equal(scheduleParticipationPercent(['0:FULL','0:WEEKLY','0:FORTNIGHTLY']),percent(0.5));
  const mondayToThursday = Array.from({length:4},(_,day)=>[day+':WEEKLY',day+':FULL']).flat();
- assert.equal(scheduleParticipationPercent([...mondayToThursday,'5:WEEKLY','5:FORTNIGHTLY']),percent(4));
- assert.equal(scheduleParticipationPercent(['0:WEEKLY']),null);
+ assert.equal(scheduleParticipationPercent([...mondayToThursday,'5:WEEKLY','5:FORTNIGHTLY']),percent(4.5));
+ assert.equal(scheduleParticipationPercent(['0:WEEKLY']),percent(1));
  assert.equal(scheduleParticipationPercent(['0','5']),null);
  assert.equal(scheduleParticipationPercent([]),null);
 });
