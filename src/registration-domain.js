@@ -1,6 +1,10 @@
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 export const REGISTRATION_CYCLE='2026';
-export const TEACHING_RESEARCH_UNANSWERED='Não informado (campo opcional)';
+export const OPTIONAL_TEXT_UNANSWERED='Não informado (campo opcional)';
+export const LEGACY_REQUIRED_TEXT_FIELDS={REGISTRATION_INVALID_ADDRESS:'address',REGISTRATION_INVALID_TEACHINGRESEARCH:'teachingResearch'};
+export function professionalTextAnswer(field,value){
+ return Object.values(LEGACY_REQUIRED_TEXT_FIELDS).includes(field)&&value===OPTIONAL_TEXT_UNANSWERED?'':value;
+}
 export const WORK_DAYS=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'].map((label,day)=>[String(day),label]);
 export const WORK_OPTIONS=[['WEEKLY','Semanal'],['FORTNIGHTLY','Quinzenal'],['FULL','Integral'],['MORNING','Manhã'],['AFTERNOON','Tarde'],['ON_CALL','Plantão noturno']];
 export const WORK_SUNDAY = '6';
@@ -58,7 +62,7 @@ export const PROFESSIONAL_FIELDS=[
  {id:'crm',label:'Número do CRM',type:'text',required:true,max:12,inputmode:'numeric'},
  {id:'rqe',label:'RQE, quando houver',type:'text',max:100},
  {id:'phone',label:'Telefone com DDD',type:'tel',required:true,max:40,section:'Contato e atuação'},
- {id:'address',label:'Endereço completo',type:'textarea',required:true,max:600},
+ {id:'address',label:'Endereço completo',type:'textarea',max:600},
  {id:'workDays',label:'Dias habituais de trabalho',type:'work-grid',required:true,options:WORK_DAYS,columns:WORK_OPTIONS},
  {id:'managementAreas',label:'Áreas de gestão em que gostaria de participar (mínimo de duas)',type:'checks',required:true,min:2,options:MANAGEMENT_AREA_SEED.map(a=>[a.id,a.name]),section:'Áreas de interesse'},
  {id:'surgicalAreas',label:'Área(s) cirúrgica(s) com maior entrosamento e preferência',type:'multi-select',required:true,options:SURGICAL_AREAS,none:'NONE'},

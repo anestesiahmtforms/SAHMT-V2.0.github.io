@@ -14,8 +14,11 @@ const request=async(kind,action,input,signal)=>{
  if(kind==='professional'){
   if(action==='BOOTSTRAP')return {record,profile:{email:'synthetic@example.invalid',displayName:'Pessoa Sintética',group:'team'},isAdmin:true};
   if(action==='SAVE'){
-   if(params.has('legacyTeaching')&&!input.answers.teachingResearch)throw Object.assign(Error('REGISTRATION_INVALID_TEACHINGRESEARCH'),{code:'REGISTRATION_INVALID_TEACHINGRESEARCH',status:400});
-   record={answers:input.answers,version:1};return {record};
+   if(params.has('legacyText')){
+    const code=!input.answers.address?'REGISTRATION_INVALID_ADDRESS':!input.answers.teachingResearch?'REGISTRATION_INVALID_TEACHINGRESEARCH':null;
+    if(code)throw Object.assign(Error(code),{code,status:400});
+   }
+   record={answers:input.answers,version:(record?.version||0)+1};return {record};
   }
  }
  if(kind==='drive'){

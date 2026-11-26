@@ -166,7 +166,7 @@ test('professional form refreshes saved changes from another session and preserv
 
 test('professional form saves the grid and uploads immediately after file selection',()=>run(async browser=>{
  const page=await browser.newPage({viewport:{width:320,height:700}});
- await page.goto(url+'?retry&legacyTeaching');
+ await page.goto(url+'?retry&legacyText');
  await page.locator('body').evaluate(body=>body.classList.add('app-shell'));
  await open(page,'ACESSO RESTRITO');
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
@@ -174,7 +174,9 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'SALVAR MEU CADASTRO');
  const feedback=page.locator('[data-reg-feedback]');
  const teachingResearch=page.locator('[name=teachingResearch]');
+ const address=page.locator('[name=address]');
  assert.equal(await teachingResearch.getAttribute('required'),null);
+ assert.equal(await address.getAttribute('required'),null);
  async function assertCompactFeedback(){
   const geometry=await feedback.evaluate(dialog=>{
    const {x,y,width,height,bottom}=dialog.getBoundingClientRect();
@@ -274,8 +276,10 @@ test('professional form saves the grid and uploads immediately after file select
  await assertCompactFeedback();
  await page.setViewportSize({width:320,height:700});
  await open(page,'OK');
- const [firstSave,saved]=await page.evaluate(()=>window.calls.filter(c=>c.action==='SAVE').map(c=>c.input));
+ const [firstSave,secondSave,saved]=await page.evaluate(()=>window.calls.filter(c=>c.action==='SAVE').map(c=>c.input));
+ assert.equal(firstSave.answers.address,'');
  assert.equal(firstSave.answers.teachingResearch,'');
+ assert.equal(secondSave.answers.address,'Não informado (campo opcional)');
  assert.equal(saved.answers.teachingResearch,'Não informado (campo opcional)');
  const answers=saved.answers;
  assert.equal(answers.motherName,'Mãe Sintética');
@@ -288,7 +292,7 @@ test('professional form saves the grid and uploads immediately after file select
  const attachments=page.locator('.reg-attachments');
  const picker=attachments.getByRole('button',{name:'Escolher documento/Fotografar documento',exact:true});
  assert.equal(await attachments.getByText(/Escolha o assunto e selecione um arquivo/).count(),0);
- assert.equal(await attachments.getByRole('heading',{name:'Comprovantes'}).evaluate(el=>getComputedStyle(el).textAlign),'center');
+ assert.equal(await attachments.getByRole('heading',{name:'Comprovantes (opcionais)'}).evaluate(el=>getComputedStyle(el).textAlign),'center');
  assert.equal(await attachments.getByText('Assunto',{exact:true}).evaluate(el=>getComputedStyle(el).textAlign),'center');
  assert.equal(await page.locator('[data-reg-subject]').evaluate(el=>getComputedStyle(el).textAlign),'center');
  assert.equal(await attachments.locator('input[type=file]').count(),1);
@@ -298,6 +302,9 @@ test('professional form saves the grid and uploads immediately after file select
  const [chooser]=await Promise.all([page.waitForEvent('filechooser'),picker.click()]);
  await chooser.setFiles({name:'exemplo.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.7\nsynthetic\n%%EOF')});
  await page.getByText('Não foi possível confirmar a operação. Tente novamente.',{exact:true}).waitFor();
+ await open(page,'SALVAR MEU CADASTRO');
+ await page.getByText('Cadastro salvo com sucesso.',{exact:true}).waitFor();
+ await open(page,'OK');
  await open(page,'TENTAR NOVAMENTE');
  await page.getByText('Comprovante arquivado no Drive na pasta correspondente.',{exact:true}).waitFor();
  const attempts=await page.evaluate(()=>window.calls.filter(c=>c.action==='UPLOAD').map(c=>c.input));
@@ -311,6 +318,7 @@ test('professional form saves the grid and uploads immediately after file select
  await page.locator('[name=cpf]').waitFor();
  assert.equal(await page.locator('[name=cpf]').inputValue(),'52998224725');
  assert.equal(await teachingResearch.inputValue(),'');
+ assert.equal(await address.inputValue(),'');
  assert.equal(await page.getByLabel('Mãe',{exact:true}).inputValue(),'Mãe Sintética');
  assert.equal(await page.getByLabel('Pai',{exact:true}).inputValue(),'Pai Sintético');
  assert.equal(await participation.textContent(),'10,71%');

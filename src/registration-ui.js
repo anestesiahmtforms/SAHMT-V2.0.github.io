@@ -1,6 +1,6 @@
 import './registration-ui.css';
 import {registrationField, isRegistrationList} from './registration-fields.js';
-import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, TEACHING_RESEARCH_UNANSWERED, validateProfessionalAnswers, scheduleParticipationPercent} from './registration-domain.js';
+import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, OPTIONAL_TEXT_UNANSWERED, LEGACY_REQUIRED_TEXT_FIELDS, professionalTextAnswer, validateProfessionalAnswers, scheduleParticipationPercent} from './registration-domain.js';
 import {prepareDocumentFile, documentBase64} from './document-image.js';
 import {formatBirthDateAge} from './date-format.js';
 import {watchRegistrationChanges} from './registration-refresh.js';
@@ -130,10 +130,14 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
 
  function confirmExit(leave) {
   if (!live() || !hasUnsavedChanges()) return false;
-  if (saving || uploading) {
+  if (saving) {
    feedback('error', 'Envio em andamento', ['Aguarde a confirmação antes de sair.']);
   } else {
-   feedback('error', 'Fechar sem salvar?', ['As alterações e os comprovantes pendentes serão descartados.'], leave);
+   const dirty=JSON.stringify(formSnapshot(query('.reg-form'))) !== savedForm;
+   const details=[];
+   if(dirty)details.push('As alterações no formulário serão descartadas.');
+   if(uploading||attachment)details.push('Há um comprovante opcional com envio ainda não confirmado.');
+   feedback('error', dirty?'Fechar sem salvar?':'Sair do Cadastro Profissional?', details, leave);
   }
   return true;
  }
@@ -154,9 +158,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   const values = state.record?.answers || {};
   const formerFiliation = values.filiation || state.record?.legacyAnswers?.filiation;
   const fields = PROFESSIONAL_FIELDS.map(field => {
-   const answer = values[field.id];
-   const value = field.id === 'teachingResearch' && answer === TEACHING_RESEARCH_UNANSWERED
-    ? '' : answer ?? (field.id === 'fullName' ? state.profile?.displayName : '');
+   const value = professionalTextAnswer(field.id,values[field.id]) ?? (field.id === 'fullName' ? state.profile?.displayName : '');
    const note = field.id === 'fatherName' && formerFiliation
      ? '<p class="reg-help reg-previous-filiation">Filiação informada anteriormente · ' + escape(formerFiliation) + '</p>'
      : '';
@@ -166,7 +168,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    <form class="reg-form" novalidate><div class="reg-grid">${fields}</div>
    <label class="reg-confirm"><input type="checkbox" name="truth" required>Confirmo que as informações declaradas são verdadeiras e se destinam ao cadastro institucional.</label>
    <button class="primary-button" type="submit" data-reg-save>SALVAR MEU CADASTRO</button></form>
-   <section class="reg-attachments"><h3>Comprovantes</h3>
+   <section class="reg-attachments"><h3>Comprovantes (opcionais)</h3>
    <label class="reg-field"><span>Assunto</span><select data-reg-subject><option value="">Selecione o assunto</option>
    ${Object.entries(ATTACHMENT_SUBJECTS).map(([id,label]) => `<option value="${id}">${escape(label)}</option>`).join('')}</select></label>
    <button class="secondary-button reg-file-picker" type="button" data-reg-choose disabled>Escolher documento/Fotografar documento</button>
@@ -215,7 +217,6 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    return field.required && (Array.isArray(value) ? value.length < (field.min || 1) : !value.trim());
   }).map(field => field.label + ': preenchimento obrigatório.');
   if (!truth) issues.push('Marque a declaração de veracidade das informações.');
-  if (uploading || attachment) issues.push('Aguarde ou conclua o envio do comprovante selecionado.');
   if (issues.length) {
    feedback('error', 'Cadastro com pendências', issues);
    return;
@@ -229,17 +230,22 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
     truth
    };
    notice('[data-reg-notice]', 'Confirmando envio…');
-   const result = await call('professional', 'SAVE', input).catch(error => {
-    // Deployed workers from before this field became optional reject blank values before writing.
-    if (input.answers.teachingResearch || error.status !== 400 || error.code !== 'REGISTRATION_INVALID_TEACHINGRESEARCH') throw error;
-    return call('professional', 'SAVE', {...input, answers:{...input.answers, teachingResearch:TEACHING_RESEARCH_UNANSWERED}});
-   });
+   let result;
+   for (;;) {
+    try {result=await call('professional','SAVE',input);break;}
+    catch(error){
+     // Older workers reject these blank fields before writing.
+     const field=LEGACY_REQUIRED_TEXT_FIELDS[error.code];
+     if(error.status!==400||!field||input.answers[field]!=='')throw error;
+     input.answers[field]=OPTIONAL_TEXT_UNANSWERED;
+    }
+   }
    if (!result.record) throw Error('REGISTRATION_SAVE_UNCONFIRMED');
    state.record = result.record;
    savedForm = JSON.stringify(snapshot);
    notice('[data-reg-notice]', '');
-   if (JSON.stringify(formSnapshot(event.target)) !== savedForm || uploading || attachment) {
-    feedback('error', 'Cadastro com pendências', ['A versão enviada foi salva. Ainda há alterações ou comprovantes pendentes neste formulário.']);
+   if (JSON.stringify(formSnapshot(event.target)) !== savedForm) {
+    feedback('error', 'Cadastro com pendências', ['A versão enviada foi salva. Ainda há alterações pendentes no formulário.']);
    } else {
     feedback('success', 'Cadastro salvo com sucesso.', []);
    }
