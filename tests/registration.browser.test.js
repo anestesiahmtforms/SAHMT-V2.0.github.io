@@ -166,13 +166,15 @@ test('professional form refreshes saved changes from another session and preserv
 
 test('professional form saves the grid and uploads immediately after file selection',()=>run(async browser=>{
  const page=await browser.newPage({viewport:{width:320,height:700}});
- await page.goto(url+'?retry');
+ await page.goto(url+'?retry&legacyTeaching');
  await page.locator('body').evaluate(body=>body.classList.add('app-shell'));
  await open(page,'ACESSO RESTRITO');
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
  await page.locator('form').waitFor();
  await open(page,'SALVAR MEU CADASTRO');
  const feedback=page.locator('[data-reg-feedback]');
+ const teachingResearch=page.locator('[name=teachingResearch]');
+ assert.equal(await teachingResearch.getAttribute('required'),null);
  async function assertCompactFeedback(){
   const geometry=await feedback.evaluate(dialog=>{
    const {x,y,width,height,bottom}=dialog.getBoundingClientRect();
@@ -188,6 +190,7 @@ test('professional form saves the grid and uploads immediately after file select
  await assertCompactFeedback();
  assert.match(await feedback.innerText(),/CPF.*preenchimento obrigatório/);
  assert.match(await feedback.innerText(),/declaração de veracidade/);
+ assert.doesNotMatch(await feedback.innerText(),/Ensino, pesquisa e inovação/);
  await open(page,'OK');
  await page.locator('[name=crm]').fill('123');
  await open(page,'VOLTAR');
@@ -271,7 +274,10 @@ test('professional form saves the grid and uploads immediately after file select
  await assertCompactFeedback();
  await page.setViewportSize({width:320,height:700});
  await open(page,'OK');
- const answers=await page.evaluate(()=>window.calls.find(c=>c.action==='SAVE').input.answers);
+ const [firstSave,saved]=await page.evaluate(()=>window.calls.filter(c=>c.action==='SAVE').map(c=>c.input));
+ assert.equal(firstSave.answers.teachingResearch,'');
+ assert.equal(saved.answers.teachingResearch,'Não informado (campo opcional)');
+ const answers=saved.answers;
  assert.equal(answers.motherName,'Mãe Sintética');
  assert.equal(answers.fatherName,'Pai Sintético');
  assert.deepEqual(answers.workDays,['0:MORNING','6:FORTNIGHTLY','6:ON_CALL']);
@@ -304,6 +310,7 @@ test('professional form saves the grid and uploads immediately after file select
  await open(page,'CADASTRO PROFISSIONAL - SAHMT');
  await page.locator('[name=cpf]').waitFor();
  assert.equal(await page.locator('[name=cpf]').inputValue(),'52998224725');
+ assert.equal(await teachingResearch.inputValue(),'');
  assert.equal(await page.getByLabel('Mãe',{exact:true}).inputValue(),'Mãe Sintética');
  assert.equal(await page.getByLabel('Pai',{exact:true}).inputValue(),'Pai Sintético');
  assert.equal(await participation.textContent(),'10,71%');

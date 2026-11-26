@@ -1,6 +1,6 @@
 import './registration-ui.css';
 import {registrationField, isRegistrationList} from './registration-fields.js';
-import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, validateProfessionalAnswers, scheduleParticipationPercent} from './registration-domain.js';
+import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, TEACHING_RESEARCH_UNANSWERED, validateProfessionalAnswers, scheduleParticipationPercent} from './registration-domain.js';
 import {prepareDocumentFile, documentBase64} from './document-image.js';
 import {formatBirthDateAge} from './date-format.js';
 import {watchRegistrationChanges} from './registration-refresh.js';
@@ -154,7 +154,9 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   const values = state.record?.answers || {};
   const formerFiliation = values.filiation || state.record?.legacyAnswers?.filiation;
   const fields = PROFESSIONAL_FIELDS.map(field => {
-   const value = values[field.id] ?? (field.id === 'fullName' ? state.profile?.displayName : '');
+   const answer = values[field.id];
+   const value = field.id === 'teachingResearch' && answer === TEACHING_RESEARCH_UNANSWERED
+    ? '' : answer ?? (field.id === 'fullName' ? state.profile?.displayName : '');
    const note = field.id === 'fatherName' && formerFiliation
      ? '<p class="reg-help reg-previous-filiation">Filiação informada anteriormente · ' + escape(formerFiliation) + '</p>'
      : '';
@@ -227,7 +229,11 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
     truth
    };
    notice('[data-reg-notice]', 'Confirmando envio…');
-   const result = await call('professional', 'SAVE', input);
+   const result = await call('professional', 'SAVE', input).catch(error => {
+    // Deployed workers from before this field became optional reject blank values before writing.
+    if (input.answers.teachingResearch || error.status !== 400 || error.code !== 'REGISTRATION_INVALID_TEACHINGRESEARCH') throw error;
+    return call('professional', 'SAVE', {...input, answers:{...input.answers, teachingResearch:TEACHING_RESEARCH_UNANSWERED}});
+   });
    if (!result.record) throw Error('REGISTRATION_SAVE_UNCONFIRMED');
    state.record = result.record;
    savedForm = JSON.stringify(snapshot);

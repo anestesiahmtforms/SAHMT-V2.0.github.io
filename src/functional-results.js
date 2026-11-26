@@ -2,7 +2,7 @@ import {requestFunctionalDosimetry} from './functional-client.js';
 import {dosimetryMonths} from './dosimetry-domain.js';
 import {callInstitutionalSurvey} from './institutional-survey-client.js';
 import {callRegistrationApi} from './registration-client.js';
-import {ATTACHMENT_SUBJECTS,PROFESSIONAL_FIELDS,scheduleParticipationPercent} from './registration-domain.js';
+import {ATTACHMENT_SUBJECTS,PROFESSIONAL_FIELDS,TEACHING_RESEARCH_UNANSWERED,scheduleParticipationPercent} from './registration-domain.js';
 import {INSTITUTIONAL_GROUPS} from './institutional-group.js';
 import {formatBirthDateAge,formatDisplayDate,formatDisplayDateTime} from './date-format.js';
 import {createFunctionalOccupationalReader} from './vaccination-client.js';
@@ -60,6 +60,7 @@ const retiredProfessionalLabels={
 };
 
 function professionalAnswer(field,value){
+  if(field.id==='teachingResearch'&&value===TEACHING_RESEARCH_UNANSWERED)return '';
   if(field.id==='birthDate')return formatDisplayDate(value);
   if(field.id==='cpf')return String(value??'').replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/,'$1.$2.$3-$4');
   if(field.type==='work-grid'&&Array.isArray(value)){

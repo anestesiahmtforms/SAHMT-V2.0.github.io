@@ -1,5 +1,6 @@
 import {MANAGEMENT_AREA_SEED} from './management-seed.js';
 export const REGISTRATION_CYCLE='2026';
+export const TEACHING_RESEARCH_UNANSWERED='Não informado (campo opcional)';
 export const WORK_DAYS=['Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado','Domingo'].map((label,day)=>[String(day),label]);
 export const WORK_OPTIONS=[['WEEKLY','Semanal'],['FORTNIGHTLY','Quinzenal'],['FULL','Integral'],['MORNING','Manhã'],['AFTERNOON','Tarde'],['ON_CALL','Plantão noturno']];
 export const WORK_SUNDAY = '6';
@@ -62,7 +63,7 @@ export const PROFESSIONAL_FIELDS=[
  {id:'managementAreas',label:'Áreas de gestão em que gostaria de participar (mínimo de duas)',type:'checks',required:true,min:2,options:MANAGEMENT_AREA_SEED.map(a=>[a.id,a.name]),section:'Áreas de interesse'},
  {id:'surgicalAreas',label:'Área(s) cirúrgica(s) com maior entrosamento e preferência',type:'multi-select',required:true,options:SURGICAL_AREAS,none:'NONE'},
  {id:'formation',label:'Formação, títulos e qualificações',type:'multi-select',options:qualifications},
- {id:'teachingResearch',label:'Ensino, pesquisa e inovação',type:'textarea',required:true,max:3000,help:'Descreva experiências ou informe Nenhum.'},
+ {id:'teachingResearch',label:'Ensino, pesquisa e inovação',type:'textarea',max:3000,help:'Descreva suas experiências, se desejar.'},
  {id:'institutionalParticipation',label:'Participação institucional',type:'multi-select',
   options:[['GESTAO','Gestão'],['COMISSOES','Comissões'],['DIRECAO','Direção']]},
  {id:'lattes',label:'Link do Currículo Lattes',type:'url',max:300},
