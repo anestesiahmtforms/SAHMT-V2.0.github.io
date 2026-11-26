@@ -6,6 +6,15 @@ export function isRequiredReconnection(request) {
  return request?.target==='FA'&&request.minimumRelease===publishedReconnectionRelease;
 }
 
+export function reconnectionStorageKey(uid,deviceId) {
+ return 'sahmt-access-update-20261126:'+uid+':'+deviceId;
+}
+
+export function hasVerifiedReconnection(storage,uid,deviceId) {
+ try{return Boolean(uid&&deviceId&&storage?.getItem(reconnectionStorageKey(uid,deviceId))==='verified');}
+ catch{return false;}
+}
+
 // App installations use UUIDv4. A paired UUIDv8 preserves an independent,
 // server-timestamped reconnection receipt under the existing installation rules.
 export function reconnectionReceiptId(deviceId) {

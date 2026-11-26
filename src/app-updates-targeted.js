@@ -1,6 +1,6 @@
 import {repairAppFiles} from './app-repair.js';
-import {APP_VERSION} from './app-version.js';
-import {isRequiredReconnection} from './app-reconnection-receipts.js';
+import {PUBLISHED_APP_VERSION,PRE_RECONNECTION_APP_VERSION,setDeviceAppVersion} from './app-version.js';
+import {hasVerifiedReconnection,isRequiredReconnection} from './app-reconnection-receipts.js';
 
 export const loadedAppRelease = Number(import.meta.env?.VITE_APP_RELEASE || 0);
 function browserStorage(name) {try {return globalThis[name];} catch {return null;}}
@@ -51,7 +51,7 @@ export function devicePublishedState(device, publishedRelease) {
 // Later profile changes never interrupt a form already being filled in.
 export function createTargetedAppUpdates({target, release = loadedAppRelease, deviceId,
   platform = devicePlatform(), displayMode = appDisplayMode(), record, enforce, storage, now = Date.now, onFailure = () => {}, repair = repairAppFiles,
-  confirmAccess=async()=>true}) {
+  confirmAccess=async()=>true,versionForDevice=()=>PUBLISHED_APP_VERSION,onVersion=()=>{}}) {
   let uid = '', opened = false, written = '', generation = 0, active = null, currentRequestId='';
   const retries = new Set();
   const retry = () => {
@@ -62,6 +62,7 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
     const nextUid = session.user?.uid || '';
     if (nextUid !== uid || !['signed-in', 'loading-profile', 'auth-limited'].includes(session.status)) {
       uid = nextUid; opened = false; written = ''; generation++; active = null; enforce(null);
+      onVersion(PRE_RECONNECTION_APP_VERSION);
     }
     if (session.status !== 'signed-in' || session.offline || session.validatingProfile || !uid) return;
     const request = updateRequest(session.profile?.appUpdateRequest, target);
@@ -93,8 +94,10 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
       if (!isCurrent()) return;
       const verified=!confirmedRequestId||await confirmAccess({uid:owner,deviceId,profile:session.profile,request,startup,isCurrent});
       if (!isCurrent()) return;
-      return record({uid: owner, deviceId, target, platform, displayMode, appVersion: APP_VERSION, loadedRelease: release, confirmedRequestId:verified?confirmedRequestId:'',
+      const appVersion=versionForDevice({uid:owner,deviceId,request,verified,confirmedRequestId});
+      await record({uid: owner, deviceId, target, platform, displayMode, appVersion, loadedRelease: release, confirmedRequestId:verified?confirmedRequestId:'',
         ...(verified&&confirmedRequestId&&isRequiredReconnection(request)?{reconnectionConfirmed:true}:{})});
+      if(isCurrent())onVersion(appVersion);
     }).catch(error => {if (token === generation) {written = ''; onFailure(error);}});
   }};
 }
@@ -106,6 +109,11 @@ export function installTargetedAppUpdates({target, release = loadedAppRelease, d
   let dialog = null;
   const close = () => {dialog?.close(); dialog?.remove(); dialog = null;};
   return createTargetedAppUpdates({target, release, deviceId: installationId(localStorage, globalThis.crypto, displayMode), displayMode, storage, repair,
+    versionForDevice({uid,deviceId,request,verified,confirmedRequestId}) {
+      if(isRequiredReconnection(request))return verified&&confirmedRequestId?PUBLISHED_APP_VERSION:PRE_RECONNECTION_APP_VERSION;
+      return hasVerifiedReconnection(localStorage,uid,deviceId)?PUBLISHED_APP_VERSION:PRE_RECONNECTION_APP_VERSION;
+    },
+    onVersion:version=>setDeviceAppVersion(version,document),
     confirmAccess:async context=>target!=='FA'||import.meta.env?.VITE_GOOGLE_PROJECT_AUTH_ENABLED!=='true'||
       (await import('./ecosystem-access-update.js')).confirmEcosystemAccessUpdate({...context,document,storage:localStorage,signOut}),
     record: async value => (await services()).recordAppInstallation(value),

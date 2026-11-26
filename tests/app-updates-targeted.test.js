@@ -38,14 +38,18 @@ test('a second device remains pending when the first device loads the requested 
 });
 test('this device confirms the update only after the access check has succeeded',async()=>{
  const f=fixture(200);
+ const versions=[];
  let finish;
- const controller=createTargetedAppUpdates({...f.options,confirmAccess:()=>new Promise(resolve=>{finish=resolve;})});
+ const controller=createTargetedAppUpdates({...f.options,onVersion:version=>versions.push(version),
+  confirmAccess:()=>new Promise(resolve=>{finish=resolve;})});
  controller.setSession(session('member',request()));
  await flush();
  assert.equal(f.records.length,0);
+ assert.deepEqual(versions,['V3.4']);
  finish(true);
  await flush();
  assert.equal(deviceUpdateState(f.records[0],request()),'Confirmado');
+ assert.deepEqual(versions,['V3.4','V3.5']);
  const failed=createTargetedAppUpdates({...f.options,confirmAccess:async()=>false});
  failed.setSession(session('member',request()));
  await flush();

@@ -1,6 +1,7 @@
 import {GOOGLE_AUTH_TARGETS} from './google-project-auth-core.js';
 import {googleProjectAuthEnabled} from './google-project-auth-config.js';
 import {withinDeadline} from './async-deadline.js';
+import {hasVerifiedReconnection,reconnectionStorageKey} from './app-reconnection-receipts.js';
 
 export const ecosystemStations=Object.freeze([...GOOGLE_AUTH_TARGETS,'FF','FG','FH','FI','FJ','FK']);
 const googleStations=[...GOOGLE_AUTH_TARGETS,'FF','FK'];
@@ -33,8 +34,8 @@ async function checkFi(uid,profile) {
 
 export async function confirmEcosystemAccessUpdate({uid,deviceId,profile,request,startup,isCurrent,document:doc,storage,signOut}) {
  if(!googleProjectAuthEnabled||request.minimumRelease<recoveryReleaseFloor)return true;
- const key='sahmt-access-update-20261126:'+uid+':'+deviceId;
- try{if(storage?.getItem(key)==='verified')return true;}catch{}
+ const key=reconnectionStorageKey(uid,deviceId);
+ if(hasVerifiedReconnection(storage,uid,deviceId))return true;
  if(!startup||!isCurrent())return false;
  const [runtime,operational,{auth}]=await Promise.all([
   import('./google-project-auth-runtime.js'),import('./operational-module-firebase.js'),import('./firebase-auth.js')
