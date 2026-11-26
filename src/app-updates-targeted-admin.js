@@ -2,6 +2,7 @@ import {deviceUpdateState, recoveryUrl, updateRequest, deviceInstallationLabel, 
 import {requestUpdatesForUsers} from './app-updates-targeted-batch.js';
 import {deviceVersionLabel} from './app-version.js';
 import {mergeMemberCategoryAssignments} from './member-categories.js';
+import {isRequiredReconnection,reconnectionDevices} from './app-reconnection-receipts.js';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const memberGroups = [
@@ -22,6 +23,21 @@ function lastAccess(device) {
   return Number.isFinite(milliseconds) && milliseconds > 0 && milliseconds <= 8.64e15 ? milliseconds : 0;
 }
 const accessLabel = milliseconds => milliseconds ? accessDate.format(milliseconds) : 'Sem acesso registrado';
+
+export function reconnectionNotice(device,receipt,request) {
+  const confirmedAt=lastAccess(receipt||{});
+  if(confirmedAt&&(!isRequiredReconnection(request)||receipt.confirmedRequestId===request.id))
+    return 'Reconexão FB a FK confirmada em '+accessLabel(confirmedAt);
+  if(!isRequiredReconnection(request))return '';
+  if(deviceUpdateState(device,request)==='Pendente')return 'Reconexão FB a FK pendente';
+  const recordedAt=lastAccess(device);
+  return recordedAt?'Reconexão FB a FK confirmada anteriormente · último registro confirmado em '+accessLabel(recordedAt)
+    :'Reconexão FB a FK confirmada anteriormente · data da confirmação indisponível';
+}
+const reconnectionMarkup=(device,receipt,request)=>{
+  const notice=reconnectionNotice(device,receipt,request);
+  return notice?'<small data-device-reconnection>'+escape(notice)+'</small>':'';
+};
 
 async function readTeamPushStatuses(uids, {isCurrent, onItems}) {
   const {createCommunicationClient} = await import('./communication-client.js');
@@ -70,8 +86,8 @@ export async function openUserAppUpdates({actorUid, profile, target, isCurrent,
     if (!current()) {close(); return;} if (sequence !== loadId) return;
     const request = updateRequest(snapshot.request, target);
     dialog.querySelector('[data-request-state]').textContent = request ? 'Exigência ativa · versão mínima ' + request.minimumRelease : 'Nenhuma exigência ativa para esta pessoa.';
-    const paintDevices=devices=>{if(!current()){close();return;}if(sequence!==loadId)return;dialog.querySelector('[data-device-list]').innerHTML = devices.filter(device => device.target === target).map(device => {
-      return `<article class="app-device-row"><strong>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0, 8))}</strong><span>${escape(deviceVersionLabel(device))} · compilação ${escape(device.loadedRelease)} · ${escape(devicePublishedState(device,publishedRelease))}</span>${request ? `<small>Solicitação: ${deviceUpdateState(device,request)}</small>` : '<small>Versão recebida registrada, mesmo sem exigência ativa.</small>'}<small>Último acesso: ${escape(accessLabel(lastAccess(device)))}</small></article>`;
+    const paintDevices=devices=>{if(!current()){close();return;}if(sequence!==loadId)return;dialog.querySelector('[data-device-list]').innerHTML = reconnectionDevices(devices,target).map(({device,receipt}) => {
+      return `<article class="app-device-row"><strong>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0, 8))}</strong><span>${escape(deviceVersionLabel(device))} · compilação ${escape(device.loadedRelease)} · ${escape(devicePublishedState(device,publishedRelease))}</span>${request ? `<small>Solicitação: ${deviceUpdateState(device,request)}</small>` : '<small>Versão recebida registrada, mesmo sem exigência ativa.</small>'}${reconnectionMarkup(device,receipt,request)}<small>Último acesso: ${escape(accessLabel(lastAccess(device)))}</small></article>`;
     }).join('') || '<p>Nenhum aparelho confirmou conexão com este controle. Use o link de recuperação no aparelho antigo.</p>';};
     paintDevices(snapshot.devices);stopDevices();stopDevices=data.watchAppInstallations?.(actorUid,profile.uid,paintDevices,()=>{if(current())status.textContent='Acompanhamento interrompido. Use CONFERIR CONFIRMAÇÕES para tentar novamente.';else close();})||(()=>{});
     status.textContent = 'Consulta confirmada no servidor.';
@@ -227,10 +243,13 @@ export async function openAppUpdatePanel({actorUid, target, isCurrent, root = do
         const request = updateRequest(snapshot.request, target);
         const paintDevices = rows => {
           if (!current()) {close(); return;} if (ticket !== sequence) return;
-          const devices = rows.filter(device => device.target === target);
-          const latest = devices.reduce((value, device) => Math.max(value, lastAccess(device)), 0);
-          host.innerHTML = `<p><strong>Último acesso:</strong> ${escape(accessLabel(latest))}</p><p>${request ? 'Exigência ativa' : 'Sem exigência ativa'}</p>` +
-            (devices.map(device => `<div class="app-device-row"><span>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0, 8))}</span><strong>${escape(devicePublishedState(device, publishedRelease))}</strong>${request ? `<span>Solicitação: <b data-device-request-state>${deviceUpdateState(device, request)}</b></span>` : ''}<small>${device.displayMode === 'standalone' ? 'Versão instalada' : 'Versão em uso'}: ${escape(deviceVersionLabel(device))} · compilação ${escape(device.loadedRelease)}</small><small>Acesso neste aparelho: ${escape(accessLabel(lastAccess(device)))}</small></div>`).join('') || '<p>Nenhum aparelho confirmado neste controle.</p>');
+          const devices = reconnectionDevices(rows,target);
+          const latest = devices.reduce((value, {device}) => Math.max(value, lastAccess(device)), 0);
+          const confirmed = devices.filter(({device,receipt})=>receipt?.confirmedRequestId===request?.id||deviceUpdateState(device,request)==='Confirmado').length;
+          const summary = isRequiredReconnection(request)
+            ? `<p data-user-reconnection>${devices.length?`Reconexão FB a FK: ${confirmed} de ${devices.length} aparelho(s) conhecido(s) confirmado(s).`:'Reconexão FB a FK pendente · nenhum aparelho conhecido.'}</p>` : '';
+          host.innerHTML = `<p><strong>Último acesso:</strong> ${escape(accessLabel(latest))}</p><p>${request ? 'Exigência ativa' : 'Sem exigência ativa'}</p>` + summary +
+            (devices.map(({device,receipt}) => `<div class="app-device-row"><span>${escape(device.platform)} · ${escape(deviceInstallationLabel(device))} · ${escape(device.deviceId.slice(0, 8))}</span><strong>${escape(devicePublishedState(device, publishedRelease))}</strong>${request ? `<span>Solicitação: <b data-device-request-state>${deviceUpdateState(device, request)}</b></span>` : ''}${reconnectionMarkup(device,receipt,request)}<small>${device.displayMode === 'standalone' ? 'Versão instalada' : 'Versão em uso'}: ${escape(deviceVersionLabel(device))} · compilação ${escape(device.loadedRelease)}</small><small>Acesso neste aparelho: ${escape(accessLabel(lastAccess(device)))}</small></div>`).join('') || '<p>Nenhum aparelho confirmado neste controle.</p>');
         };
         paintDevices(snapshot.devices);
         const watchFailed = () => {

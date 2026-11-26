@@ -14,7 +14,7 @@ export function planAppPublication({metadata,deployedRevision,sourceRevision,com
  if(!sha(deployedRevision)||!sha(sourceRevision)||metadata?.schema!==1)fail('STATE_INVALID');
  const release=metadata.targets?.FA;
  if(!Number.isSafeInteger(release)||release<=0||metadata.targets?.FB!==release)fail('STATE_INVALID');
- const legacy=metadata.sourceRevision===undefined&&metadata.appVersion===seed.appVersion&&release===seed.release&&deployedRevision===seed.sourceRevision;
+ const legacy=metadata.sourceRevision===undefined&&metadata.appVersion===seed.legacyAppVersion&&release===seed.release&&deployedRevision===seed.sourceRevision;
  if(!legacy&&metadata.sourceRevision!==deployedRevision)fail('STATE_MISMATCH');
  const match=/^V(\d{1,3})\.(\d{1,6})$/.exec(metadata.appVersion||'');if(!match)fail('STATE_INVALID');
  if(sourceRevision===deployedRevision)return validateAppPublication({schema:1,appVersion:metadata.appVersion,sourceRevision,release});

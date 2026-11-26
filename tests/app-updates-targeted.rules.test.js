@@ -3,6 +3,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {initializeTestEnvironment, assertSucceeds, assertFails} from '@firebase/rules-unit-testing';
 import {doc,setDoc,getDoc,getDocs,collection,updateDoc,serverTimestamp,Timestamp,setLogLevel,deleteField,writeBatch} from 'firebase/firestore';
+import {reconnectionReceiptId} from '../src/app-reconnection-receipts.js';
 setLogLevel('silent');
 for (const [file,target] of [['firestore.rules','FA'],['firestore.independent-fb.rules','FB']]) test('targeted updates security '+target,async t=>{
   const env=await initializeTestEnvironment({projectId:'demo-sahmt-updates-'+target.toLowerCase(),firestore:{host:'127.0.0.1',port:Number(process.env.FIRESTORE_EMULATOR_HOST?.split(':').pop()||8080),rules:await readFile(file,'utf8')}});
@@ -38,5 +39,15 @@ for (const [file,target] of [['firestore.rules','FA'],['firestore.independent-fb
     await assertSucceeds(updateDoc(doc(db('admin'),'users','member'),{appUpdateRequest:null}));
     assert.equal((await getDoc(doc(db('member'),'users','member'))).data().access,true);
     await assertSucceeds(getDoc(doc(db('admin'),...path('member'))));
+  });
+  if(target==='FA')await t.test('a separate server-timestamped reconnection receipt is readable by the administrator',async()=>{
+    await assertSucceeds(updateDoc(doc(db('admin'),'users','member'),{appUpdateRequest:requirement()}));
+    const pairedId=reconnectionReceiptId('12345678-1234-4234-8234-123456789012');
+    const parts=['users','member','appInstallations',pairedId+'_FA'];
+    await assertSucceeds(setDoc(doc(db('member'),...parts),receipt('member',{deviceId:pairedId,appVersion:'V3.5'})));
+    await assertFails(getDoc(doc(db('other'),...parts)));
+    const saved=await assertSucceeds(getDoc(doc(db('admin'),...parts)));
+    assert.equal(saved.data().appVersion,'V3.5');
+    assert.ok(saved.data().lastSeenAt instanceof Timestamp);
   });
 });

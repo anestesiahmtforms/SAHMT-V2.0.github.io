@@ -8,6 +8,8 @@ import {APP_VERSION,deviceVersionLabel} from '../src/app-version.js';
 import {devicePublishedState} from '../src/app-updates-targeted.js';
 import {updateUsersWithContactSiglas} from '../src/app-updates-targeted-identity.js';
 import {ecosystemAccessStatuses,ecosystemStations} from '../src/ecosystem-access-update.js';
+import {reconnectionDevices,reconnectionReceiptId} from '../src/app-reconnection-receipts.js';
+import {reconnectionNotice} from '../src/app-updates-targeted-admin.js';
 const request = (id = 'request-1234567890123456') => ({id,target:'FA',minimumRelease:200});
 const session = (uid = 'member', r = null, extra = {}) => ({status:'signed-in',user:{uid},profile:{uid,appUpdateRequest:r},offline:false,...extra});
 function fixture(release = 100, deviceId = 'device-a', storage = new Map()) {
@@ -61,6 +63,19 @@ test('FB–FK must all be verified or authoritatively outside the profile scope'
  assert.equal(ecosystemAccessStatuses(google,operational,true).needsGoogle,true);
  google.targets.FK={status:'excluded'};
  assert.equal(ecosystemAccessStatuses(google,operational,true).complete,true);
+});
+test('the reconnection date comes from its own receipt, separate from the last access',async()=>{
+ const campaign={...request(),minimumRelease:1795692452458};
+ const deviceId='12345678-1234-4234-8234-123456789abc';
+ const f=fixture(campaign.minimumRelease,deviceId);
+ f.controller.setSession(session('member',campaign));await flush();
+ assert.equal(f.records[0].reconnectionConfirmed,true);
+ const device={...f.records[0],lastSeenAt:Date.parse('2026-11-27T15:00:00Z')};
+ const receipt={...device,deviceId:reconnectionReceiptId(deviceId),lastSeenAt:Date.parse('2026-11-26T13:30:00Z')};
+ assert.deepEqual(reconnectionDevices([device,receipt],'FA'),[{device,receipt}]);
+ assert.match(reconnectionNotice(device,receipt,campaign),/confirmada em 26\/11\/2026.*10:30/);
+ assert.match(reconnectionNotice(device,null,campaign),/último registro confirmado em 27\/11\/2026.*12:00/);
+ assert.equal(reconnectionNotice({...device,confirmedRequestId:''},null,campaign),'Reconexão FB a FK pendente');
 });
 test('recorded versions remain visible without a campaign and missing profile siglas come from matching contacts',()=>{
  const user={uid:'test',email:'one@example.invalid',sigla:'',active:true,access:true,permissions:{admin:false}};

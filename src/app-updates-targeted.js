@@ -1,5 +1,6 @@
 import {repairAppFiles} from './app-repair.js';
 import {APP_VERSION} from './app-version.js';
+import {isRequiredReconnection} from './app-reconnection-receipts.js';
 
 export const loadedAppRelease = Number(import.meta.env?.VITE_APP_RELEASE || 0);
 function browserStorage(name) {try {return globalThis[name];} catch {return null;}}
@@ -92,7 +93,8 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
       if (!isCurrent()) return;
       const verified=!confirmedRequestId||await confirmAccess({uid:owner,deviceId,profile:session.profile,request,startup,isCurrent});
       if (!isCurrent()) return;
-      return record({uid: owner, deviceId, target, platform, displayMode, appVersion: APP_VERSION, loadedRelease: release, confirmedRequestId:verified?confirmedRequestId:''});
+      return record({uid: owner, deviceId, target, platform, displayMode, appVersion: APP_VERSION, loadedRelease: release, confirmedRequestId:verified?confirmedRequestId:'',
+        ...(verified&&confirmedRequestId&&isRequiredReconnection(request)?{reconnectionConfirmed:true}:{})});
     }).catch(error => {if (token === generation) {written = ''; onFailure(error);}});
   }};
 }

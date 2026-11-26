@@ -1,19 +1,31 @@
-import {doc, collection, getDocFromServer, getDocsFromServer, setDoc, updateDoc, serverTimestamp, query, orderBy, documentId, limit, startAfter, writeBatch, onSnapshot} from 'firebase/firestore';
+import {doc, collection, getDocFromServer, getDocsFromServer, setDoc, updateDoc, runTransaction, serverTimestamp, query, orderBy, documentId, limit, startAfter, writeBatch, onSnapshot} from 'firebase/firestore';
 import {db} from './firebase.js';
 import {auth} from './firebase-auth.js';
 import {deployment} from './deployment-context.js';
 import {newAppUpdateId} from './app-updates-targeted.js';
 import {updateUsersWithContactSiglas} from './app-updates-targeted-identity.js';
 import {isSystemOwnerEmail} from './system-account-exclusions.js';
+import {reconnectionReceiptId} from './app-reconnection-receipts.js';
 
 function actor(uid) {
   if (!uid || auth?.currentUser?.uid !== uid) throw Error('APP_UPDATE_SESSION_CHANGED');
 }
-export async function recordAppInstallation(value) {
+export async function recordAppInstallation({reconnectionConfirmed=false,...value}) {
   actor(value.uid);
   if (value.target !== deployment.target) throw Error('APP_UPDATE_TARGET_MISMATCH');
-  await setDoc(doc(db, 'users', value.uid, 'appInstallations', value.deviceId + '_' + value.target), {
-    ...value, lastSeenAt: serverTimestamp()
+  const device=doc(db,'users',value.uid,'appInstallations',value.deviceId+'_'+value.target);
+  const payload={...value,lastSeenAt:serverTimestamp()};
+  const receiptId=reconnectionConfirmed&&value.confirmedRequestId&&reconnectionReceiptId(value.deviceId);
+  if(!receiptId)return setDoc(device,payload);
+  const receipt=doc(db,'users',value.uid,'appInstallations',receiptId+'_'+value.target);
+  await runTransaction(db,async tx=>{
+    actor(value.uid);
+    const [knownDevice,knownReceipt]=await Promise.all([tx.get(device),tx.get(receipt)]);
+    actor(value.uid);
+    // An earlier confirmed installation has no separate confirmation timestamp.
+    if(!knownReceipt.exists()&&knownDevice.data()?.confirmedRequestId!==value.confirmedRequestId)
+      tx.set(receipt,{...payload,deviceId:receiptId});
+    tx.set(device,payload);
   });
 }
 export async function readUserAppUpdates(actorUid, uid) {
