@@ -1,9 +1,10 @@
 import {formatDisplayDate} from './date-format.js';
 import {isValidDateKey,localDateKey} from './schedule-date.js';
-import {getOccurrenceForm,occurrenceProtocol,occurrenceActionFollowupFields,OCCURRENCE_ETHICAL_REVIEW_LIMIT,
+import {getOccurrenceForm,occurrenceProtocol,occurrenceOrderedInputFields,occurrenceActionFollowupFields,OCCURRENCE_ETHICAL_REVIEW_LIMIT,
   OCCURRENCE_PRIVATE_FIELDS} from './occurrence-schema.js';
 import {formatOccurrenceAnalysisExport,normalizeOccurrencePreparationQuestions,OCCURRENCE_IMPROVEMENT_OPTION_LIMIT,
-  OCCURRENCE_IMPROVEMENT_QUESTION,OCCURRENCE_SAFETY_MIN_QUESTIONS,OCCURRENCE_SAFETY_MAX_QUESTIONS} from './occurrence-questionnaire.js';
+  OCCURRENCE_IMPROVEMENT_QUESTION,OCCURRENCE_SAFETY_MIN_QUESTIONS,OCCURRENCE_SAFETY_MAX_QUESTIONS,
+  withOccurrenceImprovementActions} from './occurrence-questionnaire.js';
 
 export const OCCURRENCE_ANALYSIS_ATTENDANCE_MARKER='[[NUMERO_DO_ATENDIMENTO]]';
 
@@ -54,6 +55,15 @@ Em "descricao", apresente os dez itens a seguir, com títulos curtos e sínteses
 Use linguagem clara, objetiva e prática. Se faltar informação, identifique somente a confirmação necessária. Não invente cronologia, diagnóstico, sintomas, dano, ações, causas, histórico clínico ou disclosure. Remova elementos que possam identificar pessoas e omita conclusões sobre tratamento ou responsabilidade individual.
 Depois dos dez itens, apresente até ${OCCURRENCE_IMPROVEMENT_OPTION_LIMIT} oportunidades de melhoria concretas e viáveis, vinculadas ao caso e sujeitas à decisão do serviço. Quando só houver base para uma ação, ofereça como segunda alternativa aprofundar a investigação antes de propor outra medida.
 Se "questionarioPublicado" for falso, crie de ${OCCURRENCE_SAFETY_MIN_QUESTIONS} a ${OCCURRENCE_SAFETY_MAX_QUESTIONS} perguntas de escolha única e sem gabarito, incluindo a votação final nesse total. Escolha a quantidade pela necessidade de esclarecimento. Cubra a compreensão do evento, as evidências e verificações prioritárias, os fatores contribuintes e as barreiras pertinentes. Para cada questão adicional, trate uma lacuna, fator, etapa ou aspecto normativo aplicável ainda não abordado. Use alternativas equilibradas e evite perguntas repetitivas ou genéricas. Reserve a última pergunta para a votação de melhoria, com um enunciado como "${OCCURRENCE_IMPROVEMENT_QUESTION}". Nela use duas ou três alternativas distintas, com o mesmo texto e na mesma ordem em que as opções de melhoria foram apresentadas. A equipe vota em uma opção. A mais votada seguirá como proposta para o resultado final do serviço.`;
+
+const SAHMT_PREPARATION_METHOD = `Pré-análise de ocorrência para a equipe SAHMT.
+Como referência de método para eventos assistenciais, use o Caderno 7 da Anvisa, edição de 2025, sobre gestão de riscos e investigação de eventos adversos (https://www.gov.br/anvisa/pt-br/centraisdeconteudo/publicacoes/servicosdesaude/manuais/serie-seguranca-do-paciente-e-qualidade-em-servicos-de-saude-2013-2025-6). Considere a RDC Anvisa nº 36/2013 (https://bvsms.saude.gov.br/bvs/saudelegis/anvisa/2013/rdc0036_25_07_2013.html) e, quando o evento envolver o ato anestésico, a Resolução CFM nº 2.174/2017 (https://www.sistemas.cfm.org.br/normas/arquivos/resolucoes/BR/2017/2174_2017.pdf). Confira vigência e aplicabilidade antes de citar uma norma. Para os demais temas, use boas práticas pertinentes ao processo ou à proteção da informação e os protocolos institucionais efetivamente fornecidos. Separe práticas de referência da evidência desta ocorrência.
+
+Em "descricao", use "itensDoRegistro" como roteiro obrigatório. Reproduza cada número e rótulo na ordem recebida, com uma entrada "N. Rótulo — síntese" por campo. Mantenha a classificação do evento separada do tipo de evento e preserve as opções registradas. Para cada item, melhore a clareza com base no próprio valor e no relato. Acrescente apenas uma observação breve de boa prática quando realmente ajudar a interpretar aquele item. Evite repetir o caso em vários campos. Preserve datas, valores, negativas explícitas e a cronologia. Apresente fatores contribuintes separadamente e diferencie hipóteses de causas confirmadas.
+Se a situação for "a confirmar", mantenha o item e indique em poucas palavras o que verificar. Se for "consulta interna", mantenha o item e indique que o dado deve ser conferido no registro original. Use "Não se aplica" quando o registro sustentar essa conclusão. Não invente fatos, diagnósticos, danos, condutas, evidências, causas ou responsáveis. Evite atribuir culpa e prescrever condutas individuais. Seja conciso para incluir todos os itens e as três ações no limite de 5000 caracteres.
+
+Ao final da descrição, adicione o título "AÇÕES DE MELHORIA" e apresente exatamente três propostas distintas, numeradas de 1 a 3. Vincule cada proposta a uma lacuna, fator contribuinte, barreira ou etapa do caso. Use medidas verificáveis e viáveis. Se a evidência for insuficiente para propor uma medida corretiva específica, use ações concretas de investigação, verificação ou reforço de barreiras, conforme o que o registro sustentar.
+Se "questionarioPublicado" for falso, crie de ${OCCURRENCE_SAFETY_MIN_QUESTIONS} a ${OCCURRENCE_SAFETY_MAX_QUESTIONS} perguntas de escolha única e sem gabarito, contando a última pergunta. Aborde fatos a esclarecer, interpretações plausíveis, fatores contribuintes e barreiras. Use alternativas neutras, distintas e diretamente relacionadas ao caso. Na última pergunta, use "${OCCURRENCE_IMPROVEMENT_QUESTION}" e copie as três ações como alternativas, com o mesmo texto e na mesma ordem da descrição. Cada participante escolhe apenas uma ação. A única mais votada segue como proposta para a análise final. Em caso de empate ou ausência de votos, deixe a priorização para revisão do serviço.`;
 
 export const ANALYSIS_PROMPT = `Você ajuda a equipe SAHMT a analisar as respostas de uma ocorrência. Escreva em português do Brasil para os participantes.
 Mantenha o protocolo recebido. Apresente a quantidade de respostas de cada pergunta e a distribuição por alternativa. Use como denominador quem respondeu àquela pergunta, preserve empates e indique a base de cada percentual. Se nenhuma resposta tiver sido registrada, informe isso e omita percentuais. Trate análises anteriores separadamente. Sintetize os comentários por tema e inclua as posições divergentes sem reproduzir informações identificáveis.
@@ -117,10 +127,28 @@ function caseForPrompt(entry, additional = {}) {
   };
 }
 
+function sahmtPreparationCase(entry,questionnairePublished,additional={}){
+  const form=getOccurrenceForm(entry.formId);
+  const values={...entry.classification,...entry.details,...additional,
+    eventDate:entry.occurredOn,occurrence:entry.title,description:entry.description};
+  const clinicalFields=new Set(['sex','age','diagnosisOrTreatment']);
+  const items=occurrenceOrderedInputFields(form).map((field,index)=>{
+    const item={numero:index+1,rotulo:field.label.replace(/:$/,'')};
+    const clinical=clinicalFields.has(field.id);
+    if(!clinical&&OCCURRENCE_PRIVATE_FIELDS.includes(field.id))return {...item,situacao:'consulta interna'};
+    const value=(clinical?additional[field.id]:values[field.id])?.trim?.();
+    if(!value||field.options&&!field.options.includes(value))return {...item,situacao:'a confirmar'};
+    return {...item,valor:field.type==='date'?formatDisplayDate(value):value};
+  });
+  return {protocolo:occurrenceProtocol(entry),tema:form.title,questionarioPublicado:questionnairePublished,itensDoRegistro:items};
+}
+
 export function buildPreparationPrompt(entry,questionnairePublished,additional) {
   const ethical=entry.formId==='F08';
-  const context={...caseForPrompt(entry,ethical?undefined:additional),questionarioPublicado:questionnairePublished};
-  const method=ethical?ETHICAL_PREPARATION_METHOD:SAFETY_PREPARATION_METHOD;
+  const sahmt=!ethical&&entry.origin==='app';
+  const context=sahmt?sahmtPreparationCase(entry,questionnairePublished,additional)
+    :{...caseForPrompt(entry,ethical?undefined:additional),questionarioPublicado:questionnairePublished};
+  const method=ethical?ETHICAL_PREPARATION_METHOD:sahmt?SAHMT_PREPARATION_METHOD:SAFETY_PREPARATION_METHOD;
   return PREPARATION_PROMPT+'\n\n'+method+'\n\nDADOS DA OCORRÊNCIA\n'+JSON.stringify(context,null,2);
 }
 
@@ -175,10 +203,13 @@ export function readPreparationDraft(text,protocol,questionnairePublished,formId
   if(typeof value.descricao!=='string'||!value.descricao.trim()||value.descricao.length>5000) {
     throw new Error('OCCURRENCE_DRAFT_INVALID');
   }
-  return {
-    description:value.descricao.trim(),
-    questions:questionnairePublished?null:normalizeOccurrencePreparationQuestions(value.perguntas,formId)
-  };
+  const requireThree=protocol.startsWith('GRA ')&&formId!=='F08';
+  const questions=questionnairePublished?null:normalizeOccurrencePreparationQuestions(value.perguntas,formId,
+    {requireThreeImprovementOptions:requireThree});
+  const description=requireThree&&questions?withOccurrenceImprovementActions(value.descricao,questions.at(-1).options)
+    :value.descricao.trim();
+  if(description.length>5000)throw new Error('OCCURRENCE_PREPARATION_DESCRIPTION_TOO_LONG');
+  return {description,questions};
 }
 
 export function readAnalysisDraft(text,protocol) {

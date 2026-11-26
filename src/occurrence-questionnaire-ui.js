@@ -3,7 +3,7 @@ import {formatDisplayDate} from './date-format.js';
 import {OCCURRENCE_ANALYSIS_ATTENDANCE_MARKER} from './occurrence-ai-prompts.js';
 import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_OPTION_LIMIT,OCCURRENCE_PROMPT_LIMIT,
   OCCURRENCE_OPTION_TEXT_LIMIT,OCCURRENCE_IMPROVEMENT_OPTION_LIMIT,
-  normalizeOccurrencePreparationQuestions} from './occurrence-questionnaire.js';
+  normalizeOccurrencePreparationQuestions,withOccurrenceImprovementActions} from './occurrence-questionnaire.js';
 import {OCCURRENCE_ETHICAL_REVIEW_LIMIT} from './occurrence-schema.js';
 import {showOccurrenceConfirmation} from './occurrence-confirmation.js';
 
@@ -306,16 +306,18 @@ function bindOccurrenceResult(panel,{
 
 function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWriting,setWriting},onSaved,edit,{review=false}={}) {
   let questionCount=0;
+  const requireThree=entry.origin==='app'&&entry.formId!=='F08'&&(review||edit?.keepThreeImprovements===true);
   const improvementVote=index=>entry.formId!=='F08'&&index===questionCount-1;
   const optionLimit=index=>improvementVote(index)?OCCURRENCE_IMPROVEMENT_OPTION_LIMIT:OCCURRENCE_OPTION_LIMIT;
+  const minimumOptions=index=>improvementVote(index)&&requireThree?OCCURRENCE_IMPROVEMENT_OPTION_LIMIT:2;
   const questionMarkup=index=>
     '<fieldset><legend>PERGUNTA '+(index+1)+' DE '+questionCount+'</legend>'+
     (improvementVote(index)?'<strong>Votação da ação de melhoria</strong>':'')+
     '<label class="occurrence-field"><span>Enunciado</span><textarea name="prompt-'+index+'" rows="2" maxlength="'+
     OCCURRENCE_PROMPT_LIMIT+'" required></textarea></label>'+
     Array.from({length:optionLimit(index)},(_,option)=>
-      '<label class="occurrence-field"><span>Alternativa '+(option+1)+(option<2?'':' (opcional)')+'</span>'+
-      '<input name="option-'+index+'-'+option+'" maxlength="'+OCCURRENCE_OPTION_TEXT_LIMIT+'" '+(option<2?'required':'')+'></label>').join('')+
+      '<label class="occurrence-field"><span>Alternativa '+(option+1)+(option<minimumOptions(index)?'':' (opcional)')+'</span>'+
+      '<input name="option-'+index+'-'+option+'" maxlength="'+OCCURRENCE_OPTION_TEXT_LIMIT+'" '+(option<minimumOptions(index)?'required':'')+'></label>').join('')+
     '</fieldset>';
   if(review){
     panel.classList.add('occurrence-preparation-dialog--review');
@@ -336,15 +338,20 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
   const form=panel.querySelector('form'),controls=form.querySelector('fieldset'),status=panel.querySelector('[role="status"]');
   const preview=panel.querySelector('[data-preparation-preview]'),editButton=panel.querySelector('[data-preparation-edit]'),
     publishButton=panel.querySelector('[data-preparation-publish]');
-  const readDraft=()=>({
-    description:form.elements.description.value.trim(),
-    questions:Array.from({length:questionCount},(_,index)=>({
+  const readDraft=()=>{
+    const questions=Array.from({length:questionCount},(_,index)=>({
       prompt:form.elements['prompt-'+index].value.trim(),
       options:Array.from({length:optionLimit(index)},(_,option)=>form.elements['option-'+index+'-'+option].value.trim()).filter(Boolean)
-    }))
-  });
+    }));
+    const text=form.elements.description.value.trim();
+    const vote=questions.at(-1);
+    const description=review&&requireThree&&vote?.options.length===OCCURRENCE_IMPROVEMENT_OPTION_LIMIT
+      ?withOccurrenceImprovementActions(text,vote.options):text;
+    return {description,questions};
+  };
   function showPreview(){
     const {description,questions}=readDraft();
+    if(description.length<=5000)form.elements.description.value=description;
     form.hidden=true;
     preview.hidden=false;
     editButton.textContent='EDITAR';
@@ -370,12 +377,14 @@ function bindQuestionnaireEditor(panel,{repository,uid,id,entry,isCurrent,isWrit
     event.preventDefault();
     if(!isCurrent()||isWriting())return;
     const {description,questions:draft}=readDraft();
-    if(!description){status.textContent='Preencha a descrição para análise.';return;}
+    if(!form.elements.description.value.trim()){status.textContent='Preencha a descrição para análise.';return;}
+    if(description.length>5000){status.textContent='A pré-análise com as ações deve ter até 5.000 caracteres.';return;}
     let normalized;
-    try {normalized=questionCount?normalizeOccurrencePreparationQuestions(draft,entry.formId):undefined;}
+    try {normalized=questionCount?normalizeOccurrencePreparationQuestions(draft,entry.formId,
+      {requireThreeImprovementOptions:requireThree}):undefined;}
     catch(error) {
       status.textContent=error.message==='OCCURRENCE_IMPROVEMENT_VOTE_INVALID'
-        ?'Use duas ou três ações distintas na última pergunta.'
+        ?(requireThree?'Use três ações distintas na última pergunta.':'Use duas ou três ações distintas na última pergunta.')
         :'Preencha todas as perguntas e pelo menos duas alternativas de cada uma.';
       return;
     }
@@ -466,7 +475,8 @@ export function mountOccurrenceQuestionnaire(host,options) {
       onPrepared?.();
       if(changed)showResponse(saved.questions,saved.revision);
       interactionStatus.textContent='Página de interação atualizada.';
-    },{description:expected,revision:current.revision});
+    },{description:expected,revision:current.revision,
+      keepThreeImprovements:current.questions.at(-1)?.options.length===OCCURRENCE_IMPROVEMENT_OPTION_LIMIT});
     return open({description:description??expected,questions:current.canReviseQuestions?current.questions:[]});
   }
   interaction.querySelector('[data-interaction-edit]').addEventListener('click',()=>void editInteraction().catch(()=>{

@@ -6,9 +6,11 @@ const shortcutUrl='shortcuts://run-shortcut?name='+encodeURIComponent('SAHMT Oco
 
 function draftErrorMessage(error,{formId,protocol,fallback='Confira se o JSON retornado segue o formato solicitado no prompt.'}){
   switch(error.message){
-    case 'OCCURRENCE_IMPROVEMENT_VOTE_INVALID':return 'Use duas ou três ações distintas na última pergunta.';
+    case 'OCCURRENCE_IMPROVEMENT_VOTE_INVALID':return protocol.startsWith('GRA ')
+      ?'Use três ações distintas na última pergunta.':'Use duas ou três ações distintas na última pergunta.';
     case 'OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID':return formId==='F08'?'Inclua as quatro perguntas do roteiro IDEA.'
       :'Inclua de cinco a dez perguntas, contando a votação final.';
+    case 'OCCURRENCE_PREPARATION_DESCRIPTION_TOO_LONG':return 'A pré-análise ultrapassou 5.000 caracteres. Peça ao ChatGPT uma versão mais concisa.';
     case 'OCCURRENCE_ANALYSIS_DATE_INVALID':return 'Confira o prazo sugerido. Use uma data válida ou deixe o campo vazio.';
     case 'OCCURRENCE_DRAFT_PROTOCOL':return 'O protocolo do rascunho deve ser '+protocol+'.';
     default:return fallback;
@@ -87,7 +89,7 @@ export function bindOccurrencePromptActions(footer,host,{
   const modes={
     preparation:{
       label:'PREPARAR OCORRÊNCIA',
-      prepare:async()=>buildPreparationPrompt(promptEntry(),hasQuestionnaire(),await readPreparationContext()),
+      prepare:async()=>buildPreparationPrompt(promptEntry(),hasQuestionnaire(),await readPreparationContext(sahmt&&entry.formId!=='F08')),
       async stage(text,target) {
         const draft=readPreparationDraft(text,protocol,hasQuestionnaire(),entry.formId);
         return draft.questions ? stagePreparation(draft,target) : stageDescription(draft.description);

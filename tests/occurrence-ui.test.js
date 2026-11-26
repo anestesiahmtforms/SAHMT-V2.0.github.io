@@ -11,23 +11,48 @@ const improvementQuestions=[
  {prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options:['Revisar protocolo','Melhorar comunicação','Rever supervisão']}
 ];
 
-test('preparo clínico inclui os dez itens, usa fatores validados e preserva o método IDEA',()=>{
- const clinical=buildPreparationPrompt(report,false,{chartDisclosure:'Sim',teamFactors:'Comunicação escrita',taskFactors:'Texto inválido'});
- assert.match(clinical,/1\. Ocorrência[\s\S]*7\. História da moléstia atual[\s\S]*10\. Disclosure/);
+test('preparo do SAHMT enumera o formulário na ordem do registro e preserva o método IDEA',()=>{
+ const clinical=buildPreparationPrompt({...report,title:'Evento sintético',occurredOn:'2026-11-25',
+  details:{...report.details,eventClassification:'Evento sem Dano',incidentType:'Evento anestésico',age:'Idade bruta reservada'}},
+ false,{age:'8 meses',diagnosisOrTreatment:'Tratamento sintético',chartDisclosure:'Sim',teamFactors:'Comunicação escrita',
+  taskFactors:'Texto inválido',analysisParticipants:'Serviço de Anestesiologia'});
  assert.match(clinical,/de 5 a 10 perguntas/);
  assert.match(clinical,/Caderno 7 da Anvisa[\s\S]*Resolução CFM nº 2\.174\/2017/);
- assert.match(clinical,/"Fatores contribuintes do time \(equipe\)\?": "Comunicação escrita"/);
- assert.match(clinical,/"Disclosure com registro em prontuário:": "Sim"/);
- assert.doesNotMatch(clinical,/IDENTIFICADOR NÃO EXPORTÁVEL|Texto inválido/);
+ assert.match(clinical,/exatamente três propostas distintas[\s\S]*Cada participante escolhe apenas uma ação/);
+ const {itensDoRegistro:items}=JSON.parse(clinical.split('\n\nDADOS DA OCORRÊNCIA\n')[1]);
+ assert.deepEqual(items.map(item=>item.numero),items.map((_,index)=>index+1));
+ assert.deepEqual(items.slice(0,8),[
+  {numero:1,rotulo:'Data da ocorrência',valor:'25/11/2026'},
+  {numero:2,rotulo:'Classificação do evento',valor:'Evento sem Dano'},
+  {numero:3,rotulo:'Ocorrência',valor:'Evento sintético'},
+  {numero:4,rotulo:'Descrição',valor:'Relato sintético'},
+  {numero:5,rotulo:'Atendimento',situacao:'consulta interna'},
+  {numero:6,rotulo:'Sexo',situacao:'a confirmar'},
+  {numero:7,rotulo:'Idade',valor:'8 meses'},
+  {numero:8,rotulo:'Diagnóstico ou Tratamento',valor:'Tratamento sintético'}
+ ]);
+ assert.deepEqual(items.slice(-2).map(item=>item.rotulo),['Em que período ocorreu o evento?','Disclosure com registro em prontuário']);
+ assert.equal(items.at(-1).valor,'Sim');
+ assert.equal(items.find(item=>item.rotulo==='Tipo de Evento').valor,'Evento anestésico');
+ assert.equal(items.find(item=>item.rotulo==='Fatores contribuintes do time (equipe)?').valor,'Comunicação escrita');
+ assert.equal(items.find(item=>item.rotulo==='Fatores contribuintes da tarefa?').situacao,'a confirmar');
+ assert.doesNotMatch(clinical,/IDENTIFICADOR NÃO EXPORTÁVEL|Texto inválido|Idade bruta reservada/);
  const ethical=buildPreparationPrompt({...report,formId:'F08'},false);
  assert.match(ethical,/Tratamento das Questões Éticas — IDEA/);
- assert.doesNotMatch(ethical,/Pré-análise de ocorrência no contexto anestésico/);
+ assert.doesNotMatch(ethical,/itensDoRegistro/);
+ const hospital=buildPreparationPrompt({...report,origin:'hospital',hospitalNumber:'1'},false);
+ assert.match(hospital,/Pré-análise de ocorrência no contexto anestésico/);
+ assert.doesNotMatch(hospital,/itensDoRegistro/);
 });
 
-test('rascunho aceita edição da pergunta de priorização e até três alternativas distintas',()=>{
+test('o rascunho das GRA exige três ações e usa as opções da votação no texto',()=>{
  const draft={protocolo:'GRA 004',descricao:'Descrição',perguntas:improvementQuestions};
  const read=perguntas=>readPreparationDraft(JSON.stringify({...draft,perguntas}),'GRA 004',false,'F03');
- assert.deepEqual(read(improvementQuestions).questions,improvementQuestions);
+ const prepared=read(improvementQuestions);
+ assert.deepEqual(prepared.questions,improvementQuestions);
+ assert.equal(prepared.description,'Descrição\n\nAÇÕES DE MELHORIA\n1. Revisar protocolo\n2. Melhorar comunicação\n3. Rever supervisão');
+ const withActions={...draft,descricao:'Descrição\n\n**Ações de melhoria:**\n1. Texto divergente'};
+ assert.equal(readPreparationDraft(JSON.stringify(withActions),'GRA 004',false,'F03').description,prepared.description);
  const edited={...improvementQuestions.at(-1),prompt:'Qual medida você recomenda para o serviço?'};
  assert.equal(read([...improvementQuestions.slice(0,-1),edited]).questions.at(-1).prompt,edited.prompt);
  assert.throws(()=>read(improvementQuestions.slice(1)),/OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID/);
@@ -35,10 +60,13 @@ test('rascunho aceita edição da pergunta de priorização e até três alterna
  const maximum=[...Array.from({length:9},(_,index)=>({prompt:'Questão '+index,options:['Uma','Outra']})),improvementQuestions.at(-1)];
  assert.equal(read(maximum).questions.length,10);
  assert.throws(()=>read([maximum[0],...maximum]),/OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID/);
- for(const options of [['A','B','C','D'],['Revisão','revisão']]){
+ for(const options of [['A','B'],['A','B','C','D'],['Revisão','revisão','Outro']]){
   const questions=[...improvementQuestions.slice(0,4),{prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options}];
   assert.throws(()=>read(questions),/OCCURRENCE_IMPROVEMENT_VOTE_INVALID/);
  }
+ const legacyTwo=[...improvementQuestions.slice(0,-1),{...improvementQuestions.at(-1),options:['A','B']}];
+ assert.deepEqual(readPreparationDraft(JSON.stringify({...draft,protocolo:'GR 004',perguntas:legacyTwo}),
+  'GR 004',false,'F03'),{description:'Descrição',questions:legacyTwo});
 });
 
 test('análise recebe a apuração da ação proposta, incluindo empate e ausência de votos',()=>{

@@ -1,6 +1,6 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {GRA_001_QUESTIONS,GRA_001_RECORD_ID,OCCURRENCE_IMPROVEMENT_QUESTION} from '../src/occurrence-questionnaire.js';
-import {OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
+import {getOccurrenceForm,occurrenceOrderedInputFields,OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
 import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
  const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS)
@@ -17,7 +17,9 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
     ]:[],next:null}:{entries:origin==='app'?
     [{id:'ethical-test',formId:'F08',origin:'app',sequence:2,title:'Dilema de teste',
       preparedDescription:window.preparations?.['ethical-test'],classification:{},details:{},analysisStarted:!!window.questionnaires?.['ethical-test'],
-      analysisClosed:!!window.closedOther,acknowledged:!!window.closedOther}]
+      analysisClosed:!!window.closedOther,acknowledged:!!window.closedOther},
+     {id:'flow-case',formId:'F10',origin:'app',sequence:4,title:'Evento de teste',
+      preparedDescription:window.preparations?.['flow-case'],analysisStarted:!!window.questionnaires?.['flow-case']}]
     :origin==='hospital'&&window.followupPublished?
     [{id:'gr-1',formId:'F03',origin:'hospital',hospitalNumber:'1',title:'Evento externo',
       occurredOn:'2026-11-20',description:'Relato completo aqui',preparedDescription:window.preparations?.['gr-1'],classification:{},details:{},analysisStarted:!!window.questionnaires?.['gr-1'],responsesClosedAt:window.closedReplies?.['gr-1']}]
@@ -25,8 +27,9 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    readAnalysis:async()=>null,listAnalyses:async({id})=>({entries:id==='gr-1'?
      [{analysis:{problem:'Linha um.\\nLinha dois.',cause:'Causa',review:'Revisão',correction:'Correção',plan:'Plano'}}]:[],next:null}),
    descriptionAccess:async()=>window.canEditDescription===true,saveDescription:async(input)=>{window.descriptionEdit=input;return input.description;},
-   readOccurrenceFollowup:async({id})=>({entry:{id,formId:'F08',origin:'app',title:'Registro administrativo',
+   readOccurrenceFollowup:async({id})=>({entry:{id,formId:id==='flow-case'?'F10':'F08',origin:'app',title:'Registro administrativo',
      description:'Relato original privado',details:{},classification:{}}}),
+   readPreparationContext:async({includeClinical})=>includeClinical?{age:'Oito meses'}:{},
    readOccurrenceQuestionnaire:async({id})=>id===${JSON.stringify(GRA_001_RECORD_ID)}?
     {questions:${JSON.stringify(GRA_001_QUESTIONS)},revision:2}:
     window.questionnaires?.[id]?{questions:window.questionnaires[id],revision:window.questionnaireRevision??0,canReviseQuestions:true}:null,
@@ -142,6 +145,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    assert.ok(await controls.count());
    assert.equal(await controls.locator('xpath=self::*[not(@required)]').count(),0,id);
    const names=await controls.evaluateAll(elements=>elements.map(element=>element.name));
+   assert.deepEqual(names,occurrenceOrderedInputFields(getOccurrenceForm(id)).map(item=>item.id),id);
    const eventClassification=formDialog.getByLabel(/Classificação do evento/);
    assert.deepEqual(await eventClassification.locator('option:not([value=""])').allTextContents(),[
     'Circunstância de Risco','Evento Adverso Grave','Evento Adverso Leve','Evento Adverso Moderado',
@@ -553,6 +557,40 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await appEthics.locator('xpath=self::*[@data-analysis-state="clear"]').waitFor();
   await back.click();
   await followup.waitFor({state:'hidden'});
+  await page.evaluate(()=>window.isOccurrenceAdmin=true);
+  await appLaunch.click();
+  await followup.locator('[data-occurrence-group="D"]').click();
+  await followupBanner.getByRole('button',{name:'GRA 004 · Evento de teste'}).click();
+  await actionFooter.getByRole('button',{name:'PREPARAR OCORRÊNCIA'}).click();
+  await preparationLauncher.getByRole('button',{name:'EXECUTAR NO CHATGPT'}).click();
+  assert.match(await page.evaluate(()=>window.shortcutOutput),/"itensDoRegistro"[\s\S]*"valor": "Oito meses"/);
+  const otherQuestions=Array.from({length:4},(_,index)=>({prompt:'Pergunta '+(index+1),options:['A','B']}));
+  const vote={prompt:OCCURRENCE_IMPROVEMENT_QUESTION,options:['Rever a checagem','Revisar o fluxo']};
+  const copyDraft=questions=>page.evaluate(text=>{window.shortcutOutput=text;},JSON.stringify({
+   protocolo:'GRA 004',descricao:'1. Classificação do evento — A confirmar.',perguntas:questions
+  }));
+  await copyDraft([...otherQuestions,vote]);
+  await bringResponse.click();
+  await preparationLauncher.getByText('Use três ações distintas na última pergunta.',{exact:true}).waitFor();
+  await copyDraft([...otherQuestions,{...vote,options:[...vote.options,'Verificar os registros']}]);
+  await bringResponse.click();
+  await preview.getByText(/AÇÕES DE MELHORIA/).waitFor();
+  await preview.getByRole('button',{name:'EDITAR',exact:true}).click();
+  const thirdAction=preview.locator('[name="option-4-2"]');
+  assert.notEqual(await thirdAction.getAttribute('required'),null);
+  await thirdAction.fill('Conferir as barreiras de segurança');
+  await preview.getByRole('button',{name:'VER PRÉ-ANÁLISE'}).click();
+  await preview.getByRole('button',{name:'PUBLICAR'}).click();
+  await preview.waitFor({state:'hidden'});
+  const publishedActions=await page.evaluate(()=>({
+   description:window.preparations['flow-case'],
+   options:window.questionnaires['flow-case'].at(-1).options
+  }));
+  assert.match(publishedActions.description,/3\. Conferir as barreiras de segurança$/);
+  assert.deepEqual(publishedActions.options,['Rever a checagem','Revisar o fluxo','Conferir as barreiras de segurança']);
+  await back.click();
+  await back.click();
+  await back.click();
   await hospitalLaunch.click();
   await hospitalCare.locator('xpath=self::*[@data-analysis-state="pending"]').waitFor();
   await back.click();

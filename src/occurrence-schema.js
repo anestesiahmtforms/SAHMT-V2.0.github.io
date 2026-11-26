@@ -183,6 +183,25 @@ export function getOccurrenceForm(formId) {
   return OCCURRENCE_FORMS.find(form => form.id === formId) || null;
 }
 
+const generalOccurrenceFields=new Set(['eventDate','eventClassification','occurrence','description']);
+export function occurrenceFormSections(form) {
+  return {
+    general:form.fields.filter(item=>generalOccurrenceFields.has(item.id)),
+    classification:form.classification,
+    details:form.fields.filter(item=>!generalOccurrenceFields.has(item.id))
+  };
+}
+
+export function occurrenceOrderedInputFields(form) {
+  const {general,classification,details}=occurrenceFormSections(form);
+  const followup=form.actionFollowup;
+  return withOccurrencePatientFields([...general,...classification,...details]).flatMap(item=>{
+    if(item.id!==followup?.after)return [item];
+    if(item.id==='eventPeriod')return [...followup.fields,...followup.factors,item,...followup.closingFields];
+    return [item,...occurrenceActionFollowupFields(form)];
+  });
+}
+
 export function occurrenceAppProtocol(sequence) {
   return Number.isSafeInteger(sequence) && sequence > 0 ? `GRA ${String(sequence).padStart(3,'0')}` : '';
 }
@@ -224,12 +243,7 @@ export function validateOccurrenceValues(formId, values, catalogs = {}) {
   const form = getOccurrenceForm(formId);
   if (!form || !values || typeof values !== 'object' || Array.isArray(values)) return {valid: false, errors: ['FORM_INVALID']};
   const errors = [];
-  const followup = form.actionFollowup;
-  const fields = withOccurrencePatientFields([...form.classification, ...form.fields]).flatMap(item => {
-    if (item.id !== followup?.after) return [item];
-    if (item.id === 'eventPeriod') return [...followup.fields, ...followup.factors, item, ...followup.closingFields];
-    return [item, ...occurrenceActionFollowupFields(form)];
-  });
+  const fields = occurrenceOrderedInputFields(form);
   for (const item of fields) {
     const value = item.fixedValue ?? values[item.id];
     const empty = value === undefined || value === null || String(value).trim() === '';

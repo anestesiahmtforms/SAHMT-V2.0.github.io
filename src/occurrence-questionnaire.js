@@ -63,7 +63,7 @@ export function normalizeOccurrenceQuestions(questions) {
   return questions.map(({prompt,options})=>({prompt:prompt.trim(),options:options.map(text=>text.trim())}));
 }
 
-export function normalizeOccurrencePreparationQuestions(questions, formId) {
+export function normalizeOccurrencePreparationQuestions(questions, formId, {requireThreeImprovementOptions=false}={}) {
   if (Array.isArray(questions) && ((formId==='F08' && questions.length!==OCCURRENCE_QUESTION_COUNT) ||
     (formId && formId!=='F08' && (questions.length<OCCURRENCE_SAFETY_MIN_QUESTIONS ||
       questions.length>OCCURRENCE_SAFETY_MAX_QUESTIONS)))) {
@@ -73,11 +73,19 @@ export function normalizeOccurrencePreparationQuestions(questions, formId) {
   if (formId && formId !== 'F08') {
     const vote = normalized.at(-1);
     if (vote.options.length > OCCURRENCE_IMPROVEMENT_OPTION_LIMIT ||
+      (requireThreeImprovementOptions&&vote.options.length!==OCCURRENCE_IMPROVEMENT_OPTION_LIMIT) ||
       new Set(vote.options.map(option => option.toLocaleLowerCase('pt-BR'))).size !== vote.options.length) {
       throw new Error('OCCURRENCE_IMPROVEMENT_VOTE_INVALID');
     }
   }
   return normalized;
+}
+
+export function withOccurrenceImprovementActions(description, options) {
+  const heading=/^[\t ]*(?:#{1,6}[\t ]+)?(?:\*{1,2})?AÇÕES DE MELHORIA:?(?:\*{1,2})?:?[\t ]*$/im;
+  const report=description.split(heading,1)[0].trim();
+  const actions=options.map((option,index)=>(index+1)+'. '+option).join('\n');
+  return [report,'AÇÕES DE MELHORIA\n'+actions].filter(Boolean).join('\n\n');
 }
 
 export function formatOccurrenceAnalysisExport({label,questions,entries,legacy}) {

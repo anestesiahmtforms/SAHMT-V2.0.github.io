@@ -1,5 +1,5 @@
 import {assertOnlineOperation,unconfirmedWrite} from './online-only.js';
-import {OCCURRENCE_GROUPS, getOccurrenceForm, validateOccurrenceValues, withOccurrencePatientFields} from './occurrence-schema.js';
+import {OCCURRENCE_GROUPS, getOccurrenceForm, occurrenceFormSections, validateOccurrenceValues, withOccurrencePatientFields} from './occurrence-schema.js';
 import {createOccurrenceRepository} from './occurrence-data.js';
 import {withinDeadline} from './async-deadline.js';
 import {mountOccurrenceFollowup} from './occurrence-followup-ui.js';
@@ -168,15 +168,15 @@ function occurrenceInputMarkup(fields,catalogs,followup) {
 }
 
 export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
-  const generalIds=new Set(['eventDate','eventClassification','occurrence','description']);
-  const generalInputs=form.fields.filter(item=>generalIds.has(item.id)).map(item=>occurrenceFieldMarkup(item,catalogs)).join('');
+  const sections=occurrenceFormSections(form);
+  const generalInputs=sections.general.map(item=>occurrenceFieldMarkup(item,catalogs)).join('');
   const general=`<section class="occurrence-form-section">${form.noGeneralInformation?'':'<h4>Informações Gerais</h4>'}<div class="occurrence-form-grid">
     ${form.noGeneralInformation?'':`<label class="occurrence-field"><span>Autor</span><input value="${escape(displayName)}" readonly aria-describedby="occurrence-author-note"></label>`}
     ${generalInputs}
     </div></section>`;
   const privacy=`<section class="occurrence-privacy"><label class="occurrence-anonymous"><input type="checkbox" name="anonymous"><span>Realizar registro anônimo</span></label><small id="occurrence-author-note">O nome do autor fica oculto no acompanhamento. O modo anônimo também oculta o nome no registro original.</small></section>`;
-  const classification=form.classification.length?`<section class="occurrence-form-section"><h4>Classificação</h4><div class="occurrence-form-grid">${occurrenceInputMarkup(form.classification,catalogs,form.actionFollowup)}</div></section>`:'';
-  const details=form.fields.filter(item=>!generalIds.has(item.id));
+  const classification=sections.classification.length?`<section class="occurrence-form-section"><h4>Classificação</h4><div class="occurrence-form-grid">${occurrenceInputMarkup(sections.classification,catalogs,form.actionFollowup)}</div></section>`:'';
+  const details=sections.details;
   const additional=details.length?`<section class="occurrence-form-section"><h4>Dados do formulário</h4><div class="occurrence-form-grid">${occurrenceInputMarkup(details,catalogs,form.actionFollowup)}</div></section>`:'';
   return `<dialog class="occurrence-dialog" aria-labelledby="occurrence-form-title"><form class="occurrence-dialog__form" novalidate><header class="occurrence-dialog__header"><h3 id="occurrence-form-title" tabindex="-1" autofocus>${escape(form.title.toLocaleUpperCase('pt-BR'))}</h3></header><div class="occurrence-dialog__body"><p class="occurrence-privacy-note">No texto do relato, evite nomes e outros dados que identifiquem pessoas. O relato será disponibilizado à equipe.</p>${general}${classification}${additional}${privacy}<p class="occurrence-form-status" role="status" aria-live="polite"></p></div><footer class="occurrence-dialog__footer"><button type="button" class="secondary-button" data-occurrence-cancel>VOLTAR</button><button type="submit" class="primary-button" data-occurrence-save>SALVAR</button></footer></form></dialog>`;
 }
