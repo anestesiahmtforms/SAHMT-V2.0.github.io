@@ -81,9 +81,13 @@ export function normalizeOccurrencePreparationQuestions(questions, formId, {requ
   return normalized;
 }
 
-export function withOccurrenceImprovementActions(description, options) {
+export function withoutOccurrenceImprovementActions(description) {
   const heading=/^[\t ]*(?:#{1,6}[\t ]+)?(?:\*{1,2})?AÇÕES DE MELHORIA:?(?:\*{1,2})?:?[\t ]*$/im;
-  const report=description.split(heading,1)[0].trim();
+  return description.split(heading,1)[0].trim();
+}
+
+export function withOccurrenceImprovementActions(description, options) {
+  const report=withoutOccurrenceImprovementActions(description);
   const actions=options.map((option,index)=>(index+1)+'. '+option).join('\n');
   return [report,'AÇÕES DE MELHORIA\n'+actions].filter(Boolean).join('\n\n');
 }

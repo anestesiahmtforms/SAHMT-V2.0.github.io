@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {OCCURRENCE_FORMS} from '../src/occurrence-schema.js';
-import {buildAnalysisPrompt,buildPreparationPrompt,readAnalysisDraft,readPreparationDraft} from '../src/occurrence-ai-prompts.js';
+import {prepareOccurrenceAnalysis,buildPreparationPrompt,readAnalysisDraft,readPreparationDraft} from '../src/occurrence-ai-prompts.js';
 import {OCCURRENCE_IMPROVEMENT_QUESTION} from '../src/occurrence-questionnaire.js';
 import {occurrenceFieldMarkup,occurrenceFormMarkup,occurrenceGroupMarkup,occurrenceCategoryMarkup,occurrenceModuleAccess,loadOccurrenceCatalogForSession,occurrenceCatalogErrorMessage,createOccurrenceSessionGate,submitOccurrenceWithFallback,occurrenceWriteFailureMessage} from '../src/occurrences-ui.js';
 
@@ -69,31 +69,58 @@ test('o rascunho das GRA exige três ações e usa as opções da votação no t
   'GR 004',false,'F03'),{description:'Descrição',questions:legacyTwo});
 });
 
-test('análise recebe a apuração da ação proposta, incluindo empate e ausência de votos',()=>{
- const vote=answers=>{
+test('análise leva somente a ação vencedora à IA e conserva empate ou ausência de votos',()=>{
+ const analyze=answers=>{
   const questions=[...improvementQuestions.slice(0,-1),{...improvementQuestions.at(-1),prompt:'Qual medida você recomenda?'}];
-  const prompt=buildAnalysisPrompt(report,{questions,
-   entries:answers.map(answer=>({answers:[1,1,1,1,answer]})),legacy:[]});
-  return JSON.parse(prompt.split('\n\nVOTAÇÃO DA AÇÃO DE MELHORIA\n')[1].split('\n\nRESPOSTAS DA OCORRÊNCIA')[0]);
+  return prepareOccurrenceAnalysis({...report,preparedDescription:'Pré-análise publicada\n\nAÇÕES DE MELHORIA\n1. Revisar protocolo\n2. Melhorar comunicação\n3. Rever supervisão'},{
+   questions,entries:answers.map(answer=>({answers:[1,1,1,1,answer],comment:'Comentário da equipe'})),legacy:[]
+  },{},'2026-11-25');
  };
- assert.equal(vote([1,2,2]).acaoProposta,'Melhorar comunicação');
- assert.deepEqual(vote([1,2]).empate,['Revisar protocolo','Melhorar comunicação']);
- assert.equal(vote([]).acaoProposta,null);
- assert.equal(vote([]).totalDeVotos,0);
+ const {prompt,plan}=analyze([1,2,2]);
+ assert.deepEqual(plan.priority,{action:'Melhorar comunicação',total:3,votes:2,state:'winner'});
+ assert.equal(plan.dueDate,'2026-12-02');
+ assert.match(prompt,/Pré-análise publicada[\s\S]*Melhorar comunicação[\s\S]*Comentário da equipe/);
+ assert.doesNotMatch(prompt,/Revisar protocolo|Rever supervisão/);
+ assert.equal(analyze([1,2]).plan.priority.state,'tie');
+ assert.equal(analyze([1,2]).plan.dueDate,'');
+ assert.equal(analyze([]).plan.priority.state,'no-votes');
+ assert.equal(analyze([]).plan.priority.total,0);
+ const withoutPoll=prepareOccurrenceAnalysis(report,{questions:[...improvementQuestions.slice(0,-1),
+  {prompt:'Houve acompanhamento?',options:['Sim','Não','A confirmar']}],
+  entries:[{answers:[1,1,1,1,1]}],legacy:[]},{},'2026-11-25');
+ assert.equal(withoutPoll.plan.priority.state,'no-poll');
+ assert.equal(withoutPoll.plan.dueDate,'');
+ assert.match(withoutPoll.prompt,/Houve acompanhamento\?/);
 });
 
-test('análise clínica segue a ordem de 19 itens, recebe dados desidentificados e separa o prazo',()=>{
+test('análise clínica repete os itens da pré-análise, gera uma ação única e usa o prazo calculado pelo app',()=>{
  const entry={...report,preparedDescription:'Pré-análise aprovada'};
- const prompt=buildAnalysisPrompt(entry,{questions:improvementQuestions,entries:[],legacy:[]},{
+ const {prompt,plan}=prepareOccurrenceAnalysis(entry,{questions:improvementQuestions,
+  entries:[{answers:[1,1,1,1,3],comment:'Comentário registrado.'}],legacy:[]},{
   age:'8 meses',sex:'Feminino',diagnosisOrTreatment:'Tratamento sintético',teamFactors:'Comunicação verbal',chartDisclosure:'Não'
- });
- const sections=[...prompt.matchAll(/^(\d+)\. [^\n]+/gm)].slice(0,19).map(match=>Number(match[1]));
- assert.deepEqual(sections,Array.from({length:19},(_,index)=>index+1));
- assert.match(prompt,/3\. Número do atendimento[\s\S]*\[\[NUMERO_DO_ATENDIMENTO\]\]/);
- assert.match(prompt,/"relato": "Relato sintético"[\s\S]*"preparacaoPublicada": "Pré-análise aprovada"/);
- assert.match(prompt,/"Fatores contribuintes do time \(equipe\)\?": "Comunicação verbal"/);
- assert.match(prompt,/"idade": "8 meses"[\s\S]*"sexo": "Feminino"[\s\S]*"diagnosticoOuTratamento": "Tratamento sintético"/);
+ },'2026-12-28');
+ assert.deepEqual(plan.items.slice(0,8).map(item=>item.rotulo),[
+  'Data da ocorrência','Classificação do evento','Ocorrência','Descrição','Atendimento','Sexo','Idade','Diagnóstico ou Tratamento'
+ ]);
+ assert.match(prompt,/"rotulo": "Atendimento"[\s\S]*\[\[NUMERO_DO_ATENDIMENTO\]\]/);
+ assert.match(prompt,/"valor": "Relato sintético"[\s\S]*"preparacaoPublicada": "Pré-análise aprovada"/);
+ assert.match(prompt,/"Fatores contribuintes do time \(equipe\)\?",\s*"valor": "Comunicação verbal"/);
+ assert.match(prompt,/"valor": "Feminino"[\s\S]*"valor": "8 meses"[\s\S]*"valor": "Tratamento sintético"/);
  assert.doesNotMatch(prompt,/IDENTIFICADOR NÃO EXPORTÁVEL/);
+ const items=plan.items.map(({numero})=>({numero,analise:'Síntese da equipe '+numero+'.'}));
+ const result=readAnalysisDraft(JSON.stringify({protocolo:'GRA 004',itens:items.reverse(),prazoSugerido:'01/01/2050',
+  fundamentacaoAcao:'Conforme a avaliação da equipe.'}),'GRA 004',plan);
+ assert.equal(result.dueDate,'2027-01-04');
+ assert.match(result.text,/^1\. Data da ocorrência — Síntese da equipe 1\./);
+ assert.match(result.text,/5\. Atendimento — \[\[NUMERO_DO_ATENDIMENTO\]\]/);
+ assert.match(result.text,/AÇÕES DE MELHORIA\n1\. Rever supervisão\nVotação da equipe — 1 de 1 voto\.\nConforme a avaliação da equipe\.$/);
+ assert.doesNotMatch(result.text,/Revisar protocolo|Melhorar comunicação|2050/);
+ assert.throws(()=>readAnalysisDraft(JSON.stringify({protocolo:'GRA 004',itens:items.slice(1)}),'GRA 004',plan),
+  /OCCURRENCE_ANALYSIS_ITEMS_INVALID/);
+ const tied={...plan,priority:{action:null,total:2,votes:0,state:'tie'},dueDate:''};
+ const tiedResult=readAnalysisDraft(JSON.stringify({protocolo:'GRA 004',itens:items}),'GRA 004',tied);
+ assert.equal(tiedResult.dueDate,'');
+ assert.match(tiedResult.text,/A votação terminou empatada/);
  assert.deepEqual(readAnalysisDraft(JSON.stringify({protocolo:'GRA 004',resultado:'Análise',prazoSugerido:'30/11/2026'}),'GRA 004'),
   {text:'Análise',dueDate:'2026-11-30'});
  assert.throws(()=>readAnalysisDraft(JSON.stringify({protocolo:'GRA 004',resultado:'Análise',prazoSugerido:'2026-02-30'}),'GRA 004'),

@@ -451,7 +451,10 @@ export function mountOccurrenceQuestionnaire(host,options) {
   function showResult(canEdit) {
     if(!isCurrent()||resultBound)return;
     resultBound=true;
-    stageResult=bindOccurrenceResult(result,{...options,canEdit,onResultPublished:resultAt=>{
+    stageResult=bindOccurrenceResult(result,{...options,canEdit,onResultDraft:()=>{
+      response.hidden=true;
+      options.onResultDraft?.();
+    },onResultPublished:resultAt=>{
       response.replaceChildren();
       options.onResultPublished?.(resultAt);
     }});

@@ -1,6 +1,6 @@
 import {occurrenceProtocol} from './occurrence-schema.js';
 import {escapeNoticeHtml as escape} from './communication-notice-text.js';
-import {buildPreparationPrompt,buildAnalysisPrompt,readPreparationDraft,readAnalysisDraft} from './occurrence-ai-prompts.js';
+import {buildPreparationPrompt,prepareOccurrenceAnalysis,readPreparationDraft,readAnalysisDraft} from './occurrence-ai-prompts.js';
 
 const shortcutUrl='shortcuts://run-shortcut?name='+encodeURIComponent('SAHMT Ocorrências')+'&input=clipboard';
 
@@ -11,22 +11,23 @@ function draftErrorMessage(error,{formId,protocol,fallback='Confira se o JSON re
     case 'OCCURRENCE_PREPARATION_QUESTION_COUNT_INVALID':return formId==='F08'?'Inclua as quatro perguntas do roteiro IDEA.'
       :'Inclua de cinco a dez perguntas, contando a votação final.';
     case 'OCCURRENCE_PREPARATION_DESCRIPTION_TOO_LONG':return 'A pré-análise ultrapassou 5.000 caracteres. Peça ao ChatGPT uma versão mais concisa.';
+    case 'OCCURRENCE_ANALYSIS_ITEMS_INVALID':return 'A resposta precisa trazer uma análise para cada item numerado. Execute o atalho novamente.';
     case 'OCCURRENCE_ANALYSIS_DATE_INVALID':return 'Confira o prazo sugerido. Use uma data válida ou deixe o campo vazio.';
     case 'OCCURRENCE_DRAFT_PROTOCOL':return 'O protocolo do rascunho deve ser '+protocol+'.';
     default:return fallback;
   }
 }
 
-function openSahmtPreparation(host,{mode,isCurrent,isWriting,formId,protocol}){
+function openSahmtPrompt(host,{mode,title,isCurrent,isWriting,formId,protocol}){
   const dialog=document.createElement('dialog');
   dialog.className='occurrence-preparation-dialog';
-  dialog.setAttribute('aria-label','Preparar ocorrência');
+  dialog.setAttribute('aria-label',title);
   dialog.innerHTML='<button class="primary-button" type="button">EXECUTAR NO CHATGPT</button>'+
     '<p role="status"></p>';
   host.append(dialog);
   const button=dialog.querySelector('button'),status=dialog.querySelector('[role="status"]');
   const current=()=>isCurrent()&&dialog.open;
-  let prompt='',launched=false;
+  let prompt='',plan,launched=false;
   dialog.addEventListener('close',()=>dialog.remove(),{once:true});
   dialog.addEventListener('cancel',event=>{if(isWriting())event.preventDefault();});
   dialog.addEventListener('click',event=>{
@@ -37,8 +38,12 @@ function openSahmtPreparation(host,{mode,isCurrent,isWriting,formId,protocol}){
   async function prepare(){
     button.disabled=true;
     status.textContent='';
-    try{prompt=await mode.prepare();}catch{
-      if(current())status.textContent='Não foi possível preparar a ocorrência. Toque no botão para tentar novamente.';
+    try{
+      const prepared=await mode.prepare();
+      if(typeof prepared==='string')prompt=prepared;
+      else ({prompt,plan}=prepared);
+    }catch{
+      if(current())status.textContent='Não foi possível preparar o conteúdo. Toque no botão para tentar novamente.';
     }finally{if(current())button.disabled=false;}
   }
   button.addEventListener('click',async()=>{
@@ -70,7 +75,7 @@ function openSahmtPreparation(host,{mode,isCurrent,isWriting,formId,protocol}){
         status.textContent='A resposta ainda não chegou. Se o atalho não abriu, execute SAHMT Ocorrências no app Atalhos.';
         return;
       }
-      if(!await mode.stage(text,dialog)&&current())status.textContent='Não foi possível abrir a pré-análise. Tente novamente.';
+      if(!await mode.stage(text,dialog,plan)&&current())status.textContent='Não foi possível abrir o rascunho. Tente novamente.';
     }catch(error){
       if(current())status.textContent=draftErrorMessage(error,{formId,protocol,fallback:'A resposta não segue o formato esperado.'});
     }finally{if(current()&&button.isConnected)button.disabled=false;}
@@ -100,15 +105,15 @@ export function bindOccurrencePromptActions(footer,host,{
       label:sahmt?'ANÁLISE FINAL':'ANALISAR RESPOSTAS',
       async prepare() {
         const [responses,context]=await Promise.all([readResponses(),readPreparationContext(true)]);
-        return buildAnalysisPrompt(promptEntry(),responses,context);
+        return prepareOccurrenceAnalysis(promptEntry(),responses,context);
       },
-      stage:text=>stageResult(readAnalysisDraft(text,protocol)),
+      stage:(text,_target,plan)=>stageResult(readAnalysisDraft(text,protocol,plan)),
       success:'Rascunho carregado em Resultado da análise pelo serviço. Revise antes de publicar.'
     }
   };
   footer.innerHTML=Object.entries(modes).map(([key,{label}])=>
     '<button type="button" class="secondary-button" data-ai-action="'+key+'" '+
-    (sahmt&&key==='preparation'?'aria-haspopup="dialog"':'aria-expanded="false"')+'>'+label+'</button>'
+    (sahmt?'aria-haspopup="dialog"':'aria-expanded="false"')+'>'+label+'</button>'
   ).join('');
   footer.hidden=false;
   const actions=[...footer.querySelectorAll('button')];
@@ -123,14 +128,21 @@ export function bindOccurrencePromptActions(footer,host,{
     }
   }
   updateActions();
-  let preparationDialog;
-  if(sahmt)preparation.addEventListener('click',()=>{
-    if(!isCurrent()||isWriting()||preparationDialog?.open)return;
-    preparationDialog=openSahmtPreparation(host,{mode:modes.preparation,isCurrent,isWriting,formId:entry.formId,protocol});
-  });
+  if(sahmt){
+    let dialog;
+    for(const button of actions)button.addEventListener('click',()=>{
+      if(!isCurrent()||isWriting()||button.disabled||dialog?.open)return;
+      const key=button.dataset.aiAction;
+      dialog=openSahmtPrompt(host,{mode:modes[key],title:key==='analysis'?'Análise final':'Preparar ocorrência',
+        isCurrent,isWriting,formId:entry.formId,protocol});
+    });
+    return ()=>{
+      updateActions();
+      if(dialog?.open)dialog.close();
+    };
+  }
   const panes=new Map();
   for(const [key,mode] of Object.entries(modes)) {
-    if(sahmt&&key==='preparation')continue;
     const pane=document.createElement('section');
     pane.className='occurrence-followup-analysis occurrence-ai-pane';
     pane.hidden=true;
@@ -167,15 +179,14 @@ export function bindOccurrencePromptActions(footer,host,{
           status.textContent='Publique a preparação para abrir as respostas da equipe.';
           return;
         }
-        status.textContent=sahmt?'Finalize a pré-análise para abrir a análise final.'
-          :'Use Encerrar interação na página de respostas para iniciar a análise.';
+        status.textContent='Use Encerrar interação na página de respostas para iniciar a análise.';
         return;
       }
       status.textContent='Preparando prompt…';
       try {
-        const text=await mode.prepare();
+        const prepared=await mode.prepare();
         if(!isCurrent()||request!==version)return;
-        prompt.value=text;
+        prompt.value=typeof prepared==='string'?prepared:prepared.prompt;
         fields.hidden=false;
         copy.disabled=false;
         status.textContent='Revise o texto antes de copiar.';
@@ -258,19 +269,17 @@ export function bindOccurrencePromptActions(footer,host,{
       } finally {button.disabled=false;}
     });
   }
-  const inlineActions=actions.filter(button=>panes.has(button.dataset.aiAction));
-  for(const action of inlineActions)action.addEventListener('click',()=>{
+  for(const action of actions)action.addEventListener('click',()=>{
     if(!isCurrent()||isWriting())return;
     const selected=panes.get(action.dataset.aiAction);
     const opening=selected.pane.hidden;
-    for(const button of inlineActions)button.setAttribute('aria-expanded',String(opening&&button===action));
+    for(const button of actions)button.setAttribute('aria-expanded',String(opening&&button===action));
     for(const pane of panes.values())pane.pane.hidden=!opening||pane!==selected;
     if(opening)void selected.open();
   });
   return ()=>{
     updateActions();
-    if(preparationDialog?.open)preparationDialog.close();
-    for(const button of inlineActions)button.setAttribute('aria-expanded','false');
+    for(const button of actions)button.setAttribute('aria-expanded','false');
     for(const {pane} of panes.values())pane.hidden=true;
   };
 }

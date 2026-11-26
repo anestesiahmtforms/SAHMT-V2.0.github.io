@@ -200,7 +200,7 @@ export function mountOccurrenceFollowup(host,{
     const label=occurrenceProtocol(entry);
     const sahmt=entry.origin==='app';
     const mayShowOriginal=!sahmt||isAdministrator()&&!entry.analysisStarted&&!entry.analysisClosed;
-    const report=descriptionMarkup(mayShowOriginal?promptSource:entry,original);
+    const report=sahmt&&entry.analysisClosed?'':descriptionMarkup(mayShowOriginal?promptSource:entry,original);
     const questionnaire='<div data-occurrence-questionnaire></div>';
     const current=render(label,(entry.analysisClosed===true?questionnaire+report:report+questionnaire)+
       '<div data-occurrence-ai-panel></div>',()=>records(true));
@@ -226,7 +226,14 @@ export function mountOccurrenceFollowup(host,{
         }
       },
       onResponsesClosed:()=>{closePromptInteraction?.();if(sahmt)onChainChanged?.();},
-      onResultDraft:()=>{if(sahmt){promptActions.hidden=true;promptPanel.replaceChildren();}},
+      onResultDraft:()=>{
+        if(sahmt){
+          closePromptInteraction?.();
+          promptActions.hidden=true;
+          const report=body.querySelector('.occurrence-followup-report');
+          if(report)report.hidden=true;
+        }
+      },
       onResultPublished:resultAt=>{
         promptActions.hidden=true;promptPanel.replaceChildren();
         if(sahmt){

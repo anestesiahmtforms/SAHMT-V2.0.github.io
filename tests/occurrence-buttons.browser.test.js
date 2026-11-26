@@ -1,6 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {GRA_001_QUESTIONS,GRA_001_RECORD_ID,OCCURRENCE_IMPROVEMENT_QUESTION} from '../src/occurrence-questionnaire.js';
 import {getOccurrenceForm,occurrenceOrderedInputFields,OCCURRENCE_CATALOG_SPECS} from '../src/occurrence-schema.js';
+import {localDateKey,shiftDateKey} from '../src/schedule-date.js';
 import {createServer} from 'vite';import {chromium,webkit} from 'playwright';
 for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence buttons open; stalled direct categories remain cancellable`,{timeout:70000},async()=>{
  const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS)
@@ -19,7 +20,8 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
       preparedDescription:window.preparations?.['ethical-test'],classification:{},details:{},analysisStarted:!!window.questionnaires?.['ethical-test'],
       analysisClosed:!!window.closedOther,acknowledged:!!window.closedOther},
      {id:'flow-case',formId:'F10',origin:'app',sequence:4,title:'Evento de teste',
-      preparedDescription:window.preparations?.['flow-case'],analysisStarted:!!window.questionnaires?.['flow-case']}]
+      preparedDescription:window.preparations?.['flow-case'],analysisStarted:!!window.questionnaires?.['flow-case'],
+      responsesClosedAt:window.closedReplies?.['flow-case'],analysisClosed:window.pollResult?.id==='flow-case'}]
     :origin==='hospital'&&window.followupPublished?
     [{id:'gr-1',formId:'F03',origin:'hospital',hospitalNumber:'1',title:'Evento externo',
       occurredOn:'2026-11-20',description:'Relato completo aqui',preparedDescription:window.preparations?.['gr-1'],classification:{},details:{},analysisStarted:!!window.questionnaires?.['gr-1'],responsesClosedAt:window.closedReplies?.['gr-1']}]
@@ -30,6 +32,7 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    readOccurrenceFollowup:async({id})=>({entry:{id,formId:id==='flow-case'?'F10':'F08',origin:'app',title:'Registro administrativo',
      description:'Relato original privado',details:{},classification:{}}}),
    readPreparationContext:async({includeClinical})=>includeClinical?{age:'Oito meses'}:{},
+   readAnalysisAttendance:async()=> '7319',
    readOccurrenceQuestionnaire:async({id})=>id===${JSON.stringify(GRA_001_RECORD_ID)}?
     {questions:${JSON.stringify(GRA_001_QUESTIONS)},revision:2}:
     window.questionnaires?.[id]?{questions:window.questionnaires[id],revision:window.questionnaireRevision??0,canReviseQuestions:true}:null,
@@ -44,10 +47,11 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    closeOccurrenceResponses:async({id})=>{(window.closedReplies??={})[id]=true;},
    readOccurrenceResponse:async({id})=>!!window.responses?.[id],
    submitOccurrenceResponse:async input=>{(window.responses??={})[input.id]=input;return 'submitted';},
-   readOccurrenceResult:async({id})=>window.pollResult?.id===id?{text:window.pollResult.text,updatedAt:window.resultGeneration}:null,
+   readOccurrenceResult:async({id})=>window.pollResult?.id===id?{...window.pollResult,updatedAt:window.resultGeneration}:null,
    readOccurrenceResultDraft:async({id})=>window.preparedResult?.id===id?window.preparedResult:null,
    saveOccurrenceResultDraft:async input=>{window.preparedResult=input;return input.text;},
-   releaseOccurrenceResult:async({uid,id})=>{window.pollResult={uid,id,text:window.preparedResult.text};window.resultGeneration=1;},
+   releaseOccurrenceResult:async({uid,id})=>{const {text,dueDate}=window.preparedResult;
+     window.pollResult={uid,id,text,...(dueDate?{dueDate}:{})};window.resultGeneration=1;},
    readOccurrenceAcknowledgement:async({id,resultAt})=>window.acknowledgement?.id===id&&window.acknowledgement.resultAt===resultAt,
    acknowledgeOccurrence:async input=>{window.acknowledgement=input;},
    finalizeOccurrence:async input=>{window.finalized=input;window.eventClosed=true;},
@@ -456,21 +460,22 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   await actionFooter.getByRole('button',{name:'FINALIZAR PRÉ-ANÁLISE'}).click();
   await followupBanner.getByText('Respostas da equipe encerradas.',{exact:true}).waitFor();
   await sahmtAnalysisButton.click();
-  await analysis.getByText('Revise o texto antes de copiar.',{exact:true}).waitFor();
+  const finalLauncher=page.getByRole('dialog',{name:'Análise final',exact:true});
+  assert.deepEqual(await finalLauncher.getByRole('button').allTextContents(),['EXECUTAR NO CHATGPT']);
+  assert.equal(await finalLauncher.getByRole('textbox').count(),0);
   assert.equal(await page.evaluate(id=>window.closedReplies[id],GRA_001_RECORD_ID),true);
-  await analysis.getByRole('button',{name:'COPIAR PROMPT'}).click();
-  await analysis.getByText('Prompt copiado.',{exact:true}).waitFor();
-  const analysisPrompt=await page.evaluate(()=>window.copiedPoll);
+  await finalLauncher.getByRole('button',{name:'EXECUTAR NO CHATGPT'}).click();
+  const analysisPrompt=await page.evaluate(()=>window.shortcutOutput);
   assert.match(analysisPrompt,/"protocolo": "GRA 001"[\s\S]*CONTAGEM POR ALTERNATIVA[\s\S]*Comentário de teste/);
   assert.match(analysisPrompt,/Total de respostas: 2/);
   assert.match(analysisPrompt,/Fase 4 — Ação[\s\S]*Comunicação da decisão[\s\S]*Implementação do plano de ação/);
   assert.match(analysisPrompt,/RESPOSTA 1[\s\S]*Ponderação conjunta desses princípios[\s\S]*Comentário de teste\./);
   assert.match(analysisPrompt,/RESPOSTA 2[\s\S]*Motivo da reserva prévia e o que mudou desde o planejamento\.[\s\S]*Segunda resposta\.\nComentário em duas linhas\./);
   assert.doesNotMatch(analysisPrompt,/synthetic/);
-  await analysis.getByRole('textbox',{name:'Resposta da IA em JSON'}).fill(JSON.stringify({
+  await page.evaluate(text=>{window.shortcutOutput=text;},JSON.stringify({
    protocolo:'GRA 001',resultado:'Primeiro parágrafo.\nSegundo parágrafo.'
   }));
-  await analysis.getByRole('button',{name:'CARREGAR RASCUNHO'}).click();
+  await finalLauncher.getByRole('button',{name:'IMPORTAR RESPOSTA DO IPHONE'}).click();
   await followupBanner.getByRole('heading',{name:'ANÁLISE FINAL · RASCUNHO'}).waitFor();
   assert.equal(await page.evaluate(()=>window.pollResult),undefined);
   await back.click();
@@ -588,6 +593,40 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   }));
   assert.match(publishedActions.description,/3\. Conferir as barreiras de segurança$/);
   assert.deepEqual(publishedActions.options,['Rever a checagem','Revisar o fluxo','Conferir as barreiras de segurança']);
+  await page.evaluate(()=>{
+   window.exportPollPages=false;
+   window.responses['flow-case']={answers:[1,1,1,1,3],comment:'Comentário sobre o contexto'};
+  });
+  await actionFooter.getByRole('button',{name:'FINALIZAR PRÉ-ANÁLISE'}).click();
+  await sahmtAnalysisButton.click();
+  assert.deepEqual(await finalLauncher.getByRole('button').allTextContents(),['EXECUTAR NO CHATGPT']);
+  assert.equal(await finalLauncher.getByRole('textbox').count(),0);
+  await finalLauncher.getByRole('button',{name:'EXECUTAR NO CHATGPT'}).click();
+  const finalPrompt=await page.evaluate(()=>window.shortcutOutput);
+  assert.doesNotMatch(finalPrompt,/Rever a checagem|Revisar o fluxo|7319/);
+  assert.match(finalPrompt,/Comentário sobre o contexto/);
+  const input=JSON.parse(finalPrompt.split('\n\nDADOS DA OCORRÊNCIA\n')[1].split('\n\nCONTAGEM POR ALTERNATIVA')[0]);
+  await page.evaluate(text=>{window.shortcutOutput=text;},JSON.stringify({
+   protocolo:'GRA 004',itens:input.itensDoRegistro.map(({numero})=>({numero,analise:'Síntese '+numero})),
+   fundamentacaoAcao:'Fundamentação da ação priorizada.'
+  }));
+  await finalLauncher.getByRole('button',{name:'IMPORTAR RESPOSTA DO IPHONE'}).click();
+  await finalLauncher.waitFor({state:'hidden'});
+  await followupBanner.getByRole('heading',{name:'ANÁLISE FINAL · RASCUNHO'}).waitFor();
+  assert.equal(await followupBanner.getByRole('textbox').count(),0);
+  assert.equal(await followupBanner.getByText('Respostas da equipe encerradas.',{exact:true}).isVisible(),false);
+  const finalText=await followupBanner.locator('.occurrence-poll-final-text').textContent();
+  assert.match(finalText,/Atendimento — 7319/);
+  assert.match(finalText,/AÇÕES DE MELHORIA\n1\. Conferir as barreiras de segurança/);
+  assert.doesNotMatch(finalText,/Rever a checagem|Revisar o fluxo/);
+  await actionFooter.getByRole('button',{name:'EDITAR',exact:true}).click();
+  const editableDeadline=followupBanner.getByLabel('Prazo da ação de melhoria');
+  assert.equal(await editableDeadline.inputValue(),shiftDateKey(localDateKey(),7));
+  await editableDeadline.fill('2026-12-15');
+  await followupBanner.getByRole('button',{name:'SALVAR ALTERAÇÕES'}).click();
+  await actionFooter.getByRole('button',{name:'LIBERAR',exact:true}).click();
+  await followupBanner.getByText('Análise liberada. A equipe já pode registrar ciência.').waitFor();
+  assert.equal(await followupBanner.locator('time').textContent(),'15/12/2026');
   await back.click();
   await back.click();
   await back.click();
