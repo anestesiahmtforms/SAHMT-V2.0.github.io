@@ -84,17 +84,19 @@ output=output.replace("'anonymous','authorLabel','pointsClaimed','pointsStatus',
 output=output.replace('data.pointsClaimed == 2','data.pointsClaimed in [2, 3]')
   .replace('data.points == 2 && data.status','data.points in [2, 3] && data.status')
   .replace('claim.points == 2 && claim.status','claim.points == report.pointsClaimed && claim.status')
-  .replace('data.details.keys().size() <= 20',
-    "data.details.keys().size() <= (data.details.keys().hasAny(['eventClassification']) ? 21 : 20)");
+  .replace('data.details.keys().size() <= 20 &&',
+    `data.details.keys().size() <= (data.details.keys().hasAny(['eventClassification']) ? 21 : 20) &&
+        (data.details.get('eventClassification','') in ${JSON.stringify(OCCURRENCE_EVENT_CLASSIFICATIONS)} ||
+          (!data.keys().hasAny(['sequence']) && !data.details.keys().hasAny(['eventClassification']))) &&`);
 const commonKeys=new Set(['eventDate','occurrence','description',...OCCURRENCE_PRIVATE_FIELDS]);
 function followupFields(fields,name){
   const keys=fields.map(field=>field.id).filter(key=>!commonKeys.has(key));
   if(!keys.length)return `${name}.size() == 0`;
   return [`${name}.keys().hasOnly(${JSON.stringify(keys)})`,
-    ...keys.map(key=>`${name}.get('${key}','') is string`)].join(' &&\n          ');
+    ...keys.filter(key=>key!=='eventClassification').map(key=>`${name}.get('${key}','') is string`)].join(' &&\n          ');
 }
-const formFields=OCCURRENCE_FORMS.map(form=>`(data.formId == '${form.id}' && ${followupFields(form.fields,'fields')} &&
-          ${followupFields(form.classification,'classification')})`).join(' ||\n        ');
+const formFields=OCCURRENCE_FORMS.map(form=>`formId == '${form.id}' ? (${followupFields(form.fields,'fields')} &&
+          ${followupFields(form.classification,'classification')}) :`).join('\n        ')+' false';
 const indexes=Array.from({length:OCCURRENCE_SAFETY_MAX_QUESTIONS},(_,index)=>index);
 const optionalIndex=(list,index,check)=>index<OCCURRENCE_QUESTION_COUNT?check:`(${list}.size() <= ${index} || (${check}))`;
 const optionChecks=Array.from({length:OCCURRENCE_OPTION_LIMIT},(_,index)=>{
@@ -103,7 +105,6 @@ const optionChecks=Array.from({length:OCCURRENCE_OPTION_LIMIT},(_,index)=>{
 }).join(' &&\n        ');
 const followupRules=(await readFile('scripts/occurrence-followup.fc.rules.inc','utf8'))
   .replace('OCCURRENCE_FOLLOWUP_FORM_FIELDS',formFields)
-  .replace('OCCURRENCE_EVENT_CLASSIFICATIONS',JSON.stringify(OCCURRENCE_EVENT_CLASSIFICATIONS))
   .replaceAll('OCCURRENCE_QUESTION_COUNT',OCCURRENCE_QUESTION_COUNT)
   .replace('OCCURRENCE_SAFETY_MIN_QUESTIONS',OCCURRENCE_SAFETY_MIN_QUESTIONS)
   .replaceAll('OCCURRENCE_SAFETY_MAX_QUESTIONS',OCCURRENCE_SAFETY_MAX_QUESTIONS)

@@ -84,6 +84,7 @@
     function validOccurrenceAppFields(data) {
       let fields = data.details;
       let classification = data.classification;
+      let formId = data.formId;
       return OCCURRENCE_FOLLOWUP_FORM_FIELDS;
     }
     function validOccurrenceFollowup(id,data) {
@@ -103,8 +104,7 @@
       let report = getAfter(reportPath(id)).data;
       return data.origin == 'app' && !data.keys().hasAny(['hospitalNumber']) &&
         report.createdAt == request.time && report.sequence == data.sequence && report.formId == data.formId &&
-        data.details.get('eventClassification','') in OCCURRENCE_EVENT_CLASSIFICATIONS &&
-        report.details.get('eventClassification','') == data.details.eventClassification &&
+        report.details.eventClassification == data.details.eventClassification &&
         report.occurredOn == data.occurredOn && getAfter(auditPath(id)).data.uid == request.auth.uid;
     }
     function validHospitalOccurrenceFollowup(id,data) {
