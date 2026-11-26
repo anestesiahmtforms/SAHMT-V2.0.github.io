@@ -23,7 +23,7 @@ async function checkFi(uid,profile) {
  const env=import.meta.env||{};
  const pilot=env.VITE_FI_ADMIN_ENABLED!=='true'&&env.VITE_FI_PILOT_ENABLED==='true';
  if(!pilot&&env.VITE_FI_ADMIN_ENABLED!=='true')return 'disabled';
- if(profile.role!=='administrador_app'&&profile.permissions?.admin!==true)return 'excluded';
+ if(pilot&&profile.role!=='administrador_app'&&profile.permissions?.admin!==true)return 'excluded';
  try{
   const {fiControlRequest}=await import('./fi-control-client.js');
   const value=await fiControlRequest('service.status',{},uid,{pilot,signal:AbortSignal.timeout(15000)});
