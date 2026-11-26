@@ -18,11 +18,11 @@ export function createFiControlRequest({uid,isCurrent=()=>true,getIdToken,getApp
  }
  send.dispose=()=>{disposed=true;for(const c of controllers)c.abort();controllers.clear();};return send;
 }
-export async function fiControlRequest(action,input,uid,{pilot=false}={}){
+export async function fiControlRequest(action,input,uid,{pilot=false,signal}={}){
  const {auth}=await import('./firebase-auth.js'),user=auth?.currentUser;
  if(!uid||user?.uid!==uid)throw failure('FI_SESSION_CHANGED');
  const transport=createFiControlRequest({uid,pilot,isCurrent:()=>auth.currentUser===user,getIdToken:()=>user.getIdToken(),getAppCheckToken:async()=>{
   const {appCheckReady}=await import('./firebase-app.js');const appCheck=await appCheckReady;if(!appCheck)return null;const {getToken}=await import('firebase/app-check');return (await getToken(appCheck)).token;
  }});
- try{return await transport(action,input);}finally{transport.dispose();}
+ try{return await transport(action,input,signal);}finally{transport.dispose();}
 }

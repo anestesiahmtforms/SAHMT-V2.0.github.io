@@ -7,6 +7,7 @@ import {addAppUpdateRules} from '../scripts/lib/app-update-rules.js';
 import {APP_VERSION,deviceVersionLabel} from '../src/app-version.js';
 import {devicePublishedState} from '../src/app-updates-targeted.js';
 import {updateUsersWithContactSiglas} from '../src/app-updates-targeted-identity.js';
+import {ecosystemAccessStatuses,ecosystemStations} from '../src/ecosystem-access-update.js';
 const request = (id = 'request-1234567890123456') => ({id,target:'FA',minimumRelease:200});
 const session = (uid = 'member', r = null, extra = {}) => ({status:'signed-in',user:{uid},profile:{uid,appUpdateRequest:r},offline:false,...extra});
 function fixture(release = 100, deviceId = 'device-a', storage = new Map()) {
@@ -32,6 +33,34 @@ test('a second device remains pending when the first device loads the requested 
   assert.equal(deviceUpdateState(b.records[0],request()),'Pendente');
   assert.equal(b.controller.blocked,true);assert.equal(a.controller.blocked,false);
   assert.equal(deviceUpdateState(a.records[0],request('new-request-123456789')),'Pendente');
+});
+test('this device confirms the update only after the access check has succeeded',async()=>{
+ const f=fixture(200);
+ let finish;
+ const controller=createTargetedAppUpdates({...f.options,confirmAccess:()=>new Promise(resolve=>{finish=resolve;})});
+ controller.setSession(session('member',request()));
+ await flush();
+ assert.equal(f.records.length,0);
+ finish(true);
+ await flush();
+ assert.equal(deviceUpdateState(f.records[0],request()),'Confirmado');
+ const failed=createTargetedAppUpdates({...f.options,confirmAccess:async()=>false});
+ failed.setSession(session('member',request()));
+ await flush();
+ assert.equal(deviceUpdateState(f.records[1],request()),'Pendente');
+});
+test('FB–FK must all be verified or authoritatively outside the profile scope',()=>{
+ const google={targets:Object.fromEntries(['FB','FC','FD','FE','FF','FK'].map(station=>[station,{status:'ready'}]))};
+ const operational={FG:'ready',FH:'ready',FI:'disabled',FJ:'ready'};
+ const valid=ecosystemAccessStatuses(google,operational,true);
+ assert.equal(ecosystemStations.length,11);
+ assert.equal(valid.complete,true);
+ assert.equal(ecosystemAccessStatuses(google,{...operational,FJ:'pending'},true).complete,false);
+ assert.equal(ecosystemAccessStatuses(google,operational,false).complete,false);
+ google.targets.FK={status:'pending'};
+ assert.equal(ecosystemAccessStatuses(google,operational,true).needsGoogle,true);
+ google.targets.FK={status:'excluded'};
+ assert.equal(ecosystemAccessStatuses(google,operational,true).complete,true);
 });
 test('recorded versions remain visible without a campaign and missing profile siglas come from matching contacts',()=>{
  const user={uid:'test',email:'one@example.invalid',sigla:'',active:true,access:true,permissions:{admin:false}};

@@ -79,14 +79,15 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   const required=mandatoryRegistration();
   const editingRegistration=Boolean(target.closest('dialog:modal[data-panel="professional"]')&&
     (required||items.some(item=>item.id===activeId&&isProfessional(item))));
+  const updatingAccess=target.matches('dialog.ecosystem-access-update');
   const active=items.some(item=>item.id===activeId);
-  blocking=Boolean(required?!editingRegistration:stage()===5&&!active&&!interacting);
+  blocking=!updatingAccess&&Boolean(required?!editingRegistration:stage()===5&&!active&&!interacting);
   node.dataset.blocking=String(blocking);
   node.dataset.active=String(!blocking&&(active||interacting>0));
   handle.tabIndex=blocking?-1:0;
   if(blocking){node.style.left='0px';node.style.top='0px';}
-  node.hidden=editingRegistration;
-  if(editingRegistration){
+  node.hidden=editingRegistration||updatingAccess;
+  if(node.hidden){
    if(typeof node.hidePopover==='function'&&node.matches(':popover-open'))node.hidePopover();
    restoreInert();
    return;

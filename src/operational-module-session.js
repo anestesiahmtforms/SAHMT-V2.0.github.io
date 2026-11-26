@@ -90,7 +90,7 @@ export function createOperationalModuleSession({station, faAuth, targetAuth, sub
           // The serial queue prevents this cleanup from reaching a newer signin.
           if (targetAuth.currentUser) {try {await clearTarget();} catch {}}
         }
-        throw Object.assign(fail(code),{phase});
+        throw Object.assign(fail(code),{phase,notEntitled:!timedOut&&error?.notEntitled===true});
       }
     });
     const timeout = new Promise((_, reject) => {timer = setTimer(() => {

@@ -29,7 +29,11 @@ export function createOperationalModuleExchange({station, fetchImpl = globalThis
       response = await fetchImpl(target.endpoint, {method: 'POST', headers, body: '{}', signal,
         mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer'});
       if (signal?.aborted) throw fail('MODULE_SOURCE_SESSION_CHANGED');
-      if (!response.ok) throw fail([401, 403].includes(response.status) ? 'MODULE_ACCESS_DENIED' : 'MODULE_SESSION_UNAVAILABLE');
+      if (!response.ok) {
+        const denied=[401,403].includes(response.status);
+        const notEntitled=response.status===403&&(await response.json().catch(()=>null))?.code==='DOMAIN_FORBIDDEN';
+        throw Object.assign(fail(denied?'MODULE_ACCESS_DENIED':'MODULE_SESSION_UNAVAILABLE'),{notEntitled});
+      }
       if (response.status !== 200 || response.redirected || response.url !== target.endpoint ||
           !/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '') ||
           !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(response.headers.get('Cache-Control') || '')) throw fail('MODULE_BROKER_RESPONSE_INVALID');
@@ -50,7 +54,8 @@ export function createOperationalModuleExchange({station, fetchImpl = globalThis
         throw fail('MODULE_BROKER_RESPONSE_INVALID');
       return {uid: body.uid, customToken: body.customToken, expiresIn: 300};
     } catch (error) {
-      throw fail(/^MODULE_[A-Z_]+$/.test(error?.code || '') ? error.code : 'MODULE_SESSION_UNAVAILABLE');
+      if(/^MODULE_[A-Z_]+$/.test(error?.code || ''))throw error;
+      throw fail('MODULE_SESSION_UNAVAILABLE');
     } finally {
       if (reader) {try {await reader.cancel();} catch {} reader.releaseLock();}
       else {try {await response?.body?.cancel();} catch {}}

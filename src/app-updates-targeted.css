@@ -3,6 +3,9 @@
 .required-app-update::backdrop,.admin-app-updates::backdrop{background:#092638db}
 .required-app-update{width:min(94vw,480px);text-align:center}
 .required-app-update button{display:block;width:100%;margin-top:14px}
+.ecosystem-access-update ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;padding:0;list-style:none;text-align:left}
+.ecosystem-access-update [data-access-google]{display:flex;justify-content:center}
+.ecosystem-access-update [data-access-google][hidden],.ecosystem-access-update [data-access-message]:empty{display:none}
 .admin-app-updates h2{font-size:1.2rem}
 .admin-app-updates input{box-sizing:border-box;width:100%;font-size:14px}
 .admin-app-updates footer{margin-top:20px}

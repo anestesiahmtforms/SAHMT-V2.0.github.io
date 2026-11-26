@@ -49,8 +49,9 @@ export function devicePublishedState(device, publishedRelease) {
 // The first server-confirmed profile of this document is the startup boundary.
 // Later profile changes never interrupt a form already being filled in.
 export function createTargetedAppUpdates({target, release = loadedAppRelease, deviceId,
-  platform = devicePlatform(), displayMode = appDisplayMode(), record, enforce, storage, now = Date.now, onFailure = () => {}, repair = repairAppFiles}) {
-  let uid = '', opened = false, written = '', generation = 0, active = null;
+  platform = devicePlatform(), displayMode = appDisplayMode(), record, enforce, storage, now = Date.now, onFailure = () => {}, repair = repairAppFiles,
+  confirmAccess=async()=>true}) {
+  let uid = '', opened = false, written = '', generation = 0, active = null, currentRequestId='';
   const retries = new Set();
   const retry = () => {
     if (!active) return false;
@@ -63,6 +64,7 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
     }
     if (session.status !== 'signed-in' || session.offline || session.validatingProfile || !uid) return;
     const request = updateRequest(session.profile?.appUpdateRequest, target);
+    currentRequestId=request?.id||'';
     const startup = !opened; opened = true;
     if (active && (!request || active.id !== request.id)) {active = null; enforce(null);}
     if (startup && request && release < request.minimumRelease) {
@@ -85,9 +87,12 @@ export function createTargetedAppUpdates({target, release = loadedAppRelease, de
     if (written === signature || !Number.isSafeInteger(release) || release <= 0) return;
     written = signature;
     const owner = uid, token = generation;
-    Promise.resolve().then(() => {
-      if (token !== generation) return;
-      return record({uid: owner, deviceId, target, platform, displayMode, appVersion: APP_VERSION, loadedRelease: release, confirmedRequestId});
+    const isCurrent=()=>token===generation&&currentRequestId===(request?.id||'');
+    Promise.resolve().then(async () => {
+      if (!isCurrent()) return;
+      const verified=!confirmedRequestId||await confirmAccess({uid:owner,deviceId,profile:session.profile,request,startup,isCurrent});
+      if (!isCurrent()) return;
+      return record({uid: owner, deviceId, target, platform, displayMode, appVersion: APP_VERSION, loadedRelease: release, confirmedRequestId:verified?confirmedRequestId:''});
     }).catch(error => {if (token === generation) {written = ''; onFailure(error);}});
   }};
 }
@@ -99,6 +104,8 @@ export function installTargetedAppUpdates({target, release = loadedAppRelease, d
   let dialog = null;
   const close = () => {dialog?.close(); dialog?.remove(); dialog = null;};
   return createTargetedAppUpdates({target, release, deviceId: installationId(localStorage, globalThis.crypto, displayMode), displayMode, storage, repair,
+    confirmAccess:async context=>target!=='FA'||import.meta.env?.VITE_GOOGLE_PROJECT_AUTH_ENABLED!=='true'||
+      (await import('./ecosystem-access-update.js')).confirmEcosystemAccessUpdate({...context,document,storage:localStorage,signOut}),
     record: async value => (await services()).recordAppInstallation(value),
     enforce(value) {
       close(); if (!value) return;

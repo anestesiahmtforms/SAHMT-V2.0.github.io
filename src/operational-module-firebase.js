@@ -85,6 +85,26 @@ export async function getOperationalModuleIdToken(station, uid) {
   return token;
 }
 
+/** Verify a temporary operational session without opening a module or reading its data. */
+export async function checkOperationalModuleAccess(station, uid, isCurrent) {
+  if (!operationalModuleEnabled(station)) return 'disabled';
+  let instance;
+  try {
+    instance=await getInstance(station);
+    if (!isCurrent() || instance.faAuth.currentUser?.uid!==uid) return 'pending';
+    await instance.session.setActive(true);
+    const user=await instance.session.ensure(uid);
+    return isCurrent()&&instance.auth.currentUser===user&&user.uid===uid?'ready':'pending';
+  } catch(error) {
+    if(!isCurrent())return 'pending';
+    if (error?.notEntitled) return 'excluded';
+    if (error?.code==='FOLDER_DISABLED') return 'disabled';
+    return 'pending';
+  } finally {
+    if(instance)synchronizeOperationalSessionRoute({station,session:instance.session,readRoute:currentRoute});
+  }
+}
+
 export async function disposeOperationalModuleSessions() {
   const current = [...instances.values()]; instances.clear();
   await Promise.allSettled(current.map(async pending => {const instance=await pending;instance.stopRoute();await instance.session.dispose();}));
