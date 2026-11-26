@@ -29,14 +29,13 @@ export function createOperationalModuleExchange({station, fetchImpl = globalThis
       response = await fetchImpl(target.endpoint, {method: 'POST', headers, body: '{}', signal,
         mode: 'cors', credentials: 'omit', cache: 'no-store', redirect: 'error', referrerPolicy: 'no-referrer'});
       if (signal?.aborted) throw fail('MODULE_SOURCE_SESSION_CHANGED');
-      if (!response.ok) {
-        const denied=[401,403].includes(response.status);
-        const notEntitled=response.status===403&&(await response.json().catch(()=>null))?.code==='DOMAIN_FORBIDDEN';
-        throw Object.assign(fail(denied?'MODULE_ACCESS_DENIED':'MODULE_SESSION_UNAVAILABLE'),{notEntitled});
-      }
-      if (response.status !== 200 || response.redirected || response.url !== target.endpoint ||
-          !/^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type') || '') ||
-          !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(response.headers.get('Cache-Control') || '')) throw fail('MODULE_BROKER_RESPONSE_INVALID');
+      const trustedJson=!response.redirected&&response.url===target.endpoint&&
+        /^application\/json(?:\s*;|$)/i.test(response.headers.get('Content-Type')||'')&&
+        /(?:^|,)\s*no-store\s*(?:,|$)/i.test(response.headers.get('Cache-Control')||'');
+      const confirmedDenial=response.status===403&&trustedJson;
+      if (!response.ok&&!confirmedDenial)
+        throw fail([401,403].includes(response.status)?'MODULE_ACCESS_DENIED':'MODULE_SESSION_UNAVAILABLE');
+      if (!confirmedDenial&&(response.status!==200||!trustedJson))throw fail('MODULE_BROKER_RESPONSE_INVALID');
       reader = response.body?.getReader(); if (!reader) throw fail('MODULE_BROKER_RESPONSE_INVALID');
       const chunks = []; let size = 0;
       for (;;) {
@@ -49,6 +48,7 @@ export function createOperationalModuleExchange({station, fetchImpl = globalThis
       const bytes = new Uint8Array(size); let offset = 0;
       for (const chunk of chunks) {bytes.set(chunk, offset); offset += chunk.byteLength;}
       const body = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(bytes));
+      if(confirmedDenial)throw Object.assign(fail('MODULE_ACCESS_DENIED'),{notEntitled:body?.code==='DOMAIN_FORBIDDEN'});
       if (body?.station !== station || body.projectId !== target.config.projectId || body.uid !== faUid || body.expiresIn !== 300 ||
           typeof body.customToken !== 'string' || !body.customToken || body.customToken.length > 16000 || /[\s\x00-\x1f]/.test(body.customToken))
         throw fail('MODULE_BROKER_RESPONSE_INVALID');

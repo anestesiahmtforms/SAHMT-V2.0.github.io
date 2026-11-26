@@ -50,6 +50,17 @@ test('denied exchanges close the response stream without exposing provider conte
   assert.equal(cancelled, true);
 });
 
+test('only an authenticated-origin entitlement denial identifies an ineligible profile', async () => {
+ for(const [code,notEntitled] of [['DOMAIN_FORBIDDEN',true],['DOMAIN_SOURCE_ACCESS_DENIED',false]]){
+  const exchange=createOperationalModuleExchange({station:'FJ',fetchImpl:async url=>{
+   const reply=Response.json({code},{status:403,headers:{'Cache-Control':'no-store'}});
+   Object.defineProperty(reply,'url',{value:url});
+   return reply;
+  }});
+  await assert.rejects(exchange({faIdToken:'synthetic-proof',faUid:'member'}),{code:'MODULE_ACCESS_DENIED',notEntitled});
+ }
+});
+
 test('App Check failure never attempts the exchange in any module',async()=>{
  for(const station of ['FI','FJ','FH','FG']){
   let calls=0;const exchange=createOperationalModuleExchange({station,getAppCheckToken:async()=>{throw {code:'appCheck/recaptcha-error'};},fetchImpl:async()=>{calls++;return response(station);}});
