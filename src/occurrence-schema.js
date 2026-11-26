@@ -17,11 +17,6 @@ export const OCCURRENCE_CATALOG_SPECS = Object.freeze({
   RAM_100: Object.freeze({count: 100, searchable: true})
 });
 
-const common = Object.freeze([
-  {id: 'eventDate', label: 'Data da ocorrência', type: 'date', required: true},
-  {id: 'occurrence', label: 'Ocorrência', hint: 'Descreva o tipo de ocorrência de forma objetiva', type: 'text', required: true, maxLength: 180},
-  {id: 'description', label: 'Descrição', hint: 'Faça uma descrição detalhada e completa, passo a passo do ocorrido', type: 'textarea', required: true, maxLength: 5000}
-]);
 const field = (id, label, type = 'text', extra = {}) => Object.freeze({id, label, type, required: true, ...extra});
 const select = (id, label, catalog) => field(id, label, 'select', {catalog});
 const date = (id, label) => field(id, label, 'date');
@@ -37,6 +32,18 @@ const patientFields = Object.freeze([
 ]);
 
 const choice = (id, label, options, extra = {}) => field(id, label, 'select', {options: Object.freeze(options), ...extra});
+
+export const OCCURRENCE_EVENT_CLASSIFICATIONS = Object.freeze([
+  'Circunstância de Risco', 'Evento Adverso Grave', 'Evento Adverso Leve', 'Evento Adverso Moderado',
+  'Evento sem Dano', 'Near Miss (Erro)', 'Never Events', 'Óbito'
+]);
+const eventClassification = choice('eventClassification', 'Classificação do evento:', OCCURRENCE_EVENT_CLASSIFICATIONS, {fullWidth:true});
+const common = Object.freeze([
+  date('eventDate', 'Data da ocorrência'),
+  eventClassification,
+  field('occurrence', 'Ocorrência', 'text', {hint:'Descreva o tipo de ocorrência de forma objetiva',maxLength:180}),
+  field('description', 'Descrição', 'textarea', {hint:'Faça uma descrição detalhada e completa, passo a passo do ocorrido',maxLength:5000})
+]);
 
 const disclosure = choice('chartDisclosure', 'Disclosure com registro em prontuário:', [
   'Sim', 'Não', 'Não se aplica (Evento sem envolver o paciente)'
@@ -154,7 +161,7 @@ const forms = [
     select('sourceSector', 'Setor de Origem', 'SETORES_55'), select('destinationSector', 'Setor de Destino', 'SETORES_55'),
     attendance('patientOrAttendance', 160),
     immediateAction()
-  ], fields: [], noGeneralInformation: true}
+  ], fields: [eventClassification], noGeneralInformation: true}
 ].map(form => {
   const classification = Object.freeze(form.classification || []);
   const fields = Object.freeze(form.noGeneralInformation ? form.fields : [...common, ...form.fields]);

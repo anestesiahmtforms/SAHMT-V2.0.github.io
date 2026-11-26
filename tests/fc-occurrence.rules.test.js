@@ -13,6 +13,7 @@ const port=Number(portText),project='demo-sahmt-fc-modules',uid='writer-syntheti
 const google=(userId,claims={})=>env.authenticatedContext(userId,{firebase:{sign_in_provider:'google.com'},aud:'indicadores---sahmt',iss:'https://securetoken.google.com/indicadores---sahmt',sub:userId,...claims}).firestore();
 const catalogs=Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS).map(([key,spec])=>[key,Array.from({length:spec.count},(_,i)=>`Opção sintética ${i+1}`)]));
 const patientValues={sex:'Masculino',age:'3 meses',diagnosisOrTreatment:'Tratamento sintético'};
+const eventClassification='Near Miss (Erro)';
 const card=(db,key=id)=>doc(db,'occurrenceAnalysisCards',key);
 const cardData=(key,formId,sequence=1,overrides={})=>({id:key,origin:'app',formId,sequence,
  analysisStarted:false,responsesClosedAt:false,analysisClosed:false,preparedDescription:'',...overrides});
@@ -66,12 +67,12 @@ test('administrator with registration permission opens the current catalog and s
  assert.equal(loaded.schemaVersion,1);
  const result=await repository.save({uid:adminUid,recordId:id,formId:'F10',displayName:'Administrador sintético',
   values:{sourceSector:loaded.catalogs.SETORES_55[0],destinationSector:loaded.catalogs.SETORES_55[1],
-   patientOrAttendance:'012345',immediateAction:'Ação sintética',...patientValues,...actionValues}});
+   patientOrAttendance:'012345',immediateAction:'Ação sintética',eventClassification,...patientValues,...actionValues}});
  assert.equal(result.status,'saved');
  assert.equal(result.protocol,'GRA 001');
  const report=(await getDoc(doc(database,'occurrenceReports',id))).data();
  assert.equal(report.formId,'F10');assert.equal(report.authorLabel,'Administrador sintético');
- assert.deepEqual(report.details,{...patientValues,actionFollowup:{...actionValues,analysisParticipants}});
+ assert.deepEqual(report.details,{...patientValues,eventClassification,actionFollowup:{...actionValues,analysisParticipants}});
  const claim=(await getDoc(doc(database,'occurrenceScoreClaims',id))).data();
  assert.equal(claim.originProjectId,'indicadores---sahmt');
 });
@@ -83,13 +84,39 @@ test('a numeração FC é consecutiva em gravações concorrentes e o contador n
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  const data={uid,formId:'F10',displayName:'Autor sintético',catalogs,
   values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
-   patientOrAttendance:'012345',immediateAction:'Ação sintética',...patientValues,...actionValues}};
+   patientOrAttendance:'012345',immediateAction:'Ação sintética',eventClassification,...patientValues,...actionValues}};
  const ids=[id,'10000000-0000-4000-8000-000000000002'];
  const results=await Promise.all(ids.map(recordId=>repository.save({...data,recordId})));
  assert.deepEqual(results.map(result=>result.protocol).sort(),['GRA 001','GRA 002']);
  assert.equal((await repository.save({...data,recordId:id})).protocol,results[0].protocol);
  await assertFails(setDoc(doc(db,'occurrenceSequences','app'),{last:3,reportId:id}));
  assert.equal((await getDocFromServer(doc(db,'occurrenceSequences','app'))).data().last,2);
+});
+
+test('FC recusa notificações sem classificação válida e igual no registro e no acompanhamento',async()=>{
+ const db=google(uid);
+ const input={uid,recordId:id,formId:'F10',displayName:'Autor sintético',catalogs,
+  values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
+   patientOrAttendance:'012345',immediateAction:'Ação sintética',eventClassification,...patientValues,...actionValues}};
+ for(const injected of ['', 'Opção inexistente', 'Evento Adverso Grave']){
+  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
+   auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{
+    doc:(_,name,key,...path)=>doc(db,name,key,...path),getDocFromServer,
+    runTransaction:(_,callback)=>runTransaction(db,tx=>callback({
+     get:ref=>tx.get(ref),
+     set(ref,value){
+      if(ref.parent.id==='occurrenceFollowups'){
+       const details={...value.details};
+       if(injected)details.eventClassification=injected;
+       else delete details.eventClassification;
+       tx.set(ref,{...value,details});
+      }else tx.set(ref,value);
+     }
+    }))
+   }});
+  await assert.rejects(repository.save(input),{message:'OCCURRENCE_PERMISSION_DENIED'});
+ }
+ assert.equal((await getDocFromServer(card(db))).exists(),false);
 });
 
 test('a equipe vê o cartão pendente sem acesso ao registro ou ao envio de análise',async()=>{
@@ -99,7 +126,7 @@ test('a equipe vê o cartão pendente sem acesso ao registro ou ao envio de aná
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
  await repository.save({uid,formId:'F10',recordId:id,displayName:'Autor sintético',catalogs,
   values:{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],
-   patientOrAttendance:'Paciente sintético',immediateAction:'Ação sintética',...patientValues,...actionValues}});
+   patientOrAttendance:'Paciente sintético',immediateAction:'Ação sintética',eventClassification,...patientValues,...actionValues}});
  await assertFails(getDocFromServer(doc(memberDb,'occurrenceReports',id)));
  await assertFails(getDocFromServer(doc(db,'occurrenceReports',id)));
  await assertFails(getDocFromServer(doc(memberDb,'occurrenceAudit',id)));
@@ -126,7 +153,7 @@ test('a projeção do formulário mais extenso preserva contexto e não expõe o
  const repository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
   auth:{currentUser:{uid}},notifyScore:async()=>{},firestore:{doc:(_,name,key,...path)=>doc(db,name,key,...path),getDocFromServer,
    runTransaction:(_,callback)=>runTransaction(db,callback)}});
- const values={eventDate:'2026-11-20',occurrence:'Queda',description:'Relato sintético',attendance:'Identificador sintético',...patientValues,
+ const values={eventDate:'2026-11-20',eventClassification,occurrence:'Queda',description:'Relato sintético',attendance:'Identificador sintético',...patientValues,
   causingSector:catalogs.SETORES_9[0],fallDate:'2026-11-20',fallTime:'08:00',fallRisk:catalogs.RISCO_QUEDA[0],
   fallRiskGuidance:catalogs.SIM_NAO_NI[0],lastAssessmentDate:'2026-11-19',redWristband:catalogs.SIM_NAO_NI[0],
   fallLocation:catalogs.LOCAL_QUEDA[0],fallMechanism:catalogs.MECANISMO_QUEDA[0],adequateFootwear:catalogs.SIM_NAO_NI[0],
@@ -135,6 +162,7 @@ test('a projeção do formulário mais extenso preserva contexto e não expõe o
  assert.equal((await repository.save({uid,formId:'F05',recordId:id,displayName:'Autor sintético',catalogs,values})).protocol,'GRA 001');
  const entry=await assertSucceeds(getDocFromServer(doc(google(fixtureAdmin),'occurrenceFollowups',id)));
  assert.equal(entry.data().details.fallTime,'08:00');
+ assert.equal(entry.data().details.eventClassification,eventClassification);
  assert.equal(Object.hasOwn(entry.data().details,'attendance'),false);
  const original=await getDocFromServer(doc(google(fixtureAdmin),'occurrenceReports',id));
  assert.deepEqual(original.data().details.actionFollowup,{...actionValues,analysisParticipants});
@@ -156,7 +184,7 @@ test('FC grava os fatores e reserva o contexto de preparação da GRA ao adminis
   auth:{currentUser:{uid:manager}},firestore:{doc:(_,name,key,...path)=>doc(managerDb,name,key,...path),getDocFromServer}});
  const adminRepository=createOccurrenceRepository({db:{app:{options:{projectId:'indicadores---sahmt'}}},
   auth:{currentUser:{uid:admin}},firestore:{doc:(_,name,key,...path)=>doc(adminDb,name,key,...path),getDocFromServer}});
- const common={eventDate:'2026-11-20',occurrence:'Sintética',description:'Relato sintético',attendance:'012345',...patientValues};
+ const common={eventDate:'2026-11-20',eventClassification,occurrence:'Sintética',description:'Relato sintético',attendance:'012345',...patientValues};
  const cases=[
   {formId:'F02',recordId:id,formValues:{eventSector:catalogs.SETORES_9[0],reactionEvent:catalogs.RAM_100[0],
    medicationRegimen:'Medicação sintética',suspectedReactionDate:'2026-11-20',prescriptionNumber:'123'},

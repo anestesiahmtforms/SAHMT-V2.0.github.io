@@ -142,6 +142,12 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
    assert.ok(await controls.count());
    assert.equal(await controls.locator('xpath=self::*[not(@required)]').count(),0,id);
    const names=await controls.evaluateAll(elements=>elements.map(element=>element.name));
+   const eventClassification=formDialog.getByLabel(/Classificação do evento/);
+   assert.deepEqual(await eventClassification.locator('option:not([value=""])').allTextContents(),[
+    'Circunstância de Risco','Evento Adverso Grave','Evento Adverso Leve','Evento Adverso Moderado',
+    'Evento sem Dano','Near Miss (Erro)','Never Events','Óbito'
+   ],id);
+   assert.equal(names.indexOf('eventClassification'),id==='F10'?0:names.indexOf('occurrence')-1,id);
    const attendanceIndex=names.indexOf(id==='F10'?'patientOrAttendance':'attendance');
    assert.ok(attendanceIndex>=0,id);
    assert.deepEqual(names.slice(attendanceIndex+1,attendanceIndex+4),['sex','age','diagnosisOrTreatment'],id);
@@ -227,13 +233,14 @@ for(const engine of ['edge','webkit'])test(`${engine}: all ten occurrence button
   const registration=page.locator('[data-occurrence-dialog-host] dialog[open]');
   await registration.locator('form').evaluate((form,values)=>{
    for(const [name,value] of Object.entries(values))form.elements.namedItem(name).value=value;
-  },{sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],patientOrAttendance:'7319',
+  },{eventClassification:'Near Miss (Erro)',sourceSector:catalogs.SETORES_55[0],destinationSector:catalogs.SETORES_55[1],patientOrAttendance:'7319',
    sex:'Outro',age:'31',diagnosisOrTreatment:'Tratamento sintético',immediateAction:'Ação de teste',
    chartDisclosure:'Sim',patientFactors:'Nenhum',taskFactors:'Nenhum',individualFactors:'Nenhum',
    teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma'});
   await registration.getByRole('button',{name:'SALVAR'}).click();
   await page.getByRole('dialog',{name:'REGISTRO SALVO'}).getByRole('button',{name:'OK'}).click();
   assert.equal(await page.evaluate(()=>window.savedOccurrence.formId),'F10');
+  assert.equal(await page.evaluate(()=>window.savedOccurrence.values.eventClassification),'Near Miss (Erro)');
   const appLaunch=page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - SAHMT'});
   const hospitalLaunch=page.getByRole('button',{name:'ANÁLISE DE OCORRÊNCIAS - NSP'});
   await appLaunch.locator('xpath=self::*[@data-analysis-state="pre-analysis"]').waitFor();

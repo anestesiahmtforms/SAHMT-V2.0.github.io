@@ -1,6 +1,6 @@
 import {readFile, writeFile} from 'node:fs/promises';
 import {addMemberCategoryRules} from './lib/member-category-rules.js';
-import {OCCURRENCE_FORMS,OCCURRENCE_PRIVATE_FIELDS} from '../src/occurrence-schema.js';
+import {OCCURRENCE_EVENT_CLASSIFICATIONS,OCCURRENCE_FORMS,OCCURRENCE_PRIVATE_FIELDS} from '../src/occurrence-schema.js';
 import {OCCURRENCE_COMMENT_LIMIT,OCCURRENCE_QUESTION_COUNT,OCCURRENCE_SAFETY_MIN_QUESTIONS,OCCURRENCE_SAFETY_MAX_QUESTIONS,
   OCCURRENCE_IMPROVEMENT_OPTION_LIMIT,OCCURRENCE_OPTION_LIMIT,OCCURRENCE_PROMPT_LIMIT,
   OCCURRENCE_OPTION_TEXT_LIMIT} from '../src/occurrence-questionnaire.js';
@@ -83,7 +83,9 @@ output=output.replace("'anonymous','authorLabel','pointsClaimed','pointsStatus',
   "'anonymous','authorLabel','pointsClaimed','pointsStatus','createdAt','sequence']) &&");
 output=output.replace('data.pointsClaimed == 2','data.pointsClaimed in [2, 3]')
   .replace('data.points == 2 && data.status','data.points in [2, 3] && data.status')
-  .replace('claim.points == 2 && claim.status','claim.points == report.pointsClaimed && claim.status');
+  .replace('claim.points == 2 && claim.status','claim.points == report.pointsClaimed && claim.status')
+  .replace('data.details.keys().size() <= 20',
+    "data.details.keys().size() <= (data.details.keys().hasAny(['eventClassification']) ? 21 : 20)");
 const commonKeys=new Set(['eventDate','occurrence','description',...OCCURRENCE_PRIVATE_FIELDS]);
 function followupFields(fields,name){
   const keys=fields.map(field=>field.id).filter(key=>!commonKeys.has(key));
@@ -101,6 +103,7 @@ const optionChecks=Array.from({length:OCCURRENCE_OPTION_LIMIT},(_,index)=>{
 }).join(' &&\n        ');
 const followupRules=(await readFile('scripts/occurrence-followup.fc.rules.inc','utf8'))
   .replace('OCCURRENCE_FOLLOWUP_FORM_FIELDS',formFields)
+  .replace('OCCURRENCE_EVENT_CLASSIFICATIONS',JSON.stringify(OCCURRENCE_EVENT_CLASSIFICATIONS))
   .replaceAll('OCCURRENCE_QUESTION_COUNT',OCCURRENCE_QUESTION_COUNT)
   .replace('OCCURRENCE_SAFETY_MIN_QUESTIONS',OCCURRENCE_SAFETY_MIN_QUESTIONS)
   .replaceAll('OCCURRENCE_SAFETY_MAX_QUESTIONS',OCCURRENCE_SAFETY_MAX_QUESTIONS)

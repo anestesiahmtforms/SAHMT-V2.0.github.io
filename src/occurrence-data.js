@@ -40,7 +40,8 @@ function occurrenceRedactor(identifiers) {
 
 function safeAppNarrative(report, redact) {
   const safeFields = values => Object.fromEntries(Object.entries(values)
-    .filter(([key]) => !OCCURRENCE_PRIVATE_FIELDS.includes(key)).map(([key,value]) => [key,redact(value)]));
+    .filter(([key]) => !OCCURRENCE_PRIVATE_FIELDS.includes(key))
+    .map(([key,value]) => [key,key==='eventClassification'?value:redact(value)]));
   return {title:redact(report.occurrence),description:redact(report.description),
     classification:safeFields(report.classification),details:safeFields(report.details)};
 }

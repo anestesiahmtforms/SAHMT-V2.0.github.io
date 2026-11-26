@@ -168,12 +168,13 @@ function occurrenceInputMarkup(fields,catalogs,followup) {
 }
 
 export function occurrenceFormMarkup(form, catalogs = {}, displayName = '') {
-  const general=form.id==='F10'?'':`<section class="occurrence-form-section"><h4>Informações Gerais</h4><div class="occurrence-form-grid">
-    <label class="occurrence-field"><span>Autor</span><input value="${escape(displayName)}" readonly aria-describedby="occurrence-author-note"></label>
-    ${form.fields.filter(item=>['eventDate','occurrence','description'].includes(item.id)).map(item=>occurrenceFieldMarkup(item,catalogs)).join('')}
+  const generalIds=new Set(['eventDate','eventClassification','occurrence','description']);
+  const generalInputs=form.fields.filter(item=>generalIds.has(item.id)).map(item=>occurrenceFieldMarkup(item,catalogs)).join('');
+  const general=`<section class="occurrence-form-section">${form.noGeneralInformation?'':'<h4>Informações Gerais</h4>'}<div class="occurrence-form-grid">
+    ${form.noGeneralInformation?'':`<label class="occurrence-field"><span>Autor</span><input value="${escape(displayName)}" readonly aria-describedby="occurrence-author-note"></label>`}
+    ${generalInputs}
     </div></section>`;
   const privacy=`<section class="occurrence-privacy"><label class="occurrence-anonymous"><input type="checkbox" name="anonymous"><span>Realizar registro anônimo</span></label><small id="occurrence-author-note">O nome do autor fica oculto no acompanhamento. O modo anônimo também oculta o nome no registro original.</small></section>`;
-  const generalIds=new Set(['eventDate','occurrence','description']);
   const classification=form.classification.length?`<section class="occurrence-form-section"><h4>Classificação</h4><div class="occurrence-form-grid">${occurrenceInputMarkup(form.classification,catalogs,form.actionFollowup)}</div></section>`:'';
   const details=form.fields.filter(item=>!generalIds.has(item.id));
   const additional=details.length?`<section class="occurrence-form-section"><h4>Dados do formulário</h4><div class="occurrence-form-grid">${occurrenceInputMarkup(details,catalogs,form.actionFollowup)}</div></section>`:'';

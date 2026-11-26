@@ -51,7 +51,7 @@ service cloud.firestore {
         data.formId in ['F01','F02','F03','F04','F05','F06','F07','F08','F09','F10'] &&
         data.formTitle is string && data.formTitle.size() > 0 && data.formTitle.size() <= 180 &&
         data.classification is map && data.classification.keys().size() <= 4 &&
-        data.details is map && data.details.keys().size() <= 20 &&
+        data.details is map && data.details.keys().size() <= (data.details.keys().hasAny(['eventClassification']) ? 21 : 20) &&
         data.anonymous is bool && data.authorLabel is string && data.authorLabel.size() > 0 && data.authorLabel.size() <= 120 &&
         (data.anonymous == true ? data.authorLabel == 'Anônimo' : data.authorLabel != 'Anônimo') &&
         data.pointsClaimed in [2, 3] && data.pointsStatus == 'PENDING_VALIDATION' && data.createdAt == request.time &&
@@ -185,7 +185,8 @@ service cloud.firestore {
     function validOccurrenceAppFields(data) {
       let fields = data.details;
       let classification = data.classification;
-      return (data.formId == 'F01' && fields.keys().hasOnly(["causingSector","medicationName","lotNumber","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+      return (data.formId == 'F01' && fields.keys().hasOnly(["eventClassification","causingSector","medicationName","lotNumber","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+          fields.get('eventClassification','') is string &&
           fields.get('causingSector','') is string &&
           fields.get('medicationName','') is string &&
           fields.get('lotNumber','') is string &&
@@ -193,13 +194,15 @@ service cloud.firestore {
           fields.get('immediateAction','') is string &&
           fields.get('eventPeriod','') is string &&
           classification.size() == 0) ||
-        (data.formId == 'F02' && fields.keys().hasOnly(["eventSector","reactionEvent","medicationRegimen","suspectedReactionDate"]) &&
+        (data.formId == 'F02' && fields.keys().hasOnly(["eventClassification","eventSector","reactionEvent","medicationRegimen","suspectedReactionDate"]) &&
+          fields.get('eventClassification','') is string &&
           fields.get('eventSector','') is string &&
           fields.get('reactionEvent','') is string &&
           fields.get('medicationRegimen','') is string &&
           fields.get('suspectedReactionDate','') is string &&
           classification.size() == 0) ||
-        (data.formId == 'F03' && fields.keys().hasOnly(["causingSector","admissionType","incidentType","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+        (data.formId == 'F03' && fields.keys().hasOnly(["eventClassification","causingSector","admissionType","incidentType","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+          fields.get('eventClassification','') is string &&
           fields.get('causingSector','') is string &&
           fields.get('admissionType','') is string &&
           fields.get('incidentType','') is string &&
@@ -207,7 +210,8 @@ service cloud.firestore {
           fields.get('immediateAction','') is string &&
           fields.get('eventPeriod','') is string &&
           classification.size() == 0) ||
-        (data.formId == 'F04' && fields.keys().hasOnly(["causingSector","originSector","bradenRisk","lesionOpeningDate","lesionType","lesionStage","topography","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+        (data.formId == 'F04' && fields.keys().hasOnly(["eventClassification","causingSector","originSector","bradenRisk","lesionOpeningDate","lesionType","lesionStage","topography","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+          fields.get('eventClassification','') is string &&
           fields.get('causingSector','') is string &&
           fields.get('originSector','') is string &&
           fields.get('bradenRisk','') is string &&
@@ -219,7 +223,8 @@ service cloud.firestore {
           fields.get('immediateAction','') is string &&
           fields.get('eventPeriod','') is string &&
           classification.size() == 0) ||
-        (data.formId == 'F05' && fields.keys().hasOnly(["causingSector","fallDate","fallTime","fallRisk","fallRiskGuidance","lastAssessmentDate","redWristband","fallLocation","fallMechanism","adequateFootwear","consciousness","injury","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+        (data.formId == 'F05' && fields.keys().hasOnly(["eventClassification","causingSector","fallDate","fallTime","fallRisk","fallRiskGuidance","lastAssessmentDate","redWristband","fallLocation","fallMechanism","adequateFootwear","consciousness","injury","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+          fields.get('eventClassification','') is string &&
           fields.get('causingSector','') is string &&
           fields.get('fallDate','') is string &&
           fields.get('fallTime','') is string &&
@@ -236,7 +241,8 @@ service cloud.firestore {
           fields.get('immediateAction','') is string &&
           fields.get('eventPeriod','') is string &&
           classification.size() == 0) ||
-        (data.formId == 'F06' && fields.keys().hasOnly(["causingSector","equipmentName","tagNumber","serialNumber","serviceCallNumber","failureDate","failureTime","clinicalEngineeringCalled","previousOccurrence","causedDamage","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+        (data.formId == 'F06' && fields.keys().hasOnly(["eventClassification","causingSector","equipmentName","tagNumber","serialNumber","serviceCallNumber","failureDate","failureTime","clinicalEngineeringCalled","previousOccurrence","causedDamage","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+          fields.get('eventClassification','') is string &&
           fields.get('causingSector','') is string &&
           fields.get('equipmentName','') is string &&
           fields.get('tagNumber','') is string &&
@@ -251,7 +257,8 @@ service cloud.firestore {
           fields.get('immediateAction','') is string &&
           fields.get('eventPeriod','') is string &&
           classification.size() == 0) ||
-        (data.formId == 'F07' && fields.keys().hasOnly(["causingSector","materialName","manufacturerName","lotNumber","previousOccurrence","causedDamage","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+        (data.formId == 'F07' && fields.keys().hasOnly(["eventClassification","causingSector","materialName","manufacturerName","lotNumber","previousOccurrence","causedDamage","symptomAfterEvent","immediateAction","eventPeriod"]) &&
+          fields.get('eventClassification','') is string &&
           fields.get('causingSector','') is string &&
           fields.get('materialName','') is string &&
           fields.get('manufacturerName','') is string &&
@@ -262,16 +269,19 @@ service cloud.firestore {
           fields.get('immediateAction','') is string &&
           fields.get('eventPeriod','') is string &&
           classification.size() == 0) ||
-        (data.formId == 'F08' && fields.size() == 0 &&
+        (data.formId == 'F08' && fields.keys().hasOnly(["eventClassification"]) &&
+          fields.get('eventClassification','') is string &&
           classification.keys().hasOnly(["occurrenceSector"]) &&
           classification.get('occurrenceSector','') is string) ||
-        (data.formId == 'F09' && fields.keys().hasOnly(["incidentTime","incidentLocation","incidentEffect","securityIncidentType"]) &&
+        (data.formId == 'F09' && fields.keys().hasOnly(["eventClassification","incidentTime","incidentLocation","incidentEffect","securityIncidentType"]) &&
+          fields.get('eventClassification','') is string &&
           fields.get('incidentTime','') is string &&
           fields.get('incidentLocation','') is string &&
           fields.get('incidentEffect','') is string &&
           fields.get('securityIncidentType','') is string &&
           classification.size() == 0) ||
-        (data.formId == 'F10' && fields.size() == 0 &&
+        (data.formId == 'F10' && fields.keys().hasOnly(["eventClassification"]) &&
+          fields.get('eventClassification','') is string &&
           classification.keys().hasOnly(["sourceSector","destinationSector","immediateAction"]) &&
           classification.get('sourceSector','') is string &&
           classification.get('destinationSector','') is string &&
@@ -294,6 +304,8 @@ service cloud.firestore {
       let report = getAfter(reportPath(id)).data;
       return data.origin == 'app' && !data.keys().hasAny(['hospitalNumber']) &&
         report.createdAt == request.time && report.sequence == data.sequence && report.formId == data.formId &&
+        data.details.get('eventClassification','') in ["Circunstância de Risco","Evento Adverso Grave","Evento Adverso Leve","Evento Adverso Moderado","Evento sem Dano","Near Miss (Erro)","Never Events","Óbito"] &&
+        report.details.get('eventClassification','') == data.details.eventClassification &&
         report.occurredOn == data.occurredOn && getAfter(auditPath(id)).data.uid == request.auth.uid;
     }
     function validHospitalOccurrenceFollowup(id,data) {

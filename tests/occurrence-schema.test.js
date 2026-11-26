@@ -8,7 +8,8 @@ const catalogMocks = Object.fromEntries(Object.entries(OCCURRENCE_CATALOG_SPECS)
 const patientValues = {sex:'Feminino',age:'8 meses',diagnosisOrTreatment:'Tratamento sintético'};
 const actionValues = {chartDisclosure:'Sim',patientFactors:'Nenhum',taskFactors:'Nenhum',individualFactors:'Nenhum',
   teamFactors:'Nenhuma',workEnvironmentFactors:'Nenhuma'};
-const commonValues = {eventDate:'2026-10-12',occurrence:'Registro sintético',description:'Descrição sintética',...patientValues};
+const commonValues = {eventDate:'2026-10-12',eventClassification:'Evento sem Dano',occurrence:'Registro sintético',
+  description:'Descrição sintética',...patientValues};
 
 test('define os dez formulários e quatro grupos, sem inventar formulário oncológico', () => {
   assert.equal(OCCURRENCE_FORMS.length, 10);
@@ -31,9 +32,10 @@ test('mantém os totais dos catálogos no contrato local sem embutir seus valore
 test('F10 não recebe campos gerais que a especificação exclui', () => {
   const form = getOccurrenceForm('F10');
   assert.equal(form.noGeneralInformation, true);
-  assert.deepEqual(form.fields, []);
+  assert.deepEqual(form.fields.map(item=>item.id), ['eventClassification']);
   assert.deepEqual(form.classification.map(item => item.id), ['sourceSector','destinationSector','patientOrAttendance','immediateAction']);
-  const values = {...actionValues,sourceSector:catalogMocks.SETORES_55[0],destinationSector:catalogMocks.SETORES_55[1]};
+  const values = {...actionValues,eventClassification:'Near Miss (Erro)',sourceSector:catalogMocks.SETORES_55[0],
+    destinationSector:catalogMocks.SETORES_55[1]};
   assert.deepEqual(validateOccurrenceValues('F10',values,catalogMocks).errors,[
     'REQUIRED:patientOrAttendance','REQUIRED:sex','REQUIRED:age','REQUIRED:diagnosisOrTreatment','REQUIRED:immediateAction'
   ]);
@@ -61,6 +63,10 @@ test('valida obrigatoriedade, datas reais, horário e opção pertencente ao cat
   const required = { ...commonValues, ...actionValues, attendance:'Sintético',causingSector:'Opção sintética 1',medicationName:'Sintético',
     lotNumber:'L-1',symptomAfterEvent:'Opção sintética 2',immediateAction:'Ação sintética',eventPeriod:'Opção sintética 3'};
   assert.equal(validateOccurrenceValues('F01', required, catalogMocks).valid, true);
+  assert.deepEqual(validateOccurrenceValues('F01', {...required,eventClassification:''}, catalogMocks).errors,
+    ['REQUIRED:eventClassification']);
+  assert.deepEqual(validateOccurrenceValues('F01', {...required,eventClassification:'Outro'}, catalogMocks).errors,
+    ['OPTION:eventClassification']);
   assert.deepEqual(validateOccurrenceValues('F01', {...required,sex:'Não informado'}, catalogMocks).errors,['OPTION:sex']);
   assert.deepEqual(validateOccurrenceValues('F01', {...required,chartDisclosure:'',taskFactors:'Opção inválida'}, catalogMocks).errors,
     ['OPTION:taskFactors','REQUIRED:chartDisclosure']);
