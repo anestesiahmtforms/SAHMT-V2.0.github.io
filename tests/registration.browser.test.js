@@ -2,6 +2,17 @@ import test from 'node:test';import assert from 'node:assert/strict';import {chr
 const url='http://127.0.0.1:5178/SAHMT-V2.0.github.io/tests/fixtures/registration-preview.html';
 async function run(fn){const browser=await chromium.launch({headless:true,...(process.env.REGISTRATION_BROWSER_EXECUTABLE ? {executablePath:process.env.REGISTRATION_BROWSER_EXECUTABLE} : {channel:'msedge'})});try{await fn(browser);}finally{await browser.close();}}
 const open=(page,name)=>page.getByRole('button',{name,exact:true}).click();
+test('resident sees only the nine requested professional fields and no attachment controls',()=>run(async browser=>{
+ const page=await browser.newPage();
+ await page.goto(url+'?resident');
+ await open(page,'ACESSO RESTRITO');
+ await open(page,'CADASTRO PROFISSIONAL - SAHMT');
+ await page.getByRole('button',{name:'SALVAR MEU CADASTRO'}).waitFor();
+ assert.deepEqual(await page.locator('.reg-form [data-field]').evaluateAll(nodes=>nodes.map(node=>node.dataset.field)),
+  ['fullName','birthDate','cpf','crm','phone','address','managementAreas','surgicalAreas','lattes']);
+ assert.equal(await page.locator('.reg-attachments').count(),0);
+ assert.equal(await page.evaluate(()=>window.calls.some(call=>call.kind==='drive')),false);
+}));
 test('epidemiological modal highlights start, requires a local BMI calculation and accepts a blank suggestion',()=>run(async browser=>{
  const page=await browser.newPage({isMobile:true,hasTouch:true});
  const errors=[];

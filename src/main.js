@@ -1647,7 +1647,7 @@ async function loadModule(route) {
       performRegistration:async(kind,action,input,signal)=>{
         const {callRegistrationApi}=await import('./registration-client.js');
         const normalAccess=kind==='epidemiological'?epidemiologicalAllowed:professionalAllowed;
-        const needsInvitation=!normalAccess&&inRequiredRegistration(kind);
+        const needsInvitation=inRequiredRegistration(kind)&&(!normalAccess||obligationBanner?.hasRegistrationConvocation(requiredActivity,kind));
         const result=await callRegistrationApi({uid,isCurrent:()=>currentHub()&&(normalAccess||needsInvitation&&inRequiredRegistration(kind)),kind,action,input,signal,
           invitationId:needsInvitation?requiredActivity:undefined});
         const surveySubmitted=kind==='epidemiological'&&action==='SUBMIT'&&result?.accepted===true;

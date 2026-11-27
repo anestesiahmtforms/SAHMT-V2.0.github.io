@@ -1,6 +1,6 @@
 import './registration-ui.css';
 import {registrationField, isRegistrationList} from './registration-fields.js';
-import {PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, OPTIONAL_TEXT_UNANSWERED, LEGACY_REQUIRED_TEXT_FIELDS, professionalTextAnswer, validateProfessionalAnswers, scheduleParticipationPercent} from './registration-domain.js';
+import {PROFESSIONAL_FIELDS, RESIDENT_PROFESSIONAL_FIELDS, ATTACHMENT_SUBJECTS, OPTIONAL_TEXT_UNANSWERED, LEGACY_REQUIRED_TEXT_FIELDS, professionalTextAnswer, validateProfessionalAnswers, scheduleParticipationPercent} from './registration-domain.js';
 import {prepareDocumentFile, documentBase64} from './document-image.js';
 import {formatBirthDateAge} from './date-format.js';
 import {watchRegistrationChanges} from './registration-refresh.js';
@@ -41,6 +41,8 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
  let savedForm, afterFeedback, stopRegistrationWatch=()=>{};
  const browser = root.ownerDocument.defaultView;
  const query = selector => root.querySelector(selector);
+ const compact = () => state?.formVariant === 'resident';
+ const formFields = () => compact() ? RESIDENT_PROFESSIONAL_FIELDS : PROFESSIONAL_FIELDS;
  const live = () => !disposed && root.isConnected && isCurrent();
  root.classList.add('registration-app');
 
@@ -90,15 +92,17 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
  }
 
  function updateScheduleParticipation(workDays) {
+  const output=query('[data-reg-schedule-participation]');
+  if(!output)return;
   const percent = scheduleParticipationPercent(workDays);
-  query('[data-reg-schedule-participation]').textContent = percent === null
+  output.textContent = percent === null
    ? 'A preencher'
    : participationFormat.format(percent / 100);
  }
 
  function formSnapshot(form) {
   const data = new FormData(form);
-  const answers = Object.fromEntries(PROFESSIONAL_FIELDS.map(field => [field.id,
+  const answers = Object.fromEntries(formFields().map(field => [field.id,
    isRegistrationList(field) ? data.getAll(field.id) : String(data.get(field.id) || '')]));
   return {answers, truth:data.get('truth') === 'on'};
  }
@@ -157,7 +161,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
  function render() {
   const values = state.record?.answers || {};
   const formerFiliation = values.filiation || state.record?.legacyAnswers?.filiation;
-  const fields = PROFESSIONAL_FIELDS.map(field => {
+  const fields = formFields().map(field => {
    const value = professionalTextAnswer(field.id,values[field.id]) ?? (field.id === 'fullName' ? state.profile?.displayName : '');
    const note = field.id === 'fatherName' && formerFiliation
      ? '<p class="reg-help reg-previous-filiation">Filiação informada anteriormente · ' + escape(formerFiliation) + '</p>'
@@ -212,7 +216,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   if (saving || !live()) return;
   const snapshot = formSnapshot(event.target);
   const {answers, truth} = snapshot;
-  const issues = PROFESSIONAL_FIELDS.filter(field => {
+  const issues = formFields().filter(field => {
    if (field.when && answers[field.when[0]] !== field.when[1]) return false;
    const value = answers[field.id];
    return field.required && (Array.isArray(value) ? value.length < (field.min || 1) : !value.trim());
@@ -227,7 +231,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   try {
    const input = {
     expectedVersion:state.record?.version || 0,
-    answers:validateProfessionalAnswers(answers),
+    answers:validateProfessionalAnswers(answers,{compact:compact()}),
     truth
    };
    notice('[data-reg-notice]', 'Confirmando envio…');
@@ -237,7 +241,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
     catch(error){
      // Older workers reject these blank fields before writing.
      const field=LEGACY_REQUIRED_TEXT_FIELDS[error.code];
-     if(error.status!==400||!field||input.answers[field]!=='')throw error;
+     if(compact()||error.status!==400||!field||input.answers[field]!=='')throw error;
      input.answers[field]=OPTIONAL_TEXT_UNANSWERED;
     }
    }

@@ -4,7 +4,7 @@ const origin='https://anestesiahmtforms.github.io';
 export async function verifyRegistrationInvitation(invitation,{survey,cycle,email},fetchImpl=fetch) {
  if(!invitation||Object.keys(invitation).length!==2||
     typeof invitation.id!=='string'||!/^activity-[a-zA-Z0-9-]{1,100}$/.test(invitation.id)||
-    typeof invitation.token!=='string'||!/^[A-Za-z0-9_.-]{50,15000}$/.test(invitation.token))return false;
+    typeof invitation.token!=='string'||!/^[A-Za-z0-9_.-]{50,15000}$/.test(invitation.token))return null;
  const response=await fetchImpl(endpoint,{
   method:'POST',redirect:'error',signal:AbortSignal.timeout(12000),
   headers:{Origin:origin,Authorization:'Bearer '+invitation.token,'Content-Type':'application/json'},
@@ -12,8 +12,9 @@ export async function verifyRegistrationInvitation(invitation,{survey,cycle,emai
  });
  if(!response.ok){
   await response.body?.cancel();
-  if([401,403,404].includes(response.status))return false;
+  if([401,403,404].includes(response.status))return null;
   throw Error('REGISTRATION_INVITATION_UNAVAILABLE');
  }
- return (await response.json())?.authorized===true;
+ const result=await response.json();
+ return result?.authorized===true&&['substitute','resident'].includes(result.affiliation)?result.affiliation:null;
 }

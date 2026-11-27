@@ -1,7 +1,7 @@
 import {Buffer} from 'node:buffer';
 import {createHash} from 'node:crypto';
 import {BUILTIN_GROUPS,fail,id,text} from '../communication/domain.js';
-import {DEFAULT_OBLIGATION_DAYS,OBLIGATION_HOUR,isSubstituteRegistration,obligationDueAt,sameObligation,validObligationHours,validateObligation} from '../communication/obligations.js';
+import {DEFAULT_OBLIGATION_DAYS,OBLIGATION_HOUR,obligationDueAt,registrationConvocationGroup,registrationConvocationScope,sameObligation,validObligationHours,validateObligation} from '../communication/obligations.js';
 
 const PREVIEWS='communicationActivityPreviews',MESSAGES='communicationMessages',RECIPIENTS='communicationMessageRecipients',INDEX='communicationObligationIndex';
 const exact=(value,keys,optional=[])=>value&&typeof value==='object'&&!Array.isArray(value)&&keys.every(k=>Object.hasOwn(value,k))&&Object.keys(value).every(k=>keys.includes(k)||optional.includes(k));
@@ -57,7 +57,7 @@ export function createObligationService({store,source,history,saveActivity,resol
   return validateObligation(requested.kind==='TRAINING'?{kind:item.kind,id:item.id,title:item.title,version:item.version,maxScore:item.maxScore,minimumScore:requested.minimumScore}:{kind:item.kind,id:item.id,title:item.title,cycle:item.cycle});
  }
  async function eligible(activity,recipients,audience){
-  const result=await source.eligibility({activity,recipients,...(isSubstituteRegistration(activity,audience)?{substituteConvocation:true}:{})});
+  const result=await source.eligibility({activity,recipients,...registrationConvocationScope(registrationConvocationGroup(activity,audience))});
   if(!Array.isArray(result?.eligibleUids)||!Array.isArray(result.excluded))throw fail('COMM_SOURCE_UNAVAILABLE',503);
   const ids=[...result.eligibleUids,...result.excluded.map(r=>r?.uid)];
   if(ids.length!==recipients.length||new Set(ids).size!==ids.length||ids.some(uid=>!recipients.some(r=>r.uid===uid))||result.excluded.some(r=>typeof r.reason!=='string'||!/^[A-Z0-9_]{1,90}$/.test(r.reason)))throw fail('COMM_SOURCE_UNAVAILABLE',503);
@@ -145,7 +145,7 @@ export function createObligationService({store,source,history,saveActivity,resol
     if(row.status!=='PENDING'||message.status!=='published'||message.publishAt>serverNow)continue;
     const activity=validateObligation(message.activity);
     items.push({id:message.id,title:message.title,message:message.message,publishAt:message.publishAt,dueAt:obligationDueAt(message),activity,status:'PENDING',
-     ...(message.audienceType==='GROUP'&&isSubstituteRegistration(activity,message.audienceValue)?{substituteConvocation:true}:{})});
+     ...registrationConvocationScope(message.audienceType==='GROUP'&&registrationConvocationGroup(activity,message.audienceValue))});
    }
    items.sort((a,b)=>a.publishAt-b.publishAt||a.id.localeCompare(b.id));return {items,serverNow};
   }
@@ -154,12 +154,13 @@ export function createObligationService({store,source,history,saveActivity,resol
     throw fail('COMM_FORBIDDEN',403);
    const messageId=id(input.id);
    const [message,snapshot]=await Promise.all([store.get(MESSAGES,messageId),store.get(RECIPIENTS,messageId)]);
+   const affiliation=message?.audienceType==='GROUP'&&registrationConvocationGroup(message.activity,message.audienceValue);
    if(message?.id!==messageId||message.hasActivity!==true||message.status!=='published'||
       !Number.isSafeInteger(message.publishAt)||message.publishAt>serverNow||
-      message.audienceType!=='GROUP'||!isSubstituteRegistration(message.activity,message.audienceValue)||
+      !affiliation||
       message.activity.id!==input.survey||message.activity.cycle!==input.cycle||
       ownRow(snapshot,messageId,actor.sourceUid).status!=='PENDING')throw fail('COMM_FORBIDDEN',403);
-   return {authorized:true};
+   return {authorized:true,affiliation};
   }
   if(action==='VERIFY_ACTIVITY'){
    if(!exact(input,['id']))throw fail('COMM_INVALID_INPUT');const messageId=id(input.id);
@@ -170,7 +171,8 @@ export function createObligationService({store,source,history,saveActivity,resol
    if(message.status!=='published'||row.status==='CANCELLED')return {id:messageId,completed:false,unavailable:true,reason:'ACTIVITY_CANCELLED',serverNow};
    if(message.publishAt>serverNow)throw fail('COMM_NOT_CURRENT',409);
    const activity=validateObligation(message.activity);
-   const result=await source.completion({activity,...(message.audienceType==='GROUP'&&isSubstituteRegistration(activity,message.audienceValue)?{substituteConvocation:true}:{})});
+   const result=await source.completion({activity,
+    ...registrationConvocationScope(message.audienceType==='GROUP'&&registrationConvocationGroup(activity,message.audienceValue))});
    if(typeof result?.completed!=='boolean')throw fail('COMM_SOURCE_UNAVAILABLE',503);
    if(!result.completed)return {id:messageId,completed:false,...(result.unavailable===true?{unavailable:true,reason:typeof result.reason==='string'&&/^[A-Z0-9_]{1,90}$/.test(result.reason)?result.reason:'SOURCE_UNAVAILABLE'}:{}),serverNow:clock()};
    const confirmedAt=clock();

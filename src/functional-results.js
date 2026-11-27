@@ -2,7 +2,7 @@ import {requestFunctionalDosimetry} from './functional-client.js';
 import {dosimetryMonths} from './dosimetry-domain.js';
 import {callInstitutionalSurvey} from './institutional-survey-client.js';
 import {callRegistrationApi} from './registration-client.js';
-import {ATTACHMENT_SUBJECTS,PROFESSIONAL_FIELDS,professionalTextAnswer,scheduleParticipationPercent} from './registration-domain.js';
+import {ATTACHMENT_SUBJECTS,PROFESSIONAL_FIELDS,RESIDENT_PROFESSIONAL_FIELDS,professionalTextAnswer,scheduleParticipationPercent} from './registration-domain.js';
 import {INSTITUTIONAL_GROUPS} from './institutional-group.js';
 import {formatBirthDateAge,formatDisplayDate,formatDisplayDateTime} from './date-format.js';
 import {createFunctionalOccupationalReader} from './vaccination-client.js';
@@ -87,7 +87,8 @@ export function renderProfessionalRegistration({record,files=[]}){
   if(record){
     const answers=record.answers||{},previous=record.legacyAnswers||{},groups=new Map();
     let section='';
-    for(const field of PROFESSIONAL_FIELDS){
+    const fields=record.formVariant==='resident'?RESIDENT_PROFESSIONAL_FIELDS:PROFESSIONAL_FIELDS;
+    for(const field of fields){
       if(field.section){section=field.section;groups.set(section,[]);}
       const value=answers[field.id];
       if(field.when&&!value&&answers[field.when[0]]!==field.when[1])continue;

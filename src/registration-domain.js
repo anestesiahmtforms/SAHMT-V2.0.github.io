@@ -75,6 +75,8 @@ export const PROFESSIONAL_FIELDS=[
  {id:'outsideWorkDetails',label:'Se desejar, descreva suas atividades externas',type:'textarea',max:1500,when:['outsideWork','YES']},
  {id:'additionalInfo',label:'Outras experiências ou informações relevantes para o desenvolvimento da equipe',type:'textarea',max:3000}
 ];
+const residentFieldIds=new Set(['fullName','birthDate','cpf','crm','phone','address','managementAreas','surgicalAreas','lattes']);
+export const RESIDENT_PROFESSIONAL_FIELDS=PROFESSIONAL_FIELDS.filter(field=>residentFieldIds.has(field.id));
 const combinedFiliationFields=PROFESSIONAL_FIELDS.filter(field=>field.id!=='fatherName')
  .map(field=>field.id==='motherName'?previousFiliationField:field);
 const previousProfessionalFields=combinedFiliationFields.flatMap(field=>{
@@ -129,9 +131,9 @@ export const EPIDEMIOLOGICAL_FIELDS=[
 export const ATTACHMENT_SUBJECTS=Object.freeze({CV:'Currículo Lattes',PROFESSIONAL:'CRM e RQE',QUALIFICATIONS:'Diplomas e certificados',REGISTRATION:'Documentos cadastrais'});
 const error=code=>{throw Object.assign(Error(code),{code,status:400});};
 export function validCpf(value){const v=String(value).replace(/\D/g,'');if(!/^\d{11}$/.test(v)||/^(\d)\1{10}$/.test(v))return false;return [9,10].every(n=>{const sum=[...v.slice(0,n)].reduce((s,d,i)=>s+Number(d)*(n+1-i),0);return (sum*10%11)%10===Number(v[n]);});}
-export function validateProfessionalAnswers(input){
+export function validateProfessionalAnswers(input,{compact=false}={}){
  if(!input||typeof input!=='object'||Array.isArray(input))error('REGISTRATION_INVALID_INPUT');
- const fields=[legacyProfessionalFields,previousProfessionalFields,combinedFiliationFields,PROFESSIONAL_FIELDS][professionalSchemaVersion(input)-1];
+ const fields=compact?RESIDENT_PROFESSIONAL_FIELDS:[legacyProfessionalFields,previousProfessionalFields,combinedFiliationFields,PROFESSIONAL_FIELDS][professionalSchemaVersion(input)-1];
  if(Object.keys(input).some(key=>!fields.some(field=>field.id===key)))error('REGISTRATION_INVALID_INPUT');
  const out={};
  for(const field of fields){
@@ -157,7 +159,9 @@ export function validateProfessionalAnswers(input){
  if(!/^\d{1,12}$/.test(out.crm))error('REGISTRATION_INVALID_CRM');
  if(!/^\+?[\d() .-]{10,40}$/.test(out.phone)||!/^\d{10,15}$/.test(out.phone.replace(/\D/g,'')))error('REGISTRATION_INVALID_PHONE');
  if(!/^\d{4}-\d{2}-\d{2}$/.test(out.birthDate)||!Number.isFinite(Date.parse(out.birthDate+'T00:00:00Z'))||new Date(out.birthDate+'T00:00:00Z').toISOString().slice(0,10)!==out.birthDate||out.birthDate<'1900-01-01'||out.birthDate>new Date().toISOString().slice(0,10))error('REGISTRATION_INVALID_BIRTHDATE');
- if(out.lattes){let url;try{url=new URL(out.lattes);}catch{error('REGISTRATION_INVALID_LATTES');}if(!['https:','http:'].includes(url.protocol)||url.hostname!=='lattes.cnpq.br'||url.username||url.password)error('REGISTRATION_INVALID_LATTES');}if(out.outsideWork!=='YES')out.outsideWorkDetails='';return out;
+ if(out.lattes){let url;try{url=new URL(out.lattes);}catch{error('REGISTRATION_INVALID_LATTES');}if(!['https:','http:'].includes(url.protocol)||url.hostname!=='lattes.cnpq.br'||url.username||url.password)error('REGISTRATION_INVALID_LATTES');}
+ if(!compact&&out.outsideWork!=='YES')out.outsideWorkDetails='';
+ return out;
 }
 export function bmiBand(weight,height){const w=Number(String(weight).replace(',','.')),h=Number(String(height).replace(',','.'));if(!Number.isFinite(w)||!Number.isFinite(h)||w<10||w>500||h<50||h>250)return null;const value=w/(h/100)**2;return {value:Math.round(value*10)/10,band:value<18.5?'LOW':value<25?'MID':value<30?'UPPER':value<35?'B30':value<40?'B35':'B40'};}
 export function validateCompleteEpidemiologicalSubmission(input){

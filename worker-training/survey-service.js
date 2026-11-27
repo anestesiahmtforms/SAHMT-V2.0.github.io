@@ -4,6 +4,7 @@ import {validateCompleteSubmission as climateInput,VERSION as climateVersion,CYC
 import {validateCompleteSubmission as stressInput,VERSION as stressVersion} from '../stress-domain/schema.js';
 import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} from '../src/institutional-group.js';
 import {functionalSurveyCharts} from '../src/functional-survey-charts.js';
+import {registrationConvocationAffiliation,registrationConvocationScope} from '../communication/obligations.js';
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 const validId=id=>typeof id==='string'&&/^[a-f0-9]{32}$/.test(id);
@@ -18,13 +19,13 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
     if(!profile||profile.uid!==identity.uid||profile.email?.trim().toLowerCase()!==email||profile.active!==true||profile.access!==true)fail('SURVEY_FORBIDDEN',403);
     return {email,administrator:profile.role==='administrador_app'||profile.permissions?.admin===true};
   }
-  async function authorize(identity,survey,registry=profileStore,invitationConfirmed=false){
+  async function authorize(identity,survey,registry=profileStore,invitationGroup=null){
     const {email,administrator}=await activeProfile(identity,registry);
     if(/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(email))fail('SURVEY_FORBIDDEN',403);
     const assignment=await registry.get('userCategories',await institutionalAssignmentKey(email));
     const group=assignedInstitutionalGroup(assignment,{uid:identity.uid,email});
     if(!group)fail('SURVEY_GROUP_UNAVAILABLE',403);
-    if(survey&&group!=='team'&&!(survey==='epidemiological'&&group==='substitute'&&invitationConfirmed))fail('SURVEY_FORBIDDEN',403);
+    if(survey&&group!=='team'&&!(survey==='epidemiological'&&group===invitationGroup))fail('SURVEY_FORBIDDEN',403);
     return {affiliation:group,group:researchGroup(group),administrator};
   }
   async function execute(action,input,identity){
@@ -47,8 +48,8 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
     }
     if(['OBLIGATION_CATALOG','OBLIGATION_ELIGIBILITY','OBLIGATION_STATUS'].includes(action)){
       const catalog=action==='OBLIGATION_CATALOG',eligibility=action==='OBLIGATION_ELIGIBILITY';
-      const substituteConvocation=!catalog&&input?.survey==='epidemiological'&&input.substituteConvocation===true;
-      if(!exact(input,catalog?[]:['survey','cycle',...(eligibility?['recipients']:[]),...(substituteConvocation?['substituteConvocation']:[])])||!catalog&&(!Object.hasOwn(kinds,input.survey)||input.cycle!==CYCLE))fail('SURVEY_INVALID_INPUT');
+      const convokedGroup=!catalog&&input?.survey==='epidemiological'?registrationConvocationAffiliation(input):null;
+      if(!exact(input,catalog?[]:['survey','cycle',...(eligibility?['recipients']:[]),...Object.keys(registrationConvocationScope(convokedGroup))])||!catalog&&(!Object.hasOwn(kinds,input.survey)||input.cycle!==CYCLE))fail('SURVEY_INVALID_INPUT');
       const access=await authorize(identity);
       if((catalog||eligibility)&&!access.administrator)fail('SURVEY_FORBIDDEN',403);
       const titles={climate:'Pesquisa de Clima Organizacional',stress:'Avaliação de Estresse e Fadiga',epidemiological:'Cadastro Epidemiológico SAHMT'};
@@ -70,7 +71,7 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
           const p=await tx.get('surveyParticipation',`${identity.uid}_${input.survey}_${CYCLE}`);
           if(!participationValid(p,identity.uid,input.survey))fail('SURVEY_PARTICIPATION_INVALID',503);
           if(p)return {completed:true};
-          if(access.affiliation!=='team'&&!(substituteConvocation&&access.affiliation==='substitute'))return {completed:false,unavailable:true,reason:'SURVEY_FORBIDDEN'};
+          if(access.affiliation!=='team'&&access.affiliation!==convokedGroup)return {completed:false,unavailable:true,reason:'SURVEY_FORBIDDEN'};
           const reason=await availability(tx,input.survey);
           return reason?{completed:false,unavailable:true,reason}:{completed:false};
         }
@@ -87,7 +88,7 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
           else{
             const p=await tx.get('surveyParticipation',`${uid}_${input.survey}_${CYCLE}`);
             if(!participationValid(p,uid,input.survey))fail('SURVEY_PARTICIPATION_INVALID',503);
-            if(!p)reason=group==='team'||substituteConvocation&&group==='substitute'?unavailable:'SURVEY_FORBIDDEN';
+            if(!p)reason=group==='team'||group===convokedGroup?unavailable:'SURVEY_FORBIDDEN';
           }
           if(reason)excluded.push({uid:recipient.uid,reason});else eligibleUids.push(recipient.uid);
         }
@@ -130,9 +131,9 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
     const fields=action==='BOOTSTRAP'?['survey','cycle']:['survey','cycle','response'];
     if(!['BOOTSTRAP','SUBMIT'].includes(action)||!exact(input,[...fields,...(hasInvitation?['invitation']:[])])||!Object.hasOwn(kinds,input.survey)||input.cycle!==CYCLE)fail('SURVEY_INVALID_INPUT');
     if(hasInvitation)await activeProfile(identity);
-    const invitationConfirmed=hasInvitation&&await verifyInvitation?.(input.invitation,{survey:input.survey,cycle:CYCLE,email:identity.email})===true;
-    if(hasInvitation&&!invitationConfirmed)fail('SURVEY_FORBIDDEN',403);
-    const actorGroup=await authorize(identity,input.survey,profileStore,invitationConfirmed),group=actorGroup.group,kind=kinds[input.survey],ledgerKey=`${identity.uid}_${input.survey}_${CYCLE}`;
+    const invitationGroup=hasInvitation?await verifyInvitation?.(input.invitation,{survey:input.survey,cycle:CYCLE,email:identity.email}):null;
+    if(hasInvitation&&!invitationGroup)fail('SURVEY_FORBIDDEN',403);
+    const actorGroup=await authorize(identity,input.survey,profileStore,invitationGroup),group=actorGroup.group,kind=kinds[input.survey],ledgerKey=`${identity.uid}_${input.survey}_${CYCLE}`;
     let response;
     if(action==='SUBMIT'){
       try {response=kind.validate({...input.response,group});}catch{fail('SURVEY_INVALID_INPUT');}
@@ -147,7 +148,7 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
       if(action==='BOOTSTRAP')return {group,alreadyResponded:!!participation,...(input.survey==='epidemiological'?{canReadReport:identity.email?.toLowerCase()===reportReaderEmail?.toLowerCase(),closed:cycle.status==='closed'}:{})};
       if(participation)return {accepted:true,alreadyResponded:true};
       if(await tx.get(kind.responseCollection,response.submission_id))fail('SURVEY_RESPONSE_ID_REUSED',409);
-      const currentGroup=await authorize(identity,input.survey,profileStore,invitationConfirmed);
+      const currentGroup=await authorize(identity,input.survey,profileStore,invitationGroup);
       if(currentGroup.group!==group||currentGroup.affiliation!==actorGroup.affiliation)fail('SURVEY_GROUP_CHANGED',409);
       if(actorGroup.administrator&&!currentGroup.administrator)await checkSurvey(folders[input.survey],tx);
       // The ledger has no answer reference, group or explicit time. Firestore

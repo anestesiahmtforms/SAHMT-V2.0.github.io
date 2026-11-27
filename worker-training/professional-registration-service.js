@@ -1,7 +1,7 @@
 import {validateProfessionalAnswers,legacyProfessionalAnswers,professionalSchemaVersion,REGISTRATION_CYCLE} from '../src/registration-domain.js';
 import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} from '../src/institutional-group.js';
 import {assertFolderReadable} from '../server/folder-read-policy.js';
-import {SURVEY_ACTIVITIES} from '../communication/obligations.js';
+import {SURVEY_ACTIVITIES,registrationConvocationAffiliation,registrationConvocationScope} from '../communication/obligations.js';
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const validUid=uid=>typeof uid==='string'&&/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(uid);
@@ -9,8 +9,8 @@ const registrationActivity=Object.freeze({kind:'SURVEY',id:'professional',title:
 const institutionalMailbox=email=>/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(email);
 export const registrationAdmin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 const linkedProfile=(profile,{uid,email})=>Boolean(profile&&profile.uid===uid&&profile.email?.trim().toLowerCase()===email.trim().toLowerCase()&&profile.active===true&&profile.access===true);
-const canSaveRegistration=(profile,affiliation,email,substituteConvocation=false)=>Boolean(researchGroup(affiliation))&&
- (affiliation==='team'||registrationAdmin(profile)||substituteConvocation&&affiliation==='substitute')&&!institutionalMailbox(email);
+const canSaveRegistration=(profile,affiliation,email,convokedGroup=null)=>Boolean(researchGroup(affiliation))&&
+ (affiliation==='team'||registrationAdmin(profile)||affiliation===convokedGroup)&&!institutionalMailbox(email);
 export async function registrationActor(store,identity,{admin=false,team=false}={}){
  if(!identity?.uid||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(identity.uid)||identity.provider!=='google.com'||identity.emailVerified!==true||!/^\S+@\S+\.\S+$/.test(identity.email||''))fail('REGISTRATION_UNAUTHENTICATED',401);
  const p=await store.get('users',identity.uid);if(!linkedProfile(p,identity)||admin&&!registrationAdmin(p))fail('REGISTRATION_FORBIDDEN',403);
@@ -37,8 +37,8 @@ export const professionalObligationActions=new Set(['OBLIGATION_CATALOG','OBLIGA
 
 async function registrationObligation(store,action,input,identity) {
  const catalog=action==='OBLIGATION_CATALOG',eligibility=action==='OBLIGATION_ELIGIBILITY';
- const substituteConvocation=!catalog&&input?.substituteConvocation===true;
- if(!exact(input,catalog?[]:['survey','cycle',...(eligibility?['recipients']:[]),...(substituteConvocation?['substituteConvocation']:[])])||
+ const convokedGroup=catalog?null:registrationConvocationAffiliation(input);
+ if(!exact(input,catalog?[]:['survey','cycle',...(eligibility?['recipients']:[]),...Object.keys(registrationConvocationScope(convokedGroup))])||
     !catalog&&(input.survey!==registrationActivity.id||input.cycle!==registrationActivity.cycle))fail('REGISTRATION_INVALID_INPUT');
  if(eligibility&&(!Array.isArray(input.recipients)||input.recipients.length>8||
     input.recipients.some(person=>!exact(person,['uid','email'])||!validUid(person.uid)||
@@ -50,7 +50,7 @@ async function registrationObligation(store,action,input,identity) {
   if(!eligibility){
    if(await ownRegistrationComplete(tx,identity))return {completed:true};
    const assignment=await tx.get('userCategories',await institutionalAssignmentKey(identity.email));
-   if(!canSaveRegistration(profile,assignedInstitutionalGroup(assignment,identity),identity.email,substituteConvocation))
+   if(!canSaveRegistration(profile,assignedInstitutionalGroup(assignment,identity),identity.email,convokedGroup))
     return {completed:false,unavailable:true,reason:'REGISTRATION_FORBIDDEN'};
    if(!await registrationAvailable(tx))return {completed:false,unavailable:true,reason:'REGISTRATION_FOLDER_DISABLED'};
    return {completed:false};
@@ -61,7 +61,7 @@ async function registrationObligation(store,action,input,identity) {
    const assignment=available?await tx.get('userCategories',await institutionalAssignmentKey(email)):null;
    const uid=assignment?.uid;
    const member=validUid(uid)?await tx.get('users',uid):null;
-   if(available&&linkedProfile(member,{uid,email})&&canSaveRegistration(member,assignedInstitutionalGroup(assignment,{uid,email}),email,substituteConvocation))
+   if(available&&linkedProfile(member,{uid,email})&&canSaveRegistration(member,assignedInstitutionalGroup(assignment,{uid,email}),email,convokedGroup))
     eligibleUids.push(recipient.uid);
    else excluded.push({uid:recipient.uid,reason:available?'REGISTRATION_FORBIDDEN':'REGISTRATION_FOLDER_DISABLED'});
   }
@@ -81,24 +81,27 @@ export function createProfessionalRegistrationService({store,drive,verifyInvitat
   const hasInvitation=Boolean(input&&Object.hasOwn(input,'invitation'));
   const fields=action==='BOOTSTRAP'?[]:['expectedVersion','answers','truth'];
   if(!['BOOTSTRAP','SAVE'].includes(action)||!exact(input,[...fields,...(hasInvitation?['invitation']:[])]))fail('REGISTRATION_INVALID_INPUT');
-  let answers;if(action==='SAVE'){if(input.truth!==true||!Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<0)fail('REGISTRATION_INVALID_INPUT');answers=validateProfessionalAnswers(input.answers);}
-  const invitationConfirmed=hasInvitation&&await verifyInvitation?.(input.invitation,{survey:registrationActivity.id,cycle:REGISTRATION_CYCLE,email:identity.email})===true;
-  if(hasInvitation&&!invitationConfirmed)fail('REGISTRATION_FORBIDDEN',403);
+  if(action==='SAVE'&&(input.truth!==true||!Number.isSafeInteger(input.expectedVersion)||input.expectedVersion<0))fail('REGISTRATION_INVALID_INPUT');
+  const invitationGroup=hasInvitation?await verifyInvitation?.(input.invitation,{survey:registrationActivity.id,cycle:REGISTRATION_CYCLE,email:identity.email}):null;
+  if(hasInvitation&&!invitationGroup)fail('REGISTRATION_FORBIDDEN',403);
   const result=await store.transaction(async tx=>{
    const current=await registrationActor(tx,identity),assignment=await tx.get('userCategories',await institutionalAssignmentKey(identity.email)),affiliation=assignedInstitutionalGroup(assignment,identity),group=researchGroup(affiliation),record=await tx.get('professionalRegistrations',ownId);
-   const invitationOnly=affiliation==='substitute'&&!registrationAdmin(current)&&invitationConfirmed;
+   const invitationOnly=['substitute','resident'].includes(affiliation)&&affiliation===invitationGroup;
+   const compact=invitationOnly&&affiliation==='resident';
    if(affiliation!=='team'&&!registrationAdmin(current)&&!invitationOnly)fail('REGISTRATION_FORBIDDEN',403);
    if(record&&(record.uid!==identity.uid||record.email!==identity.email.toLowerCase()||record.cycle!==REGISTRATION_CYCLE||!Number.isSafeInteger(record.version)))fail('REGISTRATION_UNAVAILABLE',503);
-   if(action==='BOOTSTRAP')return {record,isAdmin:registrationAdmin(current),profile:{email:identity.email.toLowerCase(),displayName:current.displayName||current.name||'',group},...(invitationOnly?{invitationOnly:true}:{})};
+   if(action==='BOOTSTRAP')return {record,isAdmin:registrationAdmin(current),profile:{email:identity.email.toLowerCase(),displayName:current.displayName||current.name||'',group},
+    ...(invitationOnly?{invitationOnly:true}:{}),...(compact?{formVariant:'resident'}:{})};
    if(invitationOnly&&record)fail('REGISTRATION_VERSION_CONFLICT',409);
    if(!group||institutionalMailbox(identity.email))fail('REGISTRATION_GROUP_UNAVAILABLE',422);
    if((record?.version||0)!==input.expectedVersion)fail('REGISTRATION_VERSION_CONFLICT',409);
-   const schemaVersion=professionalSchemaVersion(answers);
+   const answers=validateProfessionalAnswers(input.answers,{compact});
+   const schemaVersion=compact?4:professionalSchemaVersion(answers);
    if(record?.schemaVersion>schemaVersion)fail('REGISTRATION_SCHEMA_CHANGED',409);
    const legacyAnswers={...record?.legacyAnswers,...(record?.schemaVersion<schemaVersion?legacyProfessionalAnswers(record.answers):{})};
    const saved={schemaVersion,cycle:REGISTRATION_CYCLE,uid:identity.uid,email:identity.email.toLowerCase(),group,answers,
     ...(Object.keys(legacyAnswers).length?{legacyAnswers}:{}),
-    truth:true,version:input.expectedVersion+1,createdAt:record?.createdAt||now(),updatedAt:now()};
+    ...(compact?{formVariant:'resident'}:{}),truth:true,version:input.expectedVersion+1,createdAt:record?.createdAt||now(),updatedAt:now()};
    if(record)tx.set('professionalRegistrations',ownId,saved);else tx.create('professionalRegistrations',ownId,saved);return {record:saved};
   });
   if(action==='BOOTSTRAP')result.drive=await drive?.status(identity)||{connected:false,canConnect:registrationAdmin(profile)};

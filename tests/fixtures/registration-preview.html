@@ -12,7 +12,8 @@ const request=async(kind,action,input,signal)=>{
   if(action==='SUBMIT')return {accepted:true,alreadyResponded:false};
  }
  if(kind==='professional'){
-  if(action==='BOOTSTRAP')return {record,profile:{email:'synthetic@example.invalid',displayName:'Pessoa Sintética',group:'team'},isAdmin:true};
+  if(action==='BOOTSTRAP')return {record,profile:{email:'synthetic@example.invalid',displayName:'Pessoa Sintética',group:params.has('resident')?'resident':'team'},isAdmin:!params.has('resident'),
+   ...(params.has('resident')?{invitationOnly:true,formVariant:'resident'}:{})};
   if(action==='SAVE'){
    if(params.has('legacyText')){
     const code=!input.answers.address?'REGISTRATION_INVALID_ADDRESS':!input.answers.teachingResearch?'REGISTRATION_INVALID_TEACHINGRESEARCH':null;

@@ -101,14 +101,26 @@ test('substitute registration invitation is live, recipient-bound and stops on c
  assert.equal(pending.dueAt,NOW+48*3600000);
  assert.equal(pending.substituteConvocation,true);
  const proof={id,survey:survey.id,cycle:survey.cycle,email:person.email};
- assert.deepEqual(await h.execute('REGISTRATION_INVITATION',proof,person),{authorized:true});
+ assert.deepEqual(await h.execute('REGISTRATION_INVITATION',proof,person),{authorized:true,affiliation:'substitute'});
  await assert.rejects(h.execute('REGISTRATION_INVITATION',proof,actor),{code:'COMM_FORBIDDEN'});
  await assert.rejects(h.execute('REGISTRATION_INVITATION',{...proof,survey:'epidemiological'},person),{code:'COMM_FORBIDDEN'});
  h.setTime(pending.dueAt+1);
- assert.deepEqual(await h.execute('REGISTRATION_INVITATION',proof,person),{authorized:true});
+ assert.deepEqual(await h.execute('REGISTRATION_INVITATION',proof,person),{authorized:true,affiliation:'substitute'});
  h.setCompletion({completed:true});
  await h.execute('VERIFY_ACTIVITY',{id},person);
  await assert.rejects(h.execute('REGISTRATION_INVITATION',proof,person),{code:'COMM_FORBIDDEN'});
+});
+test('residents get a registration invitation with their own scope',async()=>{
+ const h=fixture(),survey={kind:'SURVEY',id:'epidemiological',title:'Cadastro Epidemiológico',cycle:'2026'};
+ h.setCards([survey]);
+ const {previewId}=await h.execute('PREVIEW_ACTIVITY',{activity:survey,audience:'institutional-resident',deadlineHours:48});
+ const id='activity-residents';
+ await h.execute('CREATE_ACTIVITY',{id,previewId,title:'Cadastro',description:'Preencha em dois dias',confirmed:true});
+ const [pending]=(await h.execute('PENDING_ACTIVITIES',{},person)).items;
+ assert.equal(pending.dueAt,NOW+48*3600000);
+ assert.equal(pending.residentConvocation,true);
+ assert.deepEqual(await h.execute('REGISTRATION_INVITATION',{id,survey:survey.id,cycle:survey.cycle,email:person.email},person),
+  {authorized:true,affiliation:'resident'});
 });
 test('verification ignores supplied scores, rejects foreign recipient and persists source evidence idempotently',async()=>{
  const h=fixture();await h.create();h.setCompletion({completed:true,completedAt:NOW-100000,score:4});
