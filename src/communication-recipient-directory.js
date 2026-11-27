@@ -2,6 +2,7 @@ import {escapeNoticeHtml as esc} from './communication-notice-text.js';
 
 const categories=[
   {id:'EFETIVO',label:'EQUIPE'},
+  {id:'RESIDENTE',label:'RESIDENTES'},
   {id:'RESIDENTE_1',label:'R1'},
   {id:'RESIDENTE_2',label:'R2'},
   {id:'RESIDENTE_3',label:'R3'},

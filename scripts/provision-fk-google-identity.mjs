@@ -86,7 +86,7 @@ try{
     const categoryId=createHash('sha256').update(JSON.stringify(address)).digest('hex');
     const assignment=await firestoreDocument(source,`userCategories/${categoryId}`,fa);
     const affiliations=Array.isArray(assignment?.memberCategories)?assignment.memberCategories.filter(value=>
-      ['EFETIVO','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'].includes(value)):[];
+      ['EFETIVO','RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'].includes(value)):[];
     if(assignment?.schemaVersion===1&&assignment.identityStatus==='LINKED'&&assignment.uid===uid(account)&&
       email(assignment)===address&&Array.isArray(assignment.memberCategories)&&
       new Set(assignment.memberCategories).size===assignment.memberCategories.length&&affiliations.length===1&&affiliations[0]==='EFETIVO'){

@@ -7,6 +7,7 @@ const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp
 
 const memberGroups = [
   ['EFETIVO', 'Efetivos'],
+  ['RESIDENTE', 'Residentes'],
   ['RESIDENTE_1', 'Residentes R1'],
   ['RESIDENTE_2', 'Residentes R2'],
   ['RESIDENTE_3', 'Residentes R3'],

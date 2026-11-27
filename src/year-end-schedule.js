@@ -36,7 +36,7 @@ export function yearEndOwnParticipation(config) {
 
 export function canUseYearEndSchedule(session) {
   const user=session?.user,profile=session?.profile;
-  const blocked=['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'];
+  const blocked=['RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'];
   if(profile?.memberCategories?.some?.(id=>blocked.includes(id))||/resident|substitut/i.test(profile?.role||''))return false;
   return Boolean(session?.status==='signed-in' && user?.uid && user.emailVerified===true &&
     profile?.uid===user.uid && profile.active===true && profile.access===true &&

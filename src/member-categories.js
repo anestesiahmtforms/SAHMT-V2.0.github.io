@@ -1,9 +1,9 @@
 export const MEMBER_CATEGORIES=Object.freeze({
- EFETIVO:'Membros efetivos',RESIDENTE_1:'Membros residentes 1',RESIDENTE_2:'Membros residentes 2',
+ EFETIVO:'Membros efetivos',RESIDENTE:'Membros residentes',RESIDENTE_1:'Membros residentes 1',RESIDENTE_2:'Membros residentes 2',
  RESIDENTE_3:'Membros residentes 3',SUBSTITUTO:'Membros substitutos',ADMINISTRADOR:'Membros administradores',GESTOR:'Membros gestores'
 });
 export const MEMBER_CATEGORY_IDS=Object.freeze(Object.keys(MEMBER_CATEGORIES));
-const affiliations=new Set(['EFETIVO','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']);
+const affiliations=new Set(['EFETIVO','RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']);
 export function normalizeMemberCategories(value){
  if(!Array.isArray(value)||value.some(id=>!MEMBER_CATEGORY_IDS.includes(id))||new Set(value).size!==value.length)throw Error('MEMBER_CATEGORIES_INVALID');
  if(value.filter(id=>affiliations.has(id)).length>1)throw Error('MEMBER_AFFILIATION_CONFLICT');

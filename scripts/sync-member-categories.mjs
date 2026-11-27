@@ -14,6 +14,22 @@ async function api(token,url,method='GET',body){
  if(r.status===404&&method==='GET')return null;
  if(!r.ok){await r.body?.cancel();throw Error('MEMBER_CATEGORY_HTTP_'+r.status);}return r.json();
 }
+const decodeValue=value=>value?.stringValue??value?.booleanValue??(value?.integerValue!==undefined?Number(value.integerValue):value?.arrayValue?(value.arrayValue.values||[]).map(decodeValue):value?.mapValue?Object.fromEntries(Object.entries(value.mapValue.fields||{}).map(([key,item])=>[key,decodeValue(item)])):null);
+async function listCollection(token,projectId,collection){
+ const rows=[];let next;
+ do{const url=`https://firestore.googleapis.com/v1/${root(projectId)}/${collection}?pageSize=1000${next?`&pageToken=${encodeURIComponent(next)}`:''}`,page=await api(token,url);rows.push(...(page.documents||[]));next=page.nextPageToken;}while(next);
+ return rows.map(document=>Object.fromEntries(Object.entries(document.fields||{}).map(([key,value])=>[key,decodeValue(value)])));
+}
+async function verifiedExistingAccounts(token,projectId,emails){
+ const [profiles,assignments]=await Promise.all([listCollection(token,projectId,'users'),listCollection(token,projectId,'userCategories')]);
+ const wanted=new Set(emails.map(email=>email.trim().toLowerCase())),byEmail=new Map(profiles.map(profile=>[String(profile.email||'').trim().toLowerCase(),profile]));
+ return assignments.flatMap(assignment=>{
+  const email=String(assignment.email||'').trim().toLowerCase(),profile=byEmail.get(email);
+  if(!wanted.has(email)||assignment.schemaVersion!==1||assignment.identityStatus!=='LINKED'||
+    !assignment.uid||assignment.uid!==profile?.uid||String(profile?.email||'').trim().toLowerCase()!==email)return [];
+  return [{uid:assignment.uid,email}];
+ });
+}
 async function readDocuments(token,projectId,documents){
  const response=await fetch(`https://firestore.googleapis.com/v1/${root(projectId)}:batchGet`,{method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({documents:documents.map(d=>root(projectId)+'/'+d.path)}),redirect:'error',signal:AbortSignal.timeout(30000)});
  if(!response.ok){await response.body?.cancel();throw Error('MEMBER_CATEGORY_READ_'+response.status);}
@@ -33,7 +49,9 @@ try{
    tokens[alias]=await firebaseCliAccountToken(owners[alias]);
    const emails=Object.values(input).flat().map(x=>x.trim().toLowerCase());
    const data=await api(tokens[alias],`https://identitytoolkit.googleapis.com/v1/projects/${projectId}/accounts:lookup`,'POST',{email:[...new Set(emails)]});
-   const accounts=(data.users||[]).map(a=>({uid:a.localId,email:a.email?.toLowerCase()}));
+   const accounts=await verifiedExistingAccounts(tokens[alias],projectId,emails);
+   const known=new Set(accounts.map(account=>account.email));
+   for(const a of data.users||[])if(!known.has(a.email?.toLowerCase()))accounts.push({uid:a.localId,email:a.email?.toLowerCase()});
    const release=await api(tokens[alias],`https://firebaserules.googleapis.com/v1/projects/${projectId}/releases/cloud.firestore`);
    demand(release?.rulesetName?.startsWith(`projects/${projectId}/rulesets/`),'MEMBER_CATEGORY_RELEASE_INVALID');
    const ruleset=await api(tokens[alias],`https://firebaserules.googleapis.com/v1/${release.rulesetName}`);

@@ -80,6 +80,7 @@ function personCard({contact,profile,name,email},index,roleLabel,showRegistratio
 
 const peopleGroups=[
  ['EFETIVO','Equipe',['equipe','efetivo']],
+ ['RESIDENTE','Residentes',['residentes']],
  ['RESIDENTE_3','R3',['r3','residente 3','residente r3']],
  ['RESIDENTE_2','R2',['r2','residente 2','residente r2']],
  ['RESIDENTE_1','R1',['r1','residente 1','residente r1']],

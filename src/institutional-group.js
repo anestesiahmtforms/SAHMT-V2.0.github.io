@@ -2,8 +2,8 @@
 export const INSTITUTIONAL_GROUPS = Object.freeze({team:'Equipe',resident:'Residentes',substitute:'Substitutos'});
 export function institutionalGroup(categories) {
   if (!Array.isArray(categories) || new Set(categories).size !== categories.length) return null;
-  const affiliations = categories.filter(id => ['EFETIVO','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'].includes(id));
-  if (affiliations.length !== 1 || categories.some(id => !['EFETIVO','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO','ADMINISTRADOR','GESTOR'].includes(id))) return null;
+  const affiliations = categories.filter(id => ['EFETIVO','RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'].includes(id));
+  if (affiliations.length !== 1 || categories.some(id => !['EFETIVO','RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO','ADMINISTRADOR','GESTOR'].includes(id))) return null;
   return affiliations[0] === 'EFETIVO' ? 'team' : affiliations[0] === 'SUBSTITUTO' ? 'substitute' : 'resident';
 }
 export function assignedInstitutionalGroup(assignment, identity) {
