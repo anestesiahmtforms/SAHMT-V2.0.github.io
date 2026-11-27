@@ -70,16 +70,15 @@ test('an active substitute can open and save the professional form once',async()
  assert.equal((await service.execute('SAVE',draft,identity)).record.uid,identity.uid);
  await assert.rejects(service.execute('SAVE',{...draft,expectedVersion:1},identity),{code:'REGISTRATION_VERSION_CONFLICT'});
 });
-test('an invited resident saves only the short professional form with two management choices',async()=>{
+test('a resident saves only the short professional form with two management choices',async()=>{
  const store=await fixture('RESIDENTE_2');
  const service=createProfessionalRegistrationService({store,verifyInvitation:async proof=>proof.id});
  const fields=['fullName','birthDate','cpf','crm','phone','address','managementAreas','surgicalAreas','lattes'];
  assert.deepEqual(RESIDENT_PROFESSIONAL_FIELDS.map(field=>field.id),fields);
  await assert.rejects(service.execute('BOOTSTRAP',{invitation:{id:'substitute'}},identity),{code:'REGISTRATION_FORBIDDEN'});
- const invitation={id:'resident'};
- assert.equal((await service.execute('BOOTSTRAP',{invitation},identity)).formVariant,'resident');
+ assert.equal((await service.execute('BOOTSTRAP',{},identity)).formVariant,'resident');
  const full=professionalAnswers(),answers=Object.fromEntries(fields.map(field=>[field,full[field]]));
- const draft={invitation,expectedVersion:0,truth:true,answers};
+ const draft={expectedVersion:0,truth:true,answers};
  await assert.rejects(service.execute('SAVE',{...draft,answers:full},identity),{code:'REGISTRATION_INVALID_INPUT'});
  await assert.rejects(service.execute('SAVE',{...draft,answers:{...answers,managementAreas:answers.managementAreas.slice(0,1)}},identity),{code:'REGISTRATION_INVALID_MANAGEMENTAREAS'});
  const {record}=await service.execute('SAVE',draft,identity);
@@ -234,7 +233,7 @@ test('resident epidemiological submissions stay in the anonymous resident cohort
  const service=createSurveyService({profileStore,responseStore:store,verifyInvitation:async proof=>proof.id});
  const request={survey:'epidemiological',cycle:'2026',response:epi({answers:completeEpiAnswers()})};
  await assert.rejects(service.execute('SUBMIT',{...request,invitation:{id:'substitute'}},identity),{code:'SURVEY_FORBIDDEN'});
- await service.execute('SUBMIT',{...request,invitation:{id:'resident'}},identity);
+ await service.execute('SUBMIT',request,identity);
  const [answer]=await store.list('epidemiologicalResponses');
  assert.equal(answer.group,'resident');
  assert.deepEqual(Object.keys(answer).sort(),['answers','group','id','survey_cycle','survey_version']);
@@ -242,16 +241,17 @@ test('resident epidemiological submissions stay in the anonymous resident cohort
 test('epidemiological reports suppress small groups, rare cells and small missing complements',()=>{const row=()=>({survey_cycle:'2026',survey_version:'1.0',group:'team',answers:{sleep:'0',exercise:'0'}});const data=Array.from({length:10},row);const metric=r=>r.groups.team.questions.find(q=>q.id==='sleep');let r=aggregateEpidemiological(data);assert.equal(r.groups.resident.suppressed,true);assert.equal(metric(r).options[0].count,10);data[0].answers.sleep='1';assert.equal(metric(aggregateEpidemiological(data)).suppressed,true);data[0].answers.sleep='NI';assert.equal(metric(aggregateEpidemiological(data)).suppressed,true);assert.equal(aggregateEpidemiological(data.slice(0,4)).groups.team.suppressed,true);assert.equal(aggregateEpidemiological([row(),{...row(),answers:{sleep:'unknown'}}]).groups.team.suppressed,true);assert.equal(Object.hasOwn(r,'overall'),false);assert.doesNotMatch(JSON.stringify(r),/synthetic@example|52998224725/);});
 test('epidemiological report is only published after closure and only to configured active admin',async()=>{const profileStore=await fixture(),responseStore=vaccinationMemoryStore(),service=createSurveyService({profileStore,responseStore,reportReaderEmail:identity.email});profileStore.seed('users',identity.uid,{...identity,active:true,access:true,role:'administrador_app'});responseStore.seed('epidemiologicalCycles','2026',{status:'open'});responseStore.seed('epidemiologicalReports','2026',{grouping_version:2,groups:{}});const input={survey:'epidemiological',cycle:'2026'};assert.equal((await service.execute('REPORT',input,identity)).report,null);responseStore.seed('epidemiologicalCycles','2026',{status:'closed'});assert.equal((await service.execute('BOOTSTRAP',input,identity)).closed,true);assert.ok((await service.execute('REPORT',input,identity)).report);await assert.rejects(service.execute('DETAIL',{...input,uid:identity.uid},identity));profileStore.seed('users',identity.uid,{...identity,active:true,access:true});await assert.rejects(service.execute('REPORT',input,identity));});
 
-test('residents still need a registration invitation',async()=>{
- for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3']){
+test('all resident ranks and the generic category can open both registration forms',async()=>{
+ for(const category of ['RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3']){
   const store=await fixture(category);
   const registrations=createProfessionalRegistrationService({store});
-  await assert.rejects(registrations.execute('BOOTSTRAP',{},identity),{code:'REGISTRATION_FORBIDDEN'});
+  assert.equal((await registrations.execute('BOOTSTRAP',{},identity)).formVariant,'resident');
+  store.seed('epidemiologicalCycles','2026',{status:'open'});
   const surveys=createSurveyService({profileStore:store,responseStore:store});
   const request={survey:'epidemiological',cycle:'2026'};
-  await assert.rejects(surveys.execute('BOOTSTRAP',request,identity),{code:'SURVEY_FORBIDDEN'});
-  store.seed('users',identity.uid,{...identity,active:true,access:true,role:'administrador_app'});
-  await assert.rejects(surveys.execute('BOOTSTRAP',request,identity),{code:'SURVEY_FORBIDDEN'});
-  await assert.rejects(surveys.execute('SUBMIT',{...request,response:epi()},identity),{code:'SURVEY_FORBIDDEN'});
+  assert.equal((await surveys.execute('BOOTSTRAP',request,identity)).group,'resident');
+  for(const survey of ['climate','stress']){
+   await assert.rejects(surveys.execute('BOOTSTRAP',{...request,survey},identity),{code:'SURVEY_FORBIDDEN'});
+  }
  }
 });

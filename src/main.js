@@ -1603,8 +1603,8 @@ async function loadModule(route) {
     ]);
     if(!content.isConnected||!currentHub())return;
     const epidemiologicalAllowed=affiliation==='team';
-    const substituteRegistrations=affiliation==='substitute'&&!isSystemOwnerEmail(session.user.email);
-    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed||substituteRegistrations;
+    const groupRegistrations=['resident','substitute'].includes(affiliation)&&!isSystemOwnerEmail(session.user.email);
+    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed||groupRegistrations;
     const requiredRegistrationPanel=requiredActivity?initialPanel:null;
     const inRequiredRegistration=kind=>requiredRegistrationPanel===kind&&activeObligationId()===requiredActivity;
     const canManageActivity=()=>typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&deployment.target==='FA'&&!participantOnly&&can('admin')&&currentHub();
@@ -1649,8 +1649,8 @@ async function loadModule(route) {
       },
       performRegistration:async(kind,action,input,signal)=>{
         const {callRegistrationApi}=await import('./registration-client.js');
-        const normalAccess=kind==='epidemiological'?epidemiologicalAllowed||substituteRegistrations:professionalAllowed;
-        const needsInvitation=!substituteRegistrations&&inRequiredRegistration(kind)&&(!normalAccess||obligationBanner?.hasRegistrationConvocation(requiredActivity,kind));
+        const normalAccess=kind==='epidemiological'?epidemiologicalAllowed||groupRegistrations:professionalAllowed;
+        const needsInvitation=!groupRegistrations&&inRequiredRegistration(kind)&&(!normalAccess||obligationBanner?.hasRegistrationConvocation(requiredActivity,kind));
         const result=await callRegistrationApi({uid,isCurrent:()=>currentHub()&&(normalAccess||needsInvitation&&inRequiredRegistration(kind)),kind,action,input,signal,
           invitationId:needsInvitation?requiredActivity:undefined});
         const surveySubmitted=kind==='epidemiological'&&action==='SUBMIT'&&result?.accepted===true;
@@ -1659,7 +1659,7 @@ async function loadModule(route) {
         return result;
       },
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),inactiveFolderNavigation:canUseGovernanceHub(session),inactiveConsultations:canBrowseInactiveGovernanceFolder('consultas'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:session.accountMode!=='team'&&can('admin')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')||canBrowseInactiveGovernanceFolder('registros'),results:canUseGovernanceHub(session),surveys:consultationsAllowed,professional:professionalAllowed,epidemiological:epidemiologicalAllowed||substituteRegistrations,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),qmentum:canBrowseInactiveGovernanceFolder('registros/qmentum')||canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),inactiveFolderNavigation:canUseGovernanceHub(session),inactiveConsultations:canBrowseInactiveGovernanceFolder('consultas'),vacations2027:consultationsAllowed,institutionalSurveys:!groupRegistrations,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:!groupRegistrations&&import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:session.accountMode!=='team'&&can('admin')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')||canBrowseInactiveGovernanceFolder('registros'),results:canUseGovernanceHub(session),surveys:consultationsAllowed,professional:professionalAllowed,epidemiological:epidemiologicalAllowed||groupRegistrations,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),qmentum:canBrowseInactiveGovernanceFolder('registros/qmentum')||canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{
         if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}
         const prefix='#/management-hub'+(panel==='home'?'':'/'+panel);
