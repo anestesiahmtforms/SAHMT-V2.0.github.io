@@ -8,6 +8,24 @@ after(async()=>{await browser?.close();await server?.close();});
 async function pageFor(options={}){const page=await browser.newPage(options);page.setDefaultTimeout(10000);await page.goto(url,{timeout:30000});await page.locator('[data-obligation-banner]').waitFor();return page;}
 const panel=page=>page.locator('[data-obligation-banner]');
 
+test('Cadastro Profissional dos Substitutos usa as 48 horas da convocação',async()=>{
+ const page=await pageFor({viewport:{width:980,height:760}});
+ try {
+  await page.evaluate(async()=>{
+   const publishAt=Date.parse('2026-11-27T12:00:00Z');
+   fixture.now=publishAt;
+   fixture.items=[{id:'activity-substitutes',publishAt,dueAt:publishAt+48*3600000,substituteConvocation:true,
+    activity:{kind:'SURVEY',id:'professional',title:'Cadastro Profissional',cycle:'2026'}}];
+   await banner.refresh();
+  });
+  assert.equal(await panel(page).getAttribute('data-blocking'),'false');
+  assert.match(await panel(page).locator('[data-deadline]').textContent(),/29\/11\/2026, 09:00/);
+  await page.evaluate(async()=>{fixture.now=fixture.items[0].dueAt;await banner.refresh();});
+  assert.equal(await panel(page).getAttribute('data-blocking'),'true');
+  assert.equal((await panel(page).boundingBox()).width,980);
+ } finally {await page.close();}
+});
+
 test('banner compacto mostra o título da atividade, o caminho na Home e somente o botão de abrir',async()=>{
  const page=await pageFor({viewport:{width:320,height:568}});try{
   const banner=panel(page);

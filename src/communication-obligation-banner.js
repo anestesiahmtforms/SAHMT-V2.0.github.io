@@ -4,7 +4,7 @@ import './communication-obligation-banner.css';
 
 const registrationLockAt=Date.parse('2026-11-27T00:00:00-03:00');
 const isProfessional=item=>item?.activity?.kind==='SURVEY'&&item.activity.id==='professional';
-const isRegistrationCampaign=item=>isProfessional(item)&&item.activity.cycle==='2026';
+const isRegistrationCampaign=item=>isProfessional(item)&&item.activity.cycle==='2026'&&!item.substituteConvocation;
 const registrationDueAt=item=>isRegistrationCampaign(item)?registrationLockAt:obligationDueAt(item);
 
 /** One controller per authenticated session. Responses, never the device clock, advance age. */
@@ -23,7 +23,7 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  const mandatoryRegistration=()=>registrationNow()>=registrationLockAt?items.find(isRegistrationCampaign):null;
  const current=()=>mandatoryRegistration()||items.find(item=>item.id===selectedId)||items[0];
  const stage=()=>items.length&&serverNow!==null?Math.max(...items.map(item=>{
-  if(!isRegistrationCampaign(item))return obligationStage(item.publishAt,serverNow,item.dueAt);
+  if(!isRegistrationCampaign(item))return obligationStage(item.publishAt,item.substituteConvocation?registrationNow():serverNow,item.dueAt);
   if(registrationNow()>=registrationLockAt)return 5;
   return Math.min(4,obligationStage(item.publishAt,serverNow,registrationLockAt));
  })):0;
@@ -45,14 +45,18 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  }
  function scheduleRefresh(){
   win.clearTimeout(refreshTimer);
-  if(!items.some(isRegistrationCampaign))return;
-  const remaining=registrationLockAt-registrationNow();
+  const legacy=items.some(isRegistrationCampaign);
+  const deadlines=items.filter(item=>item.substituteConvocation)
+   .map(item=>registrationDueAt(item)-registrationNow()).filter(value=>value>0);
+  if(!legacy&&!deadlines.length)return;
+  const remaining=Math.min(...deadlines,60_000,...(legacy&&registrationLockAt>registrationNow()?[registrationLockAt-registrationNow()]:[]));
   refreshTimer=win.setTimeout(()=>{
    if(!alive())return;
-   if(mandatoryRegistration()){persistRegistration();render();}
-   if(doc.visibilityState!=='hidden'&&win.navigator.onLine!==false)void refresh();
+   if(mandatoryRegistration())persistRegistration();
+   render();
+   if(legacy&&doc.visibilityState!=='hidden'&&win.navigator.onLine!==false&&!inFlight)void refresh();
    else scheduleRefresh();
-  },remaining>0?Math.min(remaining,60_000):60_000);
+  },remaining);
  }
  function restoreInert(){for(const [el,previous]of inertBefore)el.inert=previous;inertBefore.clear();}
  function applyBlocking(){
@@ -77,8 +81,11 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   const target=modals.at(-1)||root;
   if(node.parentElement!==target){restoreInert();node.remove();target.append(node);}
   const required=mandatoryRegistration();
-  const editingRegistration=Boolean(target.closest('dialog:modal[data-panel="professional"]')&&
-    (required||items.some(item=>item.id===activeId&&isProfessional(item))));
+  const editingProfessional=target.closest('dialog:modal[data-panel="professional"]')&&
+    (required||items.some(item=>item.id===activeId&&isProfessional(item)));
+  const editingEpidemiological=target.closest('dialog:modal[data-panel="epidemiological"]')&&
+    items.some(item=>item.id===activeId&&item.substituteConvocation&&item.activity?.id==='epidemiological');
+  const editingRegistration=Boolean(editingProfessional||editingEpidemiological);
   const updatingAccess=target.matches('dialog.ecosystem-access-update');
   const active=items.some(item=>item.id===activeId);
   blocking=!updatingAccess&&Boolean(required?!editingRegistration:stage()===5&&!active&&!interacting);

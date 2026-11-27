@@ -19,7 +19,7 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
   const p=rows[0];if(rows.length!==1||!activeProfile(p)||typeof p.uid!=='string'||p.uid!==p.id||p.email!==email||p.ffUid&&p.ffUid!==uid)throw fail('COMM_FORBIDDEN',403);
   return p;
  };
- const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','SENT_DETAIL','ACTIVITY_CATALOG','PENDING_ACTIVITIES','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','PUSH_TEAM_STATUS','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
+ const readActions=new Set(['BOOTSTRAP','INBOX','MESSAGE','SENT_MESSAGES','SENT_DETAIL','ACTIVITY_CATALOG','PENDING_ACTIVITIES','REGISTRATION_INVITATION','MESSAGES','GROUPS','HISTORY','DIRECTORY','PUSH_DEVICE_DIRECTORY','PUSH_TEAM_STATUS','METRICS','SETTINGS','AREAS','AUDIT','IMPORT_SOURCE','USAGE']);
  const quota=(code,used,limit,resetsAt)=>Object.assign(fail(code,429),{used,limit,...(resetsAt?{resetsAt}:{})});
  async function admit(a,action){
   const {day,resetsAt}=communicationUsagePeriod(now()),minute=Math.floor(now()/60000),key=digest(a.uid);
@@ -499,13 +499,13 @@ export function createCommunicationService({store,fa,scheduleSource=fa,send,reci
  async function consumePush(input,options){if(input?.kind==='history'){if(!history)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);return history.consume(input);}if(typeof input?.dispatchId==='string'&&!input.dispatchId.startsWith('release-'))return {done:true};if(!pushQueue)throw fail('COMM_PUSH_QUEUE_UNAVAILABLE',503);if(input?.kind==='fanout')return queueFanout(input);if(input?.kind==='device')return queueDevice(input,options);throw fail('COMM_INVALID_INPUT');}
  return {consumePush,sendChecklistConference,async execute(action,input,a){
   if(!input||Array.isArray(input)||typeof input!=='object')throw fail('COMM_INVALID_INPUT');
-  const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGE_READ','PENDING_ACTIVITIES','VERIFY_ACTIVITY','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
+  const regular=new Set(['BOOTSTRAP','INBOX','MESSAGE','MESSAGE_READ','PENDING_ACTIVITIES','VERIFY_ACTIVITY','REGISTRATION_INVITATION','REGISTER_DEVICE','DISABLE_DEVICE','SCHEDULE_RELEASE_NOTICE']);
   if(!regular.has(action))admin(a);
   if(!regular.has(action)&&operationalNoticeIdentity(a)&&!['CREATE_EVENT','DIRECTORY','SAVE_MESSAGE'].includes(action))throw fail('COMM_FORBIDDEN',403);
   if(action==='SENT_MESSAGES'&&!communicationSenderRole(a.email))throw fail('COMM_FORBIDDEN',403);
   // Validate authorization before accessing directory, rate records or messages.
   const ownProfile=await profile(a.uid,a.email);a={...a,sourceUid:ownProfile.uid};await admit(a,action);
-  if(['ACTIVITY_CATALOG','PREVIEW_ACTIVITY','CREATE_ACTIVITY','CANCEL_ACTIVITY','UPDATE_ACTIVITY_DEADLINE','PENDING_ACTIVITIES','VERIFY_ACTIVITY'].includes(action)){
+  if(['ACTIVITY_CATALOG','PREVIEW_ACTIVITY','CREATE_ACTIVITY','CANCEL_ACTIVITY','UPDATE_ACTIVITY_DEADLINE','PENDING_ACTIVITIES','VERIFY_ACTIVITY','REGISTRATION_INVITATION'].includes(action)){
    if(action==='PENDING_ACTIVITIES'&&!history&&Object.keys(input).length===0)return {items:[],serverNow:now()};
    if(!history||!activitySource)throw fail('COMM_HISTORY_CONFIG_REQUIRED',503);
    return obligations.execute(action,input,a);

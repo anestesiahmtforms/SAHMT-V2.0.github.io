@@ -5,6 +5,7 @@ import {createFirestoreStore} from '../worker-training/firestore.js';
 import {createServiceTokenProvider, REGISTRATION_PROJECT, verifyTrainingIdentity} from '../worker-training/google-auth.js';
 import {createProfessionalRegistrationService, professionalObligationActions, registrationActor, registrationAdmin} from '../worker-training/professional-registration-service.js';
 import {createRegistrationDrive} from '../worker-training/registration-drive.js';
+import {verifyRegistrationInvitation} from '../worker-training/registration-invitation.js';
 
 const origin = 'https://anestesiahmtforms.github.io';
 const folder = 'consultas/cadastro-profissional';
@@ -51,7 +52,7 @@ function buildRuntime(env, fetchImpl) {
  try { driveConfig = JSON.parse(env.FC_REGISTRATION_DRIVE_CLIENT_JSON); } catch {}
  const getAccessToken = createServiceTokenProvider({credentials,projectId:REGISTRATION_PROJECT,fetchImpl});
  const store = createFirestoreStore({projectId:REGISTRATION_PROJECT,getAccessToken,fetchImpl});
- const professional = createProfessionalRegistrationService({store});
+ const professional = createProfessionalRegistrationService({store,verifyInvitation:(invitation,scope)=>verifyRegistrationInvitation(invitation,scope,fetchImpl)});
  const drive = createRegistrationDrive({store,fetchImpl,interactive:false,checkAccess:profile=>checkFolder(store,profile),
   refreshToken:env.FC_REGISTRATION_DRIVE_REFRESH_TOKEN,
   clientConfig:driveConfig ? {...driveConfig,ownerEmail:'anestesiahmtforms@gmail.com',origin} : null});

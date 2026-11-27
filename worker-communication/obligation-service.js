@@ -1,7 +1,7 @@
 import {Buffer} from 'node:buffer';
 import {createHash} from 'node:crypto';
 import {BUILTIN_GROUPS,fail,id,text} from '../communication/domain.js';
-import {DEFAULT_OBLIGATION_DAYS,OBLIGATION_HOUR,obligationDueAt,sameObligation,validObligationHours,validateObligation} from '../communication/obligations.js';
+import {DEFAULT_OBLIGATION_DAYS,OBLIGATION_HOUR,isSubstituteRegistration,obligationDueAt,sameObligation,validObligationHours,validateObligation} from '../communication/obligations.js';
 
 const PREVIEWS='communicationActivityPreviews',MESSAGES='communicationMessages',RECIPIENTS='communicationMessageRecipients',INDEX='communicationObligationIndex';
 const exact=(value,keys,optional=[])=>value&&typeof value==='object'&&!Array.isArray(value)&&keys.every(k=>Object.hasOwn(value,k))&&Object.keys(value).every(k=>keys.includes(k)||optional.includes(k));
@@ -56,8 +56,8 @@ export function createObligationService({store,source,history,saveActivity,resol
   if(requested.kind==='TRAINING'?item.version!==requested.version:item.cycle!==requested.cycle)throw fail('COMM_ACTIVITY_CHANGED',409);
   return validateObligation(requested.kind==='TRAINING'?{kind:item.kind,id:item.id,title:item.title,version:item.version,maxScore:item.maxScore,minimumScore:requested.minimumScore}:{kind:item.kind,id:item.id,title:item.title,cycle:item.cycle});
  }
- async function eligible(activity,recipients){
-  const result=await source.eligibility({activity,recipients});
+ async function eligible(activity,recipients,audience){
+  const result=await source.eligibility({activity,recipients,...(isSubstituteRegistration(activity,audience)?{substituteConvocation:true}:{})});
   if(!Array.isArray(result?.eligibleUids)||!Array.isArray(result.excluded))throw fail('COMM_SOURCE_UNAVAILABLE',503);
   const ids=[...result.eligibleUids,...result.excluded.map(r=>r?.uid)];
   if(ids.length!==recipients.length||new Set(ids).size!==ids.length||ids.some(uid=>!recipients.some(r=>r.uid===uid))||result.excluded.some(r=>typeof r.reason!=='string'||!/^[A-Z0-9_]{1,90}$/.test(r.reason)))throw fail('COMM_SOURCE_UNAVAILABLE',503);
@@ -98,7 +98,7 @@ export function createObligationService({store,source,history,saveActivity,resol
    const deadlineHours=Object.hasOwn(input,'deadlineHours')?input.deadlineHours:DEFAULT_OBLIGATION_DAYS*24;
    if(!validObligationHours(deadlineHours,serverNow))throw fail('COMM_INVALID_DEADLINE');
    const selection=audienceChecked(input),activity=await authoritative(input.activity);
-   const selected=recipientsChecked(await resolveRecipients(selection,actor)),result=await eligible(activity,selected),previewId=id(uuid());
+   const selected=recipientsChecked(await resolveRecipients(selection,actor)),result=await eligible(activity,selected,selection.audience),previewId=id(uuid());
    await store.transaction(async tx=>tx.create(PREVIEWS,previewId,{sourceUid:actor.sourceUid,selection,activity,deadlineHours,selected,recipients:result.recipients,excluded:result.excluded,createdAt:serverNow,expiresAt:serverNow+600000}));
    return {previewId,activity,deadlineHours,...result};
   }
@@ -119,7 +119,7 @@ export function createObligationService({store,source,history,saveActivity,resol
    if(!sameObligation(activity,preview.activity))throw fail('COMM_ACTIVITY_CHANGED',409);
    const selected=recipientsChecked(await resolveRecipients(preview.selection,actor));
    if(!same(orderedIds(selected),orderedIds(preview.selected))||selected.some(p=>preview.selected.find(old=>old.uid===p.uid)?.email!==p.email))throw fail('COMM_ACTIVITY_AUDIENCE_CHANGED',409);
-   const fresh=await eligible(activity,selected);
+   const fresh=await eligible(activity,selected,preview.selection.audience);
    if(!same(orderedIds(fresh.recipients),orderedIds(preview.recipients)))throw fail('COMM_ACTIVITY_AUDIENCE_CHANGED',409);
    if(!fresh.recipients.length)throw fail('COMM_NO_ELIGIBLE_RECIPIENTS',409);
    await store.transaction(async tx=>{
@@ -143,9 +143,23 @@ export function createObligationService({store,source,history,saveActivity,resol
     if(!message||message.id!==ids[n]||message.hasActivity!==true)throw unavailable();
     const row=ownRow(snapshots[n],ids[n],actor.sourceUid);
     if(row.status!=='PENDING'||message.status!=='published'||message.publishAt>serverNow)continue;
-    items.push({id:message.id,title:message.title,message:message.message,publishAt:message.publishAt,dueAt:obligationDueAt(message),activity:validateObligation(message.activity),status:'PENDING'});
+    const activity=validateObligation(message.activity);
+    items.push({id:message.id,title:message.title,message:message.message,publishAt:message.publishAt,dueAt:obligationDueAt(message),activity,status:'PENDING',
+     ...(message.audienceType==='GROUP'&&isSubstituteRegistration(activity,message.audienceValue)?{substituteConvocation:true}:{})});
    }
    items.sort((a,b)=>a.publishAt-b.publishAt||a.id.localeCompare(b.id));return {items,serverNow};
+  }
+  if(action==='REGISTRATION_INVITATION'){
+   if(!exact(input,['id','survey','cycle','email'])||typeof input.email!=='string'||input.email!==actor.email)
+    throw fail('COMM_FORBIDDEN',403);
+   const messageId=id(input.id);
+   const [message,snapshot]=await Promise.all([store.get(MESSAGES,messageId),store.get(RECIPIENTS,messageId)]);
+   if(message?.id!==messageId||message.hasActivity!==true||message.status!=='published'||
+      !Number.isSafeInteger(message.publishAt)||message.publishAt>serverNow||
+      message.audienceType!=='GROUP'||!isSubstituteRegistration(message.activity,message.audienceValue)||
+      message.activity.id!==input.survey||message.activity.cycle!==input.cycle||
+      ownRow(snapshot,messageId,actor.sourceUid).status!=='PENDING')throw fail('COMM_FORBIDDEN',403);
+   return {authorized:true};
   }
   if(action==='VERIFY_ACTIVITY'){
    if(!exact(input,['id']))throw fail('COMM_INVALID_INPUT');const messageId=id(input.id);
@@ -155,7 +169,8 @@ export function createObligationService({store,source,history,saveActivity,resol
    if(row.status==='COMPLETED'){await removeIndex(messageId,actor.sourceUid);return {id:messageId,...evidence(row),serverNow};}
    if(message.status!=='published'||row.status==='CANCELLED')return {id:messageId,completed:false,unavailable:true,reason:'ACTIVITY_CANCELLED',serverNow};
    if(message.publishAt>serverNow)throw fail('COMM_NOT_CURRENT',409);
-   const activity=validateObligation(message.activity),result=await source.completion({activity});
+   const activity=validateObligation(message.activity);
+   const result=await source.completion({activity,...(message.audienceType==='GROUP'&&isSubstituteRegistration(activity,message.audienceValue)?{substituteConvocation:true}:{})});
    if(typeof result?.completed!=='boolean')throw fail('COMM_SOURCE_UNAVAILABLE',503);
    if(!result.completed)return {id:messageId,completed:false,...(result.unavailable===true?{unavailable:true,reason:typeof result.reason==='string'&&/^[A-Z0-9_]{1,90}$/.test(result.reason)?result.reason:'SOURCE_UNAVAILABLE'}:{}),serverNow:clock()};
    const confirmedAt=clock();

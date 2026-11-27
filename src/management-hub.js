@@ -5,7 +5,7 @@ import './management-hub.css';
 import './fe-performance.css';
 
 // Surveys reuse the authenticated app session; only broad affiliation goes to FE.
-export function mountManagementHub(root,{access={},initialPanel='home',communicationAllowed=false,openCommunication=null,surveySelection=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},openOccupationalHistory=null,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderState=id=>id?(folderAllowed(id)?'active':'inactive'):null,activityAvailability=()=>null,setActivityAvailability=null}={}){
+export function mountManagementHub(root,{access={},initialPanel='home',requiredRegistrationPanel=null,communicationAllowed=false,openCommunication=null,surveySelection=null,fbPerformanceReleased=false,performanceUid,assetBase='./',displayName='',climateEnabled=false,onYearEndConfirmed=()=>{},connectYearEndAccess=null,performVacations=async()=>{throw Error('VACATIONS_UNAVAILABLE');},createYearEndRepository=async()=>{throw Error('YEAR_END_AUTH_REQUIRED');},openOccupationalHistory=null,performRegistration=async()=>{throw Error('REGISTRY_UNAVAILABLE');},performSurvey=async()=>{throw Error('REGISTRY_UNAVAILABLE');},isSurveySessionCurrent=()=>false,syncStatusElement=null,onNavigate,onExit,onPanelChange=()=>{},folderAllowed=()=>true,folderState=id=>id?(folderAllowed(id)?'active':'inactive'):null,activityAvailability=()=>null,setActivityAvailability=null}={}){
  access={...access,professional:access.professional??access.surveys,communication:communicationAllowed,teamSurveys:climateEnabled&&access.teamSurveys===true};
  if(['biosafety','dosimetryHistory'].includes(initialPanel))initialPanel='institutional';
  if(initialPanel==='indicators')initialPanel='records';
@@ -30,7 +30,8 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
  const panelAllowed=name=>profilePanelAllowed(name)||Boolean(surveyForPanel(name))||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(name)&&Object.hasOwn(panelFolders,name)&&!folderAllowed(panelFolders[name]));
  const itemNavigable=item=>item.access==='groups'?access.groups===true:itemAllowed(item)||(access.inactiveFolderNavigation===true&&!restrictedPanels.has(item.panel||item.route)&&Object.hasOwn(panelFolders,item.panel||item.route)&&!panelFolderAllowed(item.panel||item.route));
  const profilePanelAllowed=name=>biosafetyPanels.includes(name)?access.biosafety===true:teamSurveyPanels.includes(name)?access.teamSurveys:name==='general'?institutionalAllowed():name==='institutional'?restrictedAllowed():name==='home'||(name==='surveys'?consultationsAllowed():access[name==='yearEnd'?'yearEndSchedule':name]===true);
- let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&panelAllowed(initialPanel)?initialPanel:'home';
+ const invitedRegistration=name=>['professional','epidemiological'].includes(name)&&name===requiredRegistrationPanel;
+ let cleanupYearEnd=()=>{},cleanupSurvey=()=>{},cleanupRegistration=()=>{},cleanupIndicators=()=>{},renderId=0,disposed=false,panel=Object.hasOwn(panels,initialPanel)&&(panelAllowed(initialPanel)||invitedRegistration(initialPanel))?initialPanel:'home';
  root.innerHTML='<dialog class="management-hub-dialog" aria-labelledby="management-hub-title"><header class="management-hub-header"><div data-hub-heading-icon></div><div class="management-hub-user-row identity-card__user-row"><div class="management-hub-user" data-hub-user></div><div data-hub-sync></div></div><h2 id="management-hub-title" tabindex="-1"></h2><div data-hub-activity-actions></div></header><div class="management-hub-content-panel"><section class="management-hub-body" data-hub-body></section><footer class="management-hub-footer"><button class="secondary-button" type="button" data-hub-back></button></footer></div></dialog>';
  const dialog=root.querySelector('dialog'),body=dialog.querySelector('[data-hub-body]'),back=dialog.querySelector('[data-hub-back]');
  const useSurvey=surveySelection?root.ownerDocument.createElement('button'):null;
@@ -160,7 +161,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
     cleanupIndicators=ui.mountFePerformanceModule(host,{repository,isCurrent:current});
    }).catch(()=>{if(current())host.textContent='Não foi possível confirmar o Desempenho FE.';});
   }
-  if(panel==='epidemiological'&&access.epidemiological===true){
+  if(panel==='epidemiological'&&(access.epidemiological===true||invitedRegistration(panel))){
    const current=()=>!disposed&&ticket===renderId&&panel==='epidemiological'&&isSurveySessionCurrent();
    dialog.dataset.surveyView='intro';
    body.innerHTML='<div data-epidemiological></div>';
@@ -174,7 +175,7 @@ export function mountManagementHub(root,{access={},initialPanel='home',communica
   }
   if(panel==='professional'&&surveyForPanel(panel)){
    body.innerHTML='<p role="status">Toque em <strong>Usar nesta convocação</strong> para incluir o link do Cadastro Profissional.</p>';
-  }else if(panel==='professional'&&profilePanelAllowed(panel)){
+  }else if(panel==='professional'&&(profilePanelAllowed(panel)||invitedRegistration(panel))){
    body.innerHTML='<p role="status">Preparando cadastro…</p>';const activePanel=panel;
    void import('./registration-ui.js').then(({mountInstitutionalRegistration})=>{if(disposed||ticket!==renderId||panel!==activePanel)return;cleanupRegistration=mountInstitutionalRegistration(body,{request:performRegistration,isCurrent:()=>!disposed&&ticket===renderId&&panel===activePanel&&isSurveySessionCurrent()});}).catch(()=>{if(!disposed&&ticket===renderId)body.innerHTML='<p role="alert">Não foi possível preparar o cadastro. Volte e tente novamente.</p>';});
   }

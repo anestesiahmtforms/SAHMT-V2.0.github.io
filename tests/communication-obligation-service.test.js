@@ -88,6 +88,28 @@ test('a publicação guarda o prazo confirmado e o entrega ao destinatário',asy
  assert.equal((await h.execute('PENDING_ACTIVITIES',{},person)).items[0].dueAt,NOW+9*hour);
  await assert.rejects(h.execute('PREVIEW_ACTIVITY',{activity,audience:'ALL',deadlineHours:0}),{code:'COMM_INVALID_DEADLINE'});
 });
+test('substitute registration invitation is live, recipient-bound and stops on completion',async()=>{
+ const h=fixture(),survey={kind:'SURVEY',id:'professional',title:'Cadastro Profissional',cycle:'2026'};
+ h.setCards([survey]);
+ const scopes=[],eligibility=h.source.eligibility;
+ h.source.eligibility=async input=>{scopes.push(input.substituteConvocation);return eligibility(input);};
+ const id='activity-substitutes';
+ const {previewId}=await h.execute('PREVIEW_ACTIVITY',{activity:survey,audience:'institutional-substitute',deadlineHours:48});
+ await h.execute('CREATE_ACTIVITY',{id,previewId,title:'Cadastro',description:'Preencha em dois dias',confirmed:true});
+ assert.deepEqual(scopes,[true,true]);
+ const [pending]=(await h.execute('PENDING_ACTIVITIES',{},person)).items;
+ assert.equal(pending.dueAt,NOW+48*3600000);
+ assert.equal(pending.substituteConvocation,true);
+ const proof={id,survey:survey.id,cycle:survey.cycle,email:person.email};
+ assert.deepEqual(await h.execute('REGISTRATION_INVITATION',proof,person),{authorized:true});
+ await assert.rejects(h.execute('REGISTRATION_INVITATION',proof,actor),{code:'COMM_FORBIDDEN'});
+ await assert.rejects(h.execute('REGISTRATION_INVITATION',{...proof,survey:'epidemiological'},person),{code:'COMM_FORBIDDEN'});
+ h.setTime(pending.dueAt+1);
+ assert.deepEqual(await h.execute('REGISTRATION_INVITATION',proof,person),{authorized:true});
+ h.setCompletion({completed:true});
+ await h.execute('VERIFY_ACTIVITY',{id},person);
+ await assert.rejects(h.execute('REGISTRATION_INVITATION',proof,person),{code:'COMM_FORBIDDEN'});
+});
 test('verification ignores supplied scores, rejects foreign recipient and persists source evidence idempotently',async()=>{
  const h=fixture();await h.create();h.setCompletion({completed:true,completedAt:NOW-100000,score:4});
  await assert.rejects(h.execute('VERIFY_ACTIVITY',{id:'activity-one',score:5},person),{code:'COMM_INVALID_INPUT'});

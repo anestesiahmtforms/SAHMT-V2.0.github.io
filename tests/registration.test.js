@@ -58,6 +58,19 @@ test('professional registration can be called by administrators and verifies onl
  await assert.rejects(service.execute('OBLIGATION_STATUS',{...activity,uid:identity.uid},admin),{code:'REGISTRATION_INVALID_INPUT'});
 });
 export async function fixture(category='EFETIVO'){const store=vaccinationMemoryStore();store.seed('users',identity.uid,{uid:identity.uid,email:identity.email,active:true,access:true});store.seed('userCategories',await institutionalAssignmentKey(identity.email),{schemaVersion:1,identityStatus:'LINKED',uid:identity.uid,email:identity.email,memberCategories:[category]});return store;}
+
+test('a substitute can save only once with a confirmed professional invitation',async()=>{
+ const store=await fixture('SUBSTITUTO');
+ const service=createProfessionalRegistrationService({store,
+  verifyInvitation:async(proof,scope)=>proof.id==='valid'&&scope.email===identity.email&&scope.survey==='professional'});
+ const valid={invitation:{id:'valid'}};
+ await assert.rejects(service.execute('BOOTSTRAP',{},identity),{code:'REGISTRATION_FORBIDDEN'});
+ await assert.rejects(service.execute('BOOTSTRAP',{invitation:{id:'invalid'}},identity),{code:'REGISTRATION_FORBIDDEN'});
+ assert.equal((await service.execute('BOOTSTRAP',valid,identity)).invitationOnly,true);
+ const draft={expectedVersion:0,truth:true,answers:professionalAnswers(),...valid};
+ assert.equal((await service.execute('SAVE',draft,identity)).record.uid,identity.uid);
+ await assert.rejects(service.execute('SAVE',{...draft,expectedVersion:1},identity),{code:'REGISTRATION_VERSION_CONFLICT'});
+});
 test('the professional form accepts a weekly grid and several surgical areas without retired fields',()=>{
  const answers=professionalAnswers();
  answers.workDays=['0:WEEKLY','0:MORNING','6:ON_CALL'];
@@ -185,6 +198,21 @@ test('administrative epidemiological status includes previous submissions withou
  assert.deepEqual(reads,['surveyParticipation']);
  store.seed('surveyParticipation',identity.uid+'_epidemiological_2026',{...ledger,responseId:'private'});
  await assert.rejects(service.execute(action,input,admin),{code:'SURVEY_PARTICIPATION_INVALID'});
+});
+test('only invited substitutes can submit epidemiological responses and the records stay separate',async()=>{
+ const profileStore=await fixture('SUBSTITUTO'),store=vaccinationMemoryStore();
+ store.seed('epidemiologicalCycles','2026',{status:'open'});
+ store.seed('fePerformanceRuntime','current',{schemaVersion:1,projectId:'outros-48120',enabled:true,effectiveFrom:1});
+ const service=createSurveyService({profileStore,responseStore:store,performanceEnabled:true,
+  verifyInvitation:async(proof,scope)=>proof.id==='valid'&&scope.email===identity.email&&scope.survey==='epidemiological'});
+ const request={survey:'epidemiological',cycle:'2026',response:epi({answers:completeEpiAnswers()})};
+ await assert.rejects(service.execute('SUBMIT',request,identity),{code:'SURVEY_FORBIDDEN'});
+ await assert.rejects(service.execute('SUBMIT',{...request,invitation:{id:'wrong'}},identity),{code:'SURVEY_FORBIDDEN'});
+ assert.equal((await service.execute('SUBMIT',{...request,invitation:{id:'valid'}},identity)).accepted,true);
+ const [answer]=await store.list('epidemiologicalResponses');
+ assert.deepEqual(Object.keys(answer).sort(),['answers','group','id','survey_cycle','survey_version']);
+ assert.equal((await store.get('surveyParticipation',identity.uid+'_epidemiological_2026')).completed,true);
+ assert.deepEqual(await store.list('fePerformanceAwards'),[]);
 });
 test('epidemiological reports suppress small groups, rare cells and small missing complements',()=>{const row=()=>({survey_cycle:'2026',survey_version:'1.0',group:'team',answers:{sleep:'0',exercise:'0'}});const data=Array.from({length:10},row);const metric=r=>r.groups.team.questions.find(q=>q.id==='sleep');let r=aggregateEpidemiological(data);assert.equal(r.groups.resident.suppressed,true);assert.equal(metric(r).options[0].count,10);data[0].answers.sleep='1';assert.equal(metric(aggregateEpidemiological(data)).suppressed,true);data[0].answers.sleep='NI';assert.equal(metric(aggregateEpidemiological(data)).suppressed,true);assert.equal(aggregateEpidemiological(data.slice(0,4)).groups.team.suppressed,true);assert.equal(aggregateEpidemiological([row(),{...row(),answers:{sleep:'unknown'}}]).groups.team.suppressed,true);assert.equal(Object.hasOwn(r,'overall'),false);assert.doesNotMatch(JSON.stringify(r),/synthetic@example|52998224725/);});
 test('epidemiological report is only published after closure and only to configured active admin',async()=>{const profileStore=await fixture(),responseStore=vaccinationMemoryStore(),service=createSurveyService({profileStore,responseStore,reportReaderEmail:identity.email});profileStore.seed('users',identity.uid,{...identity,active:true,access:true,role:'administrador_app'});responseStore.seed('epidemiologicalCycles','2026',{status:'open'});responseStore.seed('epidemiologicalReports','2026',{grouping_version:2,groups:{}});const input={survey:'epidemiological',cycle:'2026'};assert.equal((await service.execute('REPORT',input,identity)).report,null);responseStore.seed('epidemiologicalCycles','2026',{status:'closed'});assert.equal((await service.execute('BOOTSTRAP',input,identity)).closed,true);assert.ok((await service.execute('REPORT',input,identity)).report);await assert.rejects(service.execute('DETAIL',{...input,uid:identity.uid},identity));profileStore.seed('users',identity.uid,{...identity,active:true,access:true});await assert.rejects(service.execute('REPORT',input,identity));});

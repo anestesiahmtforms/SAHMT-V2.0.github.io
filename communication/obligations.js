@@ -3,6 +3,9 @@ export const OBLIGATION_HOUR=3_600_000;
 export const OBLIGATION_DAY=24*OBLIGATION_HOUR;
 export const DEFAULT_OBLIGATION_DAYS=5;
 export const SURVEY_ACTIVITIES=Object.freeze({professional:'Cadastro Profissional - SAHMT',epidemiological:'Cadastro Epidemiológico SAHMT',climate:'Pesquisa de Clima Organizacional',stress:'Avaliação de Estresse e Fadiga'});
+export const SUBSTITUTE_REGISTRATION_AUDIENCE='institutional-substitute';
+export const isSubstituteRegistration=(activity,audience)=>audience===SUBSTITUTE_REGISTRATION_AUDIENCE&&
+ activity?.kind==='SURVEY'&&activity.cycle==='2026'&&['professional','epidemiological'].includes(activity.id);
 const identifier=v=>typeof v==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,199}$/.test(v);
 export function validObligationHours(hours,startsAt){
  return Number.isSafeInteger(hours)&&hours>0&&Number.isFinite(new Date(startsAt+hours*OBLIGATION_HOUR).getTime());

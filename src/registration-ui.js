@@ -168,7 +168,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    <form class="reg-form" novalidate><div class="reg-grid">${fields}</div>
    <label class="reg-confirm"><input type="checkbox" name="truth" required>Confirmo que as informações declaradas são verdadeiras e se destinam ao cadastro institucional.</label>
    <button class="primary-button" type="submit" data-reg-save>SALVAR MEU CADASTRO</button></form>
-   <section class="reg-attachments"><h3>Comprovantes (opcionais)</h3>
+   ${state.invitationOnly?'':`<section class="reg-attachments"><h3>Comprovantes (opcionais)</h3>
    <label class="reg-field"><span>Assunto</span><select data-reg-subject><option value="">Selecione o assunto</option>
    ${Object.entries(ATTACHMENT_SUBJECTS).map(([id,label]) => `<option value="${id}">${escape(label)}</option>`).join('')}</select></label>
    <button class="secondary-button reg-file-picker" type="button" data-reg-choose disabled>Escolher documento/Fotografar documento</button>
@@ -176,7 +176,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
    <p class="reg-help">PDF até 5 MB. As fotos são convertidas para JPEG, com até 1.600 pixels.</p>
    <div class="reg-notice" data-reg-file-status role="status" aria-live="polite"></div>
    <button class="secondary-button" type="button" data-reg-retry hidden>TENTAR NOVAMENTE</button>
-   <div data-reg-files></div></section>
+   <div data-reg-files></div></section>`}
    <dialog class="reg-feedback" data-reg-feedback aria-labelledby="reg-feedback-title" aria-describedby="reg-feedback-details">
     <h3 id="reg-feedback-title"></h3>
     <ul id="reg-feedback-details" data-reg-feedback-details></ul>
@@ -194,6 +194,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
 
  let fileListRevision = 0;
  async function listFiles() {
+  if(state.invitationOnly)return;
   const revision = ++fileListRevision;
   try {
    const {files} = await call('drive', 'LIST_OWN');
@@ -353,6 +354,7 @@ export function mountInstitutionalRegistration(root, {request, isCurrent = () =>
   if (!live()) return;
   state = data;
   render();
+  if(state.invitationOnly)return;
   stopRegistrationWatch = watchRegistrationChanges(async () => {
    if (hasUnsavedChanges() || query('[data-reg-feedback]').open) return;
    const updated = await call('professional', 'BOOTSTRAP');

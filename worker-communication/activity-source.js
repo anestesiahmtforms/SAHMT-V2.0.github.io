@@ -75,14 +75,14 @@ export function createActivitySource({fetchImpl=fetch,headers={},actor,professio
    const unavailableSources=['SURVEY','PROFESSIONAL'].filter((_,index)=>results[index].status==='rejected');
    return {items:results.flatMap(result=>result.status==='fulfilled'?result.value.items:[]),...(unavailableSources.length?{unavailableSources}:{})};
   },
-  async eligibility({activity,recipients}={}){
+  async eligibility({activity,recipients,substituteConvocation}={}){
    const value=checked(activity);
    if(!Array.isArray(recipients)||recipients.length>200||recipients.some(r=>!id(r?.uid)||typeof r.email!=='string'||r.email.length>254||!r.email.includes('@'))||new Set(recipients.map(r=>r.uid)).size!==recipients.length)throw invalid();
    const eligibleUids=[],excluded=[];
    // Keep source transactions and Worker subrequest budgets bounded per batch.
    for(let offset=0;offset<recipients.length;offset+=8){
     const batch=recipients.slice(offset,offset+8).map(({uid,email})=>({uid,email:email.trim().toLowerCase()}));
-    const result=await call(sourceFor(value),'OBLIGATION_ELIGIBILITY',{...inputFor(value),recipients:batch});
+    const result=await call(sourceFor(value),'OBLIGATION_ELIGIBILITY',{...inputFor(value),recipients:batch,...(substituteConvocation===true?{substituteConvocation:true}:{})});
     if(!Array.isArray(result.eligibleUids)||!Array.isArray(result.excluded))throw failure('COMM_SOURCE_UNAVAILABLE');
     const returned=[...result.eligibleUids,...result.excluded.map(r=>r?.uid)];
     if(returned.length!==batch.length||new Set(returned).size!==batch.length||returned.some(uid=>!batch.some(r=>r.uid===uid))||result.excluded.some(r=>typeof r.reason!=='string'||!/^[A-Z0-9_]{1,90}$/.test(r.reason)))throw failure('COMM_SOURCE_UNAVAILABLE');
@@ -90,8 +90,8 @@ export function createActivitySource({fetchImpl=fetch,headers={},actor,professio
    }
    return {eligibleUids,excluded};
   },
-  async completion({activity}={}){
-   const value=checked(activity),result=await call(sourceFor(value),'OBLIGATION_STATUS',inputFor(value));
+  async completion({activity,substituteConvocation}={}){
+   const value=checked(activity),result=await call(sourceFor(value),'OBLIGATION_STATUS',{...inputFor(value),...(substituteConvocation===true?{substituteConvocation:true}:{})});
    if(typeof result.completed!=='boolean')throw failure('COMM_SOURCE_UNAVAILABLE');
    if(result.completed){
     if(value.kind==='SURVEY')return {completed:true};

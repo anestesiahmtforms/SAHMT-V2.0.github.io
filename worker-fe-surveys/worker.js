@@ -4,6 +4,7 @@ import {createSurveyService} from '../worker-training/survey-service.js';
 import {createFirestoreStore} from '../worker-training/firestore.js';
 import {feServiceToken} from './auth.js';
 import {createFeBiosafetyService} from './biosafety-service.js';
+import {verifyRegistrationInvitation} from '../worker-training/registration-invitation.js';
 
 const runtimes=new WeakMap(),biosafetyRuntimes=new WeakMap();
 function buildFeBiosafetyService(env){
@@ -26,6 +27,7 @@ function buildSurveyService(env){
   }};
   const responseStore=createFirestoreStore({projectId:'outros-48120',getAccessToken});
   runtimes.set(env,createSurveyService({profileStore,responseStore,performanceProfileStore:responseStore,
+   verifyInvitation:verifyRegistrationInvitation,
    checkSurvey:(folder,tx)=>assertFeFolderReadable(folder,getAccessToken,tx),
    performanceEnabled:true,checkPerformance:()=>assertFeFolderReadable('desempenho/fe',getAccessToken),
    reportReaderEmail:env.REPORT_READER_EMAIL}));

@@ -26,6 +26,17 @@ export async function prepareCommunicationSession({isCurrent=()=>true}={}){
  const current=()=>communicationEnabled&&isCurrent()&&document.visibilityState!=='hidden';
  return current()&&Boolean(await projectSession('FF',auth.currentUser,current))&&current();
 }
+export async function registrationInvitationProof(id,isCurrent){
+ const source=auth.currentUser;
+ const current=()=>communicationEnabled&&isCurrent()&&auth.currentUser===source;
+ if(!source||!current())throw fail('COMM_SESSION_INVALID');
+ const ff=await projectSession('FF',source,current),actor=ff?.currentUser;
+ if(ff?.app.options.projectId!==FF.projectId||ff.app.options.appId!==FF.appId||!actor||
+    actor.email?.trim().toLowerCase()!==source.email?.trim().toLowerCase())throw fail('COMM_SESSION_INVALID');
+ const token=await actor.getIdToken();
+ if(!current()||ff.currentUser!==actor)throw fail('COMM_SESSION_INVALID');
+ return {id,token};
+}
 export function createCommunicationClient({isCurrent=()=>true}={}){
  let disposed=false,presenceReported=false,enrollment;const controllers=new Set(),widgets=new Set(),reads=new Map();
  const current=()=>!disposed&&isCurrent()&&document.visibilityState!=='hidden'&&operationalContentAllowed('comunicacao');

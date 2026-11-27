@@ -1594,23 +1594,22 @@ async function loadModule(route) {
     if(communicationAdminSession(session))preloadCommunicationModules({isCurrent:currentHub});
     const participantOnly=session.accountMode==='team';
     const initialPanel=location.hash.split('/')[2]||'home';
-    const requiredActivity=initialPanel==='professional'?activeObligationId():null;
+    const requiredActivity=['professional','epidemiological'].includes(initialPanel)?activeObligationId():null;
     const [consultationsAllowed,epidemiologicalAllowed,functionalAccess]=await Promise.all([
       can('admin')||readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub}).catch(()=>false),
       isEffectiveTeamMember(session.user).catch(()=>false),
       functionalEnabled?getFunctionalAccess(session):{allowed:false}
     ]);
     if(!content.isConnected||!currentHub())return;
-    // The required activity was issued to this authenticated recipient after
-    // source eligibility checks. The registration service still validates access.
-    const professionalConvocation=requiredActivity&&obligationBanner?.hasPendingProfessional(requiredActivity);
-    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed||Boolean(professionalConvocation);
+    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed;
+    const requiredRegistrationPanel=requiredActivity?initialPanel:null;
+    const inRequiredRegistration=kind=>requiredRegistrationPanel===kind&&activeObligationId()===requiredActivity;
     const canManageActivity=()=>typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&deployment.target==='FA'&&!participantOnly&&can('admin')&&currentHub();
     const activityAvailability=folder=>{
       const policy=operationalFolderPolicy();
       return canManageActivity()&&policy?.revision>0&&!policy.pending?operationalFolderAllowed(policy,folder):null;
     };
-    cleanupCurrentModule=mountManagementHub(content,{initialPanel,folderAllowed:operationalContentAllowed,folderState:typeof operationalFolderState==='function'?operationalFolderState:()=>null,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
+    cleanupCurrentModule=mountManagementHub(content,{initialPanel,requiredRegistrationPanel,folderAllowed:operationalContentAllowed,folderState:typeof operationalFolderState==='function'?operationalFolderState:()=>null,communicationAllowed:communicationAdminSession(session),openCommunication:async(host,isCurrent)=>{const [{mountCommunication},{createCommunicationClient}]=await loadCommunicationModules();if(!isCurrent())return()=>{};return mountCommunication(host,{client:createCommunicationClient({isCurrent}),adminMode:true,appSession:session,isCurrent,onBack:()=>navigate('management-hub')});},performanceUid:uid,fbPerformanceReleased:typeof fbPerformanceReleaseEnabled==='boolean'&&fbPerformanceReleaseEnabled,syncStatusElement:document.querySelector('#outbox-status'),assetBase:import.meta.env.BASE_URL,displayName:session.profile.displayName||session.user.displayName||'Usuário',climateEnabled:climateSurveyEnabled,
       activityAvailability,
       setActivityAvailability:async(folder,enabled,isCurrent)=>{
         const {fiControlRequest}=await import('./fi-control-client.js');
@@ -1647,7 +1646,10 @@ async function loadModule(route) {
       },
       performRegistration:async(kind,action,input,signal)=>{
         const {callRegistrationApi}=await import('./registration-client.js');
-        const result=await callRegistrationApi({uid,isCurrent:()=>currentHub()&&(kind==='epidemiological'?epidemiologicalAllowed:professionalAllowed),kind,action,input,signal});
+        const normalAccess=kind==='epidemiological'?epidemiologicalAllowed:professionalAllowed;
+        const needsInvitation=!normalAccess&&inRequiredRegistration(kind);
+        const result=await callRegistrationApi({uid,isCurrent:()=>currentHub()&&(normalAccess||needsInvitation&&inRequiredRegistration(kind)),kind,action,input,signal,
+          invitationId:needsInvitation?requiredActivity:undefined});
         const surveySubmitted=kind==='epidemiological'&&action==='SUBMIT'&&result?.accepted===true;
         const registrationSaved=kind==='professional'&&action==='SAVE'&&result?.record;
         if(surveySubmitted||registrationSaved)window.dispatchEvent(new Event('communication:activity-completed'));

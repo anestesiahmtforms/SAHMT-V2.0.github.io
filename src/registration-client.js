@@ -4,7 +4,7 @@ import {announceRegistrationChange} from './registration-refresh.js';
 
 const legacyOrigin = 'https://sahmt-html-training.anestesiahmtforms.workers.dev';
 
-export async function callRegistrationApi({uid,isCurrent,kind,action,input={},signal}={}) {
+export async function callRegistrationApi({uid,isCurrent,kind,action,input={},signal,invitationId}={}) {
  const {auth} = await import('./firebase-auth.js');
  await auth?.authStateReady();
  const mainUser = auth?.currentUser;
@@ -28,9 +28,11 @@ export async function callRegistrationApi({uid,isCurrent,kind,action,input={},si
  const path = kind === 'drive' ? '/v1/registration-drive' : '/v1/professional-registration';
  const endpoint = kind === 'epidemiological' ? feSurveyEndpoint : useFc ? fcProfessionalRegistrationEndpoint(path) : legacyOrigin + path;
  const payload = kind === 'epidemiological' ? {survey:'epidemiological',cycle:'2026',...(action === 'SUBMIT' ? {response:input} : {})} : input;
+ const invitation=invitationId?await (await import('./communication-client.js')).registrationInvitationProof(invitationId,valid):null;
+ if(!valid()) throw Error('Sua sessão mudou. Entre novamente.');
  const response = await fetch(endpoint,{
   method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer ' + token},
-  body:JSON.stringify({action,input:payload}),credentials:'omit',referrerPolicy:'no-referrer',
+  body:JSON.stringify({action,input:invitation?{...payload,invitation}:payload}),credentials:'omit',referrerPolicy:'no-referrer',
   cache:'no-store',redirect:'error',signal:signal || AbortSignal.timeout(60000)
  });
  if (!valid()) throw Error('Sua sessão mudou. Entre novamente.');
