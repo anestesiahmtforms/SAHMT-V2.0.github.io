@@ -164,6 +164,28 @@ test('a complete epidemiological submission earns one point in FE and a partial 
  assert.equal((await responseStore.list('fePerformanceAwards')).length,1);
  assert.equal((await responseStore.list('epidemiologicalComments')).length,0);
 });
+test('administrative epidemiological status includes previous submissions without reading answers',async()=>{
+ const profileStore=await fixture(),store=vaccinationMemoryStore();
+ const admin={...identity,uid:'admin-status',email:'admin@example.invalid'};
+ profileStore.seed('users',admin.uid,{...admin,active:true,access:true,permissions:{admin:true}});
+ const list=store.list;
+ const reads=[];
+ store.list=(collection,...args)=>{reads.push(collection);return list(collection,...args);};
+ const service=createSurveyService({profileStore,responseStore:store});
+ const action='ADMIN_PARTICIPATION',input={survey:'epidemiological',cycle:'2026'};
+ const ledger={uid:identity.uid,...input,completed:true};
+ store.seed('surveyParticipation',identity.uid+'_epidemiological_2026',ledger);
+ store.seed('surveyParticipation',identity.uid+'_climate_2026',{...ledger,survey:'climate'});
+ store.seed('surveyParticipation','old_epidemiological_2025',{...ledger,uid:'old',cycle:'2025'});
+ store.seed('epidemiologicalCycles','2026',{status:'closed'});
+ await assert.rejects(service.execute(action,input,identity),{code:'SURVEY_FORBIDDEN'});
+ await assert.rejects(service.execute(action,{...input,survey:'climate'},admin),{code:'SURVEY_INVALID_INPUT'});
+ assert.deepEqual(reads,[]);
+ assert.deepEqual(await service.execute(action,input,admin),{cycle:'2026',completedUids:[identity.uid]});
+ assert.deepEqual(reads,['surveyParticipation']);
+ store.seed('surveyParticipation',identity.uid+'_epidemiological_2026',{...ledger,responseId:'private'});
+ await assert.rejects(service.execute(action,input,admin),{code:'SURVEY_PARTICIPATION_INVALID'});
+});
 test('epidemiological reports suppress small groups, rare cells and small missing complements',()=>{const row=()=>({survey_cycle:'2026',survey_version:'1.0',group:'team',answers:{sleep:'0',exercise:'0'}});const data=Array.from({length:10},row);const metric=r=>r.groups.team.questions.find(q=>q.id==='sleep');let r=aggregateEpidemiological(data);assert.equal(r.groups.resident.suppressed,true);assert.equal(metric(r).options[0].count,10);data[0].answers.sleep='1';assert.equal(metric(aggregateEpidemiological(data)).suppressed,true);data[0].answers.sleep='NI';assert.equal(metric(aggregateEpidemiological(data)).suppressed,true);assert.equal(aggregateEpidemiological(data.slice(0,4)).groups.team.suppressed,true);assert.equal(aggregateEpidemiological([row(),{...row(),answers:{sleep:'unknown'}}]).groups.team.suppressed,true);assert.equal(Object.hasOwn(r,'overall'),false);assert.doesNotMatch(JSON.stringify(r),/synthetic@example|52998224725/);});
 test('epidemiological report is only published after closure and only to configured active admin',async()=>{const profileStore=await fixture(),responseStore=vaccinationMemoryStore(),service=createSurveyService({profileStore,responseStore,reportReaderEmail:identity.email});profileStore.seed('users',identity.uid,{...identity,active:true,access:true,role:'administrador_app'});responseStore.seed('epidemiologicalCycles','2026',{status:'open'});responseStore.seed('epidemiologicalReports','2026',{grouping_version:2,groups:{}});const input={survey:'epidemiological',cycle:'2026'};assert.equal((await service.execute('REPORT',input,identity)).report,null);responseStore.seed('epidemiologicalCycles','2026',{status:'closed'});assert.equal((await service.execute('BOOTSTRAP',input,identity)).closed,true);assert.ok((await service.execute('REPORT',input,identity)).report);await assert.rejects(service.execute('DETAIL',{...input,uid:identity.uid},identity));profileStore.seed('users',identity.uid,{...identity,active:true,access:true});await assert.rejects(service.execute('REPORT',input,identity));});
 

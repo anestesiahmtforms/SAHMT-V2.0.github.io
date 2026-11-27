@@ -37,7 +37,8 @@ export async function callRegistrationApi({uid,isCurrent,kind,action,input={},si
  const data = await response.json();
  if (!valid()) throw Error('Sua sessão mudou. Entre novamente.');
  if (!response.ok) throw Object.assign(Error(data.code || 'UNAVAILABLE'),{code:data.code,status:response.status});
- if (kind === 'professional' && action === 'SAVE' && data.record?.uid === uid ||
+ if (kind === 'epidemiological' && action === 'SUBMIT' && data.accepted === true ||
+     kind === 'professional' && action === 'SAVE' && data.record?.uid === uid ||
      kind === 'drive' && action === 'UPLOAD' && data.file?.status === 'STORED') announceRegistrationChange();
  return data;
 }

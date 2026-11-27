@@ -53,7 +53,7 @@ function fieldList(rows){
  return fields.length?`<dl class="people-fields">${fields.map(([label,value])=>`<div><dt>${h(label)}</dt><dd>${h(value)}</dd></div>`).join('')}</dl>`:'';
 }
 
-function personCard({contact,profile,name,email},index,roleLabel,showRegistration){
+function personCard({contact,profile,name,email},index,roleLabel,showRegistration,showEpidemiological){
  return `<li>
   <div class="contact-list-heading"><strong>${h([contact?.sigla||profile?.sigla,name].filter(Boolean).join(' · '))}</strong>
   ${contact?`<button class="secondary-button" type="button" data-contact-edit="${h(contact.sigla)}">Editar</button>`:''}</div>
@@ -71,6 +71,10 @@ function personCard({contact,profile,name,email},index,roleLabel,showRegistratio
    <summary>Cadastro Profissional <span class="people-registration__status" data-registration-status>Consultando…</span></summary>
    <div data-person-fc aria-live="polite"></div>
   </details>`:''}
+  ${showEpidemiological?`<details class="people-registration" data-person-epidemiological="${index}">
+   <summary>Cadastro Epidemiológico <span class="people-registration__status" data-registration-status>Consultando…</span></summary>
+   <div data-person-epidemiological-record aria-live="polite"></div>
+  </details>`:''}
  </li>`;
 }
 
@@ -82,7 +86,7 @@ const peopleGroups=[
  ['SUBSTITUTO','Substituto',['substituto','substituta']]
 ];
 
-function renderPeopleGroups(rows,roleLabel,registrationRequest){
+function renderPeopleGroups(rows,roleLabel,registrationRequest,readEpidemiologicalParticipation){
  if(!rows.length)return '<p class="empty-state">Nenhuma pessoa encontrada nas fontes consultadas.</p>';
  const unassigned='SEM_GRUPO';
  const groups=new Map([...peopleGroups.map(([id])=>[id,[]]),[unassigned,[]]]);
@@ -91,7 +95,8 @@ function renderPeopleGroups(rows,roleLabel,registrationRequest){
   const assigned=peopleGroups.find(([id])=>Array.isArray(categories)&&categories.includes(id));
   const role=text(row.contact?.role).toLowerCase().replace(/\s+/g,' ');
   const group=assigned||peopleGroups.find(([, , roles])=>roles.includes(role));
-  groups.get(group?.[0]||unassigned).push(personCard(row,index,roleLabel,registrationRequest&&row.canLinkProfessional));
+  groups.get(group?.[0]||unassigned).push(personCard(row,index,roleLabel,
+   registrationRequest&&row.canLinkProfessional,readEpidemiologicalParticipation&&row.profile&&row.canLinkProfessional));
  });
  return [...peopleGroups,[unassigned,'Sem grupo definido']].map(([id,label])=>{
   const cards=groups.get(id);
@@ -103,11 +108,11 @@ function renderPeopleGroups(rows,roleLabel,registrationRequest){
  }).join('');
 }
 
-export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest,readRegistrationFiles,readTeamEntry,occurrenceGrantAccess,contactFailed=false,profilesFailed=false,isCurrent,registrationCurrent=isCurrent,onEdit,roleLabel}) {
+export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest,readRegistrationFiles,readEpidemiologicalParticipation,readTeamEntry,occurrenceGrantAccess,contactFailed=false,profilesFailed=false,isCurrent,registrationCurrent=isCurrent,onEdit,roleLabel}) {
  const rows=combinePeople(contacts,profiles);
  const partial=[contactFailed&&'Contatos',profilesFailed&&'Contas do app'].filter(Boolean);
  host.innerHTML=`${partial.length?`<p role="status">${h(partial.join(' e '))} · consulta indisponível.</p>`:''}
- ${renderPeopleGroups(rows,roleLabel,registrationRequest)}`;
+ ${renderPeopleGroups(rows,roleLabel,registrationRequest,readEpidemiologicalParticipation)}`;
  const bySigla=new Map(contacts.map(contact=>[contact.sigla,contact]));
  host.querySelectorAll('[data-contact-edit]').forEach(button=>button.addEventListener('click',()=>{
   const contact=bySigla.get(button.dataset.contactEdit);
@@ -219,8 +224,43 @@ export function mountPeopleDirectory(host,{contacts,profiles,registrationRequest
   details.addEventListener('toggle',()=>refreshPanel({openOnly:true}));
   return refreshPanel;
  });
- if(refreshPanels.length)watchRegistrationChanges(
-  ()=>Promise.all(refreshPanels.map(refresh=>refresh())),
+ const epidemiologicalPanels=Array.from(host.querySelectorAll('[data-person-epidemiological]'),details=>({
+  details,uid:rows[Number(details.dataset.personEpidemiological)].profile.uid,
+  status:details.querySelector('[data-registration-status]'),
+  target:details.querySelector('[data-person-epidemiological-record]')
+ }));
+ let participationRequest;
+ function refreshEpidemiological(){
+  if(!epidemiologicalPanels.length||!registrationCurrent())return;
+  return participationRequest||=(async()=>{
+   try{
+    const {cycle,completedUids}=await readEpidemiologicalParticipation();
+    if(typeof cycle!=='string'||!/^\d{4}$/.test(cycle)||!Array.isArray(completedUids)||
+      completedUids.some(uid=>typeof uid!=='string'||!uid))throw Error('PEOPLE_EPIDEMIOLOGICAL_LIST');
+    if(!registrationCurrent())return;
+    const completed=new Set(completedUids);
+    for(const {details,uid,status,target} of epidemiologicalPanels){
+     const confirmed=completed.has(uid);
+     details.dataset.registrationState=confirmed?'complete':'pending';
+     status.textContent=confirmed?'Realizado':'Pendente';
+     target.innerHTML=fieldList([['Ciclo',cycle],['Registro de participação',confirmed?'Envio confirmado':'Nenhum envio registrado']]);
+    }
+   }catch{
+    if(!registrationCurrent())return;
+    for(const {details,status,target} of epidemiologicalPanels){
+     details.dataset.registrationState='unknown';
+     status.textContent='Status indisponível';
+     target.textContent='Não foi possível consultar a participação. Feche e reabra para tentar novamente.';
+    }
+   }
+  })().finally(()=>{participationRequest=null;});
+ }
+ for(const {details} of epidemiologicalPanels){
+  details.addEventListener('toggle',()=>{if(details.open)void refreshEpidemiological();});
+ }
+ void refreshEpidemiological();
+ if(refreshPanels.length||epidemiologicalPanels.length)watchRegistrationChanges(
+  ()=>Promise.all([...refreshPanels.map(refresh=>refresh()),refreshEpidemiological()]),
   {isCurrent:()=>host.isConnected&&registrationCurrent(),document:host.ownerDocument}
  );
 }

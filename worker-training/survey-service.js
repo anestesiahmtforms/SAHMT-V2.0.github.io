@@ -7,22 +7,44 @@ import {functionalSurveyCharts} from '../src/functional-survey-charts.js';
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(o,keys)=>o&&typeof o==='object'&&!Array.isArray(o)&&Object.keys(o).length===keys.length&&keys.every(k=>Object.hasOwn(o,k));
 const validId=id=>typeof id==='string'&&/^[a-f0-9]{32}$/.test(id);
+const validUid=uid=>typeof uid==='string'&&/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(uid);
 const folders={climate:'consultas/pesquisas/clima',stress:'consultas/pesquisas/estresse',epidemiological:'consultas/epidemiologico'};
 const kinds={epidemiological:{cycleCollection:'epidemiologicalCycles',responseCollection:'epidemiologicalResponses',version:'1.0',validate:validateCompleteEpidemiologicalSubmission},climate:{cycleCollection:'climateCycles',responseCollection:'climateResponses',version:climateVersion,validate:climateInput},stress:{cycleCollection:'stressCycles',responseCollection:'stressResponses',version:stressVersion,validate:stressInput}};
 export function createSurveyService({profileStore,responseStore,performanceProfileStore=profileStore,uuid=()=>crypto.randomUUID().replaceAll('-',''),reportReaderEmail,performanceEnabled=false,checkPerformance=async()=>{},checkSurvey=async()=>{},now=Date.now}={}) {
   if(!profileStore?.get||!responseStore?.transaction)throw Error('SURVEY_STORE_REQUIRED');
-  async function authorize(identity,survey,registry=profileStore){
-    if(!identity?.uid||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(identity.uid)||identity.emailVerified!==true||identity.provider!=='google.com'||typeof identity.email!=='string'||!identity.email.includes('@'))fail('SURVEY_UNAUTHENTICATED',401);
+  async function activeProfile(identity,registry=profileStore){
+    if(!validUid(identity?.uid)||identity.emailVerified!==true||identity.provider!=='google.com'||typeof identity.email!=='string'||!identity.email.includes('@'))fail('SURVEY_UNAUTHENTICATED',401);
     const email=identity.email.trim().toLowerCase(),profile=await registry.get('users',identity.uid);
-    if(!profile||profile.uid!==identity.uid||profile.email?.trim().toLowerCase()!==email||profile.active!==true||profile.access!==true||/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(email))fail('SURVEY_FORBIDDEN',403);
+    if(!profile||profile.uid!==identity.uid||profile.email?.trim().toLowerCase()!==email||profile.active!==true||profile.access!==true)fail('SURVEY_FORBIDDEN',403);
+    return {email,administrator:profile.role==='administrador_app'||profile.permissions?.admin===true};
+  }
+  async function authorize(identity,survey,registry=profileStore){
+    const {email,administrator}=await activeProfile(identity,registry);
+    if(/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(email))fail('SURVEY_FORBIDDEN',403);
     const assignment=await registry.get('userCategories',await institutionalAssignmentKey(email));
     const group=assignedInstitutionalGroup(assignment,{uid:identity.uid,email});
     if(!group)fail('SURVEY_GROUP_UNAVAILABLE',403);
-    const administrator=profile.role==='administrador_app'||profile.permissions?.admin===true;
     if(survey&&group!=='team')fail('SURVEY_FORBIDDEN',403);
     return {affiliation:group,group:researchGroup(group),administrator};
   }
   async function execute(action,input,identity){
+    if(action==='ADMIN_PARTICIPATION'){
+      const survey='epidemiological';
+      if(!exact(input,['survey','cycle'])||input.survey!==survey||input.cycle!==CYCLE)fail('SURVEY_INVALID_INPUT');
+      if(!(await activeProfile(identity)).administrator)fail('SURVEY_FORBIDDEN',403);
+      const records=await responseStore.list('surveyParticipation',[
+        {field:'survey',op:'EQUAL',value:survey},
+        {field:'cycle',op:'EQUAL',value:CYCLE}
+      ],1000);
+      const completedUids=records.map(({id,...record})=>{
+        if(!exact(record,['uid','survey','cycle','completed'])||!validUid(record.uid)||
+          id!==`${record.uid}_${survey}_${CYCLE}`||record.survey!==survey||record.cycle!==CYCLE||record.completed!==true)
+          fail('SURVEY_PARTICIPATION_INVALID',503);
+        return record.uid;
+      });
+      if(!(await activeProfile(identity)).administrator)fail('SURVEY_FORBIDDEN',403);
+      return {cycle:CYCLE,completedUids};
+    }
     if(['OBLIGATION_CATALOG','OBLIGATION_ELIGIBILITY','OBLIGATION_STATUS'].includes(action)){
       const catalog=action==='OBLIGATION_CATALOG',eligibility=action==='OBLIGATION_ELIGIBILITY';
       if(!exact(input,catalog?[]:['survey','cycle',...(eligibility?['recipients']:[])])||!catalog&&(!Object.hasOwn(kinds,input.survey)||input.cycle!==CYCLE))fail('SURVEY_INVALID_INPUT');

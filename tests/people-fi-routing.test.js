@@ -28,6 +28,41 @@ test('Pessoas groups the directory in display order and keeps contacts without a
  assert.deepEqual([...host.innerHTML.matchAll(/data-person="(\d+)"/g)].map(match=>Number(match[1])),[0,1,5,4,3,2]);
 });
 const names=['listContactCatalog','syncEventMemberDirectory','saveContact','updateContactRegistrationFields'];
+test('Pessoas shows confirmed epidemiological participation by account and retries unavailable status',async()=>{
+ const panels=['0','1'].map(personEpidemiological=>{
+  const status={},target={};
+  return {dataset:{personEpidemiological},status,target,open:false,
+   querySelector:selector=>selector==='[data-registration-status]'?status:target,
+   addEventListener(event,handler){if(event==='toggle')this.toggle=handler;}};
+ });
+ const host={querySelectorAll:selector=>selector==='[data-person-epidemiological]'?panels:[]};
+ let completedUids=['ana'],unavailable=false;
+ mountPeopleDirectory(host,{contacts:[],profiles:[
+  {uid:'ana',email:'ana@example.test',displayName:'Ana'},
+  {uid:'bia',email:'bia@example.test',displayName:'Bia'}
+ ],isCurrent:()=>true,roleLabel:role=>role,
+ readEpidemiologicalParticipation:async()=>{
+  if(unavailable)throw Error('offline');
+  return {cycle:'2026',completedUids};
+ }});
+ const settled=()=>new Promise(resolve=>setImmediate(resolve));
+ await settled();
+ assert.match(host.innerHTML,/Cadastro Epidemiológico/);
+ assert.deepEqual(panels.map(({dataset})=>dataset.registrationState),['complete','pending']);
+ panels[0].open=true;
+ panels[0].toggle();
+ await settled();
+ assert.match(panels[0].target.innerHTML,/2026.*Envio confirmado/);
+ unavailable=true;
+ panels[0].toggle();
+ await settled();
+ assert.deepEqual(panels.map(({dataset})=>dataset.registrationState),['unknown','unknown']);
+ unavailable=false;
+ completedUids=['ana','bia'];
+ panels[0].toggle();
+ await settled();
+ assert.deepEqual(panels.map(({dataset})=>dataset.registrationState),['complete','complete']);
+});
 test('Cadastro Profissional shows completion before opening and loads independently of the contact details',async()=>{
  const contactFields={},professionalFields={},calls=[];
  const panel=(dataset,target)=>{

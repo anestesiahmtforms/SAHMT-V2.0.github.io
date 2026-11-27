@@ -1973,6 +1973,7 @@ async function loadModule(route) {
       }:null;
       mountPeopleDirectory(directory,{contacts,profiles:adminCurrent()&&profilesResult.value||[],registrationRequest,readTeamEntry,isCurrent:current,
         registrationCurrent:adminCurrent,
+        readEpidemiologicalParticipation:registrationRequest?()=>registrationRequest('ADMIN_PARTICIPATION',{},'epidemiological'):null,
         readRegistrationFiles:registrationRequest?subjectUid=>registrationRequest('LIST_SUBJECT',{uid:subjectUid},'drive'):null,
         contactFailed:contactsResult.status==='rejected',profilesFailed:profilesResult.status==='rejected',
         occurrenceGrantAccess,
