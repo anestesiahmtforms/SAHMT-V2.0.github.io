@@ -10,7 +10,7 @@ const institutionalMailbox=email=>/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.te
 export const registrationAdmin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 const linkedProfile=(profile,{uid,email})=>Boolean(profile&&profile.uid===uid&&profile.email?.trim().toLowerCase()===email.trim().toLowerCase()&&profile.active===true&&profile.access===true);
 const canSaveRegistration=(profile,affiliation,email,convokedGroup=null)=>Boolean(researchGroup(affiliation))&&
- (affiliation==='team'||registrationAdmin(profile)||affiliation===convokedGroup)&&!institutionalMailbox(email);
+ (affiliation==='team'||affiliation==='substitute'||registrationAdmin(profile)||affiliation===convokedGroup)&&!institutionalMailbox(email);
 export async function registrationActor(store,identity,{admin=false,team=false}={}){
  if(!identity?.uid||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(identity.uid)||identity.provider!=='google.com'||identity.emailVerified!==true||!/^\S+@\S+\.\S+$/.test(identity.email||''))fail('REGISTRATION_UNAUTHENTICATED',401);
  const p=await store.get('users',identity.uid);if(!linkedProfile(p,identity)||admin&&!registrationAdmin(p))fail('REGISTRATION_FORBIDDEN',403);
@@ -86,13 +86,13 @@ export function createProfessionalRegistrationService({store,drive,verifyInvitat
   if(hasInvitation&&!invitationGroup)fail('REGISTRATION_FORBIDDEN',403);
   const result=await store.transaction(async tx=>{
    const current=await registrationActor(tx,identity),assignment=await tx.get('userCategories',await institutionalAssignmentKey(identity.email)),affiliation=assignedInstitutionalGroup(assignment,identity),group=researchGroup(affiliation),record=await tx.get('professionalRegistrations',ownId);
-   const invitationOnly=['substitute','resident'].includes(affiliation)&&affiliation===invitationGroup;
-   const compact=invitationOnly&&affiliation==='resident';
-   if(affiliation!=='team'&&!registrationAdmin(current)&&!invitationOnly)fail('REGISTRATION_FORBIDDEN',403);
+   const compact=affiliation==='resident'&&affiliation===invitationGroup;
+   const limitedRegistration=affiliation==='substitute'&&!institutionalMailbox(identity.email)||compact;
+   if(affiliation!=='team'&&!registrationAdmin(current)&&!limitedRegistration)fail('REGISTRATION_FORBIDDEN',403);
    if(record&&(record.uid!==identity.uid||record.email!==identity.email.toLowerCase()||record.cycle!==REGISTRATION_CYCLE||!Number.isSafeInteger(record.version)))fail('REGISTRATION_UNAVAILABLE',503);
    if(action==='BOOTSTRAP')return {record,isAdmin:registrationAdmin(current),profile:{email:identity.email.toLowerCase(),displayName:current.displayName||current.name||'',group},
-    ...(invitationOnly?{invitationOnly:true}:{}),...(compact?{formVariant:'resident'}:{})};
-   if(invitationOnly&&record)fail('REGISTRATION_VERSION_CONFLICT',409);
+    ...(limitedRegistration?{invitationOnly:true}:{}),...(compact?{formVariant:'resident'}:{})};
+   if(limitedRegistration&&record)fail('REGISTRATION_VERSION_CONFLICT',409);
    if(!group||institutionalMailbox(identity.email))fail('REGISTRATION_GROUP_UNAVAILABLE',422);
    if((record?.version||0)!==input.expectedVersion)fail('REGISTRATION_VERSION_CONFLICT',409);
    const answers=validateProfessionalAnswers(input.answers,{compact});

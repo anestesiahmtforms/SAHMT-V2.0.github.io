@@ -42,9 +42,13 @@ async function ownCategoryAssignment(user) {
   return row;
 }
 
-export async function isEffectiveTeamMember(user) {
+export async function readOwnInstitutionalGroup(user) {
   const assignment = await ownCategoryAssignment(user);
-  return assignedInstitutionalGroup(assignment, user) === 'team';
+  return assignedInstitutionalGroup(assignment, user);
+}
+
+export async function isEffectiveTeamMember(user) {
+  return await readOwnInstitutionalGroup(user) === 'team';
 }
 
 export async function listFunctionalTeam() {

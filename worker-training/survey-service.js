@@ -25,7 +25,8 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
     const assignment=await registry.get('userCategories',await institutionalAssignmentKey(email));
     const group=assignedInstitutionalGroup(assignment,{uid:identity.uid,email});
     if(!group)fail('SURVEY_GROUP_UNAVAILABLE',403);
-    if(survey&&group!=='team'&&!(survey==='epidemiological'&&group===invitationGroup))fail('SURVEY_FORBIDDEN',403);
+    const registrationAccess=survey==='epidemiological'&&(group==='substitute'||group===invitationGroup);
+    if(survey&&group!=='team'&&!registrationAccess)fail('SURVEY_FORBIDDEN',403);
     return {affiliation:group,group:researchGroup(group),administrator};
   }
   async function execute(action,input,identity){

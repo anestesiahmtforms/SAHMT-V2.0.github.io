@@ -49,6 +49,7 @@ import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMai
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {canUseManagementPilot, canUseGovernanceHub, canUseYearEndSchedule} from './management-pilot.js';
+import {isSystemOwnerEmail} from './system-account-exclusions.js';
 import {createYearEndStartup,installYearEndFloatingBanner,YEAR_END_STARTUP_ENABLED} from './year-end-startup.js';
 const climateSurveyEnabled = import.meta.env.VITE_CLIMATE_SURVEY_ENABLED === 'true';
 import {canManageManagementDocuments} from './document-access.js';
@@ -1587,7 +1588,7 @@ async function loadModule(route) {
   if(route === 'management-hub'){
     if(!canUseGovernanceHub(session)&&!(canUseVacationModule(session)&&['surveys','vacations2027'].includes(location.hash.split('/')[2]))){navigate('home');return;}
     const content=document.querySelector('#module-content'),uid=session.user?.uid,generation=evaluationModuleGeneration;
-    const [{mountManagementHub},{getFunctionalAccess,isEffectiveTeamMember}]=await Promise.all([import('./management-hub.js'),import('./functional-access.js')]);
+    const [{mountManagementHub},{getFunctionalAccess,readOwnInstitutionalGroup}]=await Promise.all([import('./management-hub.js'),import('./functional-access.js')]);
     const functionalEnabled=deployment.target==='FA'&&import.meta.env.VITE_FK_FUNCTIONAL_ENABLED==='true';
     if(!content?.isConnected||generation!==evaluationModuleGeneration||currentRoute()!==route||session.status!=='signed-in'||session.user?.uid!==uid||!(canUseGovernanceHub(session)||canUseVacationModule(session)))return;
     const currentHub=()=>generation===evaluationModuleGeneration&&content.isConnected&&session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route&&canUseGovernanceHub(session);
@@ -1595,13 +1596,15 @@ async function loadModule(route) {
     const participantOnly=session.accountMode==='team';
     const initialPanel=location.hash.split('/')[2]||'home';
     const requiredActivity=['professional','epidemiological'].includes(initialPanel)?activeObligationId():null;
-    const [consultationsAllowed,epidemiologicalAllowed,functionalAccess]=await Promise.all([
+    const [consultationsAllowed,affiliation,functionalAccess]=await Promise.all([
       can('admin')||readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub}).catch(()=>false),
-      isEffectiveTeamMember(session.user).catch(()=>false),
+      readOwnInstitutionalGroup(session.user).catch(()=>null),
       functionalEnabled?getFunctionalAccess(session):{allowed:false}
     ]);
     if(!content.isConnected||!currentHub())return;
-    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed;
+    const epidemiologicalAllowed=affiliation==='team';
+    const substituteRegistrations=affiliation==='substitute'&&!isSystemOwnerEmail(session.user.email);
+    const professionalAllowed=consultationsAllowed||epidemiologicalAllowed||substituteRegistrations;
     const requiredRegistrationPanel=requiredActivity?initialPanel:null;
     const inRequiredRegistration=kind=>requiredRegistrationPanel===kind&&activeObligationId()===requiredActivity;
     const canManageActivity=()=>typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&deployment.target==='FA'&&!participantOnly&&can('admin')&&currentHub();
@@ -1646,8 +1649,8 @@ async function loadModule(route) {
       },
       performRegistration:async(kind,action,input,signal)=>{
         const {callRegistrationApi}=await import('./registration-client.js');
-        const normalAccess=kind==='epidemiological'?epidemiologicalAllowed:professionalAllowed;
-        const needsInvitation=inRequiredRegistration(kind)&&(!normalAccess||obligationBanner?.hasRegistrationConvocation(requiredActivity,kind));
+        const normalAccess=kind==='epidemiological'?epidemiologicalAllowed||substituteRegistrations:professionalAllowed;
+        const needsInvitation=!substituteRegistrations&&inRequiredRegistration(kind)&&(!normalAccess||obligationBanner?.hasRegistrationConvocation(requiredActivity,kind));
         const result=await callRegistrationApi({uid,isCurrent:()=>currentHub()&&(normalAccess||needsInvitation&&inRequiredRegistration(kind)),kind,action,input,signal,
           invitationId:needsInvitation?requiredActivity:undefined});
         const surveySubmitted=kind==='epidemiological'&&action==='SUBMIT'&&result?.accepted===true;
@@ -1656,7 +1659,7 @@ async function loadModule(route) {
         return result;
       },
       isSurveySessionCurrent:()=>session.status==='signed-in'&&session.user?.uid===uid&&currentRoute()===route,
-      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),inactiveFolderNavigation:canUseGovernanceHub(session),inactiveConsultations:canBrowseInactiveGovernanceFolder('consultas'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:session.accountMode!=='team'&&can('admin')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')||canBrowseInactiveGovernanceFolder('registros'),results:canUseGovernanceHub(session),surveys:consultationsAllowed,professional:professionalAllowed,epidemiological:epidemiologicalAllowed,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),qmentum:canBrowseInactiveGovernanceFolder('registros/qmentum')||canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
+      access:{fiControl:typeof fiAdminControlEnabled!=='undefined'&&fiAdminControlEnabled&&session.accountMode!=='team'&&can('admin'),inactiveFolderNavigation:canUseGovernanceHub(session),inactiveConsultations:canBrowseInactiveGovernanceFolder('consultas'),vacations2027:consultationsAllowed,institutionalSurveys:true,teamSurveys:epidemiologicalAllowed,biosafety:epidemiologicalAllowed,fePerformance:import.meta.env.VITE_FE_PERFORMANCE_ENABLED==='true',groups:session.accountMode!=='team'&&can('admin')&&featureEnabledForRoute('management',appFeatures),performance:canOpenRestrictedModule('training')&&featureEnabledForRoute('training',appFeatures),functional:functionalEnabled&&functionalAccess.allowed,records:can('admin')||canBrowseInactiveGovernanceFolder('registros'),results:canUseGovernanceHub(session),surveys:consultationsAllowed,professional:professionalAllowed,epidemiological:epidemiologicalAllowed||substituteRegistrations,yearEndSchedule:consultationsAllowed&&canUseYearEndSchedule(session),qmentum:canBrowseInactiveGovernanceFolder('registros/qmentum')||canOpenRestrictedModule('qmentum'),fcPerformance:canOpenRestrictedModule('fc-performance')},
       onNavigate:navigate,onExit:()=>navigate('home'),onPanelChange:panel=>{
         if(!canUseGovernanceHub(session)&&panel==='home'){navigate('home');return;}
         const prefix='#/management-hub'+(panel==='home'?'':'/'+panel);
