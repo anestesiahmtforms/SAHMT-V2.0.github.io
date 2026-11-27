@@ -49,7 +49,7 @@ import {normalizeChecklistMaintenance, checklistMaintenanceOverdue, checklistMai
 import {CHECKLIST_NONCONFORMING_COMMITMENT, checklistCheckerSummary, shortChecklistCheckerName} from './checklist-checker.js';
 import {hasFinanceOnlyManagementAccess, parseManagementUids} from './management-access.js';
 import {canUseManagementPilot, canUseGovernanceHub, canUseYearEndSchedule} from './management-pilot.js';
-import {isSystemOwnerEmail} from './system-account-exclusions.js';
+import {registrationMailboxAllowed} from './institutional-group.js';
 import {createYearEndStartup,installYearEndFloatingBanner,YEAR_END_STARTUP_ENABLED} from './year-end-startup.js';
 const climateSurveyEnabled = import.meta.env.VITE_CLIMATE_SURVEY_ENABLED === 'true';
 import {canManageManagementDocuments} from './document-access.js';
@@ -1603,7 +1603,7 @@ async function loadModule(route) {
     ]);
     if(!content.isConnected||!currentHub())return;
     const epidemiologicalAllowed=affiliation==='team';
-    const groupRegistrations=['resident','substitute'].includes(affiliation)&&!isSystemOwnerEmail(session.user.email);
+    const groupRegistrations=['resident','substitute'].includes(affiliation)&&registrationMailboxAllowed(session.user.email,affiliation);
     const professionalAllowed=consultationsAllowed||epidemiologicalAllowed||groupRegistrations;
     const requiredRegistrationPanel=requiredActivity?initialPanel:null;
     const inRequiredRegistration=kind=>requiredRegistrationPanel===kind&&activeObligationId()===requiredActivity;

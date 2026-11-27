@@ -2,7 +2,7 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {MEMBER_CATEGORIES,buildMemberCategoryRoster,normalizeMemberCategories,memberMatchesCategory,mergeMemberCategoryAssignments,memberCategoryCounts} from '../src/member-categories.js';
 import {planMemberCategoryDocuments,MEMBER_CATEGORY_PROJECTS} from '../scripts/lib/member-category-plan.js';
 import {addMemberCategoryRules} from '../scripts/lib/member-category-rules.js';
-const roster=()=>({...Object.fromEntries(Object.keys(MEMBER_CATEGORIES).map(k=>[k,[]])),EFETIVO:['Member@Example.test'],RESIDENTE_1:['resident@example.test'],ADMINISTRADOR:['member@example.test']});
+const roster=()=>({...Object.fromEntries(Object.keys(MEMBER_CATEGORIES).map(k=>[k,[]])),EFETIVO:['Member@Example.test'],RESIDENTE:['resident@example.test'],ADMINISTRADOR:['member@example.test']});
 test('affiliation and administrator membership coexist without permission grants',()=>{
  const rows=buildMemberCategoryRoster(roster());assert.deepEqual(rows[0],{email:'member@example.test',memberCategories:['EFETIVO','ADMINISTRADOR']});
  assert.equal(memberMatchesCategory({...rows[0],permissions:{}},'ADMINISTRADOR'),true);assert.equal(rows[0].permissions,undefined);
@@ -33,7 +33,7 @@ test('rule insertion is scoped and idempotent; existing rules are preserved',()=
 test('the admin view joins by UID and matching email, preserving operational role and permissions',()=>{
  const permissions={admin:false},profile={uid:'one',email:'member@example.test',role:'residente',permissions};
  const assignments=[{schemaVersion:1,identityStatus:'LINKED',uid:'one',email:'member@example.test',memberCategories:['RESIDENTE_1','GESTOR']}];
- const [joined]=mergeMemberCategoryAssignments([profile],assignments);assert.deepEqual(joined.memberCategories,['RESIDENTE_1','GESTOR']);assert.equal(joined.permissions,permissions);assert.equal(joined.role,'residente');assert.equal(profile.memberCategories,undefined);
+ const [joined]=mergeMemberCategoryAssignments([profile],assignments);assert.deepEqual(joined.memberCategories,['RESIDENTE','GESTOR']);assert.equal(joined.permissions,permissions);assert.equal(joined.role,'residente');assert.equal(profile.memberCategories,undefined);
  assert.deepEqual(mergeMemberCategoryAssignments([{...profile,email:'other@example.test'}],assignments)[0].memberCategories,[]);
  assert.throws(()=>mergeMemberCategoryAssignments([profile],[...assignments,...assignments]),/AMBIGUOUS/);
  assert.equal(memberCategoryCounts(assignments).GESTOR,1);assert.equal(memberCategoryCounts(assignments).ADMINISTRADOR,0);

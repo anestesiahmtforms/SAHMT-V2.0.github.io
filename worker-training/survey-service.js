@@ -2,7 +2,7 @@ import {awardFeParticipation,performanceActive} from '../worker-fe-surveys/perfo
 import {validateCompleteEpidemiologicalSubmission} from '../src/registration-domain.js';
 import {validateCompleteSubmission as climateInput,VERSION as climateVersion,CYCLE} from '../climate-domain/schema.js';
 import {validateCompleteSubmission as stressInput,VERSION as stressVersion} from '../stress-domain/schema.js';
-import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} from '../src/institutional-group.js';
+import {assignedInstitutionalGroup,institutionalAssignmentKey,registrationMailboxAllowed,researchGroup} from '../src/institutional-group.js';
 import {functionalSurveyCharts} from '../src/functional-survey-charts.js';
 import {registrationConvocationAffiliation,registrationConvocationScope} from '../communication/obligations.js';
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
@@ -21,9 +21,9 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
   }
   async function authorize(identity,survey,registry=profileStore,invitationGroup=null){
     const {email,administrator}=await activeProfile(identity,registry);
-    if(/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(email))fail('SURVEY_FORBIDDEN',403);
     const assignment=await registry.get('userCategories',await institutionalAssignmentKey(email));
     const group=assignedInstitutionalGroup(assignment,{uid:identity.uid,email});
+    if(!registrationMailboxAllowed(email,survey==='epidemiological'?group:null))fail('SURVEY_FORBIDDEN',403);
     if(!group)fail('SURVEY_GROUP_UNAVAILABLE',403);
     const registrationAccess=survey==='epidemiological'&&['substitute','resident'].includes(group)&&
       (!invitationGroup||group===invitationGroup);
@@ -86,7 +86,7 @@ export function createSurveyService({profileStore,responseStore,performanceProfi
           const profile=typeof uid==='string'&&/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(uid)?await profileStore.get('users',uid):null;
           const group=assignedInstitutionalGroup(assignment,{uid,email});
           let reason;
-          if(!profile||profile.uid!==uid||profile.email?.trim().toLowerCase()!==email||profile.active!==true||profile.access!==true||!group||/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(email))reason='SOURCE_MEMBER_UNAVAILABLE';
+          if(!profile||profile.uid!==uid||profile.email?.trim().toLowerCase()!==email||profile.active!==true||profile.access!==true||!group||!registrationMailboxAllowed(email,input.survey==='epidemiological'?group:null))reason='SOURCE_MEMBER_UNAVAILABLE';
           else{
             const p=await tx.get('surveyParticipation',`${uid}_${input.survey}_${CYCLE}`);
             if(!participationValid(p,uid,input.survey))fail('SURVEY_PARTICIPATION_INVALID',503);

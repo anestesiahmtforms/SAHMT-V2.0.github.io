@@ -1,13 +1,14 @@
 export const MEMBER_CATEGORIES=Object.freeze({
- EFETIVO:'Membros efetivos',RESIDENTE:'Membros residentes',RESIDENTE_1:'Membros residentes 1',RESIDENTE_2:'Membros residentes 2',
- RESIDENTE_3:'Membros residentes 3',SUBSTITUTO:'Membros substitutos',ADMINISTRADOR:'Membros administradores',GESTOR:'Membros gestores'
+ EFETIVO:'Membros efetivos',RESIDENTE:'Residentes',SUBSTITUTO:'Substitutos',ADMINISTRADOR:'Membros administradores',GESTOR:'Membros gestores'
 });
 export const MEMBER_CATEGORY_IDS=Object.freeze(Object.keys(MEMBER_CATEGORIES));
-const affiliations=new Set(['EFETIVO','RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']);
+const affiliations=new Set(['EFETIVO','RESIDENTE','SUBSTITUTO']);
+export const canonicalMemberCategory=id=>['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3'].includes(id)?'RESIDENTE':id;
 export function normalizeMemberCategories(value){
- if(!Array.isArray(value)||value.some(id=>!MEMBER_CATEGORY_IDS.includes(id))||new Set(value).size!==value.length)throw Error('MEMBER_CATEGORIES_INVALID');
- if(value.filter(id=>affiliations.has(id)).length>1)throw Error('MEMBER_AFFILIATION_CONFLICT');
- return MEMBER_CATEGORY_IDS.filter(id=>value.includes(id));
+ if(!Array.isArray(value)||value.some(id=>!MEMBER_CATEGORY_IDS.includes(canonicalMemberCategory(id)))||new Set(value).size!==value.length)throw Error('MEMBER_CATEGORIES_INVALID');
+ const categories=[...new Set(value.map(canonicalMemberCategory))];
+ if(categories.filter(id=>affiliations.has(id)).length>1)throw Error('MEMBER_AFFILIATION_CONFLICT');
+ return MEMBER_CATEGORY_IDS.filter(id=>categories.includes(id));
 }
 export function memberCategoryLabels(value=[]){return normalizeMemberCategories(value).map(id=>MEMBER_CATEGORIES[id]);}
 export function memberCategoriesForProfile(profile){return normalizeMemberCategories(profile?.memberCategories||[]);}

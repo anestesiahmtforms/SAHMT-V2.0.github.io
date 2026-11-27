@@ -3,6 +3,7 @@ import {MEMBER_CATEGORIES} from './member-categories.js';
 import {renderProfessionalRegistration} from './functional-results.js';
 import {watchRegistrationChanges} from './registration-refresh.js';
 import {isSystemOwnerEmail} from './system-account-exclusions.js';
+import {canonicalMemberCategory} from './member-categories.js';
 
 const text=value=>typeof value==='string'?value.trim():'';
 const address=value=>{
@@ -80,10 +81,7 @@ function personCard({contact,profile,name,email},index,roleLabel,showRegistratio
 
 const peopleGroups=[
  ['EFETIVO','Equipe',['equipe','efetivo']],
- ['RESIDENTE','Residentes',['residentes']],
- ['RESIDENTE_3','R3',['r3','residente 3','residente r3']],
- ['RESIDENTE_2','R2',['r2','residente 2','residente r2']],
- ['RESIDENTE_1','R1',['r1','residente 1','residente r1']],
+ ['RESIDENTE','Residentes',['residente','residentes','r1','r2','r3','residente 1','residente 2','residente 3','residente r1','residente r2','residente r3']],
  ['SUBSTITUTO','Substituto',['substituto','substituta']]
 ];
 
@@ -93,7 +91,7 @@ function renderPeopleGroups(rows,roleLabel,registrationRequest,readEpidemiologic
  const groups=new Map([...peopleGroups.map(([id])=>[id,[]]),[unassigned,[]]]);
  rows.forEach((row,index)=>{
   const categories=row.profile?.memberCategories;
-  const assigned=peopleGroups.find(([id])=>Array.isArray(categories)&&categories.includes(id));
+  const assigned=peopleGroups.find(([id])=>Array.isArray(categories)&&categories.some(category=>canonicalMemberCategory(category)===id));
   const role=text(row.contact?.role).toLowerCase().replace(/\s+/g,' ');
   const group=assigned||peopleGroups.find(([, , roles])=>roles.includes(role));
   groups.get(group?.[0]||unassigned).push(personCard(row,index,roleLabel,

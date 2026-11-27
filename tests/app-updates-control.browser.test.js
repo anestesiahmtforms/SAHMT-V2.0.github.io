@@ -57,7 +57,7 @@ test('legacy FB update entry reads FA receipts and returns to the FI Central',{t
   await page.getByText('Atualizado',{exact:true}).waitFor();assert.equal(await page.evaluate(()=>window.controlFixture.target),'FA');
   assert.match(await page.locator('[data-panel-list]').innerText(),/Android.*App instalado/s);
   const list=page.locator('[data-panel-list]'), modal=page.locator('.app-updates-command');
-  assert.deepEqual(await list.getByRole('heading').allTextContents(),['Efetivos','Residentes R1','Residentes R2','Residentes R3','Substitutos','Sem grupo funcional']);
+  assert.deepEqual(await list.getByRole('heading').allTextContents(),['Efetivos','Residentes','Substitutos','Sem grupo funcional']);
   assert.equal(await list.locator('[data-update-user]').count(),25);
   assert.deepEqual((await list.locator('[data-update-group]').first().locator('article > strong').allTextContents()).slice(0,2),['Álvaro FA','Beatriz FA']);
   assert.equal(await modal.getByRole('button',{name:/anteriores|próximos/i}).count(),0);

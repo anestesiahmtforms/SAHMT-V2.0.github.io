@@ -1,17 +1,16 @@
 import {validateProfessionalAnswers,legacyProfessionalAnswers,professionalSchemaVersion,REGISTRATION_CYCLE} from '../src/registration-domain.js';
-import {assignedInstitutionalGroup,institutionalAssignmentKey,researchGroup} from '../src/institutional-group.js';
+import {assignedInstitutionalGroup,institutionalAssignmentKey,registrationMailboxAllowed,researchGroup} from '../src/institutional-group.js';
 import {assertFolderReadable} from '../server/folder-read-policy.js';
 import {SURVEY_ACTIVITIES,registrationConvocationAffiliation,registrationConvocationScope} from '../communication/obligations.js';
 const fail=(code,status=400)=>{throw Object.assign(Error(code),{code,status});};
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
 const validUid=uid=>typeof uid==='string'&&/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(uid);
 const registrationActivity=Object.freeze({kind:'SURVEY',id:'professional',title:SURVEY_ACTIVITIES.professional,cycle:REGISTRATION_CYCLE});
-const institutionalMailbox=email=>/^anestesiahmtforms(?:[2-5])?@gmail\.com$/i.test(email);
 export const registrationAdmin=p=>p?.role==='administrador_app'||p?.permissions?.admin===true;
 const linkedProfile=(profile,{uid,email})=>Boolean(profile&&profile.uid===uid&&profile.email?.trim().toLowerCase()===email.trim().toLowerCase()&&profile.active===true&&profile.access===true);
 const canSaveRegistration=(profile,affiliation,email,convokedGroup=null)=>Boolean(researchGroup(affiliation))&&
  (affiliation==='team'||affiliation==='substitute'||affiliation==='resident'||registrationAdmin(profile))&&
- (!convokedGroup||affiliation===convokedGroup||affiliation==='team')&&!institutionalMailbox(email);
+ (!convokedGroup||affiliation===convokedGroup||affiliation==='team')&&registrationMailboxAllowed(email,affiliation);
 export async function registrationActor(store,identity,{admin=false,team=false}={}){
  if(!identity?.uid||!/^[-A-Za-z0-9_.@+:%]{1,128}$/.test(identity.uid)||identity.provider!=='google.com'||identity.emailVerified!==true||!/^\S+@\S+\.\S+$/.test(identity.email||''))fail('REGISTRATION_UNAUTHENTICATED',401);
  const p=await store.get('users',identity.uid);if(!linkedProfile(p,identity)||admin&&!registrationAdmin(p))fail('REGISTRATION_FORBIDDEN',403);
@@ -89,13 +88,14 @@ export function createProfessionalRegistrationService({store,drive,verifyInvitat
    const current=await registrationActor(tx,identity),assignment=await tx.get('userCategories',await institutionalAssignmentKey(identity.email)),affiliation=assignedInstitutionalGroup(assignment,identity),group=researchGroup(affiliation),record=await tx.get('professionalRegistrations',ownId);
    if(invitationGroup&&affiliation!==invitationGroup&&affiliation!=='team')fail('REGISTRATION_FORBIDDEN',403);
    const compact=affiliation==='resident';
-   const limitedRegistration=(affiliation==='substitute'||compact)&&!institutionalMailbox(identity.email);
+   const mailboxAllowed=registrationMailboxAllowed(identity.email,affiliation);
+   const limitedRegistration=(affiliation==='substitute'||compact)&&mailboxAllowed;
    if(affiliation!=='team'&&!registrationAdmin(current)&&!limitedRegistration)fail('REGISTRATION_FORBIDDEN',403);
    if(record&&(record.uid!==identity.uid||record.email!==identity.email.toLowerCase()||record.cycle!==REGISTRATION_CYCLE||!Number.isSafeInteger(record.version)))fail('REGISTRATION_UNAVAILABLE',503);
    if(action==='BOOTSTRAP')return {record,isAdmin:registrationAdmin(current),profile:{email:identity.email.toLowerCase(),displayName:current.displayName||current.name||'',group},
     ...(limitedRegistration?{invitationOnly:true}:{}),...(compact?{formVariant:'resident'}:{})};
    if(limitedRegistration&&record)fail('REGISTRATION_VERSION_CONFLICT',409);
-   if(!group||institutionalMailbox(identity.email))fail('REGISTRATION_GROUP_UNAVAILABLE',422);
+   if(!group||!mailboxAllowed)fail('REGISTRATION_GROUP_UNAVAILABLE',422);
    if((record?.version||0)!==input.expectedVersion)fail('REGISTRATION_VERSION_CONFLICT',409);
    const answers=validateProfessionalAnswers(input.answers,{compact});
    const schemaVersion=compact?4:professionalSchemaVersion(answers);

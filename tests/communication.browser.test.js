@@ -23,7 +23,7 @@ test('o formulário compacto agrupa destinatários e confirma um único envio',a
    const description='Veja #/home e https://example.test/watch?v=abc&list=xyz';
    await form.getByLabel('Descrição do aviso').fill(description);
    await form.getByLabel('Público').selectOption('USER');await recipient.selectOption('ff-resident');
-   assert.deepEqual(await recipient.locator('optgroup').evaluateAll(groups=>groups.map(group=>[group.label,group.textContent])),[['EQUIPE','Pessoa da Equipe'],['R1','Pessoa Residente'],['SUBSTITUTOS','Pessoa Substituta']]);
+   assert.deepEqual(await recipient.locator('optgroup').evaluateAll(groups=>groups.map(group=>[group.label,group.textContent])),[['EQUIPE','Pessoa da Equipe'],['RESIDENTES','Pessoa Residente'],['SUBSTITUTOS','Pessoa Substituta']]);
    await send.evaluate(button=>{button.click();button.click();button.closest('dialog').dispatchEvent(new Event('cancel',{cancelable:true}));});
    const sent=form.getByRole('button',{name:'ENVIADO',exact:true});await sent.waitFor();
    await page.getByText('Evento publicado no app.',{exact:true}).waitFor();

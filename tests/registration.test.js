@@ -255,3 +255,30 @@ test('all resident ranks and the generic category can open both registration for
   }
  }
 });
+
+test('the designated institutional profiles open only their assigned registration forms',async()=>{
+ for(const [email,category,allowed] of [
+  ['anestesiahmtforms2@gmail.com','RESIDENTE',true],
+  ['anestesiahmtforms3@gmail.com','SUBSTITUTO',true],
+  ['anestesiahmtforms4@gmail.com','RESIDENTE',false],
+  ['anestesiahmtforms2@gmail.com','SUBSTITUTO',false]
+ ]){
+  const actor={...identity,email},store=vaccinationMemoryStore();
+  store.seed('users',actor.uid,{...actor,active:true,access:true});
+  store.seed('userCategories',await institutionalAssignmentKey(email),{schemaVersion:1,uid:actor.uid,email,identityStatus:'LINKED',memberCategories:[category]});
+  store.seed('epidemiologicalCycles','2026',{status:'open'});
+  const registrations=createProfessionalRegistrationService({store});
+  const surveys=createSurveyService({profileStore:store,responseStore:store});
+  const request={survey:'epidemiological',cycle:'2026'};
+  if(allowed){
+   const professional=await registrations.execute('BOOTSTRAP',{},actor);
+   assert.equal(professional.invitationOnly,true);
+   assert.equal(professional.formVariant,category==='RESIDENTE'?'resident':undefined);
+   assert.equal((await surveys.execute('BOOTSTRAP',request,actor)).group,category==='RESIDENTE'?'resident':'team');
+  }else{
+   await assert.rejects(registrations.execute('BOOTSTRAP',{},actor),{code:'REGISTRATION_FORBIDDEN'});
+   await assert.rejects(surveys.execute('BOOTSTRAP',request,actor),{code:'SURVEY_FORBIDDEN'});
+  }
+  await assert.rejects(surveys.execute('BOOTSTRAP',{...request,survey:'climate'},actor),{code:'SURVEY_FORBIDDEN'});
+ }
+});

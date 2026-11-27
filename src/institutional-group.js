@@ -1,5 +1,11 @@
 // Descriptive affiliation only: administrator/manager status never assigns a group.
 export const INSTITUTIONAL_GROUPS = Object.freeze({team:'Equipe',resident:'Residentes',substitute:'Substitutos'});
+export function registrationMailboxAllowed(email, affiliation) {
+  const address = String(email || '').trim().toLowerCase();
+  if (!/^anestesiahmtforms(?:[2-5])?@gmail\.com$/.test(address)) return true;
+  return address === 'anestesiahmtforms2@gmail.com' && affiliation === 'resident' ||
+    address === 'anestesiahmtforms3@gmail.com' && affiliation === 'substitute';
+}
 export function institutionalGroup(categories) {
   if (!Array.isArray(categories) || new Set(categories).size !== categories.length) return null;
   const affiliations = categories.filter(id => ['EFETIVO','RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO'].includes(id));
