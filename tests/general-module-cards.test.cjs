@@ -52,7 +52,7 @@ function harness({session = approved(), appFeatures = {}, route = 'home', hasCon
     fakeImport: async (path) => {
       imports.push(path);
       if (path === './management-hub.js') return {mountManagementHub: (root, options) => { queries.push({name:'mountManagementHub', options}); return () => {}; }};
-      if (path === './functional-access.js') return {getFunctionalAccess:async()=>({allowed:true,group:'EQUIPE'}),isEffectiveTeamMember:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true};
+      if (path === './functional-access.js') return {getFunctionalAccess:async()=>({allowed:true,group:'EQUIPE'}),readOwnInstitutionalGroup:async()=>session.profile?.memberCategories?.includes('EFETIVO')?'team':null};
       if (path === './data.js') return data;
       if (path === './performance-ui.js') return {mountPerformanceModule: () => {queries.push({name:'mountPerformanceModule'}); return () => {};}};
       throw new Error(`Importação inesperada no teste: ${path}`);

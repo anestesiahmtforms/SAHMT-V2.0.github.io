@@ -22,7 +22,7 @@ test('Pessoas groups the directory in display order and keeps contacts without a
  ];
  mountPeopleDirectory(host,{contacts,profiles,roleLabel:role=>role});
  assert.deepEqual([...host.innerHTML.matchAll(/<h3[^>]*>([^<]+)<\/h3>/g)].map(match=>match[1]),
-  ['Equipe','R3','R2','R1','Substituto','Sem grupo definido']);
+  ['Equipe','Residentes','R3','R2','R1','Substituto','Sem grupo definido']);
  assert.deepEqual([...host.innerHTML.matchAll(/<strong>([^<]+)<\/strong>/g)].map(match=>match[1]),
   ['AA · Ana','BB · Bruno','ZZ · Zélia','Élio','Davi','CC · Caio']);
  assert.deepEqual([...host.innerHTML.matchAll(/data-person="(\d+)"/g)].map(match=>Number(match[1])),[0,1,5,4,3,2]);

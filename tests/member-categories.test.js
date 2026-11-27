@@ -16,7 +16,7 @@ test('all five projects receive the same category model; absent accounts remain 
  const accounts=Object.fromEntries(Object.keys(MEMBER_CATEGORY_PROJECTS).map(k=>[k,[{email:'member@example.test',uid:'same-uid'}]]));
  const plan=planMemberCategoryDocuments(roster(),accounts);assert.equal(plan.totalMembers,2);assert.equal(plan.counts.GESTOR,0);
  for(const project of Object.values(plan.projects)){
-  assert.equal(project.linked,1);assert.deepEqual(project.pending,['resident@example.test']);assert.equal(project.documents.length,9);
+  assert.equal(project.linked,1);assert.deepEqual(project.pending,['resident@example.test']);assert.equal(project.documents.length,2+Object.keys(MEMBER_CATEGORIES).length);
   assert.ok(project.documents.every(x=>/^(userCategories|userCategoryDefinitions)\//.test(x.path)));
   assert.ok(project.documents.every(x=>!x.path.includes('@')));assert.equal(project.documents[0].data.uid,'same-uid');
  }

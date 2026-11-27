@@ -78,13 +78,13 @@ function harness({route='management',target='FB',session=authorized(),appFeature
     labels:{management:['Grupos de Gestão'],training:['Desempenho'],'management-hub':['Governança']},
     managementUtilityCards:()=>'',can:permission=>session.profile?.role==='administrador_app'||session.profile?.permissions?.[permission]===true,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
     mountHub:(content,options)=>{mounts.push(options.initialPanel);mountOptions.push(options);return ()=>{};},
-    fakeEffectiveTeamMember:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,
+    isSystemOwnerEmail:()=>false, fakeInstitutionalGroup:async()=>session.profile?.memberCategories?.includes('EFETIVO')?'team':session.profile?.memberCategories?.includes('SUBSTITUTO')?'substitute':'resident',
     fakeFunctionalAccess:async()=>({allowed:true,group:session.profile?.role==='administrador_app'?null:'EQUIPE'})
   });
   const inactiveFolderHelper=main.slice(main.indexOf('function canBrowseInactiveGovernanceFolder('),main.indexOf('\n}',main.indexOf('function canBrowseInactiveGovernanceFolder('))+2);
   const code=(router+'\n'+cards+'\n'+occurrencePermission+'\n'+inactiveFolderHelper+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
     .replaceAll('import.meta.env','env').replace("import('./management-hub.js')",'Promise.resolve({mountManagementHub:mountHub})')
-    .replace("import('./functional-access.js')",'Promise.resolve({getFunctionalAccess:fakeFunctionalAccess,isEffectiveTeamMember:fakeEffectiveTeamMember})');
+    .replace("import('./functional-access.js')",'Promise.resolve({getFunctionalAccess:fakeFunctionalAccess,readOwnInstitutionalGroup:fakeInstitutionalGroup})');
   vm.runInContext(code,ctx);
   return {ctx,app,assignments,mounts,mountOptions,loaded,render:()=>ctx.render()};
 }
@@ -143,7 +143,7 @@ test('Etiquetas retains its HOME footer and original route',async()=>{
   assert.equal(h.ctx.location.hash,'#/home');assert.deepEqual(h.assignments,[]);
 });
 
-test('residents and substitutes can open Governance with access only to institutional surveys in FE',async()=>{for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','epidemiological'])assert.equal(access[key],false);assert.equal(access.institutionalSurveys,true);}});
+test('residents and substitutes can open Governance with access only to institutional surveys in FE',async()=>{for(const category of ['RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','teamSurveys','biosafety'])assert.equal(access[key],false);for(const key of ['professional','epidemiological'])assert.equal(access[key],category==='SUBSTITUTO',key);assert.equal(access.institutionalSurveys,true);}});
 test('administrators outside the team retain Governance access with the epidemiological form restricted',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);assert.equal(access.epidemiological,false);});
 
 test('ordinary and team-mode sessions can open Ocorrências and return to Home',async()=>{
