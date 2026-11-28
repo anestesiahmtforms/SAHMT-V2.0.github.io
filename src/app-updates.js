@@ -30,44 +30,77 @@ export async function watchAppUpdates({base,serviceWorker=globalThis.navigator?.
   return {check,dismiss(){dismissed=true;onDismiss();},stop(){stopped=true;appWindow.clearInterval(timer);registration.removeEventListener('updatefound',inspect);appWindow.removeEventListener('pageshow',resume);appWindow.removeEventListener('online',online);document.removeEventListener('visibilitychange',visibility);for(const [worker,listener] of watched)worker.removeEventListener('statechange',listener);watched.clear();}};
 }
 
-/** A nonmodal update notice remains usable above app dialogs on mobile. */
+export const APP_UPDATE_LOCK_EVENT='sahmt:app-update-lock-changed';
+
+/** Keep the current version blocked until the update page takes over. */
 export async function installAppUpdatePrompt({base,target,document=globalThis.document,appWindow=globalThis.window,serviceWorker=globalThis.navigator?.serviceWorker,repair=repairAppFiles,...options}={}) {
   if(!document?.body||!serviceWorker||document.getElementById('sahmt-app-update-prompt'))return null;
-  const prompt=document.createElement('aside');prompt.id='sahmt-app-update-prompt';prompt.className='app-update-prompt';prompt.hidden=true;prompt.setAttribute('role','status');prompt.setAttribute('aria-live','polite');
-  prompt.innerHTML='<strong>Nova versão disponível</strong><p data-app-update-message>Uma atualização do SAHMT está pronta. Se estiver preenchendo algo, conclua antes de atualizar.</p><div class="app-update-actions"><button type="button" data-app-update>Atualizar agora</button><button type="button" data-app-update-later>Depois</button></div>';
-  const supportsPopover=typeof prompt.showPopover==='function';if(supportsPopover)prompt.setAttribute('popover','manual');
-  let visible=false,lastDialog=null,watcher,updating=false;
-  const hide=()=>{visible=false;if(supportsPopover)try{prompt.hidePopover();}catch{}prompt.hidden=true;};
-  const place=()=>{
-    if(!visible)return;
-    const dialog=document.activeElement?.closest?.('dialog[open]')||[...document.querySelectorAll('dialog[open]')].at(-1)||null;
-    const host=dialog||document.body;
-    const moved=prompt.parentNode!==host;if(moved)host.append(prompt);
-    if(supportsPopover&&(moved||dialog!==lastDialog||!prompt.matches(':popover-open'))){try{prompt.hidePopover();}catch{}try{prompt.showPopover();}catch{}}
-    lastDialog=dialog;
+  const prompt=document.createElement('dialog');
+  prompt.id='sahmt-app-update-prompt';
+  prompt.className='app-update-prompt';
+  prompt.dataset.appUpdateRequired='';
+  prompt.setAttribute('aria-labelledby','sahmt-app-update-title');
+  prompt.setAttribute('aria-describedby','sahmt-app-update-message');
+  prompt.innerHTML='<strong id="sahmt-app-update-title">Nova versão disponível</strong><p id="sahmt-app-update-message" data-app-update-message role="status">Atualize o SAHMT para continuar.</p><button type="button" data-app-update autofocus>Atualizar agora</button>';
+  const button=prompt.querySelector('[data-app-update]');
+  const message=prompt.querySelector('[data-app-update-message]');
+  let watcher,updating=false,lockedHash='',retryTimer;
+  const signalLock=()=>document.dispatchEvent(new appWindow.Event(APP_UPDATE_LOCK_EVENT));
+  const show=()=>{
+    if(prompt.open)return;
+    lockedHash=appWindow.location.hash;
+    prompt.showModal();
+    signalLock();
+    button.focus();
   };
-  const show=()=>{if(updating)return;visible=true;prompt.hidden=false;place();};
-  const click=event=>{
-    if(event.target.closest('[data-app-update-later]')){watcher?.dismiss();return;}
-    if(event.target.closest('[data-app-update]')){
-      event.preventDefault();event.stopPropagation();if(updating)return;
-      const requested=appWindow.location.hash;
-      const hash=/^#\/[a-z0-9/-]*$/i.test(requested)&&requested.length<=250?requested:target==='FB'?'#/management':'#/home';
-      updating=true;hide();
-      try{
-        if(!repair({target,hash}))throw Error('UPDATE_NOT_STARTED');
-        watcher?.stop();
-      }catch{
-        updating=false;
-        prompt.querySelector('[data-app-update-message]').textContent='Não foi possível iniciar a atualização. Confira a conexão e tente novamente.';
-        show();
-      }
+  const preventCancel=event=>event.preventDefault();
+  const restoreRoute=()=>{
+    if(prompt.open&&appWindow.location.hash!==lockedHash){
+      appWindow.history.replaceState(appWindow.history.state,'',appWindow.location.pathname+appWindow.location.search+lockedHash);
     }
   };
-  prompt.addEventListener('click',click);document.body.append(prompt);
+  const retry=()=>{
+    updating=false;
+    button.disabled=false;
+    message.textContent='Não foi possível iniciar a atualização. Confira a conexão e tente novamente.';
+    button.focus();
+  };
+  const click=()=>{
+    if(updating)return;
+    const hash=/^#\/[a-z0-9/-]*$/i.test(lockedHash)&&lockedHash.length<=250?lockedHash:target==='FB'?'#/management':'#/home';
+    updating=true;
+    button.disabled=true;
+    message.textContent='Abrindo a atualização do SAHMT…';
+    try{
+      if(!repair({target,hash}))throw Error('UPDATE_NOT_STARTED');
+      retryTimer=appWindow.setTimeout(retry,4000);
+    }catch{retry();}
+  };
+  button.addEventListener('click',click);
+  prompt.addEventListener('cancel',preventCancel);
+  appWindow.addEventListener('hashchange',restoreRoute,true);
+  document.body.append(prompt);
   const Observer=appWindow.MutationObserver;
-  const observer=Observer?new Observer(place):null;observer?.observe(document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['open']});
-  try{watcher=await watchAppUpdates({base,serviceWorker,document,appWindow,...options,onAvailable:show,onDismiss:hide});}
-  catch(error){observer?.disconnect();prompt.remove();throw error;}
-  return {check:watcher?.check,stop(){watcher?.stop();observer?.disconnect();prompt.removeEventListener('click',click);hide();prompt.remove();}};
+  const observer=Observer?new Observer(records=>{
+    if(!prompt.open||!records.some(record=>record.target!==prompt&&record.target.matches?.('dialog:modal')))return;
+    prompt.close();
+    prompt.showModal();
+    button.focus();
+  }):null;
+  observer?.observe(document.body,{subtree:true,attributes:true,attributeFilter:['open']});
+  function stop(){
+    watcher?.stop();
+    observer?.disconnect();
+    appWindow.clearTimeout(retryTimer);
+    appWindow.removeEventListener('hashchange',restoreRoute,true);
+    button.removeEventListener('click',click);
+    prompt.removeEventListener('cancel',preventCancel);
+    const wasOpen=prompt.open;
+    if(wasOpen)prompt.close();
+    prompt.remove();
+    if(wasOpen)signalLock();
+  }
+  try{watcher=await watchAppUpdates({base,serviceWorker,document,appWindow,...options,onAvailable:show});}
+  catch(error){stop();throw error;}
+  return {check:watcher?.check,stop};
 }

@@ -1,5 +1,7 @@
 import {obligationDueAt,obligationStage,registrationConvocationAffiliation} from '../communication/obligations.js';
 import {activityBreadcrumb} from './communication-activity-selection.js';
+import {APP_UPDATE_LOCK_EVENT} from './app-updates.js';
+import {isAppUpdateRequired} from './router.js';
 import './communication-obligation-banner.css';
 
 const registrationLockAt=Date.parse('2026-11-27T00:00:00-03:00');
@@ -79,6 +81,13 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  }
  function host(){
   if(!alive()||!node.isConnected)return;
+  if(isAppUpdateRequired(doc)){
+   blocking=false;
+   restoreInert();
+   if(typeof node.hidePopover==='function'&&node.matches(':popover-open'))node.hidePopover();
+   node.hidden=true;
+   return;
+  }
   const open=[...doc.querySelectorAll('dialog:modal')].filter(el=>el!==node);
   for(let i=modals.length-1;i>=0;i--)if(!open.includes(modals[i]))modals.splice(i,1);
   for(const modal of open)if(!modals.includes(modal))modals.push(modal);
@@ -161,7 +170,7 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
   }
  }
  async function openActivity(){
-  if(!alive()||interacting)return;
+  if(!alive()||interacting||isAppUpdateRequired(doc))return;
   const item=current();if(!item)return;
   error='';interacting++;position=null;render();
   try{await onOpenActivity(item);}
@@ -170,11 +179,12 @@ export function mountCommunicationObligationBanner({client,uid,isCurrent=()=>tru
  }
  listen(select,'change',()=>{selectedId=select.value;render();});
  listen(find('[data-open]'),'click',()=>void openActivity());
+ listen(doc,APP_UPDATE_LOCK_EVENT,host);
  listen(handle,'keydown',event=>{if(blocking||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;event.preventDefault();const step=event.shiftKey?40:10,rect=node.getBoundingClientRect();position={x:rect.x+(event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0),y:rect.y+(event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0)};bound();});
  listen(handle,'pointerdown',event=>{if(blocking||event.button>0)return;event.preventDefault();const rect=node.getBoundingClientRect();drag={id:event.pointerId,x:event.clientX,y:event.clientY,left:rect.left,top:rect.top};try{handle.setPointerCapture(event.pointerId);}catch{/* Synthetic/older pointer implementations. */}});
  listen(handle,'pointermove',event=>{if(drag?.id!==event.pointerId)return;position={x:drag.left+event.clientX-drag.x,y:drag.top+event.clientY-drag.y};bound();});
  for(const type of ['pointerup','pointercancel','lostpointercapture'])listen(handle,type,()=>{drag=null;});
- const gate=event=>{if(blocking&&!node.contains(event.target)){event.preventDefault();event.stopImmediatePropagation();}};
+ const gate=event=>{if(blocking&&!isAppUpdateRequired(doc)&&!node.contains(event.target)){event.preventDefault();event.stopImmediatePropagation();}};
  listen(doc,'click',gate,true);listen(doc,'submit',gate,true);
  listen(win,'resize',bound);if(win.visualViewport){listen(win.visualViewport,'resize',bound);listen(win.visualViewport,'scroll',bound);}
  for(const type of ['pageshow','online','focus'])listen(win,type,()=>void refresh());

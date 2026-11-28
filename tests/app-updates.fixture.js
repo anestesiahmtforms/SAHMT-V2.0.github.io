@@ -1,5 +1,6 @@
 import {installAppUpdatePrompt} from '../src/app-updates.js';
 import '../src/app-updates.css';
+import {mountCommunicationObligationBanner} from '../src/communication-obligation-banner.js';
 import {mountManagementHub} from '../src/management-hub.js';
 
 const registration=Object.assign(new EventTarget(),{waiting:null,installing:null,async update(){window.updateChecks++;}});
@@ -19,4 +20,12 @@ window.closeHub=()=>cleanup?.();
 document.querySelector('#open-hub').addEventListener('click',()=>window.openHub());
 window.offerUpdate=()=>{registration.waiting=Object.assign(new EventTarget(),{state:'installed'});registration.dispatchEvent(new Event('updatefound'));};
 window.updates=await installAppUpdatePrompt({base:'/SAHMT-V2.0.github.io/',target:'FA',serviceWorker,repair:options=>{window.repairs.push(options);return window.repairAccepted;}});
+window.openRequiredActivity=()=>{
+ const publishAt=1700000000000,dueAt=publishAt+3600000;
+ const activity={id:'activity-test',publishAt,dueAt,activity:{kind:'SURVEY',id:'epidemiological',title:'Cadastro Epidemiológico',cycle:'2026'}};
+ window.obligationOpenCount=0;
+ return mountCommunicationObligationBanner({uid:'member',client:{async request(action){
+  return action==='PENDING_ACTIVITIES'?{items:[activity],serverNow:dueAt}:{completed:false,serverNow:dueAt};
+ }},onOpenActivity:()=>{window.obligationOpenCount++;}});
+};
 window.fixtureReady=true;

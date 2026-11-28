@@ -32,7 +32,7 @@ import {confirmedLiveReportRecords} from './live-report-session.js';
 import {reconcileReportMarkup} from './report-dom.js';
 import {firebaseConfigured} from './firebase-app.js';
 import {retryAuthenticatedProfile, signInGoogle, signOutGlobal, watchSession} from './auth.js';
-import {currentRoute, navigate, shouldRenderHashChange} from './router.js';
+import {currentRoute, isAppUpdateRequired, navigate, shouldRenderHashChange} from './router.js';
 import {confirmQueuedOperation, discardCachedTrainingProgress, listPendingTrainingProgress, listUnsettledOperations, nextQueuedAttemptAt, operationCounts, pendingTrainingProgressCount, readCachedSchedule, readSafeCache, readFreshSafeCache, removeQueuedOperation, requiresSendConfirmation, retryFailedOperation, retryFailedOperations, retryableFailedOperationCount, writeSafeCache} from './outbox.js';
 import {eventAmountToPay, eventFieldRules, validateEventForm} from './event-form.js';
 import {isValidDateKey, localDateKey, scheduleTodayWeekday, shiftDateKey} from './schedule-date.js';
@@ -5516,6 +5516,7 @@ function syncObligationBanner(){
     const controller=banner.mountCommunicationObligationBanner({
       uid,client,isCurrent,
       async onOpenActivity(item){
+        if(isAppUpdateRequired())return;
         const destination=activityDestination(item.activity,item.id);
         if(!destination)throw Error('COMM_ACTIVITY_UNAVAILABLE');
         const {base,hash:target}=destination;
@@ -5526,7 +5527,7 @@ function syncObligationBanner(){
         }
         if(base===deployment.fbBase){
           const source=location.href;
-          const current=()=>isCurrent()&&location.href===source;
+          const current=()=>isCurrent()&&location.href===source&&!isAppUpdateRequired();
           const {ensureManagementSession}=await import('./management-entry-session.js');
           if(!current())return;
           const ready=await ensureManagementSession({isCurrent:current});
@@ -5564,6 +5565,7 @@ async function updateHomeOccurrenceState(isCurrent) {
 }
 
 async function render() {
+  if(typeof isAppUpdateRequired==='function'&&isAppUpdateRequired())return;
   if(typeof syncObligationBanner==='function')syncObligationBanner();
   globalThis.communicationHomeBannerCleanup?.();
   globalThis.communicationHomeBannerCleanup=null;
@@ -6029,6 +6031,7 @@ const connectionRecovery=createConnectionLifecycle({
 });
 let connectionsSuspended=false;
 window.addEventListener('hashchange', () => {
+  if(isAppUpdateRequired())return;
   if (shouldRenderHashChange(session)) void render();
   void connectionRecovery.recover('navigation');
 });
@@ -6199,8 +6202,8 @@ watchSession(next=>{
 });
 
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  const startUpdates=()=>{void installAppUpdatePrompt({base:import.meta.env.BASE_URL,target:deployment.target}).catch(error=>console.warn('[SAHMT PWA] Atualização indisponível:',error?.message));};
-  if(document.readyState==='complete')startUpdates();else window.addEventListener('load',startUpdates,{once:true});
+  void installAppUpdatePrompt({base:import.meta.env.BASE_URL,target:deployment.target})
+    .catch(error=>console.warn('[SAHMT PWA] Atualização indisponível:',error?.message));
 }
 
 

@@ -1,4 +1,5 @@
 import {canUseYearEndSchedule,confirmedYearEndRegistration} from './year-end-schedule.js';
+import {isAppUpdateRequired} from './router.js';
 
 // Temporary campaign for the current cycle. Completion stays in the existing
 // server registration; dismissing the card only affects this app opening.
@@ -68,7 +69,7 @@ export function installYearEndFloatingBanner({controller,baseUrl,onOpen,canShow=
   const hide=()=>{if(supportsPopover)try{banner.hidePopover();}catch{}banner.hidden=true;};
   const update=()=>{
     if(stopped)return;
-    if(!controller.visible||!canShow()){hide();return;}
+    if(!controller.visible||!canShow()||isAppUpdateRequired(document)){hide();return;}
     const dialog=document.activeElement?.closest?.('dialog[open]')||[...document.querySelectorAll('dialog[open]')].at(-1)||null;
     const host=dialog||document.body,moved=banner.parentNode!==host;
     if(moved)host.append(banner);

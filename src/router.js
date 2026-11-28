@@ -3,6 +3,9 @@ import {rememberModuleNavigation,rememberManagementReturn} from './module-naviga
 import {repairAppFiles,staleModuleFailure} from './app-repair.js';
 const routes = new Set(['fi-control', 'fi-search', 'communications', 'home', 'schedule', 'events', 'labels', 'management-hub', 'functional', 'year-end-schedule', 'management', 'qmentum', 'fg-performance', 'fc-performance', 'checklist', 'training', 'occurrences', 'people', 'admin', 'app-updates-control', 'offline']);
 let navigationGeneration=0;
+export function isAppUpdateRequired(doc=globalThis.document) {
+  return Boolean(doc?.querySelector?.('dialog[data-app-update-required][open]'));
+}
 
 export function currentRoute() {
   let route = location.hash.replace(/^#\/?/, '').split('/')[0] || 'home';
@@ -13,9 +16,9 @@ export function currentRoute() {
 
 export async function navigate(route, {panel} = {}) {
   if (route === 'events') route = 'schedule';
-  if (!routes.has(route)) return;
+  if (!routes.has(route)||isAppUpdateRequired()) return;
   const generation=++navigationGeneration,sourceHash=location.hash;
-  const isCurrent=()=>generation===navigationGeneration&&location.hash===sourceHash;
+  const isCurrent=()=>generation===navigationGeneration&&location.hash===sourceHash&&!isAppUpdateRequired();
   const suffix = route === 'management-hub' && ['records', 'indicators', 'results', 'surveys', 'institutional', 'general', 'vacations2027'].includes(panel) ? '/' + panel : '';
   if (deployment.target === 'FB' && !['management','training'].includes(route)) {
     rememberModuleNavigation(deployment.faBase);
