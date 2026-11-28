@@ -11,6 +11,7 @@
 .communication-obligation [data-open][data-state="completed"]{background:#1a663c;opacity:1}
 .communication-obligation :focus-visible{outline:3px solid #006dd5;outline-offset:-3px}
 .communication-obligation button:disabled{opacity:.6}
+.communication-obligation[data-stage="0"]{max-height:50dvh}
 .communication-obligation[data-stage="1"]{min-height:min(240px,40dvh)}
 .communication-obligation[data-stage="2"]{min-height:min(275px,50dvh)}
 .communication-obligation[data-stage="3"]{min-height:min(305px,55dvh)}
