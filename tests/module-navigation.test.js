@@ -79,3 +79,33 @@ test('Abrir atividade envia a enquete ao formulário e retoma o mesmo treinament
  await onOpen(item);
  assert.equal(location.destination,FB+target);
 });
+
+for(const [route,folder,loader,reader,profileKey] of [
+ ['labels','operacao/etiquetas','loadOwnLabelModuleProfile','readLabelModuleProfile','labelProfile'],
+ ['checklist','operacao/checklist','loadOwnChecklistModuleProfile','readChecklistModuleProfile','checklistProfile']
+])test(route+' waits for its folder policy before reading the operational profile',async()=>{
+ const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
+ const start=main.indexOf("let labelProfileLoadUid = ''"),end=main.indexOf('watchSession(next=>',start);
+ const profile={uid:'member',active:true,access:true};
+ const requests=[],folderChecks=[];
+ let folderAllowed=false;
+ const context=vm.createContext({deployment:{target:'FA'},env:{VITE_FH_LABELS_ENABLED:'true'},fgChecklistEnabled:true,
+  currentRoute:()=>route,session:{status:'signed-in',user:{uid:profile.uid}},render:async()=>{},
+  withinDeadline:read=>read(),operationalContentAllowed:id=>{folderChecks.push(id);return folderAllowed;},
+  load:async()=>({[reader]:async uid=>{
+   requests.push(uid);
+   if(!folderAllowed)throw Object.assign(Error('FOLDER_DISABLED'),{code:'FOLDER_DISABLED'});
+   return profile;
+  }})
+ });
+ vm.runInContext(main.slice(start,end).replaceAll('import.meta.env','env').replaceAll('import(','load('),context);
+ await context[loader](profile.uid);
+ assert.deepEqual(requests,[]);
+ assert.equal(context.session[profileKey+'Loaded'],undefined);
+ folderAllowed=true;
+ await context[loader](profile.uid);
+ assert.deepEqual(folderChecks,[folder,folder]);
+ assert.deepEqual(requests,[profile.uid]);
+ assert.equal(context.session[profileKey],profile);
+ assert.equal(context.session[profileKey+'Loaded'],true);
+});

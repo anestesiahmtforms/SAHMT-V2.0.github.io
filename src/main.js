@@ -6139,7 +6139,8 @@ const targetedAppUpdates=installTargetedAppUpdates({target:deployment.target,sig
 let labelProfileLoadUid = '';
 let labelProfileLoadSequence = 0;
 async function loadOwnLabelModuleProfile(uid) {
-  if (deployment.target !== 'FA' || import.meta.env.VITE_FH_LABELS_ENABLED !== 'true' || !uid || labelProfileLoadUid === uid) return;
+  if (deployment.target !== 'FA' || import.meta.env.VITE_FH_LABELS_ENABLED !== 'true' || !uid ||
+    labelProfileLoadUid === uid || !operationalContentAllowed('operacao/etiquetas')) return;
   labelProfileLoadUid = uid;
   const sequence = ++labelProfileLoadSequence;
   session = {...session, labelProfile:null, labelProfileLoaded:false, labelProfileError:''};
@@ -6160,7 +6161,8 @@ async function loadOwnLabelModuleProfile(uid) {
 let checklistProfileLoadUid = '';
 let checklistProfileLoadSequence = 0;
 async function loadOwnChecklistModuleProfile(uid) {
-  if (deployment.target !== 'FA' || !fgChecklistEnabled || !uid || checklistProfileLoadUid === uid) return;
+  if (deployment.target !== 'FA' || !fgChecklistEnabled || !uid || checklistProfileLoadUid === uid ||
+    !operationalContentAllowed('operacao/checklist')) return;
   checklistProfileLoadUid = uid;
   const sequence = ++checklistProfileLoadSequence;
   session = {...session, checklistProfile:null, checklistProfileLoaded:false, checklistProfileError:''};
