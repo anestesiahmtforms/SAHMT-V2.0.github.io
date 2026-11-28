@@ -162,6 +162,7 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     const selector=administrator?'<div class="functional-team"><button class="secondary-button" type="button" data-fk-team aria-expanded="false" aria-controls="fk-team-picker">Selecionar integrante da Equipe</button>'
       + '<div id="fk-team-picker" data-fk-picker hidden><label for="fk-team-subject">Integrante da Equipe</label>'
       + '<select id="fk-team-subject" data-fk-subject disabled><option value="">Meu perfil</option></select><p data-fk-team-status role="status"></p></div>'
+      + '<button class="secondary-button" type="button" data-fk-ranking>Pontuação de residentes e substitutos</button>'
       + '<button class="secondary-button" type="button" data-fk-dose-admin>Atualizar histórico de dosimetria</button></div>':'';
     visibleSources=ownSources;
     showOwner(displayName||'Meu perfil');
@@ -372,8 +373,39 @@ export async function mountFunctionalModule(root, {uid, displayName = '', faAuth
     }
   }
 
+  async function openRanking() {
+    const ticket = ++resultRequest;
+    openSource = 'ranking';
+    const title = detailDialog.querySelector('#fk-detail-title');
+    title.textContent = 'Pontuação de residentes e substitutos';
+    title.removeAttribute('data-folder-state');
+    detailDialog.querySelector('[data-fk-detail-icon]').replaceChildren();
+    const body = detailDialog.querySelector('[data-fk-detail-body]');
+    body.textContent = 'Carregando atividades pontuadas…';
+    detailDialog.showModal();
+    const current = () => ownSession() && detailDialog.open && ticket === resultRequest;
+    let client;
+    try {
+      const [{createCommunicationClient}, {loadActivityRanking, renderActivityRanking}] = await Promise.all([
+        import('./communication-client.js'), import('./functional-activity-ranking.js')
+      ]);
+      if (!current()) return;
+      client = createCommunicationClient({isCurrent: current});
+      const people = await loadActivityRanking(client.request, current);
+      if (current()) body.innerHTML = renderActivityRanking(people);
+    } catch {
+      if (current()) body.textContent = 'Não foi possível consultar a pontuação. Feche e reabra para tentar novamente.';
+    } finally {
+      client?.dispose();
+    }
+  }
+
   function onFunctionalClick(event) {
     if(ownSession()&&event.target.closest('[data-fk-open-topics]')){openTopics();return;}
+    if(event.target.closest('[data-fk-ranking]') && administrator && ownSession() && detailDialog && !detailDialog.open){
+      void openRanking();
+      return;
+    }
     const doseAdmin=event.target.closest('[data-fk-dose-admin]');
     if(doseAdmin&&administrator&&ownSession()&&detailDialog&&!detailDialog.open&&hasSource('dosimetry')){
       openSource='dosimetry';
