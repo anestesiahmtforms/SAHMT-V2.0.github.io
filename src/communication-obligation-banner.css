@@ -5,9 +5,10 @@
 .communication-obligation__content{padding:8px;display:grid;gap:5px}
 .communication-obligation p{margin:0;overflow-wrap:anywhere;font-size:12px}
 .communication-obligation p:empty{display:none}
-.communication-obligation label{display:grid;gap:4px;font-size:12px}
-.communication-obligation select{display:block;min-width:0;max-width:100%;width:100%;font:inherit;font-size:14px;padding:6px;border:1px solid #8f7e6c;border-radius:5px;background:#fff;color:#29221b}
-.communication-obligation [data-open]{font:700 12px/1.25 system-ui;min-height:44px;padding:6px;border:1px solid #84340f;border-radius:6px;background:#84340f;color:#fff;overflow-wrap:anywhere}
+.communication-obligation [data-activity-list]{display:grid;gap:8px;list-style:none;margin:0;padding:0}
+.communication-obligation [data-activity-list] li{display:grid;gap:3px}
+.communication-obligation [data-open]{display:block;width:100%;font:700 12px/1.25 system-ui;min-height:44px;padding:6px;border:0;border-radius:6px;background:#a3212d;color:#fff;overflow-wrap:anywhere}
+.communication-obligation [data-open][data-state="completed"]{background:#1a663c;opacity:1}
 .communication-obligation :focus-visible{outline:3px solid #006dd5;outline-offset:-3px}
 .communication-obligation button:disabled{opacity:.6}
 .communication-obligation[data-stage="1"]{min-height:min(240px,40dvh)}
@@ -17,7 +18,7 @@
 .communication-obligation[data-blocking="true"]{width:100vw;height:100dvh;max-height:100dvh;border-radius:0;display:flex;flex-direction:column;justify-content:center;overscroll-behavior:contain}
 .communication-obligation[data-blocking="true"] .communication-obligation__move{cursor:default}
 .communication-obligation[data-blocking="true"] .communication-obligation__content{width:100%;max-width:640px;align-self:center;padding:20px;overflow:auto}
-.communication-obligation[data-active="true"]{min-height:0}
+.communication-obligation[data-active="true"]{min-height:0;max-height:30dvh}
 .communication-obligation[data-active="true"] .communication-obligation__content{padding:8px;gap:5px}
 .communication-obligation[data-active="true"] [data-path],.communication-obligation[data-active="true"] [data-criterion],.communication-obligation[data-active="true"] [data-deadline]{display:none}
 @media(max-width:360px){.communication-obligation:not([data-blocking="true"]) .communication-obligation__content{padding:8px}}

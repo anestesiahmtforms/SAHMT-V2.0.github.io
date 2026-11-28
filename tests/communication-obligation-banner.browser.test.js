@@ -8,6 +8,36 @@ after(async()=>{await browser?.close();await server?.close();});
 async function pageFor(options={}){const page=await browser.newPage(options);page.setDefaultTimeout(10000);await page.goto(url,{timeout:30000});await page.locator('[data-obligation-banner]').waitFor();return page;}
 const panel=page=>page.locator('[data-obligation-banner]');
 
+test('restaura a lista de treinamentos após recarregar e só muda a cor com confirmação',async()=>{
+ const page=await pageFor();
+ try {
+  await page.evaluate(async()=>{
+   fixture.items.push({...fixture.items[0],id:'second-training',activity:{...fixture.items[0].activity,title:'Segundo treinamento'}});
+   await banner.refresh();
+  });
+  const first=panel(page).getByRole('button',{name:'Treinamento seguro · Pendente'});
+  const second=panel(page).getByRole('button',{name:'Segundo treinamento · Pendente'});
+  assert.ok((await first.boundingBox()).y<(await second.boundingBox()).y);
+  assert.equal(await first.getAttribute('data-state'),'pending');
+  assert.equal(await first.evaluate(button=>getComputedStyle(button).backgroundColor),'rgb(163, 33, 45)');
+  await page.evaluate(async()=>{fixture.completed.push('old');await banner.refresh();});
+  const completed=panel(page).getByRole('button',{name:'Treinamento seguro · Concluída'});
+  assert.equal(await completed.getAttribute('data-state'),'completed');
+  assert.equal(await completed.evaluate(button=>getComputedStyle(button).backgroundColor),'rgb(26, 102, 60)');
+  assert.equal(await completed.isDisabled(),true);
+  await page.goto(url+'?offline');
+  await second.waitFor();
+  await completed.waitFor();
+  await page.evaluate(async()=>{
+   fixture.items.push({...fixture.items[0],id:'second-training',activity:{...fixture.items[0].activity,title:'Segundo treinamento'}});
+   fixture.fail=false;fixture.empty=true;await banner.refresh();
+  });
+  await second.waitFor();
+  await page.evaluate(async()=>{banner.cleanup();fixture.fail=true;window.mount('other-user');});
+  assert.equal(await panel(page).count(),0);
+ }finally{await page.close();}
+});
+
 test('Cadastro Profissional dos Substitutos usa as 48 horas da convocação',async()=>{
  const page=await pageFor({viewport:{width:980,height:760}});
  try {
@@ -26,17 +56,14 @@ test('Cadastro Profissional dos Substitutos usa as 48 horas da convocação',asy
  } finally {await page.close();}
 });
 
-test('banner compacto mostra o título da atividade, o caminho na Home e somente o botão de abrir',async()=>{
+test('banner compacto mostra botões individuais e os caminhos na Home',async()=>{
  const page=await pageFor({viewport:{width:320,height:568}});try{
   const banner=panel(page);
-  assert.deepEqual(await banner.getByLabel('Atividade pendente').locator('option').allTextContents(),['Treinamento seguro','Pesquisa de Clima Organizacional']);
-  assert.equal(await banner.locator('[data-path]').textContent(),'Home › Governança › Grupos de Gestão › Gestão de Documentos › Treinamento seguro');
+  assert.deepEqual(await banner.locator('[data-state="pending"]').allTextContents(),['Treinamento seguro · Pendente','Pesquisa de Clima Organizacional · Pendente']);
+  assert.deepEqual(await banner.locator('[data-path]').allTextContents(),['Home › Governança › Grupos de Gestão › Gestão de Documentos › Treinamento seguro','Home › Governança › Enquetes e Consultas › Acesso Restrito › Pesquisa de Clima Organizacional']);
   assert.doesNotMatch(await banner.innerText(),/https:\/\/|link abaixo/);
-  assert.deepEqual(await banner.getByRole('button').allTextContents(),['Abrir atividade']);
-  const box=await banner.boundingBox();assert.ok(Math.abs(box.width-288)<=1&&box.height<=255,JSON.stringify(box));
-  await banner.getByLabel('Atividade pendente').selectOption('new');
-  assert.equal(await banner.locator('[data-path]').textContent(),'Home › Governança › Enquetes e Consultas › Acesso Restrito › Pesquisa de Clima Organizacional');
-  await banner.getByRole('button',{name:'Abrir atividade',exact:true}).click();
+  const box=await banner.boundingBox();assert.ok(Math.abs(box.width-288)<=1&&box.height<=285,JSON.stringify(box));
+  await banner.getByRole('button',{name:'Pesquisa de Clima Organizacional · Pendente'}).click();
   assert.deepEqual(await page.evaluate(()=>fixture.opens),['new']);
  }finally{await page.close();}
 });
@@ -57,19 +84,20 @@ test('usa 90% da largura até o prazo definido e volta ao tamanho normal após m
 
 test('server-confirmed age, oldest priority and bounded request budget; no read or dismiss',async()=>{
  const page=await pageFor();try{
-  assert.equal(await page.getByLabel('Atividade pendente').inputValue(),'old');
+  assert.equal(await panel(page).locator('[data-open]').first().getAttribute('data-open'),'old');
   for(const [hours,stage] of [[0,0],[23,0],[24,1],[48,2],[72,3],[96,4],[119,4],[120,5]]){
    await page.evaluate(h=>window.age(h),hours);assert.equal(await panel(page).getAttribute('data-stage'),String(stage));
   }
   assert.equal(await panel(page).getByRole('button',{name:/fechar|dispensar/i}).count(),0);
   assert.equal(await page.evaluate(()=>fixture.calls.some(c=>/READ|MARK/.test(c.action))),false);
-  assert.ok(await page.evaluate(()=>fixture.calls.filter(c=>c.action==='VERIFY_ACTIVITY').every(c=>c.input.id==='old')));
+  assert.deepEqual(await page.evaluate(()=>[...new Set(fixture.calls.filter(c=>c.action==='VERIFY_ACTIVITY').map(c=>c.input.id))]),['old','new']);
   await page.evaluate(()=>{Date.now=()=>9999999999999;localStorage.setItem('obligation-clock','9999999999999');});
   await page.evaluate(()=>window.age(0));assert.equal(await panel(page).getAttribute('data-stage'),'0');
-  await page.getByLabel('Atividade pendente').selectOption('new');await page.getByRole('button',{name:'Abrir atividade',exact:true}).click();
+  await panel(page).getByRole('button',{name:'Pesquisa de Clima Organizacional · Pendente'}).click();
   assert.deepEqual(await page.evaluate(()=>fixture.opens),['new']);
   const requests=await page.evaluate(async()=>{banner.setActivityActive(null);fixture.items=Array.from({length:20},(_,i)=>({...fixture.items[0],id:'pending-'+i,publishAt:1700000000000+i}));fixture.calls=[];await banner.refresh();return fixture.calls.map(c=>c.action);});
-  assert.deepEqual(requests,['PENDING_ACTIVITIES','VERIFY_ACTIVITY']);
+  assert.equal(requests[0],'PENDING_ACTIVITIES');
+  assert.ok(requests.slice(1).every(action=>action==='VERIFY_ACTIVITY')&&requests.length<=6);
  }finally{await page.close();}
 });
 
@@ -90,7 +118,7 @@ test('phone pointer/touch and keyboard movement stay bounded; routes and native 
   await panel(page).locator('xpath=ancestor::dialog[@id="second"]').waitFor();
   await page.evaluate(()=>{const first=document.querySelector('#native');first.close();first.showModal();});
   await panel(page).locator('xpath=ancestor::dialog[@id="native"]').waitFor();
-  await page.getByLabel('Atividade pendente').focus();await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.textContent),'Abrir atividade');
+  await handle.focus();await page.keyboard.press('Tab');assert.equal(await page.evaluate(()=>document.activeElement?.textContent),'Treinamento seguro · Pendente');
   assert.equal(await page.evaluate(()=>document.body.style.overflow),'');
  }finally{await page.close();}
 });
@@ -100,7 +128,7 @@ test('120h blocks general controls while the selected activity stays usable',asy
   await page.evaluate(()=>window.age(120));assert.equal(await panel(page).getAttribute('data-blocking'),'true');
   assert.equal(await page.locator('#route').evaluate(el=>el.inert),true);
   await page.evaluate(()=>document.querySelector('#general').click());assert.equal(await page.evaluate(()=>fixture.general),0);
-  await page.getByRole('button',{name:'Abrir atividade',exact:true}).click();
+  await panel(page).getByRole('button',{name:'Treinamento seguro · Pendente'}).click();
   assert.equal(await panel(page).getAttribute('data-blocking'),'false');
   await page.locator('#activity-control').click();assert.equal(await page.evaluate(()=>fixture.submitted),1);
   await page.evaluate(()=>{document.querySelector('#native').close();banner.setActivityActive(null);});
@@ -112,11 +140,11 @@ test('120h blocks general controls while the selected activity stays usable',asy
 
 test('source failure preserves pending state and recovers; confirmed completion removes only its item',async()=>{
  const page=await pageFor();try{
-  await page.evaluate(async()=>{fixture.fail=true;await banner.refresh();});await page.getByText(/Não foi possível verificar/).waitFor();assert.equal(await page.getByLabel('Atividade pendente').locator('option').count(),2);
+  await page.evaluate(async()=>{fixture.fail=true;await banner.refresh();});await page.getByText(/Não foi possível verificar/).waitFor();assert.equal(await panel(page).locator('[data-state="pending"]').count(),2);
   await page.evaluate(()=>{fixture.fail=false;window.dispatchEvent(new Event('online'));});await page.getByText(/Não foi possível verificar/).waitFor({state:'hidden'});
   await page.evaluate(async()=>{fixture.unavailable=true;await banner.refresh();});await page.getByText(/Atividade indisponível/).waitFor();
   await page.evaluate(async()=>{fixture.unavailable=false;fixture.completed.push('old');window.dispatchEvent(new Event('communication:activity-completed'));});
-  await page.waitForFunction(()=>document.querySelector('[data-obligation-banner] select')?.value==='new');
+  await panel(page).getByRole('button',{name:'Treinamento seguro · Concluída'}).waitFor();
   await page.evaluate(async()=>{fixture.completed.push('new');await banner.refresh();});assert.equal(await panel(page).count(),0);
  }finally{await page.close();}
 });
@@ -136,7 +164,7 @@ test('Cadastro Profissional abre pela convocação e reaparece após sair sem en
    fixture.items=[{...fixture.items[1],id:'activity-registration',activity:{kind:'SURVEY',id:'professional',title:'Cadastro Profissional - SAHMT',cycle:'2026'}}];
    window.dispatchEvent(new Event('focus'));
   });
-  const open=panel(page).getByRole('button',{name:'Abrir Cadastro Profissional',exact:true});
+  const open=panel(page).getByRole('button',{name:'Cadastro Profissional - SAHMT · Pendente',exact:true});
   await open.click();
   assert.deepEqual(await page.evaluate(()=>fixture.destination),{
    base:'/SAHMT-V2.0.github.io/',hash:'#/management-hub/professional/required/activity-registration'
@@ -171,13 +199,13 @@ test('sexta-feira bloqueia a navegação até confirmar o Cadastro Profissional'
   await page.clock.runFor(550);
   const banner=panel(page);
   assert.equal(await banner.getAttribute('data-blocking'),'true');
-  assert.equal(await banner.getByLabel('Atividade pendente').inputValue(),item.id);
+  assert.equal(await banner.locator('[data-open]:enabled').getAttribute('data-open'),item.id);
   const bounds=await banner.boundingBox();
   assert.equal(bounds.width,390);
   assert.equal(bounds.height,844);
   await page.evaluate(()=>{banner.setActivityActive('old');document.querySelector('#general').click();});
   assert.equal(await page.evaluate(()=>fixture.general),0);
-  await banner.getByRole('button',{name:'Abrir Cadastro Profissional'}).click();
+  await banner.getByRole('button',{name:'Cadastro Profissional - SAHMT · Pendente'}).click();
   await banner.waitFor({state:'hidden'});
   await page.evaluate(()=>{
    const feedback=document.createElement('dialog');
@@ -222,7 +250,7 @@ for (const [affiliation, group, label] of [['resident','resident','Residentes'],
     await banner.refresh();
    },{affiliation,group});
    assert.equal(await panel(page).getAttribute('data-blocking'),'true');
-   await panel(page).getByRole('button',{name:'Abrir atividade'}).click();
+   await panel(page).getByRole('button',{name:'Cadastro Epidemiológico SAHMT · Pendente'}).click();
    await page.getByRole('heading',{name:label,exact:true}).waitFor({timeout:4000});
    assert.equal(await panel(page).isVisible(),false);
    await page.check('[name=consent]');
@@ -261,7 +289,7 @@ test('o reenvio do Cadastro Profissional para a Equipe respeita o novo prazo de 
   assert.match(await panel(page).locator('[data-deadline]').textContent(),/29\/11\/2026, 09:00/);
   await page.evaluate(async()=>{fixture.now=fixture.items[0].dueAt;await banner.refresh();});
   assert.equal(await panel(page).getAttribute('data-blocking'),'true');
-  await panel(page).getByRole('button',{name:'Abrir Cadastro Profissional'}).click();
+  await panel(page).getByRole('button',{name:'Cadastro Profissional - SAHMT · Pendente'}).click();
   assert.equal(await panel(page).isVisible(),false);
  }finally{await page.close();}
 });
