@@ -246,3 +246,22 @@ for (const [affiliation, group, label] of [['resident','resident','Residentes'],
   }finally{await page.close();}
  });
 }
+
+test('o reenvio do Cadastro Profissional para a Equipe respeita o novo prazo de 48 horas',async()=>{
+ const page=await pageFor({viewport:{width:390,height:844}});
+ try{
+  await page.evaluate(async()=>{
+   const publishAt=Date.parse('2026-11-27T12:00:00Z');
+   fixture.now=publishAt;
+   fixture.items=[{id:'activity-team-renewal',publishAt,dueAt:publishAt+48*3600000,
+    activity:{kind:'SURVEY',id:'professional',title:'Cadastro Profissional - SAHMT',cycle:'2026'}}];
+   await banner.refresh();
+  });
+  assert.equal(await panel(page).getAttribute('data-blocking'),'false');
+  assert.match(await panel(page).locator('[data-deadline]').textContent(),/29\/11\/2026, 09:00/);
+  await page.evaluate(async()=>{fixture.now=fixture.items[0].dueAt;await banner.refresh();});
+  assert.equal(await panel(page).getAttribute('data-blocking'),'true');
+  await panel(page).getByRole('button',{name:'Abrir Cadastro Profissional'}).click();
+  assert.equal(await panel(page).isVisible(),false);
+ }finally{await page.close();}
+});
