@@ -47,7 +47,7 @@ test('Abrir atividade envia a enquete ao formulário e retoma o mesmo treinament
  const main=readFileSync(new URL('../src/main.js',import.meta.url),'utf8');
  const storage=fixture(),session={status:'signed-in',user:{uid:'member'},profile:{active:true,access:true}};
  const location={pathname:FA,hash:'#/home',href:FA+'#/home',assign(path){this.destination=path;}};
- let onOpen,googleOpens=0,ready=false;
+ let onOpen,googleOpens=0,ready=false,updateRequired=true;
  const controller={setActivityActive(){},cleanup(){}};
  const modules={
   './communication-obligation-banner.js':{mountCommunicationObligationBanner(options){onOpen=options.onOpenActivity;return controller;}},
@@ -55,13 +55,18 @@ test('Abrir atividade envia a enquete ao formulário e retoma o mesmo treinament
   './management-entry-session.js':{ensureManagementSession:async()=>ready}
  };
  const context=vm.createContext({activityDestination,surveyActivityPanels,location,session,deployment:{faBase:FA,fbBase:FB},
+  isAppUpdateRequired:()=>updateRequired,
   communicationFeatureEnabled:true,obligationBanner:null,obligationBannerUid:'',load:async path=>modules[path],
   rememberManagementReturn:hash=>rememberManagementReturn(hash,{storage}),readManagementReturn:()=>readManagementReturn({storage}),
   rememberModuleNavigation(){},googleAccessPanel:{open(){googleOpens++;}}});
  const start=main.indexOf('function activeObligationId()'),end=main.indexOf('async function render()',start);
  vm.runInContext(main.slice(start,end).replaceAll('import(','load(')+'\nsyncObligationBanner();',context);
  await new Promise(resolve=>setImmediate(resolve));
- await onOpen({id:'activity-survey',activity:{kind:'SURVEY',id:'professional'}});
+ const survey={id:'activity-survey',activity:{kind:'SURVEY',id:'professional'}};
+ await onOpen(survey);
+ assert.equal(location.hash,'#/home');
+ updateRequired=false;
+ await onOpen(survey);
  assert.equal(location.hash,'#/management-hub/professional/required/activity-survey');
  const item={id:'activity-training',activity:{kind:'TRAINING',id:'training-1'}};
  const target='#/management/area-gestao-de-documentos/required/training-1/activity-training';
