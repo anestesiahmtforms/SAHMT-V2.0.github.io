@@ -1596,14 +1596,16 @@ async function loadModule(route) {
     const participantOnly=session.accountMode==='team';
     const initialPanel=location.hash.split('/')[2]||'home';
     const requiredActivity=['professional','epidemiological'].includes(initialPanel)?activeObligationId():null;
-    const [consultationsAllowed,affiliation,functionalAccess]=await Promise.all([
-      can('admin')||readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub}).catch(()=>false),
-      readOwnInstitutionalGroup(session.user).catch(()=>null),
-      functionalEnabled?getFunctionalAccess(session):{allowed:false}
-    ]);
-    if(!content.isConnected||!currentHub())return;
+    const affiliation=await readOwnInstitutionalGroup(session.user).catch(()=>null);
+    if(!currentHub())return;
     const epidemiologicalAllowed=affiliation==='team';
     const groupRegistrations=['resident','substitute'].includes(affiliation)&&registrationMailboxAllowed(session.user.email,affiliation);
+    // Registration-only groups do not need to connect to the vacation or functional modules.
+    const [consultationsAllowed,functionalAccess]=groupRegistrations?[false,{allowed:false}]:await Promise.all([
+      can('admin')||readConsultationsAccess({uid,email:session.user.email,isCurrent:currentHub}).catch(()=>false),
+      functionalEnabled?getFunctionalAccess(session):{allowed:false}
+    ]);
+    if(!currentHub())return;
     const professionalAllowed=consultationsAllowed||epidemiologicalAllowed||groupRegistrations;
     const requiredRegistrationPanel=requiredActivity?initialPanel:null;
     const inRequiredRegistration=kind=>requiredRegistrationPanel===kind&&activeObligationId()===requiredActivity;

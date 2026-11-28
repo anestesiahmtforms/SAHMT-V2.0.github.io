@@ -62,9 +62,9 @@ const user={uid:'fixture-admin',displayName:'Fixture',email:'admin@example.inval
 const authorized=()=>({status:'signed-in',user,profile:{uid:user.uid,email:user.email,active:true,access:true,role:'administrador_app',permissions:{}},offline:false});
 const limited=()=>({status:'auth-limited',user,profile:{uid:user.uid,active:false,access:false,permissions:{}},offline:true,validatingProfile:true});
 function harness({route='management',target='FB',session=authorized(),appFeatures=DEFAULT_APP_FEATURES}={}){
-  const app=dom(),assignments=[],mounts=[],mountOptions=[],loaded=[];
+  const app=dom(),assignments=[],mounts=[],mountOptions=[],loaded=[],accessChecks=[];
   const ctx=vm.createContext({env:{BASE_URL:'/',VITE_FK_FUNCTIONAL_ENABLED:'true'},googleProjectAuthEnabled:true,operationalContentAllowed:()=>true,operationalFolderNotice:()=>'',operationalRouteFolder:()=>null,
-    app,document:app,session,loadOwnLabelModuleProfile(){},loadOwnChecklistModuleProfile(){},readConsultationsAccess:async()=>session.profile?.memberCategories?.includes('EFETIVO')===true,location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
+    app,document:app,session,loadOwnLabelModuleProfile(){},loadOwnChecklistModuleProfile(){},readConsultationsAccess:async()=>{accessChecks.push('vacations');return session.profile?.memberCategories?.includes('EFETIVO')===true;},location:{hash:'#/'+route,assign:url=>assignments.push(url)},history:{replaceState(){}},
     deployment:{target,faBase:'/SAHMT-V2.0.github.io/',externalManagementEnabled:true},rememberModuleNavigation(){},
     evaluationModuleGeneration:0,googleAccessPanel:null,scheduleGridObserver:null,operationalDrafts:{flush(){},restore(){}},
     updateInformationBanner(){},liveReports:new Map(),reportStates:new Map(),reportPayloads:new Map(),
@@ -79,14 +79,15 @@ function harness({route='management',target='FB',session=authorized(),appFeature
     managementUtilityCards:()=>'',can:permission=>session.profile?.role==='administrador_app'||session.profile?.permissions?.[permission]===true,actionForm:()=>'',escapeHtml:value=>String(value),loaded,
     mountHub:(content,options)=>{mounts.push(options.initialPanel);mountOptions.push(options);return ()=>{};},
     registrationMailboxAllowed:()=>true, fakeInstitutionalGroup:async()=>session.profile?.memberCategories?.includes('EFETIVO')?'team':session.profile?.memberCategories?.includes('SUBSTITUTO')?'substitute':session.profile?.memberCategories?.some(category=>category.startsWith('RESIDENTE'))?'resident':null,
-    fakeFunctionalAccess:async()=>({allowed:true,group:session.profile?.role==='administrador_app'?null:'EQUIPE'})
+    fakeFunctionalAccess:async()=>{accessChecks.push('functional');return {allowed:true,group:session.profile?.role==='administrador_app'?null:'EQUIPE'};},
+    activeObligationId:()=>ctx.location.hash.split('/required/')[1]||null
   });
   const inactiveFolderHelper=main.slice(main.indexOf('function canBrowseInactiveGovernanceFolder('),main.indexOf('\n}',main.indexOf('function canBrowseInactiveGovernanceFolder('))+2);
   const code=(router+'\n'+cards+'\n'+occurrencePermission+'\n'+inactiveFolderHelper+'\n'+shell+'\n'+hubLoader+'\n'+render).replaceAll('import.meta.env.BASE_URL',"'/'")
     .replaceAll('import.meta.env','env').replace("import('./management-hub.js')",'Promise.resolve({mountManagementHub:mountHub})')
     .replace("import('./functional-access.js')",'Promise.resolve({getFunctionalAccess:fakeFunctionalAccess,readOwnInstitutionalGroup:fakeInstitutionalGroup})');
   vm.runInContext(code,ctx);
-  return {ctx,app,assignments,mounts,mountOptions,loaded,render:()=>ctx.render()};
+  return {ctx,app,assignments,mounts,mountOptions,loaded,accessChecks,render:()=>ctx.render()};
 }
 
 for(const route of ['management','training'])for(const sessionFactory of [authorized]){
@@ -145,6 +146,21 @@ test('Etiquetas retains its HOME footer and original route',async()=>{
 
 test('residents and substitutes can open Governance with access only to institutional surveys in FE',async()=>{for(const category of ['RESIDENTE','RESIDENTE_1','RESIDENTE_2','RESIDENTE_3','SUBSTITUTO']){const session=authorized();session.user={...session.user};session.profile.role='anestesiologista';session.profile.memberCategories=[category];const h=harness({target:'FA',route:'management-hub',session});await h.render();assert.deepEqual(h.mounts,['home']);const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','teamSurveys','biosafety'])assert.equal(access[key],false);for(const key of ['professional','epidemiological'])assert.equal(access[key],true,key);assert.equal(access.institutionalSurveys,false);assert.equal(access.fePerformance,false);}});
 test('administrators outside the team retain Governance access with the epidemiological form restricted',async()=>{const h=harness({target:'FA',route:'management-hub'});await h.render();const access=h.mountOptions[0].access;for(const key of ['groups','records','surveys','yearEndSchedule','vacations2027','institutionalSurveys'])assert.equal(access[key],true,key);assert.equal(access.epidemiological,false);});
+
+for(const category of ['RESIDENTE','SUBSTITUTO'])test(category+' opens the registration menu and both convocation routes without probing unrelated modules',async()=>{
+ const session=authorized();
+ session.profile.role='anestesiologista';session.profile.memberCategories=[category];
+ for(const [path,panel] of [['institutional','institutional'],['professional/required/activity-professional','professional'],['epidemiological/required/activity-epidemiological','epidemiological']]){
+  const h=harness({target:'FA',route:'management-hub/'+path,session});
+  await h.render();
+  assert.deepEqual(h.mounts,[panel]);
+  assert.deepEqual(h.accessChecks,[]);
+  assert.equal(h.mountOptions[0].requiredRegistrationPanel,panel==='institutional'?null:panel);
+  const {access}=h.mountOptions[0];
+  assert.equal(access.professional,true);assert.equal(access.epidemiological,true);
+  for(const key of ['functional','vacations2027','yearEndSchedule','teamSurveys','biosafety','institutionalSurveys'])assert.equal(access[key],false,key);
+ }
+});
 
 test('ordinary and team-mode sessions can open Ocorrências and return to Home',async()=>{
  for(const accountMode of [undefined,'team']){
