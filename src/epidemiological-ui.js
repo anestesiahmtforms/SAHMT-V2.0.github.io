@@ -23,16 +23,14 @@ function calculateBmi(container) {
 
 export function mountEpidemiologicalSurvey(root,{request,onComplete}) {
   const controller = new AbortController();
+  let group;
   root.classList.add('registration-app');
   mountSurveyFlow(root,{
     title:'Cadastro Epidemiológico - SAHMT',
     questions,
     privacy:'<p>As respostas são registradas somente pelo grupo. Nome, e-mail, UID e IP não fazem parte dos dados de respostas. O controle de participação fica separado para impedir duplicidades. A infraestrutura pode gerar registros técnicos e não há garantia de anonimato absoluto.</p><p>Não informe nomes ou detalhes que possam identificar você ou outras pessoas. Os resultados serão agrupados, com proteção de grupos pequenos.</p>',
-    async identify() {
-      const state = await request('BOOTSTRAP',{},controller.signal);
-      if (state.group !== 'team') throw Error('SURVEY_GROUP_UNAVAILABLE');
-      return state;
-    },
+    identify:()=>request('BOOTSTRAP',{},controller.signal),
+    onGroup:confirmedGroup=>{group=confirmedGroup;},
     readResponse(data,form) {
       const bmi = calculateBmi(form);
       if (!bmi) {
@@ -50,7 +48,7 @@ export function mountEpidemiologicalSurvey(root,{request,onComplete}) {
         throw Error('Selecione ao menos uma opção para “'+unanswered.label+'”.');
       }
       return validateCompleteEpidemiologicalSubmission({
-        survey_cycle:REGISTRATION_CYCLE,survey_version:'1.0',submission_id:surveyResponseId(),group:'team',consent:true,
+        survey_cycle:REGISTRATION_CYCLE,survey_version:'1.0',submission_id:surveyResponseId(),group,consent:true,
         answers,comments:data.get('comments')
       });
     },

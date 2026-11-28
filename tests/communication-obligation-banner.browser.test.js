@@ -208,3 +208,41 @@ test('sexta-feira bloqueia a navegação até confirmar o Cadastro Profissional'
   assert.equal(await page.locator('#route').evaluate(el=>el.inert),false);
  }finally{await page.close();}
 });
+
+for (const [affiliation, group, label] of [['resident','resident','Residentes'],['substitute','team','Equipe']]) {
+ test('o banner epidemiológico abre o formulário para '+affiliation, async()=>{
+  const page=await pageFor({viewport:{width:390,height:844}});
+  try{
+   await page.evaluate(async({affiliation,group})=>{
+    const publishAt=Date.parse('2026-11-27T12:00:00Z');
+    fixture.now=publishAt+48*3600000;
+    fixture.epidemiologicalGroup=group;
+    fixture.items=[{id:'activity-epidemiological',publishAt,dueAt:fixture.now,[affiliation+'Convocation']:true,
+     activity:{kind:'SURVEY',id:'epidemiological',title:'Cadastro Epidemiológico SAHMT',cycle:'2026'}}];
+    await banner.refresh();
+   },{affiliation,group});
+   assert.equal(await panel(page).getAttribute('data-blocking'),'true');
+   await panel(page).getByRole('button',{name:'Abrir atividade'}).click();
+   await page.getByRole('heading',{name:label,exact:true}).waitFor({timeout:4000});
+   assert.equal(await panel(page).isVisible(),false);
+   await page.check('[name=consent]');
+   await page.getByRole('button',{name:'Iniciar Pesquisa'}).click();
+   const questions=page.locator('.survey-questions');
+   assert.equal(await questions.isVisible(),true);
+   await questions.evaluate(async dialog=>{
+    const {EPIDEMIOLOGICAL_FIELDS}=await import('/src/registration-domain.js');
+    for(const field of EPIDEMIOLOGICAL_FIELDS){
+     if(field.id==='bmiBand')continue;
+     const input=dialog.querySelector('[name="'+field.id+'"]');
+     if(field.type==='checks')input.checked=true;
+     else input.value=field.options[0][0];
+    }
+    dialog.querySelector('[data-local-weight]').value='70.2';
+    dialog.querySelector('[data-local-height]').value='175';
+   });
+   await questions.getByRole('button',{name:'Enviar resposta'}).click();
+   await page.waitForFunction(()=>fixture.epidemiologicalSubmission!=null);
+   assert.equal(await page.evaluate(()=>fixture.epidemiologicalSubmission.group),group);
+  }finally{await page.close();}
+ });
+}
