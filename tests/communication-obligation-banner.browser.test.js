@@ -62,7 +62,14 @@ test('banner compacto mostra botões individuais e os caminhos na Home',async()=
   assert.deepEqual(await banner.locator('[data-state="pending"]').allTextContents(),['Treinamento seguro · Pendente','Pesquisa de Clima Organizacional · Pendente']);
   assert.deepEqual(await banner.locator('[data-path]').allTextContents(),['Home › Governança › Grupos de Gestão › Gestão de Documentos › Treinamento seguro','Home › Governança › Enquetes e Consultas › Acesso Restrito › Pesquisa de Clima Organizacional']);
   assert.doesNotMatch(await banner.innerText(),/https:\/\/|link abaixo/);
-  const box=await banner.boundingBox();assert.ok(Math.abs(box.width-288)<=1&&box.height<=285,JSON.stringify(box));
+  const box=await banner.boundingBox();
+  assert.ok(Math.abs(box.width-288)<=1&&box.y>=0&&box.y+box.height<=568,JSON.stringify(box));
+  for(const button of await banner.getByRole('button').all()){
+   const bounds=await button.boundingBox();
+   assert.ok(bounds.y>=box.y&&bounds.y+bounds.height<=box.y+box.height);
+  }
+  assert.equal(await banner.evaluate(el=>[el,el.querySelector('[data-activity-list]'),el.querySelector('.communication-obligation__content')]
+   .some(part=>['auto','scroll'].includes(getComputedStyle(part).overflowY))),false);
   await banner.getByRole('button',{name:'Pesquisa de Clima Organizacional · Pendente'}).click();
   assert.deepEqual(await page.evaluate(()=>fixture.opens),['new']);
  }finally{await page.close();}
